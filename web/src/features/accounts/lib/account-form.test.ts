@@ -21,6 +21,17 @@ describe("account form schema", () => {
     expect(issues({ ...valid, maxPosition: "0" }).maxPosition).toBe("maxPositionInvalid");
     expect(issues({ ...valid, maxPosition: "" }).maxPosition).toBe("maxPositionInvalid");
   });
+  it("refuses an ambiguous pt-BR size instead of guessing 25 or 25000", () => {
+    const ptIssues = (size: string) => {
+      const r = accountFormSchema("pt-BR", { kind: "real", optInRequired: false }).safeParse({ ...valid, size });
+      return r.success ? undefined : r.error.issues.find((i) => i.path[0] === "size")?.message;
+    };
+    expect(ptIssues("25.000")).toBe("sizeAmbiguous");
+    expect(ptIssues("25,000")).toBe("sizeAmbiguous");
+    expect(ptIssues("25000")).toBeUndefined();
+    expect(ptIssues("25000,00")).toBeUndefined();
+    expect(issues({ ...valid, size: "25.000" }, "real").size).toBeUndefined();
+  });
   it("rejects zero size and more than 2 decimals", () => {
     expect(issues({ ...valid, size: "0" }).size).toBe("sizeInvalid");
     expect(issues({ ...valid, size: "10.001" }).size).toBe("sizeInvalid");

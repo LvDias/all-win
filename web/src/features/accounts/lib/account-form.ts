@@ -8,6 +8,7 @@ export const formErrorKeys = {
   required: "required",
   tooLong: "nameTooLong",
   size: "sizeInvalid",
+  sizeAmbiguous: "sizeAmbiguous",
   integer: "integerMin1",
   maxPosition: "maxPositionInvalid",
   optInRequired: "optInRequired",
@@ -21,7 +22,9 @@ type Fail = (path: string, message: string) => void;
 
 function refineData(v: { size: string; maxPosition: string; multiplier: string }, locale: Locale, fail: Fail) {
   const size = parseDecimalInput(v.size, locale, { scale: 2 });
-  if (!size.ok || Number(size.value) <= 0) fail("size", formErrorKeys.size);
+  // pt-BR "25.000" may be 25 or 25000: the parser refuses it and the user types the decimals (never guessed).
+  if (!size.ok && size.reason === "ambiguous") fail("size", formErrorKeys.sizeAmbiguous);
+  else if (!size.ok || Number(size.value) <= 0) fail("size", formErrorKeys.size);
   if (!wholeNumber(v.maxPosition)) fail("maxPosition", formErrorKeys.maxPosition);
   if (v.multiplier.trim() !== "" && !wholeNumber(v.multiplier)) fail("multiplier", formErrorKeys.integer);
 }
