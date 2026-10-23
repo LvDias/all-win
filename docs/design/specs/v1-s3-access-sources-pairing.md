@@ -349,7 +349,16 @@ Result step:
 | Ações | `Renomear`; `Gerar código de pareamento` (awaiting pairing); `Mover para outra máquina` (paired: re-pairing); `Desparear` | |
 
 **Empty state:** title "Nenhum NinjaTrader conectado"; three numbered steps: "1. Instale o plugin All Win no NinjaTrader 8. 2. Crie uma conexão aqui. 3. Digite o código de pareamento no plugin." Link "Como instalar o plugin" **[Dependency: install guide by Plugin Engineer; hidden until it exists]**; action `Nova conexão`.
-**Disconnected instance:** row shows danger badge + text "O plugin não está conectado. Ordens para as contas desta instância não serão executadas." (consequence wording; out-of-sync handling is S11).
+**Disconnected instance:** row shows danger badge `Desconectada` + a reason line from `disconnect_reason` (the badge never carries the reason alone):
+- `user` **[provisional, Q66; needs `Connection.disconnect_reason`]**: "Desconectada pelo usuário no plugin. O pareamento continua válido. Ordens para as contas desta instância não serão executadas até ele conectar de novo." / "Disconnected by the user in the plugin. The pairing is still valid. Orders for this instance's accounts won't run until they connect again."
+- `network`: "O plugin perdeu a conexão. Ordens para as contas desta instância não serão executadas."
+- `outdated` / `unpaired`: use the `Desatualizada` / `Despareada` states below.
+- Field absent (contract not yet published) or unknown value: "O plugin não está conectado. Ordens para as contas desta instância não serão executadas."
+The consequence wording stays the same in every case.
+**What else appears for `user` (ADR-0004 §6, answered by the Architect, provisional with Q66):**
+- **Mapped accounts flat and nothing in flight:** only the status, the reason line above and an audit entry "Desconectada pelo usuário no plugin". **No alert** (S11/S18).
+- **Open position or a command in flight on a mapped account:** that account becomes `Fora de sincronia` (F§7.2) and an S11/S18 alert is raised with reason `sync.disconnected_by_user`: "Você desconectou o plugin com posição aberta; o All Win não está acompanhando esta conta." / "You disconnected the plugin with an open position; All Win is not tracking this account." Routing to it stops. The connection row lists the affected accounts with `Fora de sincronia` and a link to the S11 view; it offers no resync control here (S11 AC-2).
+- In both cases local enforcement (S15) keeps working in the plugin. The alert wording is registered in the S18 catalog by the S18 owner.
 **Outdated instance:** warning badge + "Atualize o plugin para voltar a conectar." + link to the download page **[Dependency]**.
 
 ### Create connection + pairing (`ResponsiveDialog`, stays open while waiting; **provisional step-up by code first**, S3-04, Q35)
@@ -371,13 +380,14 @@ Result step:
 - `AlertDialog`: "Mover “{name}” para outra máquina?"; body: "Você vai receber um novo código. Quando ele for usado, a instância atual será desconectada e não receberá mais ordens." Confirm `Gerar código` → step-up by code (S3-04, provisional Q35) → same pairing step 2 as above.
 - Until the new code is used, the current instance keeps working. On success: toast "“{name}” agora está em outra máquina." Account bindings **follow the connection by platform account name** (contract notes §2). Bound accounts the new instance does not report become out of sync (`sync.account_not_found_after_repair`). The connection row then lists them as "Não encontrada na nova instância" (danger) with `Vincular de novo` (→ S5) and a link to the out-of-sync view (S11).
 
-### Unpair (`Desparear`): Q18 decided
+### Unpair (`Desparear`): Q18 decided; **revocation happens only here (Q66, provisional)**
 Allowed after a confirmation that lists the affected accounts; the accounts become out of sync; nothing is closed automatically.
 - `AlertDialog` title: "Desparear “{name}”?" Confirming opens the **step-up by code (S3-04, AC-10 ii)**; the unpair request is sent only after a valid code. Cancelling the code leaves the connection paired. The open-position checkbox below is answered before the code is requested.
 - Body (always): "O plugin desta instância será desconectado imediatamente e não receberá mais ordens. Para reconectar, crie uma nova conexão."
 - If any of the instance's accounts is bound to an All Win account **[Dependency S5 data]**: list "Estas contas ficarão fora de sincronia e deixarão de receber ordens: APEX-12345-01, Sim101."
 - If any has an open position **[Dependency S11 position data]**: danger `Alert` inside the dialog: "Há posição aberta em: APEX-12345-01 (2 contratos). **A posição continua aberta no NinjaTrader**, sem monitoramento nem proteção de risco do All Win. Nada será fechado automaticamente." Confirmation requires a checkbox "Entendo que a posição continuará aberta" before `Desparear` enables.
 - Confirm `Desparear` (destructive) → `connections.unpair { id }`. Row → `Despareada`. Other connections are unaffected (AC-4); the dialog says nothing about them.
+- **Q66 (provisional):** this is the only place a pairing is revoked. If the user disconnected the plugin locally (S3-11 `Desconectar`), the row reads `Desconectada` and still offers `Desparear`; the dialog text tells them that the pairing is still valid until they confirm here.
 - Unpaired connections stay listed (history) under "Mostrar despareadas", like revoked sources. No actions on them.
 
 **AC mapping:** AC-15 (pair per instance, own credential, unpair; unpaired receives nothing; revoking one does not affect others), AC-13, AC-10 (ii), X-4 (device token never displayed), X-5.
@@ -393,10 +403,14 @@ The plugin UI follows NinjaTrader 8 conventions (NTWindow/WPF, NinjaTrader skin 
 | Invalid / expired / used / superseded code (`pairing.invalid_code`) | "Código inválido ou expirado. Confira o código ou gere um novo no All Win." (one message for all causes) | Field kept for correction |
 | Rate limited (`pairing.rate_limited`) or pairing temporarily locked (`pairing.temporarily_locked`) | "Muitas tentativas. Aguarde {time} e tente de novo." (`Retry-After` when present; otherwise "alguns minutos") | Disabled with countdown |
 | Plugin version unsupported at pairing (`pairing.adapter_version_unsupported`) | Same as "Update required" below | — |
-| Paired + connected | Connection name (from Core), "Conectado", account count | `Desparear` (local: forgets the token after confirmation) |
+| Paired + connected | Connection name (from Core), "Conectado", account count | `Desconectar` / `Disconnect` **[provisional, Q66]**: pauses the connection **on this computer only**, keeps the device token and does not revoke the pairing (protocol 1.3: close code 4100 `user_disconnect`). Confirmation (WPF dialog): "Desconectar o All Win neste computador? O pareamento continua válido; ordens deixam de chegar aqui até você conectar de novo. A proteção local de risco continua ativa. Para revogar o pareamento, use o All Win na web." |
+| Disconnected by the user (after `Desconectar`) **[provisional, Q66]** | "Desconectado neste computador. O pareamento continua válido. Para revogá-lo, use All Win → Conexões → NinjaTrader na web." The plugin stores a persistent "disconnected by user" flag: it **does not reconnect by itself**, not even after NinjaTrader or the plugin restart. Local enforcement (S15) keeps working while disconnected | `Conectar` / `Connect` (uses the stored device token; no new code) |
 | Disconnected / reconnecting | "Sem conexão com o All Win. Tentando reconectar…" + last connected time | — |
-| Revoked (unpaired in the web, or re-paired on another machine; close code 4002) | "Esta instância foi despareada ou movida para outra máquina no All Win. Gere um novo código para conectar." | Back to Not paired |
+| Revoked (**revoked in the web with a code (step-up)**, or re-paired on another machine; close code 4002) | "Esta instância foi despareada ou movida para outra máquina no All Win. Gere um novo código para conectar." | Back to Not paired |
 | Update required (4003) | "Versão do plugin não suportada. Atualize o plugin." | Link to download page (**[Dependency]**) |
+
+**Q66 (provisional, Traço/PO):** the plugin has **no** revoke or unpair action. Revoking a pairing happens only in the web (S3-10 Unpair), after a step-up by code (S3-04). The plugin's `Desconectar` is local and reversible; the Core keeps the pairing, and the instance stays listed as paired. The word "Desparear" no longer appears in the plugin UI (glossary: F§5 "Pair / Unpair" applies to the web). Why: a plugin on a compromised or shared machine could otherwise remove protection without proving the account owner's identity.
+**Answered by the Architect:** `Desconectar` keeps the device token (a local pause); the flag survives restarts; the web learns the reason through protocol 1.3 (close code 4100) and `Connection.disconnect_reason` (`user | network | outdated | unpaired`) in HTTP contract 2.x. Until that contract exists the web shows only `Desconectada` (S3-10 prepares the text).
 
 The device token is never displayed or logged by the plugin (DPAPI storage, ADR-0004 §8).
 
