@@ -23,6 +23,13 @@ Evidence (raw captured text, URL on first line) is kept outside the repo in the 
 
 Programs found (futures only): **Express to Live (E2L)** 25K/50K/100K/150K; **Fundamental** 50K/100K/150K; **Premium** 50K/100K/150K; **10K Drawdown Challenge** (monthly competition, 10K, outside priority range). Each plan has an evaluation phase and a funded "Phidias-CASH" phase (simulated funded), then a LIVE account (automatic for E2L via "Switch to Live"; discretionary for Fundamental/Premium, incl. ELITE LIVE / MASTER LIVE). RULES (General Rules): "Phidias offers four account categories". No 25K except E2L; no sizes above 150K.
 
+**Platforms (format rev. 3), as published.** Three connection paths, chosen per account at purchase:
+- **Rithmic data feed:** "Quantower, MotiveWave, ATAS, Sierra Chart, Bookmap" (TOU, "compatible platforms include, but are not limited to"), plus R|Trader Pro (RULES: "Download and install Rtrader Pro").
+- **NinjaTrader / Tradovate:** "NinjaTrader and Tradovate, through a NinjaTrader or Tradovate subscription." TRDV adds TradingView order entry through Tradovate.
+- **dxFeed data feed:** "DeepCharts".
+- TOU: "NinjaTrader and Tradovate are not compatible with the Rithmic data feed." No page gives a per-plan platform matrix (gap 17). The YAML lists all three paths for every plan. For LIVE, RULES (Canada onboarding) names "Tradovate and NinjaTrader" and "Dorman Trading, using Rithmic data feeds".
+- Sources: https://phidiaspropfirm.com/tou, https://phidiaspropfirm.com/rules, https://phidiaspropfirm.com/tradovate, https://phidiaspropfirm.com/accounts (accessed 2026-10-23).
+
 Platforms (relevant to All Win): RULES "Download and install Rtrader Pro, or connect via NinjaTrader / Tradovate". The platform (Rithmic, NinjaTrader/Tradovate, DeepCharts/dxFeed) is chosen per account at purchase and cannot be changed (HC `puis-je-changer-ma-souscription-rithmic-vers-dxfeed-ninjatrader-tradovate-ou-inv`: "The choice between Rithmic, Ninjatrader / tradovate and dxFeed is final for the account concerned.").
 
 ---
@@ -154,6 +161,20 @@ RULES §18: "Account Size: $10,000 USD" · "Max Volume: 25 E-mini contracts" · 
 
 ## 5. Automated trading stance
 
+**(i) Classification:** `conditional` for all CASH phases. Fully automated trading is not permitted. Semi-automated software is permitted if the trader actively monitors and manually adjusts all trades. Evaluation accounts are not separately addressed (see (iii)).
+
+Rule text stored in `automation_rule_text` (RULES §10 item 3, verified against the captured page text): "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+
+**(ii) Named mechanisms:**
+- **Semi-automated trading:** named and allowed, but not defined.
+- **Trade copiers:** named and allowed (§4), including third-party software.
+- **Webhooks / TradingView alerts:** not named. TRDV markets order entry from TradingView charts through Tradovate ("execute trades directly from TradingView on your funded account"), which is manual order entry.
+- **Automatic brackets:** Tradovate is marketed with "Auto breakeven, auto trail, OCO, OSO, and trailing stops" (TRDV). NinjaTrader ATM is not mentioned.
+
+**(iii) Differs by phase:** unclear. The RULES clause sits in a section tagged Fundamental/Premium. The TOU applies the same prohibition to "all CASH accounts" including E2L. Evaluation accounts are not addressed separately. LIVE accounts: no separate automation text found.
+
+Detail:
+
 **Fully automated trading is not permitted; semi-automated software is permitted only if the trader actively monitors and manually adjusts all trades.** Verbatim:
 
 - RULES §10 "Consistency Policy", item 3 (tagged Fundamental, Premium):
@@ -165,6 +186,15 @@ RULES §18: "Account Size: $10,000 USD" · "Max Volume: 25 E-mini contracts" · 
 - Scope note: the RULES consistency policy section is tagged Fundamental/Premium; the TOU applies the prohibition to all CASH accounts including E2L. Evaluation accounts are not separately addressed in the automation clause.
 
 ## 6. Other rules that affect routing or risk
+
+### Device / hosting rules (format rev. 3 §3 item 7)
+
+YAML for all 26 blocks: `vps_allowed: unknown` and `personal_device_required: unknown`. **No official page states a rule on VPS, VPN, remote servers or the originating device.** Searched on 2026-10-23: RULES, TOU, ACC, TRDV and the 75 help-center articles captured the same day (keywords: vps, vpn, remote desktop, cloud server, proxy, personal device, server, IP). Results:
+- The only IP statement is about account counts: "The limits set above apply to all the user's connection identifiers, any user account or person residing at the same address, same IP address, etc..." (help center, article `14-nombre-de-comptes-autorises-et-copy-trading`). It is not a hosting rule.
+- The only virtual-machine text is advice for Mac users running Rithmic: "Option 1: Using a virtual machine is the quickest and easiest way to run Rithmic on a Mac. We currently recommend a product that allows you to trade from any device, including a Mac, phone or tablet." and "These solutions are recommendations and are not directly supported by our company, but they work and will enable you to trade with a Mac." (help center, article `comment-faire-pour-trader-avec-mon-mac`). It does not say a remote server is allowed or forbidden.
+- TRDV markets Tradovate as "Cloud-based by design. Trade from any device, sync across all of them" — a platform feature, not a rule about where orders originate.
+- TOU: "The User acknowledges that they are responsible for acquiring and maintaining any telephone, computer and other equipment necessary to access and use information, products and services".
+- Reported as `unknown`, not `yes`. The user decides whether to ask the firm.
 
 - **News trading:** allowed on all accounts — RULES §7: "Yes, you are authorized to trade during news events on all accounts." RULES §10 also lists as discouraged: "Full margin trading during high volatility economic announcements."
 - **Overnight / weekend:** Fundamental — "All positions must be CLOSED before end of day"; Premium — "Overnight & over-week positions ALLOWED"; E2L — "Overnight & over-week positions NOT allowed" (RULES §5). "Failure to close a position before market close will result in account disqualification." E2L LIVE: "Not permitted (unless agreed)". 10K Challenge: allowed.
@@ -190,6 +220,7 @@ phase: evaluation
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "500.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "1500.00"
@@ -199,7 +230,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Liquidation threshold published as $24,500 (formula published: Initial Capital - Static Drawdown). Overnight/over-week not permitted. Max 5 E2L accounts per trader. trading_day_reset null: no E2L-specific day-end time published (the 10:00 PM UTC+2 session end is stated in the EOD section, which says it does not apply to E2L) — see gaps."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -217,6 +252,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 25K — funded (CASH)
@@ -227,6 +266,7 @@ phase: funded
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "500.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "1500.00"
@@ -236,7 +276,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Funded CASH account 'with the same rules'; reach the profit target again, then 'Switch to Live' credits a fixed $1,000 bonus (80/20) and converts to LIVE. Standard withdrawal rules do not apply. Liquidation $24,500."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -255,6 +299,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/accounts (configurator: fundedDrawdown/fundedTarget/fundedMinDays)", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 25K — live
@@ -265,6 +313,7 @@ phase: live
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "500.00", type: other, stops_trailing_at: "static; LIVE static loss is 'Extensible — grows with cumulative credits'" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -274,7 +323,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Static Loss (LIVE) published as 'Extensible — grows with cumulative credits'; minimum balance 'Equals total cumulative LIVE credit' (LIVE credit for this size: $500). Overnight/over-week 'Not permitted (unless agreed)'. Max contracts published as 2 'lots' (rules page) / 'Max Contracts (E-mini)' 2 (TOU). Micros not published per size; help center states 10 micro-lots = 1 mini-lot. TOU example: '2 lots (or 20 micro-lots) per validated account'."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
@@ -286,6 +339,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 50K — evaluation
@@ -296,6 +353,7 @@ phase: evaluation
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "650.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "2500.00"
@@ -305,7 +363,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Liquidation threshold published as $49,350 (formula published: Initial Capital - Static Drawdown). Overnight/over-week not permitted. Max 5 E2L accounts per trader. trading_day_reset null: no E2L-specific day-end time published (the 10:00 PM UTC+2 session end is stated in the EOD section, which says it does not apply to E2L) — see gaps."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -323,6 +385,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 50K — funded (CASH)
@@ -333,6 +399,7 @@ phase: funded
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "650.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "2500.00"
@@ -342,7 +409,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Funded CASH account 'with the same rules'; reach the profit target again, then 'Switch to Live' credits a fixed $2,000 bonus (80/20) and converts to LIVE. Standard withdrawal rules do not apply. Liquidation $49,350."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -361,6 +432,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/accounts (configurator: fundedDrawdown/fundedTarget/fundedMinDays)", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 50K — live
@@ -371,6 +446,7 @@ phase: live
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "650.00", type: other, stops_trailing_at: "static; LIVE static loss is 'Extensible — grows with cumulative credits'" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -380,7 +456,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Static Loss (LIVE) published as 'Extensible — grows with cumulative credits'; minimum balance 'Equals total cumulative LIVE credit' (LIVE credit for this size: $1,000). Overnight/over-week 'Not permitted (unless agreed)'. Max contracts published as 3 'lots' (rules page) / 'Max Contracts (E-mini)' 3 (TOU). Micros not published per size; help center states 10 micro-lots = 1 mini-lot."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
@@ -392,6 +472,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 100K — evaluation
@@ -402,6 +486,7 @@ phase: evaluation
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "800.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "3500.00"
@@ -411,7 +496,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Liquidation threshold published as $99,200 (formula published: Initial Capital - Static Drawdown). Overnight/over-week not permitted. Max 5 E2L accounts per trader. trading_day_reset null: no E2L-specific day-end time published (the 10:00 PM UTC+2 session end is stated in the EOD section, which says it does not apply to E2L) — see gaps."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -429,6 +518,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 100K — funded (CASH)
@@ -439,6 +532,7 @@ phase: funded
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "800.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "3500.00"
@@ -448,7 +542,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Funded CASH account 'with the same rules'; reach the profit target again, then 'Switch to Live' credits a fixed $3,000 bonus (80/20) and converts to LIVE. Standard withdrawal rules do not apply. Liquidation $99,200."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -467,6 +565,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/accounts (configurator: fundedDrawdown/fundedTarget/fundedMinDays)", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 100K — live
@@ -477,6 +579,7 @@ phase: live
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "800.00", type: other, stops_trailing_at: "static; LIVE static loss is 'Extensible — grows with cumulative credits'" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -486,7 +589,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Static Loss (LIVE) published as 'Extensible — grows with cumulative credits'; minimum balance 'Equals total cumulative LIVE credit' (LIVE credit for this size: $1,500). Overnight/over-week 'Not permitted (unless agreed)'. Max contracts published as 4 'lots' (rules page) / 'Max Contracts (E-mini)' 4 (TOU). Micros not published per size; help center states 10 micro-lots = 1 mini-lot."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
@@ -498,6 +605,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 150K — evaluation
@@ -508,6 +619,7 @@ phase: evaluation
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "1000.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "4500.00"
@@ -517,7 +629,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Liquidation threshold published as $149,000 (formula published: Initial Capital - Static Drawdown). Overnight/over-week not permitted. Max 5 E2L accounts per trader. E2L 150K account-count limit is a conflict (TOU: 1 account; rules page/help center: within the 5-account cap). trading_day_reset null: no E2L-specific day-end time published (the 10:00 PM UTC+2 session end is stated in the EOD section, which says it does not apply to E2L) — see gaps."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -535,6 +651,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 150K — funded (CASH)
@@ -545,6 +665,7 @@ phase: funded
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "1000.00", type: static, stops_trailing_at: "never trails (static)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "4500.00"
@@ -554,7 +675,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Funded CASH account 'with the same rules'; reach the profit target again, then 'Switch to Live' credits a fixed $4,500 bonus (80/20) and converts to LIVE. Standard withdrawal rules do not apply. Liquidation $149,000. E2L 150K account-count limit conflict (see gaps)."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -573,6 +698,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/accounts (configurator: fundedDrawdown/fundedTarget/fundedMinDays)", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Express to Live 150K — live
@@ -583,6 +712,7 @@ phase: live
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "1000.00", type: other, stops_trailing_at: "static; LIVE static loss is 'Extensible — grows with cumulative credits'" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -592,7 +722,11 @@ min_trading_days: 0
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Static Loss (LIVE) published as 'Extensible — grows with cumulative credits'; minimum balance 'Equals total cumulative LIVE credit' (LIVE credit for this size: $2,000). Overnight/over-week 'Not permitted (unless agreed)'. Max contracts published as 5 'lots' (rules page) / 'Max Contracts (E-mini)' 5 (TOU). Micros not published per size; help center states 10 micro-lots = 1 mini-lot."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
@@ -604,6 +738,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Fundamental 50K — evaluation
@@ -614,6 +752,7 @@ phase: evaluation
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "2500.00", type: trailing_eod, stops_trailing_at: "Evaluation: 'The EOD Drawdown always persists until the end of the evaluation' (never stops trailing)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "4000.00"
@@ -623,7 +762,11 @@ min_trading_days: 3
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Overnight/over-week not permitted; all positions closed before end of day (Fundamental trading hours: close all positions by 9:59 PM UTC — conflict with help-center FAQ 20:59 UTC)."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -644,6 +787,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: trading_hours, url: "https://helpcenter.phidiaspropfirm.com/help/puis-je-effectuer-des-transactions-pendant-la-nuit-ou-sur-plusieurs-seances-de-t", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Fundamental 50K — funded (CASH)
@@ -654,6 +801,7 @@ phase: funded
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "2500.00", type: trailing_eod, stops_trailing_at: "$50,100 (funded floor, 'trailing stops here')" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -663,7 +811,11 @@ min_trading_days: 10
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Overnight/over-week not permitted; all positions closed before end of day (Fundamental trading hours: close all positions by 9:59 PM UTC — conflict with help-center FAQ 20:59 UTC). Funded: 10 min trading days between payouts; a trading day counts only with positive PnL >= $150; withdrawal threshold $52,600; max withdrawal per period $2,000; balance after withdrawal cannot fall below start + 100."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -686,6 +838,10 @@ sources:
   - { field: trading_hours, url: "https://helpcenter.phidiaspropfirm.com/help/puis-je-effectuer-des-transactions-pendant-la-nuit-ou-sur-plusieurs-seances-de-t", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Fundamental 100K — evaluation
@@ -696,6 +852,7 @@ phase: evaluation
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Evaluation: 'The EOD Drawdown always persists until the end of the evaluation' (never stops trailing)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "6000.00"
@@ -705,7 +862,11 @@ min_trading_days: 3
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Overnight/over-week not permitted; all positions closed before end of day (Fundamental trading hours: close all positions by 9:59 PM UTC — conflict with help-center FAQ 20:59 UTC)."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -726,6 +887,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: trading_hours, url: "https://helpcenter.phidiaspropfirm.com/help/puis-je-effectuer-des-transactions-pendant-la-nuit-ou-sur-plusieurs-seances-de-t", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Fundamental 100K — funded (CASH)
@@ -736,6 +901,7 @@ phase: funded
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "$100,100 (funded floor, 'trailing stops here')" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -745,7 +911,11 @@ min_trading_days: 10
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Overnight/over-week not permitted; all positions closed before end of day (Fundamental trading hours: close all positions by 9:59 PM UTC — conflict with help-center FAQ 20:59 UTC). Funded: 10 min trading days between payouts; a trading day counts only with positive PnL >= $200; withdrawal threshold $103,700; max withdrawal per period $2,500; balance after withdrawal cannot fall below start + 100."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -768,6 +938,10 @@ sources:
   - { field: trading_hours, url: "https://helpcenter.phidiaspropfirm.com/help/puis-je-effectuer-des-transactions-pendant-la-nuit-ou-sur-plusieurs-seances-de-t", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Fundamental 150K — evaluation
@@ -778,6 +952,7 @@ phase: evaluation
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Evaluation: 'The EOD Drawdown always persists until the end of the evaluation' (never stops trailing)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "9000.00"
@@ -787,7 +962,11 @@ min_trading_days: 3
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Overnight/over-week not permitted; all positions closed before end of day (Fundamental trading hours: close all positions by 9:59 PM UTC — conflict with help-center FAQ 20:59 UTC)."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -808,6 +987,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: trading_hours, url: "https://helpcenter.phidiaspropfirm.com/help/puis-je-effectuer-des-transactions-pendant-la-nuit-ou-sur-plusieurs-seances-de-t", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Fundamental 150K — funded (CASH)
@@ -818,6 +1001,7 @@ phase: funded
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: null }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -827,7 +1011,11 @@ min_trading_days: 10
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: conflict
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Overnight/over-week not permitted; all positions closed before end of day (Fundamental trading hours: close all positions by 9:59 PM UTC — conflict with help-center FAQ 20:59 UTC). Funded: 10 min trading days between payouts; a trading day counts only with positive PnL >= $250; withdrawal threshold $154,500; max withdrawal per period $2,750; balance after withdrawal cannot fall below start + 100. Funded trailing-stop level for 150K NOT published (gap)."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -850,6 +1038,10 @@ sources:
   - { field: trading_hours, url: "https://helpcenter.phidiaspropfirm.com/help/puis-je-effectuer-des-transactions-pendant-la-nuit-ou-sur-plusieurs-seances-de-t", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Premium 50K — evaluation
@@ -860,6 +1052,7 @@ phase: evaluation
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "2500.00", type: trailing_eod, stops_trailing_at: "Evaluation: 'The EOD Drawdown always persists until the end of the evaluation' (never stops trailing)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "4000.00"
@@ -869,7 +1062,11 @@ min_trading_days: 1
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: verified
+not_confirmed_fields: [vps_allowed, personal_device_required]
 notes: "Overnight and over-week positions allowed, 'with a lot size corresponding to the size of your account'."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -889,6 +1086,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Premium 50K — funded (CASH)
@@ -899,6 +1100,7 @@ phase: funded
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "2500.00", type: trailing_eod, stops_trailing_at: "$50,100 (funded floor, 'trailing stops here')" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -908,7 +1110,11 @@ min_trading_days: 5
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: verified
+not_confirmed_fields: [vps_allowed, personal_device_required]
 notes: "Overnight and over-week positions allowed, 'with a lot size corresponding to the size of your account'. Funded: 5 min trading days between payouts; a trading day counts only with positive PnL >= $150; withdrawal threshold $52,600; max withdrawal per period $2,000; balance after withdrawal cannot fall below start + 100. Premium CASH Account Reset available 1x within 24h after liquidation."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -930,6 +1136,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Premium 100K — evaluation
@@ -940,6 +1150,7 @@ phase: evaluation
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Evaluation: 'The EOD Drawdown always persists until the end of the evaluation' (never stops trailing)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "6000.00"
@@ -949,7 +1160,11 @@ min_trading_days: 1
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: verified
+not_confirmed_fields: [vps_allowed, personal_device_required]
 notes: "Overnight and over-week positions allowed, 'with a lot size corresponding to the size of your account'."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -969,6 +1184,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Premium 100K — funded (CASH)
@@ -979,6 +1198,7 @@ phase: funded
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "$100,100 (funded floor, 'trailing stops here')" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -988,7 +1208,11 @@ min_trading_days: 5
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: verified
+not_confirmed_fields: [vps_allowed, personal_device_required]
 notes: "Overnight and over-week positions allowed, 'with a lot size corresponding to the size of your account'. Funded: 5 min trading days between payouts; a trading day counts only with positive PnL >= $200; withdrawal threshold $103,700; max withdrawal per period $2,500; balance after withdrawal cannot fall below start + 100. Premium CASH Account Reset available 1x within 24h after liquidation."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -1010,6 +1234,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Premium 150K — evaluation
@@ -1020,6 +1248,7 @@ phase: evaluation
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Evaluation: 'The EOD Drawdown always persists until the end of the evaluation' (never stops trailing)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "9000.00"
@@ -1029,7 +1258,11 @@ min_trading_days: 1
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: verified
+not_confirmed_fields: [vps_allowed, personal_device_required]
 notes: "Overnight and over-week positions allowed, 'with a lot size corresponding to the size of your account'."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -1049,6 +1282,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Premium 150K — funded (CASH)
@@ -1059,6 +1296,7 @@ phase: funded
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: null }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -1068,7 +1306,11 @@ min_trading_days: 5
 trading_day_reset: { time: "22:00", tz_as_published: "UTC+2" }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [vps_allowed, personal_device_required]
 notes: "Overnight and over-week positions allowed, 'with a lot size corresponding to the size of your account'. Funded: 5 min trading days between payouts; a trading day counts only with positive PnL >= $250; withdrawal threshold $154,500; max withdrawal per period $2,750; balance after withdrawal cannot fall below start + 100. Funded trailing-stop level for 150K NOT published (gap). Premium CASH Account Reset available 1x within 24h after liquidation."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -1090,6 +1332,10 @@ sources:
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: funded_rules, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### Fundamental / Premium — live (discretionary)
@@ -1100,6 +1346,7 @@ phase: live
 size_label: null
 size_usd: null
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: null, type: other, stops_trailing_at: "not published" }
 daily_loss_limit: { amount_usd: null, kind: null }
 profit_target_usd: null
@@ -1109,7 +1356,11 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: unverified
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 excluded: true
 excluded_reason: "User decision 2026-10-23: Phidias LIVE (Fundamental/Premium LIVE, ELITE/MASTER) not offered as V1 preset"
 notes: "LIVE transition is discretionary (5 payouts or $100,000 cumulative profits). LIVE drawdown, daily loss and reset are not published publicly; daily_loss_limit not published for LIVE (kind null — see gaps). Max loss equals the amount transferred from the Wallet (example $500)."
@@ -1121,6 +1372,10 @@ sources:
   - { field: copy_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: automated_trading, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 #### 10K Drawdown Challenge — competition (low priority, outside 25K–300K)
@@ -1131,6 +1386,7 @@ phase: evaluation
 size_label: "10K"
 size_usd: "10000.00"
 instruments: [MNQ, NQ]
+platforms: [Rithmic, "NinjaTrader / Tradovate", "DeepCharts (dxFeed)"]   # chosen per account at purchase, final; no per-plan matrix published
 drawdown: { amount_usd: "10000.00", type: trailing_eod, stops_trailing_at: "not published" }
 daily_loss_limit: { amount_usd: null, kind: null }
 profit_target_usd: null
@@ -1140,12 +1396,20 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
+automation_rule_text: "The use of robots, fully automated trading algorithms, or any other form of automated trading is not permitted. Only semi-automated software is permitted, provided the trader actively monitors and manually adjusts all trades."
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 status: partial
+not_confirmed_fields: [trading_day_reset, vps_allowed, personal_device_required]
 notes: "Monthly competition ranked by total profit, not a pass/fail evaluation. 'Max Volume 25 E-mini contracts'; drawdown 'Trailing $10,000 EOD'; weekend allowed; unlimited simultaneous registrations. Daily loss limit not stated on the challenge (kind null)."
 sources:
   - { field: drawdown, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: max_position, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
   - { field: rules, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://phidiaspropfirm.com/tou", accessed: "2026-10-23" }
 ```
 
 ## 8. Unverified / gaps / conflicts
@@ -1168,8 +1432,11 @@ sources:
 | 14 | Consistency rule wording | ambiguity | RULES: "No single day can exceed 30% of total profit"; TOU §3.1.3: "the profit balance of a trading day exceed 30% of the total balance". YAML uses the RULES wording; threshold 30 in both. | RULES §10–11, TOU §3.1.3, §3.1.8 |
 | 15 | Legacy help-center FAQ content | note | Several HC FAQ articles still refer to "Swing" and "25K Static" accounts and old limits ("5 CASH 25K Static accounts … 5 CASH Swing accounts"); current pages name Express to Live / Fundamental / Premium. Treated as outdated, not used for values except where noted. | HC FAQ articles |
 | 16 | Member area / contract | not accessed | https://member.phidiaspropfirm.com/ requires login; the CASH contract is not public. | — |
+| 17 | Platform per plan | gap | The three connection paths (Rithmic, NinjaTrader/Tradovate, DeepCharts/dxFeed) are published, but no page lists which plan or phase offers which. YAML lists all three for every plan. | RULES, TOU, ACC, TRDV |
+| 18 | VPS / VPN / remote server and originating device | `unknown` (no rule published) | No official page states a rule (see §6 "Device / hosting rules"). Needs the user to confirm with the firm before All Win relays orders from a server. | RULES, TOU, ACC, TRDV, 75 help-center articles |
 
 ## 9. Changelog
 
 - 2026-10-23 — initial research (Lupa)
 - 2026-10-23 — Fundamental / Premium LIVE block marked `excluded: true` per user decision (R1 conflict list, relayed by the PO); Express to Live LIVE blocks kept; values and status unchanged, not re-validated (Lupa).
+- 2026-10-23 — format rev. 3 (Lupa): added `platforms`, `automation_rule_text`, `vps_allowed: unknown`, `personal_device_required: unknown` and `not_confirmed_fields` (with sources) to all 26 YAML blocks; added the platforms detail, the (i)/(ii)/(iii) automation classification, the §6 "Device / hosting rules" subsection and gaps 17–18. Existing values and `status` untouched: `status` still reflects the rev. 2 fields, so `verified` blocks (Premium) have the two new device fields in `not_confirmed_fields`. The `automation_rule_text` quote was checked against the captured RULES and TOU text.

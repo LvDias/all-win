@@ -442,1102 +442,1164 @@ Notes on encoding:
 - `drawdown.amount_usd: null` in the Fast Pass Funded Live blocks marks conflict C4.
 - Quick Pay Funded Live `amount_usd: "0.00"` is the published "$0" floor, not a loss allowance.
 
+#### Quick Pay — Intraday — evaluation — 25K
 ```yaml
-# ---------- Quick Pay — Intraday — Evaluation ----------
+firm: tradeday
+plan: "Quick Pay — Intraday"
+phase: evaluation
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "1500.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "2", micros: "20", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — Intraday"
-  phase: evaluation
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "1500.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "2", micros: "20", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — Intraday — evaluation — 50K
+```yaml
+firm: tradeday
+plan: "Quick Pay — Intraday"
+phase: evaluation
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "3000.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "5", micros: "50", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — Intraday"
-  phase: evaluation
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "3000.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "5", micros: "50", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — Intraday — evaluation — 100K
+```yaml
+firm: tradeday
+plan: "Quick Pay — Intraday"
+phase: evaluation
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "6000.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "10", micros: "50", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — Intraday"
-  phase: evaluation
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "6000.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "10", micros: "50", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — Intraday — evaluation — 150K
+```yaml
+firm: tradeday
+plan: "Quick Pay — Intraday"
+phase: evaluation
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "4500.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "9000.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "15", micros: "50", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — Intraday"
-  phase: evaluation
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "4500.00", type: trailing_intraday, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "9000.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "15", micros: "50", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — End of Day (Intraday Funded Drawdown) — evaluation — 25K
+```yaml
+firm: tradeday
+plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
+phase: evaluation
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "1500.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "2", micros: "20", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
+#### Quick Pay — End of Day (Intraday Funded Drawdown) — evaluation — 50K
+```yaml
+firm: tradeday
+plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
+phase: evaluation
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "3000.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "5", micros: "50", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-# ---------- Quick Pay — End of Day (Intraday Funded Drawdown) — Evaluation ----------
+#### Quick Pay — End of Day (Intraday Funded Drawdown) — evaluation — 100K
+```yaml
+firm: tradeday
+plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
+phase: evaluation
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "6000.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "10", micros: "50", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
-  phase: evaluation
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "1500.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "2", micros: "20", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — End of Day (Intraday Funded Drawdown) — evaluation — 150K
+```yaml
+firm: tradeday
+plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
+phase: evaluation
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "9000.00"
+consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
+max_position: { minis: "15", micros: "50", scaling: null }
+min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
-  phase: evaluation
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "3000.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "5", micros: "50", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — funded — 25K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: funded
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "Consistency: None", threshold_pct: null }
+max_position: { minis: "2", micros: "20", scaling: null }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: verified
+not_confirmed_fields: []
+# profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
+# Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
+sources:
+  - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
-  phase: evaluation
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "6000.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "10", micros: "50", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — funded — 50K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: funded
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "Consistency: None", threshold_pct: null }
+max_position: { minis: "5", micros: "50", scaling: null }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: verified
+not_confirmed_fields: []
+# profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
+# Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
+sources:
+  - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay — End of Day (Intraday Funded Drawdown)"
-  phase: evaluation
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "9000.00"
-  consistency_rule: { text: "No day greater than 30% of your total profits.", threshold_pct: "30" }
-  max_position: { minis: "15", micros: "50", scaling: null }
-  min_trading_days: 5   # CONFLICT: 5 (S-OBJ, S-DAYS, S-QP, S-HOW, S-HOME) vs T&C "over a minimum 7-day period"
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD at 16.00 CT), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000335948-definition-and-differences-between-end-of-day-trailing-max-drawdown-and-intraday-trailing-maximum-dr", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — funded — 100K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: funded
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "Consistency: None", threshold_pct: null }
+max_position: { minis: "10", micros: "50", scaling: null }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: verified
+not_confirmed_fields: []
+# profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
+# Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
+sources:
+  - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
+#### Quick Pay — funded — 150K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: funded
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "4500.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "Consistency: None", threshold_pct: null }
+max_position: { minis: "15", micros: "50", scaling: null }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: verified
+not_confirmed_fields: []
+# profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
+# Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
+sources:
+  - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-# ---------- Quick Pay — Funded Sim (same for both Quick Pay evaluation drawdown types) ----------
+#### Quick Pay — live — 25K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: live
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [max_position, drawdown.slippage_buffer]
+# Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
+# CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
+# CONFLICT slippage buffer: SLIP gives by size $500.00 for 25K; LIVE gives by balance brought over ($500/$750/$1,000).
+sources:
+  - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: funded
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "Consistency: None", threshold_pct: null }
-  max_position: { minis: "2", micros: "20", scaling: null }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: verified
-  not_confirmed_fields: []
-  # profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
-  # Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
-  sources:
-    - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — live — 50K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: live
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [max_position, drawdown.slippage_buffer]
+# Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
+# CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
+# CONFLICT slippage buffer: SLIP gives by size $500.00 for 50K; LIVE gives by balance brought over ($500/$750/$1,000).
+sources:
+  - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: funded
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "Consistency: None", threshold_pct: null }
-  max_position: { minis: "5", micros: "50", scaling: null }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: verified
-  not_confirmed_fields: []
-  # profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
-  # Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
-  sources:
-    - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — live — 100K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: live
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [max_position, drawdown.slippage_buffer]
+# Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
+# CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
+# CONFLICT slippage buffer: SLIP gives by size $750.00 for 100K; LIVE gives by balance brought over ($500/$750/$1,000).
+sources:
+  - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: funded
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "Consistency: None", threshold_pct: null }
-  max_position: { minis: "10", micros: "50", scaling: null }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: verified
-  not_confirmed_fields: []
-  # profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
-  # Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
-  sources:
-    - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Quick Pay — live — 150K
+```yaml
+firm: tradeday
+plan: "Quick Pay"
+phase: live
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [max_position, drawdown.slippage_buffer]
+# Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
+# CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
+# CONFLICT slippage buffer: SLIP gives by size $1000.00 for 150K; LIVE gives by balance brought over ($500/$750/$1,000).
+sources:
+  - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: funded
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "4500.00", type: trailing_intraday, stops_trailing_at: "For evaluations and Funded Sims, the Trailing Max Drawdown will trail until they reach the starting account balance, at which time the trailing drawdown will freeze and no longer trail. (TMD calculated on gross profits: current profits plus payouts.)" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "Consistency: None", threshold_pct: null }
-  max_position: { minis: "15", micros: "50", scaling: null }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: verified
-  not_confirmed_fields: []
-  # profit_target n/a. Account access is paused at $10,000 gross profit (EOD run 4:30pm CT) for Funded Live review; profits above are removed.
-  # Min Days to Payout: 1 (homepage). Funded Sim cap: max 5 active Funded Sim accounts.
-  sources:
-    - { field: drawdown.amount/max_position/consistency, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type (intraday regardless of eval), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: drawdown gross-profit basis, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405228-what-is-quick-pay-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — End of Day — evaluation — 25K
+```yaml
+firm: tradeday
+plan: "Fast Pass — End of Day"
+phase: evaluation
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "1500.00"
+consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
+max_position: { minis: "2", micros: "20", scaling: null }
+min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
+#### Fast Pass — End of Day — evaluation — 50K
+```yaml
+firm: tradeday
+plan: "Fast Pass — End of Day"
+phase: evaluation
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "3000.00"
+consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
+max_position: { minis: "5", micros: "50", scaling: null }
+min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-# ---------- Quick Pay — Funded Live ----------
+#### Fast Pass — End of Day — evaluation — 100K
+```yaml
+firm: tradeday
+plan: "Fast Pass — End of Day"
+phase: evaluation
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "6000.00"
+consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
+max_position: { minis: "10", micros: "50", scaling: null }
+min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: live
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [max_position, drawdown.slippage_buffer]
-  # Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
-  # CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
-  # CONFLICT slippage buffer: SLIP gives by size $500.00 for 25K; LIVE gives by balance brought over ($500/$750/$1,000).
-  sources:
-    - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — End of Day — evaluation — 150K
+```yaml
+firm: tradeday
+plan: "Fast Pass — End of Day"
+phase: evaluation
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: "9000.00"
+consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
+max_position: { minis: "15", micros: "50", scaling: null }
+min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [min_trading_days]
+sources:
+  - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
+  - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: live
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [max_position, drawdown.slippage_buffer]
-  # Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
-  # CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
-  # CONFLICT slippage buffer: SLIP gives by size $500.00 for 50K; LIVE gives by balance brought over ($500/$750/$1,000).
-  sources:
-    - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — funded — 25K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: funded
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
+max_position: { minis: "1", micros: "10", scaling: "scales +1 contract per $2k profit at EOD, max 2 minis" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: partial
+not_confirmed_fields: []
+# Payout requires 5 profitable days of at least $100 (FPPAY). Do not trade between payout request and receipt (FPPAY).
+# GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
+# Moved to Funded Live on the 5th payout request.
+sources:
+  - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: live
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [max_position, drawdown.slippage_buffer]
-  # Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
-  # CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
-  # CONFLICT slippage buffer: SLIP gives by size $750.00 for 100K; LIVE gives by balance brought over ($500/$750/$1,000).
-  sources:
-    - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — funded — 50K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: funded
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
+max_position: { minis: "2", micros: "20", scaling: "scales +1 contract per $2k profit at EOD" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: partial
+not_confirmed_fields: []
+# Payout requires 5 profitable days of at least $150 (FPPAY). Do not trade between payout request and receipt (FPPAY).
+# GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
+# Moved to Funded Live on the 5th payout request.
+sources:
+  - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Quick Pay"
-  phase: live
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "0.00", type: other, stops_trailing_at: "\"The maximum drawdown limit will be set to $0.\" Plus slippage buffer: positions liquidated if balance falls below the slippage buffer." }   # published as $0 floor; not a USD loss allowance
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: null, micros: null, scaling: "Balance brought over $0–3K: 2 minis/20 micros/$500 slippage; $3K–6K: 3/30/$750; $6K–10K: 4/40/$1,000" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [max_position, drawdown.slippage_buffer]
-  # Starting balance = profits transferred from Funded Sim (no additional drawdown added). Size label = original account tier.
-  # CONFLICT max_position: LIVE table sets limits by balance brought over; MULTI says 'The position limits for Funded Live will be the same as those for the Funded Sim that passed, but they may be reduced'.
-  # CONFLICT slippage buffer: SLIP gives by size $1000.00 for 150K; LIVE gives by balance brought over ($500/$750/$1,000).
-  sources:
-    - { field: drawdown ($0), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: max_position/slippage by balance, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: slippage by size (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: position = Funded Sim limits (conflict), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — funded — 100K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: funded
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
+max_position: { minis: "3", micros: "30", scaling: "scales +1 contract per $2k profit at EOD" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: partial
+not_confirmed_fields: []
+# Payout requires 5 profitable days of at least $200 (FPPAY). Do not trade between payout request and receipt (FPPAY).
+# GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
+# Moved to Funded Live on the 5th payout request.
+sources:
+  - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
+#### Fast Pass — funded — 150K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: funded
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
+max_position: { minis: "4", micros: "40", scaling: "scales + 1 contract per $2k profit at EOD" }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: partial
+not_confirmed_fields: []
+# Payout requires 5 profitable days of at least $250 (FPPAY). Do not trade between payout request and receipt (FPPAY).
+# GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
+# Moved to Funded Live on the 5th payout request.
+sources:
+  - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
+  - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
+  - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
+  - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
+  - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-# ---------- Fast Pass — End of Day — Evaluation ----------
+#### Fast Pass — live — 25K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: live
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: "1", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [drawdown.amount_usd]
+# CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 25K = $1000.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
+# Slippage buffer 25K: $500.00 (SLIP). Micros not published for Fast Pass Funded Live.
+sources:
+  - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Fast Pass — End of Day"
-  phase: evaluation
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "1500.00"
-  consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
-  max_position: { minis: "2", micros: "20", scaling: null }
-  min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — live — 50K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: live
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: "2", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [drawdown.amount_usd]
+# CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 50K = $2000.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
+# Slippage buffer 50K: $500.00 (SLIP). Micros not published for Fast Pass Funded Live.
+sources:
+  - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Fast Pass — End of Day"
-  phase: evaluation
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "3000.00"
-  consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
-  max_position: { minis: "5", micros: "50", scaling: null }
-  min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — live — 100K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: live
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: "3", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [drawdown.amount_usd]
+# CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 100K = $3000.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
+# Slippage buffer 100K: $750.00 (SLIP). Micros not published for Fast Pass Funded Live.
+sources:
+  - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+```
 
-- firm: tradeday
-  plan: "Fast Pass — End of Day"
-  phase: evaluation
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "6000.00"
-  consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
-  max_position: { minis: "10", micros: "50", scaling: null }
-  min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-- firm: tradeday
-  plan: "Fast Pass — End of Day"
-  phase: evaluation
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Trailing max drawdown limits continues to trail your account growth until they reach the starting account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: "9000.00"
-  consistency_rule: { text: "No day greater than 45% of your total profits.", threshold_pct: "45" }
-  max_position: { minis: "15", micros: "50", scaling: null }
-  min_trading_days: null   # CONFLICT: 3 (OBJ, DAYS, HOME cards) vs 'no minimum trading days' (FP, HOW, HOME FAQ) vs T&C 'minimum 7-day period'
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [min_trading_days]
-  sources:
-    - { field: size/drawdown/profit_target/max_position/min_days(3), url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: size/drawdown/profit_target/max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000304248-what-are-the-differences-between-each-account-size-", accessed: "2026-10-23" }
-    - { field: drawdown.type (all EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008847-what-are-the-objectives-and-rules-of-the-quick-pay-and-fast-pass-evaluation-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008855-what-is-the-maximum-drawdown-rule-", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008849-what-is-the-consistency-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (3), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008850-what-is-the-trade-for-a-minimum-number-of-days-objective-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: min_trading_days (none), url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: min_trading_days (7-day, generic), url: "https://www.tradeday.com/terms-and-conditions", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: max_position.micros (50 cap), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008891-what-are-the-position-limits-guidelines-and-contracts-vs-micros-", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-
-# ---------- Fast Pass — Funded Sim ----------
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: funded
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
-  max_position: { minis: "1", micros: "10", scaling: "scales +1 contract per $2k profit at EOD, max 2 minis" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: partial
-  not_confirmed_fields: []
-  # Payout requires 5 profitable days of at least $100 (FPPAY). Do not trade between payout request and receipt (FPPAY).
-  # GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
-  # Moved to Funded Live on the 5th payout request.
-  sources:
-    - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: funded
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
-  max_position: { minis: "2", micros: "20", scaling: "scales +1 contract per $2k profit at EOD" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: partial
-  not_confirmed_fields: []
-  # Payout requires 5 profitable days of at least $150 (FPPAY). Do not trade between payout request and receipt (FPPAY).
-  # GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
-  # Moved to Funded Live on the 5th payout request.
-  sources:
-    - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: funded
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
-  max_position: { minis: "3", micros: "30", scaling: "scales +1 contract per $2k profit at EOD" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: partial
-  not_confirmed_fields: []
-  # Payout requires 5 profitable days of at least $200 (FPPAY). Do not trade between payout request and receipt (FPPAY).
-  # GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
-  # Moved to Funded Live on the 5th payout request.
-  sources:
-    - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: funded
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Trails until it reaches the starting account balance (WDD). \"On the first payout request, if the Trailing Maximum Drawdown (TMD) has not yet reached the starting account balance, it will automatically move up to the starting account balance and remain fixed there moving forward.\"" }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: "For accounts opened on and after July 26 2026, accounts must satisfy the consistency objective: no single day can make up more than 45% of your total gross profits (gross profits being current profits + payouts)", threshold_pct: "45" }   # payout condition; accounts opened before July 26 2026: none (S-FPPAY)
-  max_position: { minis: "4", micros: "40", scaling: "scales + 1 contract per $2k profit at EOD" }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: partial
-  not_confirmed_fields: []
-  # Payout requires 5 profitable days of at least $250 (FPPAY). Do not trade between payout request and receipt (FPPAY).
-  # GAP: scaling ceiling not published except 25K ('max 2 minis'); micros after scaling not published.
-  # Moved to Funded Live on the 5th payout request.
-  sources:
-    - { field: drawdown/consistency/max_position/scaling, url: "https://www.tradeday.com/", accessed: "2026-10-23" }
-    - { field: max_position/scaling, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000405229-what-is-fast-pass-", accessed: "2026-10-23" }
-    - { field: drawdown.type (EOD), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008889-what-are-the-rules-for-funded-funded-sim-and-funded-live-traders-", accessed: "2026-10-23" }
-    - { field: stops_trailing_at/payout conditions, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404096-fast-pass-funded-sim-payout-policy", accessed: "2026-10-23" }
-    - { field: stops_trailing_at, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000250682-funded-accounts-withdrawals-and-the-impact-of-drawdowns", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-
-# ---------- Fast Pass — Funded Live ----------
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: live
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: "1", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [drawdown.amount_usd]
-  # CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 25K = $1000.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
-  # Slippage buffer 25K: $500.00 (SLIP). Micros not published for Fast Pass Funded Live.
-  sources:
-    - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: live
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: "2", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [drawdown.amount_usd]
-  # CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 50K = $2000.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
-  # Slippage buffer 50K: $500.00 (SLIP). Micros not published for Fast Pass Funded Live.
-  sources:
-    - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: live
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: "3", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [drawdown.amount_usd]
-  # CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 100K = $3000.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
-  # Slippage buffer 100K: $750.00 (SLIP). Micros not published for Fast Pass Funded Live.
-  sources:
-    - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
-
-- firm: tradeday
-  plan: "Fast Pass"
-  phase: live
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
-  drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
-  daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
-  profit_target_usd: null
-  consistency_rule: { text: null, threshold_pct: null }
-  max_position: { minis: "4", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
-  min_trading_days: null
-  trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
-  copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
-  automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
-  automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
-  vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
-  personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
-  status: conflict
-  not_confirmed_fields: [drawdown.amount_usd]
-  # CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 150K = $4500.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
-  # Slippage buffer 150K: $1000.00 (SLIP). Micros not published for Fast Pass Funded Live.
-  sources:
-    - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
-    - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
-    - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
-    - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
-    - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
-    - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
-    - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
-    - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
-    - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
+#### Fast Pass — live — 150K
+```yaml
+firm: tradeday
+plan: "Fast Pass"
+phase: live
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # one broker per trader; NinjaTrader Desktop only via Tradovate/CQG (see §2)
+drawdown: { amount_usd: null, type: trailing_eod, stops_trailing_at: "\"Every Funded Live account starts at $0\"; floor trails up dollar-for-dollar; after clearing the buffer the balance can never touch or drop below the protected slippage buffer." }
+daily_loss_limit: { amount_usd: null, kind: none }   # firm: "ONE RULE. ONE WAY TO FAIL" (max drawdown); optional self-set Tradovate DLL only
+profit_target_usd: null
+consistency_rule: { text: null, threshold_pct: null }
+max_position: { minis: "4", micros: null, scaling: "Any future increases to position limits will be granted solely at the discretion of the TradeDay trading team." }
+min_trading_days: null
+trading_day_reset: { time: "17:00", tz_as_published: "CT" }   # session 5 pm CT - 4 pm CT; EOD drawdown at 16.00 CT; auto-flat 3:50 pm CT
+copy_trading_allowed: conditional   # same person only; eval+Funded Sim 2-10 accts; Funded Live up to 5; no Live<->Eval/Sim copying
+automated_trading_allowed: conditional   # own ATS on supported platforms; third-party-purchased bots forbidden; >200 trades/day forbidden
+automation_rule_text: "To use an automated trading system, you must use one of the platforms we support: NinjaTrader, Tradovate, TradingView, Jigsaw and Quantower. TradeDay does not expose the Tradovate API to allow traders to connect automated trading systems directly. Algos and Bots purchased from a third party and employed by the trader are forbidden. If multiple users are making the same trades, then all the accounts will be shut down, and the users suspended."
+vps_allowed: "no"   # "TradeDay does not allow the use of virtual private servers (VPS)"
+personal_device_required: unknown   # device not mentioned; firm requires trading from the registered location/address (see §7)
+status: conflict
+not_confirmed_fields: [drawdown.amount_usd]
+# CONFLICT drawdown: 'same End-of-Day (EOD) drawdown ... from the original evaluation account tier' (tier 150K = $4500.00) vs worked example 'Using a $50K account as an example, the TMD is $1500'.
+# Slippage buffer 150K: $1000.00 (SLIP). Micros not published for Fast Pass Funded Live.
+sources:
+  - { field: drawdown ('same EOD drawdown ... original evaluation account tier'), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: drawdown ($1500 example for 50K), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000411652-quick-pay-and-fast-pass-funded-live-trading-rules", accessed: "2026-10-23" }
+  - { field: max_position, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000404097-fast-pass-funded-sim-route-to-funded-live", accessed: "2026-10-23" }
+  - { field: slippage buffer by size, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000089243-slippage-rule-for-funded-live-traders", accessed: "2026-10-23" }
+  - { field: daily_loss_limit, url: "https://www.tradeday.com/how-it-works", accessed: "2026-10-23" }
+  - { field: automated_trading_allowed/automation_rule_text, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000085101-automated-algo-and-bot-trading", accessed: "2026-10-23" }
+  - { field: automation (prohibited practices), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000121031-prohibited-trade-practices", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008833-can-i-have-multiple-accounts-can-i-use-copy-trader-", accessed: "2026-10-23" }
+  - { field: max accounts / one broker, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000354796-multiple-accounts", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000295384-using-a-vpn-vps-or-ip-masking-add-on", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000008864-what-is-the-definition-of-a-trading-day-", accessed: "2026-10-23" }
+  - { field: trading_day_reset (auto-flat), url: "https://tradeday.freshdesk.com/en/support/solutions/articles/103000018874-what-is-the-permitted-trading-times-guideline-", accessed: "2026-10-23" }
 ```
 
 ---
@@ -1574,3 +1636,4 @@ Pages not reachable: none. Every public page tried returned HTTP 200 with `curl`
   - platforms (format rev. 2) and device/hosting rules (PO rev. 3).
 
   Sources: tradeday.com homepage, how-it-works, T&C, the TradeDay 2.0 blog post, and all 85 public articles of tradeday.freshdesk.com.
+- 2026-10-23 — structure (Lupa): converted the single YAML list in §8 to one `yaml` block per plan/phase/size (28 blocks, each under its own `####` heading). Values, comments and status unchanged. Checked by parsing the old list and the new blocks and comparing them: identical. Only the section-divider comments were dropped, because each heading now carries that information.

@@ -313,6 +313,21 @@ Verbatim quote, from https://support.lucidtrading.com/en/articles/11404728-other
 
 ## 8. Automated trading stance
 
+**(i) Classification:** `conditional` (permitted; HFT, microscalping and exploiting the simulation are prohibited). All phases and plans share one rule text.
+
+Rule text stored in `automation_rule_text` (three separate bullets under "Automated Strategies", checked against the captured page; https://support.lucidtrading.com/en/articles/11404728-other-trading-activities, accessed 2026-10-23): "Automated trading systems and trade copiers are permitted" / "All automated activity must comply with Lucid Trading rules" / "Traders are fully responsible for any software errors, malfunctions, or unintended outcomes".
+
+**(ii) Named mechanisms:**
+- **Semi-automated trading:** not mentioned.
+- **Trade copiers:** named and permitted (§7).
+- **Webhooks / TradingView alerts:** not named. TradingView is a supported platform (CQG route), but no page addresses alert-to-order automation.
+- **Automatic brackets / ATM:** not mentioned. NinjaTrader is a supported platform.
+- **Entry methods:** "Lucid does not impose limits on entry methods" (same page, under "Scaling Into Trades (DCA)"). It refers to scaling, not to automation.
+
+**(iii) Differs by phase:** no. No page limits automation by plan or phase. The only phase-specific item near it is the LucidLive hedging line, which mentions "copytrader issues" (§7).
+
+Detail:
+
 Verbatim, from https://support.lucidtrading.com/en/articles/11404728-other-trading-activities. These are separate bullets under "Automated Strategies":
 - "Automated trading systems and trade copiers are permitted"
 - "All automated activity must comply with Lucid Trading rules"
@@ -339,6 +354,14 @@ The Terms clause on software is conditional ("which might manipulate, abuse, or 
 **Webhooks.** Webhook automation (e.g. TradingView alerts) is not named on any official page found, including the Terms of Use, Privacy Policy, Refund Policy and Risk Disclosure. TradingView is listed as a supported platform.
 
 ## 9. Other rules that affect routing or risk
+
+### Device / hosting rules (format rev. 3 §3 item 7)
+
+YAML for all 32 blocks: `vps_allowed: unknown` and `personal_device_required: unknown`. **No official page states a rule on VPS, VPN, remote servers or the originating device.** Checked on 2026-10-23:
+- Help-center search (https://support.lucidtrading.com/en/?q=vps, read through the portal "Lupa Lucid"): `vps` → "0 search results found"; `vpn` → "0 search results found". The searches "remote desktop", "personal device" and "server" return only unrelated articles (Inactivity Policy, HFT, Payouts, Registering as a Business, Our Mission, Other Trading Activities).
+- The 61 help-center articles captured the same day contain none of the words vps, vpn, ip address, proxy or virtual private.
+- Terms of Use, Privacy Policy, Refund/Chargeback Policy, Risk Disclosure and the homepage FAQ: no hosting or device rule. The Terms ban using "any robot, spider, or other automatic device … to access the Website" (website scraping, not trading) and "Performing trades using an external or slow data feed".
+- Reported as `unknown`, not `yes`. The user decides whether to ask the firm.
 
 All from https://support.lucidtrading.com/en/articles/11404728-other-trading-activities unless another source is given.
 
@@ -369,6 +392,7 @@ phase: evaluation
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $26,100; Locked MLL Balance $25,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: "1250.00"
@@ -378,8 +402,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "25K DLL conflict: help eval/DLL articles say None; homepage 25K PRO EVAL card and funded overview show $600. DLL is a checkout option (On/Off) per LucidPro Customization; amount shown applies to DLL On. No consistency rule published for the evaluation. Min trading days not published ('Pass the evaluation in one trading day')."
 status: conflict
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -391,6 +419,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidPro — funded — 25K
@@ -401,6 +432,7 @@ phase: funded
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $26,100; Locked MLL Balance $25,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -410,8 +442,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "25K DLL conflict: help eval/DLL articles say None; homepage 25K PRO EVAL card and funded overview show $600. DLL optional (checkout). Fixed DLL until the account closes above the Initial Trail Balance, then LucidScale DLL = 'Highest end-of-day account profit × 60%' (DLL article) / '60% of Peak EOD Balance' (funded overview) - wording differs. Payout buffer = Initial Max Loss Limit + $100; min profit goal per cycle 25K $250 / 50K $500 / 100K $750 / 150K $1,000."
 status: conflict
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -423,6 +459,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidPro — evaluation — 50K
@@ -433,6 +472,7 @@ phase: evaluation
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $52,100; Locked MLL Balance $50,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1200.00", kind: soft_pause }
 profit_target_usd: "3000.00"
@@ -442,8 +482,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL is a checkout option (On/Off) per LucidPro Customization; amount shown applies to DLL On. No consistency rule published for the evaluation. Min trading days not published ('Pass the evaluation in one trading day')."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -455,6 +499,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidPro — funded — 50K
@@ -465,6 +512,7 @@ phase: funded
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $52,100; Locked MLL Balance $50,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1200.00", kind: soft_pause }
 profit_target_usd: null
@@ -474,8 +522,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL optional (checkout). Fixed DLL until the account closes above the Initial Trail Balance, then LucidScale DLL = 'Highest end-of-day account profit × 60%' (DLL article) / '60% of Peak EOD Balance' (funded overview) - wording differs. Payout buffer = Initial Max Loss Limit + $100; min profit goal per cycle 25K $250 / 50K $500 / 100K $750 / 150K $1,000."
 status: partial
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -487,6 +539,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidPro — evaluation — 100K
@@ -497,6 +552,7 @@ phase: evaluation
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $103,100; Locked MLL Balance $100,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1800.00", kind: soft_pause }
 profit_target_usd: "6000.00"
@@ -506,8 +562,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL is a checkout option (On/Off) per LucidPro Customization; amount shown applies to DLL On. No consistency rule published for the evaluation. Min trading days not published ('Pass the evaluation in one trading day')."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -519,6 +579,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidPro — funded — 100K
@@ -529,6 +592,7 @@ phase: funded
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $103,100; Locked MLL Balance $100,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1800.00", kind: soft_pause }
 profit_target_usd: null
@@ -538,8 +602,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL optional (checkout). Fixed DLL until the account closes above the Initial Trail Balance, then LucidScale DLL = 'Highest end-of-day account profit × 60%' (DLL article) / '60% of Peak EOD Balance' (funded overview) - wording differs. Payout buffer = Initial Max Loss Limit + $100; min profit goal per cycle 25K $250 / 50K $500 / 100K $750 / 150K $1,000."
 status: partial
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -551,6 +619,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidPro — evaluation — 150K
@@ -561,6 +632,7 @@ phase: evaluation
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $154,600; Locked MLL Balance $150,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "2700.00", kind: soft_pause }
 profit_target_usd: "9000.00"
@@ -570,8 +642,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL is a checkout option (On/Off) per LucidPro Customization; amount shown applies to DLL On. No consistency rule published for the evaluation. Min trading days not published ('Pass the evaluation in one trading day')."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -583,6 +659,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidPro — funded — 150K
@@ -593,6 +672,7 @@ phase: funded
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $154,600; Locked MLL Balance $150,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "2700.00", kind: soft_pause }
 profit_target_usd: null
@@ -602,8 +682,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL optional (checkout). Fixed DLL until the account closes above the Initial Trail Balance, then LucidScale DLL = 'Highest end-of-day account profit × 60%' (DLL article) / '60% of Peak EOD Balance' (funded overview) - wording differs. Payout buffer = Initial Max Loss Limit + $100; min profit goal per cycle 25K $250 / 50K $500 / 100K $750 / 150K $1,000."
 status: partial
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit", accessed: "2026-10-23" }
@@ -615,6 +699,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — evaluation — 25K
@@ -625,6 +712,7 @@ phase: evaluation
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $26,100; Locked MLL Balance $25,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "600.00", kind: soft_pause }
 profit_target_usd: "1250.00"
@@ -634,8 +722,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL On/Off chosen at checkout; DLL amount is from the homepage only (help center gives none); amount applies to DLL On. Consistency conflict: help center 40% standard / 50% add-on vs homepage eval card 50%."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: profit_target_usd, url: "https://support.lucidtrading.com/en/articles/12945790-lucidflex-evaluation-account", accessed: "2026-10-23" }
@@ -647,6 +739,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — funded — 25K
@@ -657,6 +752,7 @@ phase: funded
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $26,100; Locked MLL Balance $25,100 (initial balance + $100); on payout request MLL adjusts to the Locked MLL Balance" }
 daily_loss_limit: { amount_usd: "600.00", kind: soft_pause }
 profit_target_usd: null
@@ -666,8 +762,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL 'Optional' (checkout); amount = homepage 'DLL (Below Initial Trail)' (homepage only); DLL above Initial Trail not published (unverified). Payout: minimum profit of $100 on 5 separate days per cycle + positive net profit; no buffer; up to 5 payouts then moved live."
 status: partial
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: max_position, url: "https://support.lucidtrading.com/en/articles/12945808-lucidflex-scaling-plan", accessed: "2026-10-23" }
@@ -679,6 +779,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — evaluation — 50K
@@ -689,6 +792,7 @@ phase: evaluation
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $52,100; Locked MLL Balance $50,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1200.00", kind: soft_pause }
 profit_target_usd: "3000.00"
@@ -698,8 +802,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL On/Off chosen at checkout; DLL amount is from the homepage only (help center gives none); amount applies to DLL On. Consistency conflict: help center 40% standard / 50% add-on vs homepage eval card 50%."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: profit_target_usd, url: "https://support.lucidtrading.com/en/articles/12945790-lucidflex-evaluation-account", accessed: "2026-10-23" }
@@ -711,6 +819,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — funded — 50K
@@ -721,6 +832,7 @@ phase: funded
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $52,100; Locked MLL Balance $50,100 (initial balance + $100); on payout request MLL adjusts to the Locked MLL Balance" }
 daily_loss_limit: { amount_usd: "1200.00", kind: soft_pause }
 profit_target_usd: null
@@ -730,8 +842,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL 'Optional' (checkout); amount = homepage 'DLL (Below Initial Trail)' (homepage only); DLL above Initial Trail not published (unverified). Payout: minimum profit of $150 on 5 separate days per cycle + positive net profit; no buffer; up to 5 payouts then moved live."
 status: partial
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: max_position, url: "https://support.lucidtrading.com/en/articles/12945808-lucidflex-scaling-plan", accessed: "2026-10-23" }
@@ -743,6 +859,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — evaluation — 100K
@@ -753,6 +872,7 @@ phase: evaluation
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $103,100; Locked MLL Balance $100,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1800.00", kind: soft_pause }
 profit_target_usd: "6000.00"
@@ -762,8 +882,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL On/Off chosen at checkout; DLL amount is from the homepage only (help center gives none); amount applies to DLL On. Consistency conflict: help center 40% standard / 50% add-on vs homepage eval card 50%."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: profit_target_usd, url: "https://support.lucidtrading.com/en/articles/12945790-lucidflex-evaluation-account", accessed: "2026-10-23" }
@@ -775,6 +899,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — funded — 100K
@@ -785,6 +912,7 @@ phase: funded
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $103,100; Locked MLL Balance $100,100 (initial balance + $100); on payout request MLL adjusts to the Locked MLL Balance" }
 daily_loss_limit: { amount_usd: "1800.00", kind: soft_pause }
 profit_target_usd: null
@@ -794,8 +922,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL 'Optional' (checkout); amount = homepage 'DLL (Below Initial Trail)' (homepage only); DLL above Initial Trail not published (unverified). Payout: minimum profit of $200 on 5 separate days per cycle + positive net profit; no buffer; up to 5 payouts then moved live."
 status: partial
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: max_position, url: "https://support.lucidtrading.com/en/articles/12945808-lucidflex-scaling-plan", accessed: "2026-10-23" }
@@ -807,6 +939,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — evaluation — 150K
@@ -817,6 +952,7 @@ phase: evaluation
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $154,600; Locked MLL Balance $150,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "2700.00", kind: soft_pause }
 profit_target_usd: "9000.00"
@@ -826,8 +962,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL On/Off chosen at checkout; DLL amount is from the homepage only (help center gives none); amount applies to DLL On. Consistency conflict: help center 40% standard / 50% add-on vs homepage eval card 50%."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: profit_target_usd, url: "https://support.lucidtrading.com/en/articles/12945790-lucidflex-evaluation-account", accessed: "2026-10-23" }
@@ -839,6 +979,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidFlex — funded — 150K
@@ -849,6 +992,7 @@ phase: funded
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $154,600; Locked MLL Balance $150,100 (initial balance + $100); on payout request MLL adjusts to the Locked MLL Balance" }
 daily_loss_limit: { amount_usd: "2700.00", kind: soft_pause }
 profit_target_usd: null
@@ -858,8 +1002,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "DLL 'Optional' (checkout); amount = homepage 'DLL (Below Initial Trail)' (homepage only); DLL above Initial Trail not published (unverified). Payout: minimum profit of $250 on 5 separate days per cycle + positive net profit; no buffer; up to 5 payouts then moved live."
 status: partial
+not_confirmed_fields: [daily_loss_limit, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown", accessed: "2026-10-23" }
   - { field: max_position, url: "https://support.lucidtrading.com/en/articles/12945808-lucidflex-scaling-plan", accessed: "2026-10-23" }
@@ -871,6 +1019,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — evaluation — 25K
@@ -881,6 +1032,7 @@ phase: evaluation
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "1000.00", type: other, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $26,100; Locked MLL Balance $25,100 (initial balance + $100); type chosen at checkout: End-of-Day or Intraday" }
 daily_loss_limit: { amount_usd: "600.00", kind: soft_pause }
 profit_target_usd: "1250.00"
@@ -890,8 +1042,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "drawdown.type 'other' = trader picks trailing_eod or trailing_intraday at checkout. DLL On/Off at checkout (amount applies to DLL On). Red-folder USD high-impact news: hard breach on LucidDaily (eval per Other Trading Activities)."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16085900-luciddaily-daily-loss-limit", accessed: "2026-10-23" }
@@ -903,6 +1059,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — funded — 25K
@@ -913,6 +1072,7 @@ phase: funded
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $26,100; Locked MLL Balance $25,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "600.00", kind: soft_pause }
 profit_target_usd: null
@@ -922,8 +1082,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Hard breach: must be flat from 1 minute before through 1 minute after USD high-impact (red folder) news. DLL fixed, does not trail; if MLL trails above DLL, MLL is the binding hard limit. Buffer = Initial MLL + $100. Maximum Daily Profit (moves live): 25K $6,000 / 50K $8,000 / 100K $10,000 / 150K $12,000."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15997244-luciddaily-funded-account", accessed: "2026-10-23" }
@@ -934,6 +1098,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — evaluation — 50K
@@ -944,6 +1111,7 @@ phase: evaluation
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "2000.00", type: other, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $52,100; Locked MLL Balance $50,100 (initial balance + $100); type chosen at checkout: End-of-Day or Intraday" }
 daily_loss_limit: { amount_usd: "1200.00", kind: soft_pause }
 profit_target_usd: "3000.00"
@@ -953,8 +1121,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "drawdown.type 'other' = trader picks trailing_eod or trailing_intraday at checkout. DLL On/Off at checkout (amount applies to DLL On). Red-folder USD high-impact news: hard breach on LucidDaily (eval per Other Trading Activities)."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16085900-luciddaily-daily-loss-limit", accessed: "2026-10-23" }
@@ -966,6 +1138,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — funded — 50K
@@ -976,6 +1151,7 @@ phase: funded
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $52,100; Locked MLL Balance $50,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1200.00", kind: soft_pause }
 profit_target_usd: null
@@ -985,8 +1161,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Hard breach: must be flat from 1 minute before through 1 minute after USD high-impact (red folder) news. DLL fixed, does not trail; if MLL trails above DLL, MLL is the binding hard limit. Buffer = Initial MLL + $100. Maximum Daily Profit (moves live): 25K $6,000 / 50K $8,000 / 100K $10,000 / 150K $12,000."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15997244-luciddaily-funded-account", accessed: "2026-10-23" }
@@ -997,6 +1177,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — evaluation — 100K
@@ -1007,6 +1190,7 @@ phase: evaluation
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "3000.00", type: other, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $103,100; Locked MLL Balance $100,100 (initial balance + $100); type chosen at checkout: End-of-Day or Intraday" }
 daily_loss_limit: { amount_usd: "1800.00", kind: soft_pause }
 profit_target_usd: "6000.00"
@@ -1016,8 +1200,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "drawdown.type 'other' = trader picks trailing_eod or trailing_intraday at checkout. DLL On/Off at checkout (amount applies to DLL On). Red-folder USD high-impact news: hard breach on LucidDaily (eval per Other Trading Activities)."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16085900-luciddaily-daily-loss-limit", accessed: "2026-10-23" }
@@ -1029,6 +1217,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — funded — 100K
@@ -1039,6 +1230,7 @@ phase: funded
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $103,100; Locked MLL Balance $100,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "1800.00", kind: soft_pause }
 profit_target_usd: null
@@ -1048,8 +1240,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Hard breach: must be flat from 1 minute before through 1 minute after USD high-impact (red folder) news. DLL fixed, does not trail; if MLL trails above DLL, MLL is the binding hard limit. Buffer = Initial MLL + $100. Maximum Daily Profit (moves live): 25K $6,000 / 50K $8,000 / 100K $10,000 / 150K $12,000."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15997244-luciddaily-funded-account", accessed: "2026-10-23" }
@@ -1060,6 +1256,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — evaluation — 150K
@@ -1070,6 +1269,7 @@ phase: evaluation
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "4500.00", type: other, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $154,600; Locked MLL Balance $150,100 (initial balance + $100); type chosen at checkout: End-of-Day or Intraday" }
 daily_loss_limit: { amount_usd: "2700.00", kind: soft_pause }
 profit_target_usd: "9000.00"
@@ -1079,8 +1279,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "drawdown.type 'other' = trader picks trailing_eod or trailing_intraday at checkout. DLL On/Off at checkout (amount applies to DLL On). Red-folder USD high-impact news: hard breach on LucidDaily (eval per Other Trading Activities)."
 status: conflict
+not_confirmed_fields: [consistency_rule, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16085900-luciddaily-daily-loss-limit", accessed: "2026-10-23" }
@@ -1092,6 +1296,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDaily — funded — 150K
@@ -1102,6 +1309,7 @@ phase: funded
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "4500.00", type: trailing_intraday, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $154,600; Locked MLL Balance $150,100 (initial balance + $100)" }
 daily_loss_limit: { amount_usd: "2700.00", kind: soft_pause }
 profit_target_usd: null
@@ -1111,8 +1319,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Hard breach: must be flat from 1 minute before through 1 minute after USD high-impact (red folder) news. DLL fixed, does not trail; if MLL trails above DLL, MLL is the binding hard limit. Buffer = Initial MLL + $100. Maximum Daily Profit (moves live): 25K $6,000 / 50K $8,000 / 100K $10,000 / 150K $12,000."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown", accessed: "2026-10-23" }
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/15997244-luciddaily-funded-account", accessed: "2026-10-23" }
@@ -1123,6 +1335,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDirect — funded (straight-to-funded) — 25K
@@ -1133,6 +1348,7 @@ phase: funded
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $26,100; Locked MLL Balance $25,100" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -1142,8 +1358,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "25K: no DLL ('None'). Note DLL table lists Initial Trail Balance 'None' for 25K while drawdown table lists $26,100. No add-ons; DLL set by account size. No evaluation phase."
 status: partial
+not_confirmed_fields: [drawdown, trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890192-luciddirect-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890185-luciddirect-daily-loss-limit", accessed: "2026-10-23" }
@@ -1154,6 +1374,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDirect — funded (straight-to-funded) — 50K
@@ -1164,6 +1387,7 @@ phase: funded
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $52,100; Locked MLL Balance $50,100" }
 daily_loss_limit: { amount_usd: "1200.00", kind: soft_pause }
 profit_target_usd: null
@@ -1173,8 +1397,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Fixed DLL until close above Initial Trail Balance, then LucidScale DLL (highest EOD profit × 60%). No add-ons; DLL set by account size. No evaluation phase."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890192-luciddirect-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890185-luciddirect-daily-loss-limit", accessed: "2026-10-23" }
@@ -1185,6 +1413,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDirect — funded (straight-to-funded) — 100K
@@ -1195,6 +1426,7 @@ phase: funded
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "3500.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $103,600; Locked MLL Balance $100,100" }
 daily_loss_limit: { amount_usd: "2100.00", kind: soft_pause }
 profit_target_usd: null
@@ -1204,8 +1436,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Fixed DLL until close above Initial Trail Balance, then LucidScale DLL (highest EOD profit × 60%). No add-ons; DLL set by account size. No evaluation phase."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890192-luciddirect-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890185-luciddirect-daily-loss-limit", accessed: "2026-10-23" }
@@ -1216,6 +1452,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidDirect — funded (straight-to-funded) — 150K
@@ -1226,6 +1465,7 @@ phase: funded
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, MotiveWave, "Sierra Chart", Jigsaw, Bookmap, ATAS, "R|Trader Pro", MultiCharts]   # "All listed platforms work with all Lucid account types"
 drawdown: { amount_usd: "5000.00", type: trailing_eod, stops_trailing_at: "MLL locks once balance exceeds Initial Trail Balance $155,100; Locked MLL Balance $150,100" }
 daily_loss_limit: { amount_usd: "3000.00", kind: soft_pause }
 profit_target_usd: null
@@ -1235,8 +1475,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Fixed DLL until close above Initial Trail Balance, then LucidScale DLL (highest EOD profit × 60%). No add-ons; DLL set by account size. No evaluation phase."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/12890192-luciddirect-drawdown", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/12890185-luciddirect-daily-loss-limit", accessed: "2026-10-23" }
@@ -1247,6 +1491,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidLive (new live structure) — live — 25K funded-account size
@@ -1257,6 +1504,7 @@ phase: live
 size_label: "25K"
 size_usd: "25000.00"
 instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # Live article names "Tradovate Live accounts" and "Rithmic Live accounts"; supported-platforms page: all listed platforms work with all account types
 drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Locks at $100 once live profits equal the starting live drawdown, or on a live payout request before that" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -1266,8 +1514,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Live accounts start at $0 balance; amount = 'Starting Live Drawdown'. Swing trading not allowed; hold until 4:45 PM EST (Tradovate Live) or 4:15 PM EST (Rithmic Live). Live is real capital: agents must never connect to it."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
@@ -1277,6 +1529,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidLive (new live structure) — live — 50K funded-account size
@@ -1287,6 +1542,7 @@ phase: live
 size_label: "50K"
 size_usd: "50000.00"
 instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # Live article names "Tradovate Live accounts" and "Rithmic Live accounts"; supported-platforms page: all listed platforms work with all account types
 drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Locks at $100 once live profits equal the starting live drawdown, or on a live payout request before that" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -1296,8 +1552,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Live accounts start at $0 balance; amount = 'Starting Live Drawdown'. Swing trading not allowed; hold until 4:45 PM EST (Tradovate Live) or 4:15 PM EST (Rithmic Live). Live is real capital: agents must never connect to it."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
@@ -1307,6 +1567,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidLive (new live structure) — live — 100K funded-account size
@@ -1317,6 +1580,7 @@ phase: live
 size_label: "100K"
 size_usd: "100000.00"
 instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # Live article names "Tradovate Live accounts" and "Rithmic Live accounts"; supported-platforms page: all listed platforms work with all account types
 drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Locks at $100 once live profits equal the starting live drawdown, or on a live payout request before that" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -1326,8 +1590,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Live accounts start at $0 balance; amount = 'Starting Live Drawdown'. Swing trading not allowed; hold until 4:45 PM EST (Tradovate Live) or 4:15 PM EST (Rithmic Live). Live is real capital: agents must never connect to it."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
@@ -1337,6 +1605,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 #### LucidLive (new live structure) — live — 150K funded-account size
@@ -1347,6 +1618,7 @@ phase: live
 size_label: "150K"
 size_usd: "150000.00"
 instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic]   # Live article names "Tradovate Live accounts" and "Rithmic Live accounts"; supported-platforms page: all listed platforms work with all account types
 drawdown: { amount_usd: "4500.00", type: trailing_eod, stops_trailing_at: "Locks at $100 once live profits equal the starting live drawdown, or on a live payout request before that" }
 daily_loss_limit: { amount_usd: null, kind: none }
 profit_target_usd: null
@@ -1356,8 +1628,12 @@ min_trading_days: null
 trading_day_reset: { time: null, tz_as_published: null }   # not published as a reset; see §6 (session 6:00 PM ET/EST, close-out 4:45 PM EST)
 copy_trading_allowed: conditional   # copiers permitted; hedging across accounts/users/firms prohibited; Terms ban same-strategy pooling between unconnected accounts/third parties and trading for others; same-person copy not stated explicitly
 automated_trading_allowed: conditional   # automated systems permitted; HFT and microscalping prohibited
+automation_rule_text: "Automated trading systems and trade copiers are permitted / All automated activity must comply with Lucid Trading rules / Traders are fully responsible for any software errors, malfunctions, or unintended outcomes"
+vps_allowed: unknown                # not published on any official page found; see gaps
+personal_device_required: unknown   # not published on any official page found; see gaps
 notes: "Live accounts start at $0 balance; amount = 'Starting Live Drawdown'. Swing trading not allowed; hold until 4:45 PM EST (Tradovate Live) or 4:15 PM EST (Rithmic Live). Live is real capital: agents must never connect to it."
 status: partial
+not_confirmed_fields: [trading_day_reset, copy_trading_allowed, vps_allowed, personal_device_required]
 sources:
   - { field: drawdown, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
   - { field: daily_loss_limit, url: "https://support.lucidtrading.com/en/articles/16558826-new-live-structure", accessed: "2026-10-23" }
@@ -1367,6 +1643,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
   - { field: trading_day_reset, url: "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://lucidtrading.com/terms-of-use/", accessed: "2026-10-23" }
+  - { field: platforms, url: "https://support.lucidtrading.com/en/articles/11404614-lucid-trading-supported-platforms", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://support.lucidtrading.com/en/?q=vps", accessed: "2026-10-23" }   # help-center search "vps": 0 results; no rule found
 ```
 
 ---
@@ -1388,6 +1667,8 @@ sources:
 | 11 | HFT numeric threshold | `none published` | Only a qualitative definition (help center and Terms). |
 | 12 | LucidDirect 25K Initial Trail Balance | minor `conflict` | The DLL table says "None". The drawdown table says $26,100 → $25,100. |
 | 13 | Days to payout (Pro 3, Direct 5) | single source (homepage only) | Homepage cards: Pro "Days to Payout 3"; Direct "Min Day to Payout 5". The LucidPro and LucidDirect payout articles state no minimum-days rule. Not contradictory, but unconfirmed by the help center. |
+| 14 | VPS / VPN / remote server and originating device | `unknown` (no rule published) | No rule on any official page (see §9 "Device / hosting rules"). Searched the help-center search ("vps", "vpn" return 0 results), 61 captured help articles, Terms, Privacy, Refund, Risk Disclosure and the homepage FAQ. |
+| 15 | Platforms for LucidLive | note | The supported-platforms page says "All listed platforms work with all Lucid account types". The live article names only "Tradovate Live accounts" and "Rithmic Live accounts" (close-out times). The YAML lists Tradovate and Rithmic for the live blocks. |
 
 ## 12. Pages not reached
 
@@ -1402,3 +1683,4 @@ sources:
   - Added the Flex DLL amounts (homepage), a new conflict on Flex evaluation consistency, the homepage-only days-to-payout values (Pro 3, Direct 5), and the Terms clauses on copying, automation and trading for others.
   - Fixed verbatim quotes to match the captured line structure (no added punctuation).
   - Updated the gaps list and the YAML for Flex.
+- 2026-10-23 — format rev. 3 (Lupa): added `platforms`, `automation_rule_text`, `vps_allowed: unknown`, `personal_device_required: unknown` and `not_confirmed_fields` (with sources) to all 32 YAML blocks; added the (i)/(ii)/(iii) automation classification, the §9 "Device / hosting rules" subsection and gaps 14–15. Existing values and `status` untouched. Fields already conflicting or unpublished (DLL, consistency, trading-day reset, same-person copy) are listed in `not_confirmed_fields`. The `automation_rule_text` quote was checked against the captured page text; the help-center searches ran through the portal "Lupa Lucid".

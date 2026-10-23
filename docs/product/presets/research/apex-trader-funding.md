@@ -302,6 +302,15 @@ Other limits: one personal and one business user account per person (S-USERACC).
 
 ## 7. Other rules that affect routing or risk
 
+### Device / hosting rules (format rev. 3 §3 item 7)
+
+YAML for all 24 blocks: `vps_allowed: conditional` and `personal_device_required: unknown`.
+
+- **VPS / cloud servers: `conditional`.** S-PROHIB (https://apextraderfunding.com/help-center/getting-started/prohibited-activities/, re-read through the portal "Lupa Apex" on 2026-10-23): "You may not use VPNs, proxy servers, cloud servers, anonymizing tools, or other methods or tools for the purpose of misrepresenting, concealing, or disguising your identity, device, or location in an attempt: (a) to evade or circumvent any rules, security measures, access controls, or geographic restrictions; (b) to hide prior violations or detection of violations of this Agreement, the Trading Rules, or Company policies; or (c) to engage in or facilitate any illegal, fraudulent, deceptive, or abusive conduct." The ban is tied to that purpose. A server is not banned outright, and no page says a server is allowed.
+- Live program FAQ (S-LIVE, https://apextraderfunding.com/help-center/getting-started/apex-live-prop-trading-program-faq/): "Can I use a VPN?" → "You may not use VPNs, proxy servers, cloud servers, anonymizing tools, or other methods to misrepresent, conceal, or disguise your identity, device, or location for the purpose of evading Apex rules, security controls, geographic restrictions, prior violations, or any illegal, fraudulent, deceptive, or abusive conduct." Same purpose test.
+- **Personal device: `unknown`.** No page requires orders to come from the trader's own device. S-LIVE: "Only the registered account owner may access, verify, or trade the account." That is about who trades, not which machine. Searched: all captured help-center pages (vps, vpn, cloud, remote, device, server).
+- For All Win the point is moot: automation is forbidden (§6), and the opt-in warning applies.
+
 | Rule | Text (verbatim excerpt) | Source |
 |---|---|---|
 | No overnight holding | "Holding open trade positions through the market close. Traders are responsible for ensuring that all open trade positions are closed prior to the market close." (prohibited) / "All trades must be closed before 4:59 PM ET." | S-PROHIB, S-TIMES |
@@ -325,784 +334,918 @@ Other limits: one personal and one business user account per person (S-USERACC).
 
 24 blocks: per evaluation size, one block for `[Rithmic, WealthCharts]` and one for `[Tradovate]` (16 in all), plus one PA block per size with all three platforms (8). Every block carries `automated_trading_allowed`, `automation_rule_text` and `not_confirmed_fields`. All blocks have `status: conflict` because C1 (copy trading) applies to every block. Their numeric fields are verified. The tier structure is given under `max_position.scaling` for PAs. `minis` holds the top-tier maximum as published in the PA parameter table. `daily_loss_limit.amount_usd` holds the **Level 1** DLL, and the other tiers are in `scaling`. For PA micros the firm publishes only the ratio ("ten (10) micro contracts equal one (1) standard contract"), so `micros` is null for PAs.
 
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 25K — Rithmic, WealthCharts
 ```yaml
-# ---------- EOD Trailing Drawdown (EOD Evaluation) — Evaluation (split by platform: trailing stop differs) ----------
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance." }
+daily_loss_limit: { amount_usd: "500.00", kind: soft_pause }
+profit_target_usd: "1500.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "4", micros: "40", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance." }
-  daily_loss_limit: { amount_usd: "500.00", kind: soft_pause }
-  profit_target_usd: "1500.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "4", micros: "40", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 25K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
+daily_loss_limit: { amount_usd: "500.00", kind: soft_pause }
+profit_target_usd: "1500.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "4", micros: "40", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
-  daily_loss_limit: { amount_usd: "500.00", kind: soft_pause }
-  profit_target_usd: "1500.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "4", micros: "40", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 50K — Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance. (published 50K example: $53,000)" }
+daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause }
+profit_target_usd: "3000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "6", micros: "60", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance. (published 50K example: $53,000)" }
-  daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause }
-  profit_target_usd: "3000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "6", micros: "60", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 50K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
+daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause }
+profit_target_usd: "3000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "6", micros: "60", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
-  daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause }
-  profit_target_usd: "3000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "6", micros: "60", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 100K — Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance." }
+daily_loss_limit: { amount_usd: "1500.00", kind: soft_pause }
+profit_target_usd: "6000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "8", micros: "80", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance." }
-  daily_loss_limit: { amount_usd: "1500.00", kind: soft_pause }
-  profit_target_usd: "6000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "8", micros: "80", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 100K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
+daily_loss_limit: { amount_usd: "1500.00", kind: soft_pause }
+profit_target_usd: "6000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "8", micros: "80", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
-  daily_loss_limit: { amount_usd: "1500.00", kind: soft_pause }
-  profit_target_usd: "6000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "8", micros: "80", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 150K — Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "4000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance." }
+daily_loss_limit: { amount_usd: "2000.00", kind: soft_pause }
+profit_target_usd: "9000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "12", micros: "120", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "4000.00", type: trailing_eod, stops_trailing_at: "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance." }
-  daily_loss_limit: { amount_usd: "2000.00", kind: soft_pause }
-  profit_target_usd: "9000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "12", micros: "120", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Evaluation) — evaluation — 150K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Evaluation)"
+phase: evaluation
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "4000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
+daily_loss_limit: { amount_usd: "2000.00", kind: soft_pause }
+profit_target_usd: "9000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "12", micros: "120", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Evaluation)"
-  phase: evaluation
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "4000.00", type: trailing_eod, stops_trailing_at: "EOD Drawdown trails indefinitely with the peak EOD account balance." }
-  daily_loss_limit: { amount_usd: "2000.00", kind: soft_pause }
-  profit_target_usd: "9000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "12", micros: "120", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 25K — Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ)" }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "1500.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "4", micros: "40", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-# ---------- Intraday Trailing Drawdown (Intraday Evaluation) — Evaluation (split by platform: trailing stop differs) ----------
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 25K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "1500.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "4", micros: "40", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ)" }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "1500.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "4", micros: "40", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 50K — Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ); both give 50K stop level $53,000" }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "3000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "6", micros: "60", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "1500.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "4", micros: "40", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 50K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "3000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "6", micros: "60", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ); both give 50K stop level $53,000" }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "3000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "6", micros: "60", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 100K — Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ)" }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "6000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "8", micros: "80", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "3000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "6", micros: "60", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 100K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "6000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "8", micros: "80", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ)" }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "6000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "8", micros: "80", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 150K — Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Rithmic, WealthCharts]
+drawdown: { amount_usd: "4000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ)" }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "9000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "12", micros: "120", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "6000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "8", micros: "80", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Evaluation) — evaluation — 150K — Tradovate
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
+phase: evaluation
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate]
+drawdown: { amount_usd: "4000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
+daily_loss_limit: { amount_usd: null, kind: none }
+profit_target_usd: "9000.00"
+consistency_rule: { text: "Not Applied", threshold_pct: null }
+max_position: { minis: "12", micros: "120", scaling: null }
+min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, personal_device_required]
+sources:
+  - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
+  - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
+  - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Rithmic, WealthCharts]
-  drawdown: { amount_usd: "4000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C5): 'Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.' (body) vs 'trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000' (FAQ)" }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "9000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "12", micros: "120", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, drawdown.stops_trailing_at]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Performance Account) — funded — 25K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Performance Account)"
+phase: funded
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing." }
+daily_loss_limit: { amount_usd: "500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "2"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $999", max_contracts: "1", dll_usd: "500.00" }
+    - { level: 2, profit_range: "$1,000 \u2013 $1,999", max_contracts: "2", dll_usd: "500.00" }
+    - { level: 3, profit_range: "$2,000 & Up", max_contracts: "2", dll_usd: "1250.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $100 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Evaluation)"
-  phase: evaluation
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate]
-  drawdown: { amount_usd: "4000.00", type: trailing_intraday, stops_trailing_at: "Intraday Drawdown trails indefinitely with the peak account balance." }
-  daily_loss_limit: { amount_usd: null, kind: none }
-  profit_target_usd: "9000.00"
-  consistency_rule: { text: "Not Applied", threshold_pct: null }
-  max_position: { minis: "12", micros: "120", scaling: null }
-  min_trading_days: 1   # "No minimum trading days required, may pass in one trading day"; homepage "Min. Days To Pass 1"
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed]
-  sources: 
-    - { field: profit_target/drawdown/dll/max_contracts, url: "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/", accessed: "2026-10-23" }
-    - { field: max_position.micros, url: "https://apextraderfunding.com/", accessed: "2026-10-23" }
-    - { field: drawdown.type/stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: daily_loss_limit.kind, url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Performance Account) — funded — 50K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Performance Account)"
+phase: funded
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing. (published 50K example: $50,100)" }
+daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "4"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $1,499", max_contracts: "2", dll_usd: "1000.00" }
+    - { level: 2, profit_range: "$1,500 \u2013 $2,999", max_contracts: "3", dll_usd: "1000.00" }
+    - { level: 3, profit_range: "$3,000 \u2013 $5,999", max_contracts: "4", dll_usd: "2000.00" }
+    - { level: 4, profit_range: "CONFLICT: $6,000 & Up (DLL page) vs $5,999 & Up (Scaling page)", max_contracts: "4", dll_usd: "3000.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $250 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", "max_position.scaling[level 4].profit_range", personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-# ---------- EOD Trailing Drawdown (EOD Performance Account) (no platform-specific rule published) ----------
+#### EOD Trailing Drawdown (EOD Performance Account) — funded — 100K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Performance Account)"
+phase: funded
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing." }
+daily_loss_limit: { amount_usd: "1750.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "6"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "3", dll_usd: "1750.00" }
+    - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "4", dll_usd: "1750.00" }
+    - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "5", dll_usd: "1750.00" }
+    - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "6", dll_usd: "2500.00" }
+    - { level: 5, profit_range: "$10,000 & Up", max_contracts: "6", dll_usd: "3500.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $300 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Performance Account)"
-  phase: funded
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "1000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing." }
-  daily_loss_limit: { amount_usd: "500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "2"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $999", max_contracts: "1", dll_usd: "500.00" }
-      - { level: 2, profit_range: "$1,000 \u2013 $1,999", max_contracts: "2", dll_usd: "500.00" }
-      - { level: 3, profit_range: "$2,000 & Up", max_contracts: "2", dll_usd: "1250.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $100 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)"]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### EOD Trailing Drawdown (EOD Performance Account) — funded — 150K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "EOD Trailing Drawdown (EOD Performance Account)"
+phase: funded
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "4000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing." }
+daily_loss_limit: { amount_usd: "2500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "10"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "4", dll_usd: "2500.00" }
+    - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "5", dll_usd: "2500.00" }
+    - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "7", dll_usd: "2500.00" }
+    - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "10", dll_usd: "3000.00" }
+    - { level: 5, profit_range: "$10,000 & Up", max_contracts: "10", dll_usd: "4000.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $350 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Performance Account)"
-  phase: funded
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "2000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing. (published 50K example: $50,100)" }
-  daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "4"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $1,499", max_contracts: "2", dll_usd: "1000.00" }
-      - { level: 2, profit_range: "$1,500 \u2013 $2,999", max_contracts: "3", dll_usd: "1000.00" }
-      - { level: 3, profit_range: "$3,000 \u2013 $5,999", max_contracts: "4", dll_usd: "2000.00" }
-      - { level: 4, profit_range: "CONFLICT: $6,000 & Up (DLL page) vs $5,999 & Up (Scaling page)", max_contracts: "4", dll_usd: "3000.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $250 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", "max_position.scaling[level 4].profit_range"]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Performance Account) — funded — 25K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
+phase: funded
+size_label: "25K"
+size_usd: "25000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
+daily_loss_limit: { amount_usd: "500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "2"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $999", max_contracts: "1", dll_usd: "500.00" }
+    - { level: 2, profit_range: "$1,000 \u2013 $1,999", max_contracts: "2", dll_usd: "500.00" }
+    - { level: 3, profit_range: "$2,000 & Up", max_contracts: "2", dll_usd: "1250.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $100 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at, personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Performance Account)"
-  phase: funded
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "3000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing." }
-  daily_loss_limit: { amount_usd: "1750.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "6"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "3", dll_usd: "1750.00" }
-      - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "4", dll_usd: "1750.00" }
-      - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "5", dll_usd: "1750.00" }
-      - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "6", dll_usd: "2500.00" }
-      - { level: 5, profit_range: "$10,000 & Up", max_contracts: "6", dll_usd: "3500.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $300 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)"]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Performance Account) — funded — 50K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
+phase: funded
+size_label: "50K"
+size_usd: "50000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
+daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "4"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $1,499", max_contracts: "2", dll_usd: "1000.00" }
+    - { level: 2, profit_range: "$1,500 \u2013 $2,999", max_contracts: "3", dll_usd: "1000.00" }
+    - { level: 3, profit_range: "$3,000 \u2013 $5,999", max_contracts: "4", dll_usd: "2000.00" }
+    - { level: 4, profit_range: "CONFLICT: $6,000 & Up (DLL page) vs $5,999 & Up (Scaling page)", max_contracts: "4", dll_usd: "3000.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $200 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at, "max_position.scaling[level 4].profit_range", personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-- firm: apex-trader-funding
-  plan: "EOD Trailing Drawdown (EOD Performance Account)"
-  phase: funded
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "4000.00", type: trailing_eod, stops_trailing_at: "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing." }
-  daily_loss_limit: { amount_usd: "2500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "10"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "4", dll_usd: "2500.00" }
-      - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "5", dll_usd: "2500.00" }
-      - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "7", dll_usd: "2500.00" }
-      - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "10", dll_usd: "3000.00" }
-      - { level: 5, profit_range: "$10,000 & Up", max_contracts: "10", dll_usd: "4000.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $350 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)"]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Performance Account) — funded — 100K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
+phase: funded
+size_label: "100K"
+size_usd: "100000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
+daily_loss_limit: { amount_usd: "1750.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "6"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "3", dll_usd: "1750.00" }
+    - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "4", dll_usd: "1750.00" }
+    - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "5", dll_usd: "1750.00" }
+    - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "6", dll_usd: "2500.00" }
+    - { level: 5, profit_range: "$10,000 & Up", max_contracts: "6", dll_usd: "3500.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $250 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at, personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+```
 
-# ---------- Intraday Trailing Drawdown (Intraday Performance Account) (no platform-specific rule published) ----------
-
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
-  phase: funded
-  size_label: "25K"
-  size_usd: "25000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "1000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
-  daily_loss_limit: { amount_usd: "500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "2"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $999", max_contracts: "1", dll_usd: "500.00" }
-      - { level: 2, profit_range: "$1,000 \u2013 $1,999", max_contracts: "2", dll_usd: "500.00" }
-      - { level: 3, profit_range: "$2,000 & Up", max_contracts: "2", dll_usd: "1250.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $100 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
-
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
-  phase: funded
-  size_label: "50K"
-  size_usd: "50000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "2000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
-  daily_loss_limit: { amount_usd: "1000.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "4"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $1,499", max_contracts: "2", dll_usd: "1000.00" }
-      - { level: 2, profit_range: "$1,500 \u2013 $2,999", max_contracts: "3", dll_usd: "1000.00" }
-      - { level: 3, profit_range: "$3,000 \u2013 $5,999", max_contracts: "4", dll_usd: "2000.00" }
-      - { level: 4, profit_range: "CONFLICT: $6,000 & Up (DLL page) vs $5,999 & Up (Scaling page)", max_contracts: "4", dll_usd: "3000.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $200 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at, "max_position.scaling[level 4].profit_range"]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
-
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
-  phase: funded
-  size_label: "100K"
-  size_usd: "100000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "3000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
-  daily_loss_limit: { amount_usd: "1750.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "6"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "3", dll_usd: "1750.00" }
-      - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "4", dll_usd: "1750.00" }
-      - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "5", dll_usd: "1750.00" }
-      - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "6", dll_usd: "2500.00" }
-      - { level: 5, profit_range: "$10,000 & Up", max_contracts: "6", dll_usd: "3500.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $250 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
-
-- firm: apex-trader-funding
-  plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
-  phase: funded
-  size_label: "150K"
-  size_usd: "150000.00"
-  instruments: [MNQ, NQ]
-  platforms: [Tradovate, Rithmic, WealthCharts]
-  drawdown: { amount_usd: "4000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
-  daily_loss_limit: { amount_usd: "2500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
-  profit_target_usd: null
-  consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
-  max_position:
-    minis: "10"   # top-tier max as published
-    micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
-    scaling:
-      - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "4", dll_usd: "2500.00" }
-      - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "5", dll_usd: "2500.00" }
-      - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "7", dll_usd: "2500.00" }
-      - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "10", dll_usd: "3000.00" }
-      - { level: 5, profit_range: "$10,000 & Up", max_contracts: "10", dll_usd: "4000.00" }
-  min_trading_days: 5   # per payout request only; each qualifying day >= $300 net profit
-  trading_day_reset: { time: "18:00", tz_as_published: "ET" }
-  copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
-  automated_trading_allowed: "no"
-  automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
-  status: conflict   # numeric fields verified; see not_confirmed_fields
-  not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at]
-  sources: 
-    - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
-    - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
-    - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
-    - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
-    - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
-    - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
-    - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
-    - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
-    - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+#### Intraday Trailing Drawdown (Intraday Performance Account) — funded — 150K — Tradovate, Rithmic, WealthCharts
+```yaml
+firm: apex-trader-funding
+plan: "Intraday Trailing Drawdown (Intraday Performance Account)"
+phase: funded
+size_label: "150K"
+size_usd: "150000.00"
+instruments: [MNQ, NQ]
+platforms: [Tradovate, Rithmic, WealthCharts]
+drawdown: { amount_usd: "4000.00", type: trailing_intraday, stops_trailing_at: "CONFLICT (C2): 'In Performance Accounts, trailing stops once the Intraday Threshold reaches Starting Balance + $100.' (Intraday Drawdown Explained) vs 'Trailing stops once Max Trailing Drawdown Amount + $100 is reached' (Intraday PA page)" }
+daily_loss_limit: { amount_usd: "2500.00", kind: soft_pause, tiered: true }   # Level 1 DLL; tiers below
+profit_target_usd: null
+consistency_rule: { text: "Your largest profitable trading day must represent less than 50% of your net profit since your last payout request, or since account inception if no payout has been made. (payout eligibility only; account not failed)", threshold_pct: "50" }
+max_position:
+  minis: "10"   # top-tier max as published
+  micros: null   # firm publishes ratio only: "ten (10) micro contracts equal one (1) standard contract"
+  scaling:
+    - { level: 1, profit_range: "$0 \u2013 $1,999", max_contracts: "4", dll_usd: "2500.00" }
+    - { level: 2, profit_range: "$2,000 \u2013 $2,999", max_contracts: "5", dll_usd: "2500.00" }
+    - { level: 3, profit_range: "$3,000 \u2013 $4,999", max_contracts: "7", dll_usd: "2500.00" }
+    - { level: 4, profit_range: "$5,000 \u2013 $9,999", max_contracts: "10", dll_usd: "3000.00" }
+    - { level: 5, profit_range: "$10,000 & Up", max_contracts: "10", dll_usd: "4000.00" }
+min_trading_days: 5   # per payout request only; each qualifying day >= $300 net profit
+trading_day_reset: { time: "18:00", tz_as_published: "ET" }
+copy_trading_allowed: unknown   # C1 conflict: same-person PA copying allowed (S-MAXPA) vs Legacy PA Compliance ban; other-trader copying forbidden
+automated_trading_allowed: "no"
+automation_rule_text: "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions."
+vps_allowed: conditional   # "VPNs, proxy servers, cloud servers" banned only "for the purpose of misrepresenting, concealing, or disguising your identity, device, or location" to evade rules (S-PROHIB)
+personal_device_required: unknown   # no page requires a personal device; "Only the registered account owner may access, verify, or trade the account" (S-LIVE)
+status: conflict   # numeric fields verified; see not_confirmed_fields
+not_confirmed_fields: [copy_trading_allowed, "consistency_rule.threshold_pct (boundary: <50% vs example 50% met)", drawdown.stops_trailing_at, personal_device_required]
+sources:
+  - { field: drawdown/max_contracts, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-performance-accounts-pa/", accessed: "2026-10-23" }
+  - { field: drawdown.stops_trailing_at, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/", accessed: "2026-10-23" }
+  - { field: dll/scaling (A), url: "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/", accessed: "2026-10-23" }
+  - { field: scaling (B), url: "https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/", accessed: "2026-10-23" }
+  - { field: consistency_rule, url: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/", accessed: "2026-10-23" }
+  - { field: min_trading_days, url: "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-payouts/", accessed: "2026-10-23" }
+  - { field: trading_day_reset, url: "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (A), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/", accessed: "2026-10-23" }
+  - { field: copy_trading_allowed (B), url: "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/", accessed: "2026-10-23" }
+  - { field: automation_rule_text, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/", accessed: "2026-10-23" }
 ```
 
 `not_confirmed_fields` mapping: C1 → `copy_trading_allowed` (all blocks); C2 → `drawdown.stops_trailing_at` (Intraday PA blocks); C3 → `max_position.scaling[level 4].profit_range` (50K PA blocks); C4 → consistency boundary (all PA blocks); C5 → `drawdown.stops_trailing_at` (Intraday evaluation, Rithmic/WealthCharts blocks); C6 (Legacy availability) applies to no block, because no Legacy blocks were written.
@@ -1129,6 +1272,7 @@ Schema notes for the PO: the blocks are a YAML list. They add `daily_loss_limit.
 | G6 | Sizes other than 25K–150K for current products | None offered: the homepage picker and help-center tables list only 25K, 50K, 100K and 150K. No 200K/250K/300K current products. | S-HOME, S-EODEVAL, S-INTEVAL |
 | N1 | Platform-dependent evaluation rule | Resolved in rev. 2: evaluation blocks are split by platform (`[Rithmic, WealthCharts]` / `[Tradovate]`). | S-EODDD, S-INTDD |
 | G7 | NinjaTrader connection guides | Not captured. They are cited only by title from the official site search (S-NTRITH, S-NTTV). This does not affect rule values. | site search "ninjatrader" |
+| G8 | Personal-device requirement and VPS outside the "misrepresent identity/device/location" purpose | `unknown` | No page states whether a VPS is acceptable when used openly, or whether orders must come from a personal device. See §7 "Device / hosting rules". | S-PROHIB, S-LIVE, all captured help-center pages |
 
 ---
 
@@ -1136,3 +1280,5 @@ Schema notes for the PO: the blocks are a YAML list. They add `daily_loss_limit.
 
 - 2026-10-23 — initial research (Lupa)
 - 2026-10-23 — retrofit to format rev. 2 (Lupa). Added §2 Platforms (vendor list read from the homepage picker for all 16 combinations) and a `platforms:` field. Split evaluation YAML by platform (24 blocks, up from 16). Added `automation_rule_text` and `not_confirmed_fields` (C1–C5) to every block. Added the PO automation classification §6.1 (i)/(ii)/(iii). `copy_trading_allowed` changed from `conditional` to `unknown` (not confirmed, C1). Renumbered sections to the rev. 2 order.
+- 2026-10-23 — format rev. 3 (Lupa): added `vps_allowed: conditional` and `personal_device_required: unknown` (with a `vps_allowed` source) to all 24 YAML blocks, `personal_device_required` to `not_confirmed_fields`, the §7 "Device / hosting rules" subsection and gap G8. No other value changed. The VPS quotes were checked against the captured page text and re-read on the portal "Lupa Apex".
+- 2026-10-23 — structure (Lupa): converted the single YAML list in §8 to one `yaml` block per plan/phase/size (24 blocks, each under its own `####` heading). Values, comments and status unchanged. Checked by parsing the old list and the new blocks and comparing them: identical. Only the section-divider comments were dropped, because each heading now carries that information.
