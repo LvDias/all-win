@@ -208,15 +208,20 @@ namespace AllWin.Adapter.Core.Store
             var body = line.Substring(9);
             if (!uint.TryParse(line.Substring(0, 8), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var crc)) return false;
             if (Crc32.Compute(Encoding.UTF8.GetBytes(body)) != crc) return false;
-            JObject obj;
-            // Strict parser: values stay strings (a default JObject.Parse would turn timestamps into DateTime).
-            try { obj = Protocol.ProtocolJson.ParseObject(body); }
-            catch (JsonException) { return false; }
-            if ((int?)obj["f"] != FormatVersion) throw new StoreCorruptException("Unsupported store format.");
-            seq = (long)obj["s"]!;
-            foreach (var item in (JArray)obj["ops"]!)
-                ops.Add(new StoreOp((string)item["c"]!, (string)item["k"]!, item["v"]!.Type == JTokenType.Null ? null : (string)item["v"]!));
-            return true;
+            // The checksum matches, so this is what was written: a record that cannot be decoded is damage
+            // (a writer bug or a foreign file), never a torn write (QA Security I3).
+            try
+            {
+                // Strict parser: values stay strings (a default JObject.Parse would turn timestamps into DateTime).
+                var obj = Protocol.ProtocolJson.ParseObject(body);
+                if ((int?)obj["f"] != FormatVersion) throw new StoreCorruptException("Unsupported store format.");
+                seq = (long)obj["s"]!;
+                foreach (var item in (JArray)obj["ops"]!)
+                    ops.Add(new StoreOp((string)item["c"]!, (string)item["k"]!, item["v"]!.Type == JTokenType.Null ? null : (string)item["v"]!));
+                return true;
+            }
+            catch (StoreCorruptException) { throw; }
+            catch (Exception e) { throw new StoreCorruptException("Store record cannot be decoded.", e); }
         }
 
         private static readonly Dictionary<string, string> EmptyCollection = new Dictionary<string, string>();
@@ -225,6 +230,7 @@ namespace AllWin.Adapter.Core.Store
     public sealed class StoreCorruptException : Exception
     {
         public StoreCorruptException(string message) : base(message) { }
+        public StoreCorruptException(string message, Exception inner) : base(message, inner) { }
     }
 
     public sealed class StoreLockedException : Exception

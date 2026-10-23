@@ -21,4 +21,7 @@
   <ItemGroup>
     <None Include="scenarios\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AllWin.Adapter.Core.Tests" />
+  </ItemGroup>
 </Project>

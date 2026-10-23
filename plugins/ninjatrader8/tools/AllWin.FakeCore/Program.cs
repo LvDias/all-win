@@ -79,6 +79,19 @@ internal sealed class Cli
         return cli;
     }
 
+    /// <summary>
+    /// Creates the token file readable by its owner only (mode 0600 on Unix, QA Security L2). On Windows
+    /// the file inherits the user profile's ACL, which is already private to the user.
+    /// </summary>
+    internal static void WriteOwnerOnly(string path, string content)
+    {
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        using var stream = new FileStream(path, options);
+        var bytes = Encoding.UTF8.GetBytes(content);
+        stream.Write(bytes, 0, bytes.Length);
+    }
+
     /// <summary>A throwaway device token for the local harness only (format awd_&lt;key_id&gt;_&lt;secret&gt;).</summary>
     public static string NewTestToken()
     {
@@ -96,7 +109,8 @@ internal sealed class Cli
     public static string ReadOrCreateToken(string? path)
     {
         path ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".allwin-fakecore-token");
-        if (!File.Exists(path)) File.WriteAllText(path, NewTestToken());
+        if (!File.Exists(path)) WriteOwnerOnly(path, NewTestToken());
+        else if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         var token = File.ReadAllText(path).Trim();
         Console.WriteLine("test token file: " + path + " (key " + AllWin.Adapter.Core.Engine.TokenMask.Mask(token) + ")");
         return token;

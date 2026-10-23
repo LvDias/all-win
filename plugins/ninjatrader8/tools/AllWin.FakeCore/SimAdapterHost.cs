@@ -49,7 +49,7 @@ namespace AllWin.FakeCore
             var engine = new AdapterEngine(new EngineOptions { Build = AdapterBuild.Development, PlatformVersion = "sim" }, Platform, _store, SystemClock.Instance, log);
             _loop = new EngineLoop(engine, log, TimeSpan.FromMilliseconds(100));
             Platform.EventSink = _loop.PostPlatformEvent;
-            _connector = new WebSocketConnector(_endpoint, () => _token, _loop, log, new Backoff(() => 0.0));
+            _connector = new WebSocketConnector(_endpoint, () => _token, _loop, AdapterBuild.Development, log, new Backoff(() => 0.0));
             _connector.Start();
         }
 

@@ -5,6 +5,8 @@ Owner: Plugin Engineer. The repository rules in [/CLAUDE.md](../../CLAUDE.md) ap
 1. **Simulation only.** Test with `SimulatedPlatform`, NT8 Sim101/Simulated Data Feed or Playback. Never a live account.
    - The engine's guard (`AdapterEngine.IsExecutionAllowed` + `EnsureWritable`) is checked on **every** platform write. Never bypass it.
    - Development builds stay simulation-only whatever the Core says.
+   - `AdapterBuild.Release` may only come from a compile-time constant of the release build (net48 host slice), never from configuration or UI. Any local live opt-in in a release UI is a user/Architect decision still open.
+   - Release builds connect only to `wss://`; `ws://` on loopback is a Development-only harness path.
 2. **Logic lives in `AllWin.Adapter.Core`.**
    - No NinjaTrader references there.
    - C# ≤ 12, no `record`/`init` (NT8 compiles the hot-loop source itself; ADR-0005 N9).

@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using AllWin.Adapter.Core.Engine;
+using AllWin.Adapter.Core.Protocol;
 using AllWin.Adapter.Core.Store;
 using AllWin.Adapter.Core.Transport;
 using AllWin.Adapter.Sim;
@@ -31,13 +32,15 @@ namespace AllWin.Adapter.Core.Tests.Transport
         }
 
         [Theory]
-        [InlineData("ws://allwin.example/adapter/v1")]
-        [InlineData("http://127.0.0.1/adapter/v1")]
-        public void Connector_refuses_plain_text_endpoints_except_loopback(string uri)
+        [InlineData("ws://allwin.example/adapter/v1", AdapterBuild.Development)]
+        [InlineData("http://127.0.0.1/adapter/v1", AdapterBuild.Development)]
+        [InlineData("ws://127.0.0.1:1/adapter/v1", AdapterBuild.Release)] // QA Security I2
+        public void Connector_refuses_plain_text_endpoints_except_loopback_in_development(string uri, AdapterBuild build)
         {
             using var loop = new EngineLoop(new AdapterEngine(new EngineOptions(), new SimulatedPlatform(), new InMemoryStore()));
-            Assert.Throws<ArgumentException>(() => new WebSocketConnector(new Uri(uri), () => null, loop));
-            using var ok = new WebSocketConnector(new Uri("ws://127.0.0.1:1/adapter/v1"), () => null, loop);
+            Assert.Throws<ArgumentException>(() => new WebSocketConnector(new Uri(uri), () => null, loop, build));
+            using var dev = new WebSocketConnector(new Uri("ws://127.0.0.1:1/adapter/v1"), () => null, loop, AdapterBuild.Development);
+            using var release = new WebSocketConnector(new Uri("wss://allwin.example/adapter/v1"), () => null, loop, AdapterBuild.Release);
         }
 
         [Fact]
