@@ -1,0 +1,4 @@
+[env]
+# sqlx macros use the committed .sqlx/ metadata unless the shell sets SQLX_OFFLINE=false
+# (as `cargo sqlx prepare` does), so builds and CI need no live database.
+SQLX_OFFLINE = "true"
