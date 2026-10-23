@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.8 (208e920); **rev. 16.8.1 proposed** (Esmeril L1/L2/N3/N4, Cinzel): body hash without `sent_at` (§6.1); admin self-recovery is always and only break-glass, admin step-up without a session (`admin_recovery` action) (§4); two-key advisory publish lock (§5.7); `routing_decision` `ON CONFLICT` target (§6.2).
+- **Status:** Accepted (2026-10-24), rev. 16.8.1 (4fbbda5); **rev. 16.9 proposed** (Brasa #14 early review, Esquadro B5): the `outbox_notify` statement trigger and its LISTEN rule; worker grants narrowed (no `UPDATE` on `outbox_consumer`, column `UPDATE` on `outbox_delivery`), §6.4 and §8.
+- Rev. 16.8.1 (4fbbda5) (Esmeril L1/L2/N3/N4, Cinzel): body hash without `sent_at` (§6.1); admin self-recovery is always and only break-glass, admin step-up without a session (`admin_recovery` action) (§4); two-key advisory publish lock (§5.7); `routing_decision` `ON CONFLICT` target (§6.2).
 - Rev. 16.8 (208e920): S16 publication (Esquadro (B): `publish_seq`, advisory publish lock, `allwin_publisher`, release-file deltas, cursor table #11c) in §5.7; two-step reverse `leg` on `routing_decision` (§6.2); duplicate-with-different-body hash `…061250` (§6.1); S3 AC-12 admin recovery `…061800` (§4); §8 rows.
 - Rev. 16.7 (1c93eb2; Bigorna): the `gateway.execution_report` `child_role` and `reason_code` `CHECK`s match the adapter protocol schema (`exit`, `flatten`; codes with one or more dots), §6.3.
 - Rev. 16.6 (11dfba5): migration #9 `…061600` (Bigorna, gateway gaps G1–G8: stored `frame` for byte-identical retransmission, `undelivered`, `position_effect`, per-contract columns and `execution_report.seq`, `reason_code` CHECK, role split; no connection table per Esquadro B4 = b); S11 sync storage (`account_sync.version`, per-occurrence `account_sync_reason` with `dedupe_key` and `resolved_at`); §5.6 `risk.applied_fill` (#10b `…061510`), the #10 grants (DELETE only on `scheduled_limit`, worker column grants) and #10 `…061500`; §6.4 backfill alert note and indentation (Esmeril notes b, c); §6.5 and §8 rows.
@@ -1680,9 +1681,18 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
      CREATE INDEX outbox_delivery_event_idx ON app.outbox_delivery (event_id);  -- rev. 16.5: the FK cascade on purge (Esmeril M2)
     CREATE INDEX outbox_pending_idx ON app.outbox (event_type, seq) WHERE published_at IS NULL;  -- per-consumer fetch
      DROP INDEX app.outbox_due_idx;                        -- retries move to outbox_delivery (index only, no data)
-     -- No user_id and no RLS (system tables, like app.outbox). Grants: allwin_worker SELECT, INSERT, UPDATE on both and
-     -- UPDATE (published_at, dead_lettered_at) on app.outbox (from #1/#1b); allwin_maint SELECT and the retirement/replay
-     -- UPDATEs; allwin_app nothing. outbox_delivery rows go with their event through the FK cascade: the referential
+     -- No user_id and no RLS (system tables, like app.outbox). Grants (rev. 16.9): allwin_worker SELECT, INSERT on
+     -- outbox_consumer (no UPDATE: start_seq never changes, retired_at is an operator step) and SELECT, INSERT,
+     -- UPDATE (attempts, next_attempt_at, last_error, delivered_at, dead_lettered_at) on outbox_delivery, plus
+     -- UPDATE (published_at, dead_lettered_at) on app.outbox (from #1/#1b); allwin_maint SELECT on both,
+     -- UPDATE (retired_at) on outbox_consumer, UPDATE (attempts, next_attempt_at, last_error, dead_lettered_at) on
+     -- outbox_delivery (replay) and UPDATE (dead_lettered_at) on app.outbox (legacy replay); allwin_app nothing.
+     -- Wake-up (rev. 16.9, Esquadro B5): the dispatcher is woken right after a producing commit, so the
+     -- routing.commands_requested → gateway hop stays well under the command TTL.
+     CREATE FUNCTION app.outbox_notify() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog
+       AS $$ BEGIN PERFORM pg_notify('allwin_outbox', ''); RETURN NULL; END $$;   -- empty payload, never an id or type
+     CREATE TRIGGER outbox_notify AFTER INSERT ON app.outbox FOR EACH STATEMENT EXECUTE FUNCTION app.outbox_notify();
+     -- outbox_delivery rows go with their event through the FK cascade: the referential
      -- action runs as the table owner, so allwin_maint needs no DELETE on it (verified at the #6b review).
      ```
 
@@ -1702,6 +1712,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
      - **No FK from `outbox_delivery.consumer`** (Esmeril N5): the key of `outbox_consumer` is `(consumer, event_type)`, and `event_type` is not repeated on the delivery row. A test asserts instead that every delivery row's `(consumer, event type of its event)` exists in `outbox_consumer`.
      - **Tests (#14, rev. 16.5):** a `backfill` consumer registered after a `from_now` consumer completed rows receives them, and `published_at` is set again only after it consumes; a purge that deletes 1000 outbox rows uses `outbox_delivery_event_idx` for the cascade (plan check, no `EXPLAIN ANALYZE` outside test DBs); a per-consumer dead letter does not stop the other consumer of the same row; a legacy row with `o.dead_lettered_at` is neither fetched nor purged; the consumer test above.
      - The #1b columns `attempts`, `last_error` and `next_attempt_at` on `app.outbox` are no longer written after `…061400`. Dropping them is a destructive change for a later migration, with user authorization.
+     - **NOTIFY (rev. 16.9):** delivered at commit, at most one per producing transaction (same channel and payload). The dispatcher `LISTEN`s on one dedicated connection that runs autocommit and never holds a transaction open. If a listener held an old transaction, the notification queue (8 GB) could fill, and NOTIFY would make the **producing** transactions fail at commit. Alert when `pg_notification_queue_usage()` > 0.5. The poll stays as the fallback, so a lost notification only delays. Tests: an insert wakes the dispatcher; two inserts in one transaction give one notification; `allwin_app` inserts with the trigger.
      - **Volume (Brasa's V1 estimate):** ≤ 1e5 rows a day, < 1e6 in 7 days, and 1–3 consumers per type. The delivery table holds at most a few times the outbox, and it shrinks with the purge.
   3. **Each consumer declares a start policy at registration:**
      - `from_now`: cursor at the registration instant, no backfill. This is the default for consumers that **act** (routing, commands).
@@ -1905,7 +1916,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 1c | `app_outbox_seq` (`…060610`, rev. 16.2): `app.outbox.seq` identity column (§6.4) | Ferro (`s/v1-audit-codes--core`); before #7b |
 | 7b | `audit_entry_activity_columns` (`…060620`, rev. 16.2): the S10 columns and constraints on the partitioned table (see below) | Ferro (`s/v1-audit-codes--core`); after #1c |
 | 2c | `identity_resolve_source_key_name` (`…060630`, rev. 16.4): `identity.resolve_source_key` also returns `source_name` (audit snapshot) | Ferro writes, Brasa approves (`s/v1-audit-codes--core`, 196a30a); after #7b |
-| 14 | `app_create_outbox_consumer_tracking` (`…061400`, rev. 16.4): `app.outbox_consumer`, `app.outbox_delivery`, `outbox_delivery_event_idx` (rev. 16.5), `outbox_pending_idx`, drop `outbox_due_idx` (§6.4 rule 2) | Brasa; after S3 and S5–S7 |
+| 14 | `app_create_outbox_consumer_tracking` (`…061400`, rev. 16.4): `app.outbox_consumer`, `app.outbox_delivery`, `outbox_delivery_event_idx` (rev. 16.5), `outbox_pending_idx`, drop `outbox_due_idx`, the `outbox_notify` trigger and narrowed worker grants (rev. 16.9) (§6.4 rule 2) | Brasa; after S3 and S5–S7 |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 10 | `risk_create_account_limits` (`…061500`, rev. 13/16.6): `account_limits`, `scheduled_limit` (derived), `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block`, with RLS; the rev. 16.6 grants (§5.6) | S13 (Malha) |
 | 10b | `risk_create_applied_fill` (`…061510`, rev. 16.6): `risk.applied_fill` + maint grants (§5.6) | S13 (Malha); after #10 |
