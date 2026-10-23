@@ -1,8 +1,9 @@
 # NinjaTrader 8 spike plan and Windows build/test access (Q15)
 
-- **Status:** rev. 3 (2026-10-23).
+- **Status:** rev. 4 (2026-10-23).
   - User decisions: W1 reverse tunnel accepted, W3 accepted, W2 changed to a Contabo Windows VPS without GPU, and remote access to go over Tailscale with RDP never exposed to the internet.
-  - rev. 3 revises W1 for Tailscale (§6.2, Proposed: the user approves T1 and the dev-server join) and gives the setup checklist (§6.5).
+  - rev. 3 revised W1 for Tailscale (§6.2) and gave the setup checklist (§6.5).
+  - rev. 4: the user approved **T1 with Tailnet Lock on**, including the dev server joining the tailnet (U1, 2026-10-23). §6.1 gives the final machine configuration (U2), checked against official sources on 2026-10-23.
 - **Owner:** Software Architect (plan). Execution:
   - Plugin Engineer runs the spike.
   - Plugin Researcher (Trilha) supplies platform facts.
@@ -35,7 +36,7 @@ Retire the plugin risks before V1-S2 is implemented, and leave a **repeatable bu
 | C1 | NT8 is a WPF/DirectX desktop app. It must run in a **logged-on interactive session**; processes started by `sshd` run in session 0 | NT8 is started by a pre-created Scheduled Task with `/it`, triggered with `schtasks /run` (E1) |
 | F6 | **Simulated Data Feed** = fully offline testing on Sim101. Playback needs all other connections closed | Two test sessions: Sim + Simulated Data Feed, and Playback |
 | F7 | **One NT8 instance per computer** | Cross-instance tests (S19) need **two Windows machines/VMs** |
-| §2 | Requirements: Windows 11 or **Windows Server 2016+** (officially supported); DirectX 10 recommended. Trilha confirmed a GPU is **not indispensable** for Sim/Playback build and test; software rendering (WARP) is acceptable, though staff report crashes on some GPU-less VPS | **W2 = Contabo Windows Server 2022 VPS without GPU.** Plan B is a vGPU instance if E1/E3/E9 fail for graphics reasons (§6.1) |
+| §2 | Requirements: Windows 11 or **Windows Server 2016+** (officially supported); DirectX 10 recommended. Trilha confirmed a GPU is **not indispensable** for Sim/Playback build and test; software rendering (WARP) is acceptable, though staff report crashes on some GPU-less VPS | **W2 = Contabo Windows Server 2025 VPS without GPU (§6.1).** Plan B is a vGPU instance if E1/E3/E9 fail for graphics reasons (§6.1) |
 | F5 | On NinjaTrader/Rithmic connections, **OCO is simulated locally** | Bracket-integrity tests in the spike (ADR-0004 §6.1) |
 
 ## 3. Questions the spike answers (mapped to the profile's experiments)
@@ -80,10 +81,31 @@ Retire the plugin risks before V1-S2 is implemented, and leave a **repeatable bu
 - **No live broker connections** and no personal data on the VPS.
 - The plugin's own simulation guard, which fails closed (ADR-0005 N4).
 
-### 6.1 W2 — Machine (decided: Contabo, no GPU)
+### 6.1 W2 — Machine (decided: Contabo, no GPU; final configuration U2)
 
-- **Spec:** Contabo Windows VPS, **Windows Server 2022 with Desktop Experience**, 6–8 vCPU, 16–24 GB RAM, 150–200 GB NVMe, region **St. Louis** (US central, consistent with A2).
-- **Server, not Windows 11:** NT8 officially supports Windows Server 2016+ (profile §2).
+**Final configuration (to contract):**
+
+| Item | Value |
+|---|---|
+| Product | Contabo **Cloud VPS 8**: 8 vCPU, 24 GB RAM, 300 GB SSD. Optional upgrade: Cloud VPS **Plus** 8 (same CPU/RAM, 450 GB NVMe, AMD EPYC) if faster builds are worth the price |
+| OS | **Windows Server 2025** (Contabo license add-on), installed **with Desktop Experience** (NT8 is a WPF desktop app; Server Core cannot run it). Edition (Standard or Datacenter) is whatever Contabo supplies; either works. Fallback: Windows Server 2022 if the 2025 image is not offered at checkout |
+| Region | **US Central (St. Louis)**, consistent with A2 |
+| GPU | None (software rendering, WARP; plan B below) |
+| License | Only the Contabo Windows Server add-on. Bring-your-own-license is not allowed on Contabo VPS, and Windows 10/11 images are not offered |
+| RDP | **No RDS CALs and no RD Session Host role.** Windows Server allows two concurrent Remote Desktop for Administration sessions without CALs, which covers our use: one single-person test host, Administrator plus `allwin-agent`, never more than two sessions. Agents use SSH, not RDP |
+| NT8 prerequisites | .NET Framework 4.8 (built into Server 2022/2025); NT8 8.1.8.4 or later; RDP resolution at least 1024×768 (use 1920×1080 so screenshots are readable) |
+
+**Why these choices:**
+- **Server, not Windows 10/11:** the official NT8 minimum requirements list "Windows 11, Windows Server 2016 or later 64-bit", ".NET Framework 4.8", "DirectX10 compatible graphics card highly recommended", 1024×768, 2 GB RAM (8 GB and a quad core recommended). Windows 10 is no longer listed. Contabo offers only Windows Server on VPS, so Windows 11 is not an option there anyway.
+- **2025 rather than 2022:** both are within "Server 2016 or later". Windows Server 2022 left Microsoft mainstream support on 2026-10-14 (security updates continue until 2031-10-15). Windows Server 2025 is in mainstream support until 2029-11-14. Experiment E1 still verifies that NT8 starts and renders in the session; if it fails on 2025 and not for graphics reasons, reinstall with the 2022 image (a Contabo reinstall, same license add-on) before considering plan B.
+- **Sizing:** NT8 uses all cores and memory grows with them. The host also runs MSBuild, the .NET SDK test suite and Market Replay data, so 8 vCPU / 24 GB leaves headroom; Cloud VPS 6 (12 GB) is below the plan's 16 GB floor.
+
+**Sources (checked 2026-10-23):**
+- NinjaTrader, [minimum system requirements](https://static.ninjatrader.com/support/helpGuides/nt8/minimum_system_requirements.htm) (official help guide; the page says nothing about VPS or RDP).
+- Contabo docs: [VPS plans and add-ons](https://docs.contabo.com/docs/servers-hosting/vps/) ("Windows Server" add-on, "Contabo-provided license"; "bring-your-own-license is not permitted on VPS"); [images](https://docs.contabo.com/docs/servers-hosting/images/) (Windows Server "2016, 2019, 2022, 2025"; no Windows 10/11); [own Windows license](https://help.contabo.com/en/support/solutions/articles/103000270398-can-i-use-my-own-windows-license-on-my-contabo-server-) (license only via the add-on; adding it needs a reinstall).
+- Microsoft lifecycle: [Windows Server 2022](https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2022), [Windows Server 2025](https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2025).
+- Microsoft, [Remote Desktop for Administration](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/cc742816(v=ws.11)): two concurrent connections, no RDS CALs (the current docs for 2022/2025 keep the same rule but I found no newer page; this is the only secondary-strength point).
+- Not verified: the monthly prices (the Contabo order pages block automated access). The user sees them at checkout.
 - **No GPU:** NT8 renders with software (WARP). Charts may be slower, which does not matter for an AddOn tested through events and logs.
 - **Plan B (vGPU):** move to a GPU-capable Windows instance with another provider, in the same region if possible. Trigger: E1 (NT8 window does not start or render in the session), E3 (package fails to load for graphics reasons) or E9 (UI freezes or crashes) fail because of graphics.
 - **S19 cross-instance tests** will need a second VPS later (one NT8 per computer).
@@ -98,9 +120,9 @@ The user's rule: **RDP is never open to the internet.** The user's home IP chang
 | T2. RDP over Tailscale (Mac ↔ VPS only); agents keep the reverse SSH tunnel | Windows → dev host `ssh -R` (W1 as accepted) | The dev server stays out of the tailnet | Two mechanisms to operate. The VPS keeps a key to the dev server, restricted to forwarding but still a path toward the dev host |
 | T3. No Tailscale: self-hosted WireGuard hub on the dev server | WireGuard | No third-party control plane | The dev server needs an inbound UDP port (requires user approval) and manual key management on the Mac. More operational work for no security gain at this scale |
 
-**Recommendation: T1.**
+**Decision: T1, with Tailnet Lock on** (approved by the user on 2026-10-23, U1, including the dev server joining the tailnet).
 
-There is no reason to avoid Tailscale here. Its one structural trade-off is trusting Tailscale's coordination server (control plane) and the user's tailnet admin login. Traffic between nodes is end-to-end encrypted with WireGuard. The control-plane trust can be reduced with **Tailnet Lock**, so new nodes must be signed by a trusted node. If the user does not want any third-party control plane, T3 (or Headscale, self-hosted) is the alternative.
+There is no reason to avoid Tailscale here. Its one structural trade-off is trusting Tailscale's coordination server (control plane) and the user's tailnet admin login. Traffic between nodes is end-to-end encrypted with WireGuard. The control-plane trust is reduced with **Tailnet Lock** (required by the user's decision): new nodes must be signed by a trusted node. If the user does not want any third-party control plane, T3 (or Headscale, self-hosted) is the alternative.
 
 ### 6.3 Tailnet design (for T1)
 
@@ -116,11 +138,15 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
   - Nothing → `tag:allwin-dev`. The dev server is outbound-only in the tailnet; the user keeps using the normal SSH path to it.
   - No exit nodes, no subnet routes, and Tailscale SSH stays off: OpenSSH with keys remains the audited path.
 - **Auth keys:** two **single-use, pre-authorized, tagged** auth keys, generated by the user. They are used once at install and then expire; they are never stored in the repo or in logs.
+- **Tailnet Lock (on):**
+  - The user's Mac is the trusted signing node; add a second signing node or keep the disablement secrets offline (password manager), as Tailscale requires, so losing the Mac does not lock the tailnet.
+  - The two auth keys are **pre-signed** on the Mac (`tailscale lock sign <auth-key>`), so the VPS and the dev server join already signed. Otherwise the user signs each new node from the Mac after it joins.
+  - A node that is not signed cannot talk to the others: the T-checks below include (f).
 - **DNS:**
   - **MagicDNS** on, for names such as `allwin-nt8-01`.
   - The dev server runs Tailscale with `--accept-dns=false`, so its system resolver is not changed; it reaches the VPS by its Tailscale IP or a static hosts entry managed by DevOps.
   - The VPS and the Mac may use MagicDNS.
-- **Dev server specifics:** `tailscale up --auth-key=… --advertise-tags=tag:allwin-dev --accept-dns=false --accept-routes=false`. No ufw change is needed: the dev server only initiates connections, and the ACL blocks inbound tailnet traffic to it. Installing Tailscale on the dev server is a network change, so it **needs the user's explicit approval** (decision of 2026-10-23: SSH/firewall/exposure changes are not covered by the standing authorization).
+- **Dev server specifics:** `tailscale up --auth-key=… --advertise-tags=tag:allwin-dev --accept-dns=false --accept-routes=false`. No ufw change is needed: the dev server only initiates connections, and the ACL blocks inbound tailnet traffic to it. Installing Tailscale on the dev server is a network change; the user **approved** it on 2026-10-23 (U1). Any other SSH/firewall/exposure change still needs its own approval.
 - **Windows firewall on the VPS:**
   - Disable the default public inbound rules for Remote Desktop and `OpenSSH-Server-In-TCP`.
   - Add inbound allow rules for TCP 3389 and 22, scoped to remote addresses **100.64.0.0/10** (the Tailscale range) on the Tailscale interface only.
@@ -139,7 +165,7 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
 
 - The user types the NT8 password when NT8 must restart; the hot source loop keeps restarts rare.
 - Windows auto-logon stays off.
-- The `allwin-agent` desktop session stays alive by **disconnecting** RDP rather than signing out, so `schtasks /it` can start NT8 in it (E1 verifies on Server 2022).
+- The `allwin-agent` desktop session stays alive by **disconnecting** RDP rather than signing out, so `schtasks /it` can start NT8 in it (E1 verifies on Server 2025).
 
 ### 6.5 W4 — Setup checklist
 
@@ -149,12 +175,12 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
 2. **Open the VNC console** in the Contabo panel and sign in as Administrator. Use the first RDP session only if VNC is unavailable, and keep it short.
 3. **Tailscale admin** (create the account if needed; enable 2FA on its login):
    - apply `infra/tailscale/policy.hujson` (prepared by DevOps);
-   - optionally enable Tailnet Lock;
-   - generate **two** single-use, pre-authorized auth keys, one tagged `tag:allwin-nt8` and one tagged `tag:allwin-dev`.
+   - enable **Tailnet Lock** with the Mac as signing node (and store the disablement secrets in the password manager);
+   - generate **two** single-use, pre-authorized auth keys, one tagged `tag:allwin-nt8` and one tagged `tag:allwin-dev`, and pre-sign both on the Mac (§6.3).
 4. **VPS:** install Tailscale and join with the `tag:allwin-nt8` key (hostname `allwin-nt8-01`).
 5. **VPS:** run `infra/windows-test-host/Lock-Firewall.ps1` (DevOps). It disables the public RDP/SSH rules, adds the tailnet-scoped rules, and enforces NLA.
 6. **Mac:** install Tailscale, sign in, and from now on RDP only to `allwin-nt8-01`.
-7. **Approve** DevOps joining the **dev server** to the tailnet with the `tag:allwin-dev` key (flags in §6.3). Approving this is the user's explicit network approval.
+7. DevOps joins the **dev server** to the tailnet with the `tag:allwin-dev` key (flags in §6.3); approved by the user on 2026-10-23 (U1).
 8. **VPS, as Administrator:** create the standard user `allwin-agent` and add it to *Remote Desktop Users*. Install:
    - NinjaTrader 8 (8.1.8.4 or later);
    - .NET SDK 8+;
@@ -178,7 +204,8 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
   - (b) the dev server reaches `ssh allwin-agent@allwin-nt8-01`;
   - (c) from the VPS, connections to the dev server's Tailscale IP are refused by the ACL;
   - (d) the Mac reaches RDP;
-  - (e) no auth key appears in any file or log.
+  - (e) no auth key appears in any file or log;
+  - (f) `tailscale lock status` shows Tailnet Lock enabled and both nodes signed.
 - Then the spike starts (§7).
 
 **Never on the VPS:** live brokerage or prop-firm credentials, the user's personal NT8 profile, or admin rights for `allwin-agent`.
