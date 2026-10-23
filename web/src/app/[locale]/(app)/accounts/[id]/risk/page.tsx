@@ -1,8 +1,12 @@
+import { notFound } from "next/navigation";
 import { setRequestLocale } from "next-intl/server";
 import { RiskTab } from "@/features/risk";
+import { parseRouteId } from "@/shared/api/ids";
 
 export default async function Page({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
-  return <RiskTab accountId={id} />;
+  const accountId = parseRouteId(id);
+  if (!accountId) notFound();
+  return <RiskTab accountId={accountId} />;
 }
