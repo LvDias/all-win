@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/shared/api/client";
+import { StepUpCancelled } from "@/shared/session/step-up";
 import { errorMessage } from "@/shared/api/error-message";
 import { Alert } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
@@ -41,12 +42,12 @@ export function OptInReviewDialog({ account, kind, onClose, stepUp }: { account:
     const choice = value.choice;
     const ruleVersionId = rule.data.id;
     try {
-      if (choice === "accepted") await run({ action: "account_opt_in_accept", target: account.id, send: (proof) => setOptIn.mutateAsync({ kind, choice, ruleVersionId, stepUp: proof }) });
+      if (choice === "accepted") await run({ action: "account_opt_in_accept", target: account.id, description: t("accounts.form.stepUpDescriptionEdit"), send: (proof) => setOptIn.mutateAsync({ kind, choice, ruleVersionId, stepUp: proof }) });
       else await setOptIn.mutateAsync({ kind, choice, ruleVersionId });
       toast.success(t("accounts.form.success.saved"));
       onClose();
     } catch (error) {
-      if (error instanceof DOMException) return;
+      if (error instanceof StepUpCancelled) return;
       if (error instanceof ApiError && error.code === "accounts.rule_version_changed") {
         setStale(true);
         setValue({ choice: "", ack: false });

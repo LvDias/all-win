@@ -1,0 +1,9 @@
+{
+  "accounts": {
+    "form": {
+      "steps": { "firm": "Firma e plano", "optIn": "Ordens automatizadas" },
+      "stepUpDescription": "aceitar ordens automatizadas na conta “{name}”",
+      "stepUpDescriptionEdit": "aceitar ordens automatizadas nesta conta"
+    }
+  }
+}

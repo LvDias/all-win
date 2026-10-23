@@ -15,14 +15,53 @@ export const formErrorKeys = {
 } as const;
 
 const wholeNumber = (value: string) => /^[0-9]{1,5}$/.test(value.trim()) && Number(value) >= 1;
+const text = z.string().trim().max(80, formErrorKeys.tooLong);
+const requiredText = z.string().trim().min(1, formErrorKeys.required).max(80, formErrorKeys.tooLong);
+type Fail = (path: string, message: string) => void;
 
+function refineData(v: { size: string; maxPosition: string; multiplier: string }, locale: Locale, fail: Fail) {
+  const size = parseDecimalInput(v.size, locale, { scale: 2 });
+  if (!size.ok || Number(size.value) <= 0) fail("size", formErrorKeys.size);
+  if (!wholeNumber(v.maxPosition)) fail("maxPosition", formErrorKeys.maxPosition);
+  if (v.multiplier.trim() !== "" && !wholeNumber(v.multiplier)) fail("multiplier", formErrorKeys.integer);
+}
+
+function refineOptIn(v: { automationChoice: string; automationAck: boolean }, fail: Fail) {
+  if (v.automationChoice === "") fail("automationChoice", formErrorKeys.optInRequired);
+  else if (v.automationChoice === "accepted" && !v.automationAck) fail("automationAck", formErrorKeys.ackRequired);
+}
+
+const issueFailer = (ctx: z.RefinementCtx): Fail => (path, message) => ctx.addIssue({ code: "custom", path: [path], message });
+
+/** One schema per step of "Nova conta"; `Continue` validates only the current step (F§10.1). */
+export function stepSchemas(locale: Locale, current: { automationRuleId: string | undefined }) {
+  return {
+    type: z.object({ kind: z.enum(["prop", "real"], { message: formErrorKeys.required }) }),
+    firm: z.object({ firmName: requiredText, planName: requiredText, phase: requiredText }),
+    data: z
+      .object({ displayName: requiredText, size: z.string(), maxPosition: z.string(), multiplier: z.string() })
+      .superRefine((v, ctx) => refineData(v, locale, issueFailer(ctx))),
+    platform: z.object({ binding: z.string() }),
+    optIn: z
+      .object({ automationChoice: z.enum(["accepted", "declined", ""]), automationAck: z.boolean(), automationRuleId: z.string() })
+      .superRefine((v, ctx) => {
+        const fail = issueFailer(ctx);
+        // A choice made against another rule version than the one now shown is not a choice (spec §5.2).
+        if (v.automationChoice !== "" && v.automationRuleId !== current.automationRuleId) fail("automationChoice", formErrorKeys.optInRequired);
+        else refineOptIn(v, fail);
+      }),
+  };
+}
+
+/** Whole-form schema, used by the edit page (sections, not steps). */
 export function accountFormSchema(locale: Locale, opts: { kind: AccountKind; optInRequired: boolean }) {
   return z
     .object({
-      displayName: z.string().trim().min(1, formErrorKeys.required).max(80, formErrorKeys.tooLong),
-      firmName: z.string().trim().max(80, formErrorKeys.tooLong),
-      planName: z.string().trim().max(80, formErrorKeys.tooLong),
-      phase: z.string().trim().max(80, formErrorKeys.tooLong),
+      kind: z.enum(["prop", "real", ""]),
+      displayName: requiredText,
+      firmName: text,
+      planName: text,
+      phase: text,
       size: z.string(),
       maxPosition: z.string(),
       multiplier: z.string(),
@@ -30,28 +69,25 @@ export function accountFormSchema(locale: Locale, opts: { kind: AccountKind; opt
       binding: z.string(),
       automationChoice: z.enum(["accepted", "declined", ""]),
       automationAck: z.boolean(),
+      /** Rule version the choice was made against; compared with the version now shown. */
+      automationRuleId: z.string(),
     })
     .superRefine((v, ctx) => {
-      const fail = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
+      const fail = issueFailer(ctx);
       if (opts.kind === "prop") {
         if (v.firmName === "") fail("firmName", formErrorKeys.required);
         if (v.planName === "") fail("planName", formErrorKeys.required);
         if (v.phase === "") fail("phase", formErrorKeys.required);
       }
-      const size = parseDecimalInput(v.size, locale, { scale: 2 });
-      if (!size.ok || Number(size.value) <= 0) fail("size", formErrorKeys.size);
-      if (!wholeNumber(v.maxPosition)) fail("maxPosition", formErrorKeys.maxPosition);
-      if (v.multiplier.trim() !== "" && !wholeNumber(v.multiplier)) fail("multiplier", formErrorKeys.integer);
-      if (opts.kind === "prop" && opts.optInRequired) {
-        if (v.automationChoice === "") fail("automationChoice", formErrorKeys.optInRequired);
-        else if (v.automationChoice === "accepted" && !v.automationAck) fail("automationAck", formErrorKeys.ackRequired);
-      }
+      refineData(v, locale, fail);
+      if (opts.kind === "prop" && opts.optInRequired) refineOptIn(v, fail);
     });
 }
 
 export type AccountFormValues = z.input<ReturnType<typeof accountFormSchema>>;
 
 export const emptyAccountForm: AccountFormValues = {
+  kind: "",
   displayName: "",
   firmName: "",
   planName: "",
@@ -62,6 +98,7 @@ export const emptyAccountForm: AccountFormValues = {
   binding: "",
   automationChoice: "",
   automationAck: false,
+  automationRuleId: "",
 };
 
 export function bindingToValue(b: { connection_id: string; platform_account: string } | undefined): string {
@@ -99,6 +136,9 @@ export function toWriteBody(
 export const toUpdateBody = (body: Omit<AccountCreateBody, "kind">, rowVersion: number): AccountUpdateBody => ({ ...body, row_version: rowVersion });
 
 /** Maps an API error pointer to a form field name, or null when it has no field. */
+/** True when a form error message is one of our i18n keys (translated by the field) rather than server text. */
+export const isFormErrorKey = (message: string | undefined): message is string => message !== undefined && (Object.values(formErrorKeys) as string[]).includes(message);
+
 export function fieldFromPointer(pointer: string | undefined): keyof AccountFormValues | null {
   switch (pointer) {
     case "/display_name":

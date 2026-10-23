@@ -71,9 +71,13 @@ test("registers a real account, pauses it and deletes it", async ({ page, api })
 
   await page.getByRole("link", { name: "Nova conta" }).first().click();
   await page.getByRole("radio", { name: "Conta real em corretora" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByLabel("Nome").fill("Minha conta real");
   await page.getByLabel("Tamanho (USD)").fill("25000");
   await page.getByLabel("Máximo de contratos").fill("3");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Revisar", level: 2 })).toBeVisible();
   await page.getByRole("button", { name: "Salvar conta" }).click();
   await expect(page.getByRole("heading", { name: "Minha conta real" })).toBeVisible();
 
@@ -94,19 +98,24 @@ test("a prop account cannot be saved without an explicit automation choice", asy
   const { createBodies } = await mockCore(page);
   await page.goto("/pt-BR/accounts/new");
   await page.getByRole("radio", { name: "Conta de prop firm" }).click();
-  await page.getByLabel("Nome", { exact: true }).fill("Apex 1");
+  await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByLabel("Firma").fill("Apex");
   await page.getByLabel("Plano").fill("50K");
   await page.getByLabel("Fase").fill("Avaliação");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByLabel("Nome", { exact: true }).fill("Apex 1");
   await page.getByLabel("Tamanho (USD)").fill("50000");
   await page.getByLabel("Máximo de contratos").fill("2");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByRole("radio", { name: /Não aceitar ordens automatizadas/ })).not.toBeChecked();
   await expect(page.getByRole("radio", { name: /Aceitar ordens automatizadas/ })).not.toBeChecked();
-  await page.getByRole("button", { name: "Salvar conta" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByText("Escolha se esta conta aceita ordens automatizadas.").last()).toBeVisible();
   expect(createBodies).toHaveLength(0);
 
   await page.getByRole("radio", { name: /Não aceitar ordens automatizadas/ }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByRole("button", { name: "Salvar conta" }).click();
   await expect(page).toHaveURL(/\/pt-BR\/accounts\/[0-9a-f-]{36}$/);
   expect(createBodies[0]).toMatchObject({ opt_ins: { automation: { choice: "declined" } } });
@@ -120,6 +129,7 @@ test.describe("english", () => {
     await expect(page.getByText("You haven't added any accounts yet.")).toBeVisible();
     await page.goto("/en/accounts/new");
     await page.getByRole("radio", { name: "Prop firm account" }).click();
-    await expect(page.getByLabel("Maximum contracts")).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByLabel("Firm", { exact: true })).toBeVisible();
   });
 });
