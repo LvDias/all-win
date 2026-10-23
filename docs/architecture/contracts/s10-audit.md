@@ -26,6 +26,7 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
    - Mapping from the stored records:
      - `routing_decision.outcome`: `routed` → `routed`; `capped` → `partial`; `skipped` / `refused` / `rejected` / `expired` keep their names.
      - Ingress: `ingress.received` → `received`; `ingress.duplicate_ignored` → `skipped`; `ingress.rejected` / `ingress.rate_limited` → `rejected`.
+     - `security.*` (S3, Esquadro): `info`, except `security.sign_in_failed`, `security.step_up_failed` and `security.code_rate_limited` → `rejected`.
      - `execution_report.status`: `filled` → `executed`; `partially_filled` → `partial`; `rejected` → `rejected`; `expired` → `expired`; `unknown` → `unknown`; `received` / `working` / `cancelled` → `info`; `duplicate` is not audited.
 2. **Codes are open; `KnownAuditCode` is the list so far.** `AuditEntry.code` is a pattern, not an enum, so a new slice's code never breaks an older client: it falls back to "Evento {code}". The i18n parity check (QA) iterates over `KnownAuditCode`.
    - Defined here: `ingress.*` (S1), `routing.*` decisions (ADR-0003 §4.1), `execution.*`, `connection.status_changed`, and the S5/S6/S7 config codes.
@@ -34,9 +35,9 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
    - `command_sent`, `bracket_calculated`;
    - `order_received`, `order_working`, `partially_filled`, `filled`, `cancelled`, `rejected`, `expired`, `state_unknown`;
    - `fill_corrected` (a `fill.operation` of `amend` / `remove`).
-4. **New routing decision codes** named here: `routing.routed` (a full-quantity decision) and `routing.no_bracket_profile` (provisional, Q43). `routing.quantity_capped` keeps the spec's name, for the `capped` decision.
+4. **New routing decision codes** named here: `routing.routed` (a full-quantity decision) and `routing.no_bracket_profile` (Q43). `routing.quantity_capped` keeps the spec's name, for the `capped` decision.
 5. **Typed `details`:** `AuditDetailsByCode` is a type map (code → schema); the client types `details` by `code`. Money, prices and distances are decimal strings, and the UI does no arithmetic. `execution.bracket_calculated` carries the S6 AC-4 adjustment (requested distance, whole ticks, rounded flags, resulting prices).
-6. **`safe_to_display`:** the raw `details` JSON appears under "technical data" only when the Core marks it safe. The catalog's rendered fields are always shown. Secrets never reach `details` (redaction + the storage `CHECK`).
+6. **`safe_to_display`:** the raw `details` JSON appears under "technical data" only when the Core marks it safe. The catalog's rendered fields are always shown. Secrets never reach `details` (redaction + the storage `CHECK`). `safe_to_display = true` for `ingress.*` and `routing.subscription_changed` (Esquadro, agreed with Ferro). In `ingress.rejected` the `pointer` is a path only, never a value from the body.
 7. **Exits:** `is_exit` on routing and execution entries lets the text say "saída" (spec §7 rule) without the client knowing the action rules.
 8. **Duplicates (Q-S10-6):** `ingress.duplicate_ignored` entries carry the original `instruction_id`, so they appear in the original instruction's `intake`.
 9. **Timeline:**
@@ -62,3 +63,17 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
 
 - **Esquadro (S3), done:** the 14 `security.*` codes and their `details` (`DetailsSecurity*`) are in `KnownAuditCode` / `AuditDetailsByCode`. Masked values always contain `*`; no code, challenge, token, cookie, or unmasked e-mail or number.
 - **S11 / S13–S15 / S18 contracts:** `sync.*`, `risk.*`, `notifications.*`, same procedure.
+
+## 5. 4.3.0 additions (Esquadro, from the S3 implementation)
+
+- `security.invitation_issued` (`invitation_id`, `masked_email`, `email_sent`; the admin's trail), `security.invitation_revoked`, and `security.account_created` (the new user's log), all in category `security`.
+- The category of each code family is stated in `KnownAuditCode`:
+  - `sources.*`, `connections.*` → config;
+  - `connection.status_changed` → connection (a plugin restart is a `connection.status_changed` with `previous_status`);
+  - `security.*` → security.
+- **`actor` (Crivo note on 4.3.0), so the Core fills it consistently:**
+  - `security.invitation_issued` / `security.invitation_revoked` → `user`: the platform admin, in their own log.
+  - `security.account_created` → `user`: the invitee who completed the sign-up, in the new user's log.
+  - `ingress.*` → `system` (the source is identified by `source_id`).
+  - `routing.subscription_changed` → `user` with `cause = user`; `system` with `cause = account_ineligible` (Q67).
+  - General rule: `user` when a person's request caused the entry; `system` for everything the Core or the plugin does on its own (routing decisions, executions, risk states, connection status, scheduled derivations, Core-side switch-offs such as Q67); `platform_admin` only for an admin acting on another user's data (Q28 recovery).
