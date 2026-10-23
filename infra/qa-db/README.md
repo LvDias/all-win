@@ -22,6 +22,10 @@ infra/qa-db/qa-db.sh status
 - The Core test harness (`core/crates/app/tests/support`) reads that URL, creates the four roles with
   test-only passwords, and one database per test binary from the repo migrations, run as `allwin_owner`.
   Run the tests with `ALLWIN_REQUIRE_DB_TESTS=1 cargo test` so a missing database fails instead of skipping.
+- The env file is written atomically: a new mode-600 file in the target directory, ownership handed over
+  on that temp file (`sudo -n chown -h --`), then renamed over the target. A symlink, a non-regular file or a
+  symlinked directory is refused; inside a git worktree the path must be git-ignored and untracked.
+  If `create` fails, the container and the partial file are removed.
 - `reset` = `destroy` + `create` (new password, new port, new env file).
 
 ## Limits
