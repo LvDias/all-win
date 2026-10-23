@@ -40,3 +40,21 @@
 - **User-owned pending item:** review NinjaTrader ToS §5(a)(viii) and EULA (or consult NinjaTrader/legal) before offering the product to other people. Does not block development on simulation.
 - **Still open:** W1–W3 (Windows machine access) pending the Architect's consolidated options; preset conflict list pending PO review.
 - **Canonical docs:** ADR-0003, ADR-0004, auth-and-session-policy.md, q13-audit-retention.md, wave1-data-model.md (owners mark Accepted); slice-plan.md and product-vision.md (PO).
+
+## 2026-10-23 — Standing authorization for the development environment
+- **Decision:** agents have passwordless sudo on this server (group `devs`). DevOps may install, configure and fix the development environment on its own, including finishing `infra/scripts/provision-dev-host.sh`, without asking the user.
+- **Still requires explicit user approval:** firewall (ufw), SSH configuration, creating or removing users, anything that exposes ports to the internet, push/merge/deploy, and any access to production.
+- **Escalation rule:** call the user only for business or structural decisions (architecture, scope, costs, security). Technical environment problems are solved by the team.
+- **Canonical doc:** this log.
+
+## 2026-10-23 — Windows test machine, per-account opt-ins, presets, model tiers
+- **Decision:** accepted W1 (reverse SSH tunnel from Windows; no inbound port), W3 (user types the NT8 password on restarts; Windows auto-logon off), Q24 (separate copy opt-in for followers of firms that forbid/condition copying), Q25 (opt-in also for conditional/unknown/not-confirmed stances), Q26 (new preset version changing the stance suspends automated sources until reconfirmed), Q27 (double execution with NT8 down: auto-flatten only the position created by the orphan leg, with maximum alert), and the R1 conflict-list recommendations with Apex Legacy and Phidias LIVE excluded. The user reviews the 31 conflicts later; until then conflicting items ship as "not confirmed".
+- **W2 changed:** the user prefers a Contabo Windows VPS without GPU if a GPU is not indispensable for building and testing the plugin on Sim/Playback; minimum requirements to be confirmed by the team. Two machines will be needed later for S19 cross-instance tests.
+- **Model tiers:** the user authorized creating a Sonnet preset for routine tasks.
+- **Canonical docs:** nt8-spike-plan.md (Architect), slice-plan.md / product-vision.md (PO).
+
+## 2026-10-23 — R2 scope findings; remote access to the Windows VPS
+- **Decision (presets):** S-1 Topstep: option (a), preset in V1 for manual tracking only (rules, warnings, manual trades; no routing), with the limitation explained; (c) a ProjectX adapter on the user's PC stays for future evaluation. S-2 Take Profit Trader: copy stance "conditional" with the official text shown; the per-account opt-in applies; asking the firm is the user's task. S-3/S-4: Topstep Labs Challenges/Pro Account and TPT PRO+/PRO+ Development are excluded.
+- **Options rejected:** Topstep excluded from V1 presets (b).
+- **Decision (Windows VPS access):** the team may configure the VPS's remote access under one rule: RDP must never be open to the internet. The user's proposal is Tailscale between the user's Mac, the Linux server and the Windows VPS, with RDP allowed only over the tailnet. If there is a reason not to use Tailscale, the team brings the alternative to the user before applying it. The user's home IP may change, so IP allow-lists are not suitable.
+- **Canonical docs:** slice-plan.md / presets research (PO); nt8-spike-plan.md (Architect).
