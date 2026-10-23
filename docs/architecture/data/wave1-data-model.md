@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 16.6 (11dfba5); **rev. 16.7 proposed** (Bigorna): the `gateway.execution_report` `child_role` and `reason_code` `CHECK`s match the adapter protocol schema (`exit`, `flatten`; codes with one or more dots), §6.3.
+- **Status:** Accepted (2026-10-23), rev. 16.7 (1c93eb2); **rev. 16.8 proposed**: S16 publication (Esquadro (B): `publish_seq`, advisory publish lock, `allwin_publisher`, release-file deltas, cursor table #11c) in §5.7; two-step reverse `leg` on `routing_decision` (§6.2); duplicate-with-different-body hash `…061250` (§6.1); S3 AC-12 admin recovery `…061800` (§4); §8 rows.
+- Rev. 16.7 (1c93eb2; Bigorna): the `gateway.execution_report` `child_role` and `reason_code` `CHECK`s match the adapter protocol schema (`exit`, `flatten`; codes with one or more dots), §6.3.
 - Rev. 16.6 (11dfba5): migration #9 `…061600` (Bigorna, gateway gaps G1–G8: stored `frame` for byte-identical retransmission, `undelivered`, `position_effect`, per-contract columns and `execution_report.seq`, `reason_code` CHECK, role split; no connection table per Esquadro B4 = b); S11 sync storage (`account_sync.version`, per-occurrence `account_sync_reason` with `dedupe_key` and `resolved_at`); §5.6 `risk.applied_fill` (#10b `…061510`), the #10 grants (DELETE only on `scheduled_limit`, worker column grants) and #10 `…061500`; §6.4 backfill alert note and indentation (Esmeril notes b, c); §6.5 and §8 rows.
 - Rev. 16.4/16.5 (aa60b31; Brasa's access patterns, Esmeril): §6.4 rule 2 gets the DDL of `app.outbox_consumer` and `app.outbox_delivery` (per-consumer retries), registration, retirement, fetch and dead-letter rules; `published_at` is materialized as "done for all", so the purge needs no join; §8 #14 = `…061400`; §8 also lists `…060630` (#2c) and reserves `…061310` (#2d, `identity.source.name` CHECK, Crivo L1, needs user authorization); §6.1 lists the four ingress codes. **Rev. 16.5** (Esmeril on 16.4, Brasa aligned): a new `backfill` consumer resets `published_at` on retained rows; `outbox_delivery_event_idx` for the purge cascade; `app.outbox.dead_lettered_at` is legacy-only (#1b) and filtered in the fetch; L3 accepted for V1; cutover rules; delivery-consumer test instead of an FK; §8 row order.
 - Rev. 16.3 (4cc8085; Esquadro, Crivo R1/R2): §6.4 rules 1–2 define completion per consumer (consumed, or before a `from_now` consumer's `start_seq` = first receivable `seq`), and state the order rule and the retention predicate.
@@ -298,6 +299,24 @@ CREATE UNIQUE INDEX channel_change_one_open ON identity.channel_change (user_id)
 CREATE INDEX channel_change_hold_due_idx ON identity.channel_change (hold_until) WHERE status = 'on_hold';
 -- RLS: owner policy. allwin_worker SELECT only (finds due holds); the effect runs in the user's allwin_app transaction.
 
+-- rev. 16.8, forward migration #2e `…061800` identity_admin_channel_recovery (Cinzel; S3 AC-12; expand-only):
+ALTER TABLE identity.channel_change
+  ADD COLUMN kind text NOT NULL DEFAULT 'user_change' CHECK (kind IN ('user_change','admin_recovery')),
+  ALTER COLUMN requested_session_id DROP NOT NULL,
+  ADD COLUMN admin_user_id    uuid,                      -- the admin who acted (no FK: erasure stays decoupled; audit has the actor)
+  ADD COLUMN verified_by      text CHECK (verified_by IN ('video_call','phone_known_number','in_person','other')),
+  ADD COLUMN verification_ref text CHECK (char_length(verification_ref) <= 200),  -- never the new value or a document number (Core)
+  ADD COLUMN break_glass      boolean NOT NULL DEFAULT false,
+  ADD CONSTRAINT channel_change_session_kind_check CHECK ((kind = 'user_change') = (requested_session_id IS NOT NULL)),
+  ADD CONSTRAINT channel_change_kind_fields CHECK (
+        (kind = 'admin_recovery' AND admin_user_id IS NOT NULL AND verified_by IS NOT NULL AND verification_ref IS NOT NULL)
+     OR (kind = 'user_change' AND admin_user_id IS NULL AND verified_by IS NULL AND verification_ref IS NULL AND NOT break_glass)),
+  ADD CONSTRAINT channel_change_break_glass_check CHECK (NOT break_glass OR admin_user_id = user_id),  -- I3: the admin recovering themself
+  ADD CONSTRAINT channel_change_verification_ref_no_token CHECK (verification_ref !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}');
+-- An admin_recovery goes through the same 10-min code phase and 72-h hold (ApplyDueChannelHolds). An open
+-- user_change is first cancelled by the Core (cancelled_by_session_id NULL), so channel_change_one_open holds.
+-- The command runs as allwin_app with app.user_id = the target (Esquadro); the owner policy covers it, no new grants.
+
 CREATE TABLE identity.one_time_code (                    -- login, step-up and channel-change codes (signup: signup_code)
   id                 uuid PRIMARY KEY,                   -- uuid inside the sealed challenge_id token (§4.3); never the code
   user_id            uuid NOT NULL REFERENCES identity.app_user(id),
@@ -339,6 +358,10 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   CONSTRAINT one_time_code_role_check
     CHECK ((purpose = 'channel_change') = (code_role IS NOT NULL) AND (code_role IS NULL) = (channel_change_id IS NULL)),
   CONSTRAINT one_time_code_session_check CHECK ((purpose IN ('step_up','channel_change')) = (session_id IS NOT NULL)),
+  -- rev. 16.8 (#2e …061800) replaces it with: CHECK (CASE purpose WHEN 'login' THEN session_id IS NULL
+  --   WHEN 'step_up' THEN session_id IS NOT NULL ELSE (session_id IS NOT NULL OR code_role = 'new_value') END).
+  -- A session-less code is the new-value code of an admin_recovery change; the Core allows it only for that
+  -- kind (a CHECK cannot read channel_change), with DB tests in both directions.
   CONSTRAINT one_time_code_whatsapp_check CHECK (channel <> 'whatsapp' OR destination ~ '^\+[1-9][0-9]{7,14}$'),
   FOREIGN KEY (user_id, session_id) REFERENCES identity.session (user_id, id),
   FOREIGN KEY (user_id, channel_change_id) REFERENCES identity.channel_change (user_id, id)
@@ -1004,6 +1027,12 @@ CREATE INDEX applied_fill_trading_date_idx ON risk.applied_fill (trading_date); 
 ### 5.7 Prop firm presets (S16; rev. 10, proposed)
 
 Global catalog, no RLS, written only by the publishing use case.
+- **Publication (rev. 16.8; Esquadro (B), Torno #11 `…061700`, #11b `…061710`, #11c `…061720`):**
+  - Only the publish-release CLI writes the catalog, as `allwin_publisher` (`NOBYPASSRLS`, created by DevOps in every environment before #11): `SELECT, INSERT` on the immutable tables, the column `UPDATE`s below, `SELECT` on `instrument` and `standard_account_size`; nothing outside `catalog`, no outbox, no audit.
+  - The CLI takes `pg_advisory_xact_lock(hashtext('catalog.publish'))` as the first statement of its transaction. `LOCK TABLE … EXCLUSIVE` would need table-level `UPDATE`, which the publisher must not have. So publications are serial and commit in `publish_seq` order; a rollback leaves a gap, and the cursor reads `> last`, so it never skips a committed release.
+  - An accounts worker job polls `releases_published_after(publish_seq)` through the catalog query port (every 30 s and at start). For each release in order, it suspends the affected opt-ins in one user-scoped transaction per user (`accounts.opt_in_suspended`, `presets.version_available`, idempotent by `(release_id, account_id)`), then advances the cursor by compare-and-set. The routing gate keeps the window fail-closed.
+  - The publication's trail is the immutable `firm_release` row (`published_at`, `source_sha256`, `published_by`) plus redacted structured logs.
+  - #11b uses the composite FK `(firm_id, release_id) → firm_release (firm_id, id)`, so a rule version cannot name another firm's release.
 - **Published content is immutable.** `firm_release`, `firm_release_platform`, `firm_stance`, `preset_version`, `preset_rule_set` and `opt_in_rule_version` get `SELECT, INSERT` only, with no `UPDATE`/`DELETE`. A correction is a new release.
 - **Identity rows can be renamed** (`prop_firm`, `firm_plan`, `preset`). Their ids are stable across releases. A rename is published with the release: same id, a column-level `GRANT UPDATE (name)` on `prop_firm` and `firm_plan` and `UPDATE (size_label)` on `preset`, and no `DELETE`.
   - Names are current display labels. History keeps its own snapshot: audit `details`, and `account` manual fields only for manual mode.
@@ -1019,21 +1048,27 @@ CREATE TABLE catalog.prop_firm (
 
 CREATE TABLE catalog.firm_release (                      -- versioning unit: one researched, published firm (S16 §2.1)
   id             uuid PRIMARY KEY,
+  publish_seq    bigint GENERATED ALWAYS AS IDENTITY UNIQUE,   -- rev. 16.8: the accounts job's cursor (Esquadro (B))
   firm_id        uuid NOT NULL REFERENCES catalog.prop_firm(id),
   version_number integer NOT NULL CHECK (version_number >= 1),
   published_at   timestamptz NOT NULL DEFAULT now(),
   verified_on    date NOT NULL,
+  research_file  text NOT NULL CHECK (research_file ~ '^docs/product/presets/research/[a-z0-9-]+\.md$'),  -- rev. 16.8
+  source_sha256  bytea NOT NULL CHECK (octet_length(source_sha256) = 32),   -- rev. 16.8: canonical release file
+  published_by   text NOT NULL CHECK (published_by ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),  -- rev. 16.8: operator label, never an e-mail
   changes        jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(changes) = 'array'),       -- ReleaseChange[]
   manual_only    jsonb CHECK (manual_only IS NULL OR jsonb_typeof(manual_only) = 'object'), -- RuleQuote (S16 AC-7)
-  excluded_plans text[] NOT NULL DEFAULT '{}',          -- S16 AC-9, names as published
+  excluded_plans jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(excluded_plans) = 'array'),  -- S16 AC-9 [{name, reason}] (rev. 16.8)
   UNIQUE (firm_id, version_number),
-  UNIQUE (firm_id, id)
+  UNIQUE (firm_id, id),
+  UNIQUE (firm_id, source_sha256)                        -- rev. 16.8: re-importing the same file conflicts
 );
 
 CREATE TABLE catalog.firm_release_platform (             -- FirmDetail.platforms
   release_id uuid NOT NULL REFERENCES catalog.firm_release(id),
   code       text NOT NULL CHECK (code ~ '^[a-z][a-z0-9_]{0,31}$'),
   label      text NOT NULL CHECK (char_length(label) BETWEEN 1 AND 60),
+  manual_only jsonb CHECK (manual_only IS NULL OR jsonb_typeof(manual_only) = 'object'),  -- rev. 16.8 (S-R3-2/4): {reason}
   PRIMARY KEY (release_id, code)
 );
 
@@ -1045,14 +1080,16 @@ CREATE TABLE catalog.firm_stance (                       -- vps / personal_devic
   research   jsonb CHECK (research IS NULL OR jsonb_typeof(research) = 'object'),
   PRIMARY KEY (release_id, kind),
   CHECK ((kind = 'vps' AND value IN ('allowed','forbidden','conditional','unknown','not_confirmed'))
-      OR (kind = 'personal_device' AND value IN ('required','not_required','unknown')))
+      OR (kind = 'personal_device' AND value IN ('required','not_required','unknown','not_confirmed')))  -- rev. 16.8 (HTTP 5.4.0)
 );
 
 CREATE TABLE catalog.firm_plan (                         -- stable across releases (plan_id on the wire)
   id      uuid PRIMARY KEY,
   firm_id uuid NOT NULL REFERENCES catalog.prop_firm(id),
+  key     text NOT NULL CHECK (key ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(key) <= 64),  -- rev. 16.8: release-file key
   name    text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
-  UNIQUE (firm_id, id)
+  UNIQUE (firm_id, id),
+  UNIQUE (firm_id, key)
 );
 CREATE UNIQUE INDEX firm_plan_name_key ON catalog.firm_plan (firm_id, lower(name));
 
@@ -1062,8 +1099,10 @@ CREATE TABLE catalog.preset (                            -- firm × plan × phas
   plan_id     uuid NOT NULL,
   phase       text NOT NULL CHECK (phase IN ('evaluation','funded','live')),
   size_amount NUMERIC(18,4) NOT NULL CHECK (size_amount > 0),
+  size_key    text NOT NULL CHECK (size_key ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(size_key) <= 64),  -- rev. 16.8
   size_label  text CHECK (char_length(size_label) <= 32),
   UNIQUE (plan_id, phase, size_amount),
+  UNIQUE (plan_id, phase, size_key),
   UNIQUE (firm_id, id),
   FOREIGN KEY (firm_id, plan_id) REFERENCES catalog.firm_plan (firm_id, id)
 );
@@ -1084,6 +1123,8 @@ CREATE TABLE catalog.preset_rule_set (                   -- PresetVersion.rule_s
   preset_version_id uuid NOT NULL REFERENCES catalog.preset_version(id),
   firm_platform     text CHECK (firm_platform ~ '^[a-z][a-z0-9_]{0,31}$'),  -- NULL = one set for every platform
   rules             jsonb NOT NULL,                      -- PresetRules with provenance per field (verified / not_confirmed)
+  stored_only       jsonb CHECK (stored_only IS NULL OR (jsonb_typeof(stored_only) = 'object'
+                      AND NOT jsonb_path_exists(stored_only, '$.**.amount ? (@.type() == "number")'))),  -- rev. 16.8: AC-10, never exposed in V1
   CHECK (jsonb_typeof(rules) = 'object'
          AND rules ?& ARRAY['max_position_qty','drawdown','daily_loss_limit','trading_day_reset']),  -- S16 AC-6 fields
   CHECK (NOT jsonb_path_exists(rules, '$.**.amount ? (@.type() == "number")'))   -- money only as decimal strings (X-3)
@@ -1092,12 +1133,19 @@ CREATE TABLE catalog.preset_rule_set (                   -- PresetVersion.rule_s
 );
 CREATE UNIQUE INDEX preset_rule_set_key ON catalog.preset_rule_set (preset_version_id, coalesce(firm_platform, ''));
 -- "One set without a platform OR one per platform" is a publishing rule (Core) plus a §9 test.
+
+-- rev. 16.8, #11c `…061720` (Torno): the accounts job's cursor over published releases (Esquadro (B)).
+CREATE TABLE accounts.catalog_release_cursor (           -- system table: one row, no user_id, no RLS
+  singleton        boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  last_publish_seq bigint NOT NULL DEFAULT 0 CHECK (last_publish_seq >= 0),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);   -- seeded with its one row; REVOKE ALL FROM allwin_app; allwin_worker SELECT, UPDATE (last_publish_seq, updated_at)
 ```
 
 - **Why the rules are stored as `jsonb`:** they are published documents. Each holds a value or ≥ 2 published values, sources, published texts and free wording (`consistency_rule.text`), and is shown and diffed but never computed in SQL. Their exact schema is the contract (`PresetRules`), validated by the publishing use case. Money inside is a **JSON string** (`MoneyAmount`), never a JSON number, and the second `CHECK` enforces that. Arithmetic happens only on the typed `NUMERIC` copy in `risk.account_limits`.
 - **`opt_in_rule_version` (rev. 8 table), forward change:**
   - A rule version is **per firm release × `firm_platform` × kind** (Compasso, S16). The stance belongs to the firm, not to a plan, phase or size; `getOptInRules` takes `preset_version_id` only to find the release and platform. So the table has **no `preset_version_id`**: rev. 10 removes it from the §5.1 DDL. #5 is not written yet, so nothing needs to be dropped.
-  - Add `release_id uuid REFERENCES catalog.firm_release(id)` with `CHECK (is_generic = (release_id IS NULL))`, and the FK `firm_id → prop_firm`, both inside `catalog`.
+  - Add `release_id uuid` with `CHECK (is_generic = (release_id IS NULL))`, the composite FK `(firm_id, release_id) → firm_release (firm_id, id)` (rev. 16.8: same firm by construction; generic rows have both NULL) and the FK `firm_id → prop_firm`, all inside `catalog` (#11b `…061710`; `…060900` is never edited). Grants: `allwin_publisher` `SELECT, INSERT`; the app stays `SELECT`-only.
   - `firm_platform` (already there) stays NULL for generic rows and for firms whose rules do not vary by platform.
   - Non-generic uniqueness: `CREATE UNIQUE INDEX … (release_id, firm_platform, kind) NULLS NOT DISTINCT WHERE NOT is_generic` (PG ≥ 15). `version_number` keeps counting per `(firm_id, kind, firm_platform)`.
   - The existing rows are the 2 generic ones, so the new constraints validate trivially.
@@ -1185,6 +1233,8 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
 
 ### 6.1 Idempotency kept separate from retention
 
+- **Duplicate with a different body (rev. 16.8, Esquadro):** the same `message_id` with the same `body_sha256` → `200` duplicate, as before. A different hash → still `200`, nothing executed, and audit `ingress.duplicate_conflict` (code from the next 5.x contract; details: source name, `message_id`, the first and second `received_at`, the names of the differing fields only, never a body). The field names come from comparing with `routing.instruction.payload`. Once that instruction is purged by retention (the receipt is kept forever), the entry carries no field names. A row from before `…061250` has `body_sha256` NULL: the `NOT VALID` constraint applies to new rows only and is never validated. Such a duplicate is treated as same-body, which concerns DEV data only. Only accepted messages have a receipt, so a duplicate of a rejected message is a new message.
+
 ADR-0003 §5 makes `message_id` unique **per user, forever**. Q13 option (b) purges instructions after the retention window. To keep both promises, the dedupe key lives in a slim table that is never purged; it is erased only with the user:
 
 ```sql
@@ -1195,6 +1245,12 @@ CREATE TABLE routing.message_receipt (                   -- ≈ 100 B/row; ≈ 2
   received_at    timestamptz NOT NULL,
   PRIMARY KEY (user_id, message_id)
 );
+-- rev. 16.8, forward migration #6d `…061250` routing_message_receipt_body_hash (Ferro; Esquadro: duplicate with a
+-- different body; expand-only):
+ALTER TABLE routing.message_receipt
+  ADD COLUMN body_sha256 bytea CHECK (octet_length(body_sha256) = 32);   -- sha256 of the canonical parsed JSON (Core)
+ALTER TABLE routing.message_receipt
+  ADD CONSTRAINT message_receipt_body_sha256_present CHECK (body_sha256 IS NOT NULL) NOT VALID;  -- new rows only
 
 CREATE TABLE routing.instruction (                       -- accepted instructions; purged by retention
   id               uuid PRIMARY KEY,                     -- instruction_id (UUIDv7)
@@ -1250,6 +1306,7 @@ CREATE TABLE routing.routing_decision (
   instruction_id     uuid NOT NULL,
   account_id         uuid NOT NULL,                      -- cross-module id
   account_name       text NOT NULL,                      -- snapshot
+  leg                text NOT NULL DEFAULT 'whole' CHECK (leg IN ('whole','close','open')),  -- rev. 16.8: two-step reverse
   outcome            text NOT NULL CHECK (outcome IN ('routed','capped','skipped','rejected','refused','expired')),
   reason_code        text,                               -- e.g. 'routing.quantity_capped'
   multiplier         integer NOT NULL,                   -- snapshots used for the decision
@@ -1258,9 +1315,17 @@ CREATE TABLE routing.routing_decision (
   requested_qty      integer,                            -- quantity × multiplier
   executed_qty       integer,                            -- after cap
   decided_at         timestamptz NOT NULL,
-  FOREIGN KEY (user_id, instruction_id) REFERENCES routing.instruction (user_id, id) ON DELETE CASCADE,
-  UNIQUE (instruction_id, account_id)
+  FOREIGN KEY (user_id, instruction_id) REFERENCES routing.instruction (user_id, id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX routing_decision_leg_key ON routing.routing_decision
+  (instruction_id, account_id, (CASE leg WHEN 'open' THEN 'open' ELSE 'first' END));  -- rev. 16.8: replaces UNIQUE (instruction_id, account_id)
+-- Two-step reverse (rev. 16.8; ADR-0003 §4.1 r4, Esquadro): with an opposite position the close leg is decided and
+-- committed at once ('close'); the opening is decided later, idempotently ('open': opened, close-only with the
+-- gate's code, or routing.expired). A one-step decision is 'whole'. 'whole' and 'close' exclude each other, and a
+-- pair has at most one 'open'; an 'open' row only after a 'close' row is a Core rule plus a DB test. Still
+-- append-only. The outcome list narrows (no 'rejected') in the same unmerged …061200 once contract 5.2.0 freezes.
+-- Audit: one decision entry per (instruction, account), written at step 2 or by the TTL sweeper (expired
+-- close-only); the step-1 flatten shows at once through gateway's execution.* entries (Esquadro, option 1).
 CREATE INDEX routing_decision_user_account_idx ON routing.routing_decision (user_id, account_id, decided_at DESC);
 
 CREATE TABLE routing.order_correlation (                 -- ADR-0003 §5 map — preview (S19/S20)
@@ -1832,8 +1897,11 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 10 | `risk_create_account_limits` (`…061500`, rev. 13/16.6): `account_limits`, `scheduled_limit` (derived), `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block`, with RLS; the rev. 16.6 grants (§5.6) | S13 (Malha) |
 | 10b | `risk_create_applied_fill` (`…061510`, rev. 16.6): `risk.applied_fill` + maint grants (§5.6) | S13 (Malha); after #10 |
+| 6d | `routing_message_receipt_body_hash` (`…061250`, rev. 16.8): `body_sha256` + `NOT VALID` presence `CHECK` (§6.1) | Ferro; expand-only |
 | 9 | `gateway_create_delivery` (`…061600`, rev. 16.6): `venue_account` (without the binding, rev. 16), `command` (with `frame`, `position_effect`, contract), `execution_report` (with `seq`, contract), `account_sync` (with `version`), `account_sync_reason` (per occurrence), `outbound_message` (with `frame`), `inbound_receipt` | Bigorna (gateway); S2 / M1 |
-| 11 | `catalog_create_presets` (rev. 10): the §5.7 catalog tables + the forward change on `opt_in_rule_version` | S16; version stamped after the latest merged migration |
+| 11 | `catalog_create_presets` (`…061700`, rev. 10/16.8): the §5.7 catalog tables, `publish_seq`, `allwin_publisher` grants; #11b `catalog_opt_in_rule_version_release` (`…061710`) is the forward change on `opt_in_rule_version` | S16 (Torno); after S5 (#5a) |
+| 11c | `accounts_create_catalog_release_cursor` (`…061720`, rev. 16.8): `accounts.catalog_release_cursor` (§5.7) | S16 (Torno); after #11 |
+| 2e | `identity_admin_channel_recovery` (`…061800`, rev. 16.8): `channel_change` kind / admin fields, `one_time_code` session `CHECK` widened (§4) | S3 AC-12 (Cinzel); expand-only |
 | 13 | `trades_create_trade` (rev. 14/15.2): `CREATE SCHEMA trades` + its grants, `trades.trade`, `trades.trade_fill`, indexes, RLS, immutability triggers | S21; version stamped after the latest merged migration |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
 
@@ -1845,7 +1913,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). From `…061700` on, numbers are assigned on request (#11, #13); no branch picks its own.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
