@@ -120,6 +120,7 @@
     "accounts": {
       "binding_open_position": "Há posição aberta. Feche a posição para trocar a conta vinculada.",
       "delete_open_position": "Esta conta tem posição aberta e não pode ser excluída.",
+      "evaluation_not_applicable": "Esta conta não tem meta de avaliação.",
       "firm_platform_required": "Escolha a plataforma da conta na firma.",
       "firm_platform_unknown": "Esta plataforma não está disponível para o preset.",
       "idempotency_key_reused": "Este envio já foi usado com outros dados. Recarregue o formulário.",
@@ -132,6 +133,8 @@
       "platform_account_taken": "Esta conta da plataforma já está vinculada a outra conta.",
       "platform_account_unknown": "Esta conta da plataforma não foi encontrada nas suas conexões.",
       "preset_version_unknown": "Esta versão do preset da firma não está mais disponível.",
+      "profile_size_invalid": "Este tamanho não está entre as opções.",
+      "profile_size_required": "Escolha o tamanho padrão de onde copiar o perfil.",
       "rule_version_changed": "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha."
     },
     "auth": {
@@ -333,7 +336,11 @@
         "optIn": "Ordens automatizadas"
       },
       "stepUpDescription": "aceitar ordens automatizadas na conta “{name}”",
-      "stepUpDescriptionEdit": "aceitar ordens automatizadas nesta conta"
+      "stepUpDescriptionEdit": "aceitar ordens automatizadas nesta conta",
+      "profileSize": {
+        "label": "Perfil inicial",
+        "help": "O tamanho da conta fica exatamente entre dois tamanhos padrão. Escolha de qual copiar os stops e alvos; o saldo e os limites usam o tamanho da conta."
+      }
     },
     "optIn": {
       "automation": {

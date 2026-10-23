@@ -120,6 +120,7 @@
     "accounts": {
       "binding_open_position": "There is an open position. Close the position to change the linked account.",
       "delete_open_position": "This account has an open position and cannot be deleted.",
+      "evaluation_not_applicable": "This account has no evaluation target.",
       "firm_platform_required": "Choose the firm account platform.",
       "firm_platform_unknown": "This platform is not available for the preset.",
       "idempotency_key_reused": "This submission was already used with different data. Reload the form.",
@@ -132,6 +133,8 @@
       "platform_account_taken": "This platform account is already linked to another account.",
       "platform_account_unknown": "This platform account was not found on your connections.",
       "preset_version_unknown": "This firm preset version is no longer available.",
+      "profile_size_invalid": "This size is not one of the options.",
+      "profile_size_required": "Choose the standard size to copy the profile from.",
       "rule_version_changed": "The firm's rule was updated while you were filling this in. Read it again and choose."
     },
     "auth": {
@@ -333,7 +336,11 @@
         "optIn": "Automated orders"
       },
       "stepUpDescription": "accept automated orders on account “{name}”",
-      "stepUpDescriptionEdit": "accept automated orders on this account"
+      "stepUpDescriptionEdit": "accept automated orders on this account",
+      "profileSize": {
+        "label": "Starting profile",
+        "help": "The account size is exactly between two standard sizes. Choose which one to copy stops and targets from; balance and limits use the account size."
+      }
     },
     "optIn": {
       "automation": {
