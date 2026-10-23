@@ -509,6 +509,37 @@ async fn step_up_proof_is_bound_to_session_action_and_target() {
     )));
 }
 
+/// M3 (Vigia L4): from a new device, every persistence step-up (connection_create included, it
+/// issues a pairing code) needs the e-mail code; another channel is 422.
+#[tokio::test]
+async fn persistence_step_ups_from_a_new_device_need_the_email_code() {
+    let w = World::new();
+    add_user(&w, "a@example.com", false);
+    let cookie = login_on(&w, "a@example.com", Duration::hours(1)).await;
+    let mut a = ctx(&w, &cookie).await.unwrap();
+    a.user.whatsapp =
+        Some(identity_enterprise::channel::PhoneNumber::parse("+5511987651234").unwrap());
+    let mut deps = w.deps.clone();
+    deps.settings.whatsapp_enabled = true;
+    for action in [StepUpAction::ConnectionCreate, StepUpAction::SourceCreate] {
+        let r = RequestStepUp::new(deps.clone())
+            .handle(
+                &a,
+                RequestStepUpCommand {
+                    action,
+                    target_id: None,
+                    channel: Channel::Whatsapp,
+                    meta: meta(),
+                },
+            )
+            .await;
+        assert!(
+            matches!(r, Err(IdentityError::StepUpChannelNotAllowed)),
+            "{action:?}: {r:?}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn request_step_up_checks_target_rules_and_ownership() {
     let w = World::new();

@@ -815,3 +815,273 @@ async fn http_passwordless_flows() {
     );
     db.teardown().await;
 }
+
+/// Policy §3 validation (Vigia M2): requestLoginCode and verifyLoginCode take the same time for a
+/// registered and an unknown identifier or challenge. Every answer is held to the floor plus a
+/// jitter; statistically, every sample is at or above the floor and the medians stay within a few
+/// tens of milliseconds. Sequential requests, distinct client IPs (no throttle interplay).
+#[tokio::test(flavor = "multi_thread")]
+async fn code_endpoints_do_not_reveal_registration_by_time() {
+    let Some(db) = setup().await else { return };
+    let (deps, _store, _delivery) = deps_with(&db, false);
+    let app = router(Arc::new(IdentityHttpState {
+        deps: deps.clone(),
+        public_origin: ORIGIN.into(),
+        trust_forwarded_for: false,
+        events: Arc::new(SseHub::new()),
+    }));
+    const N: u8 = 12;
+    const FLOOR: std::time::Duration = std::time::Duration::from_millis(500);
+    for i in 0..N {
+        seed_user(&deps, &format!("timing{i}@example.com"), false).await;
+    }
+    let timed = |path: &'static str, body: Value, ip: [u8; 4]| {
+        let app = app.clone();
+        async move {
+            let mut request = Request::builder()
+                .method(Method::POST)
+                .uri(path)
+                .header(header::ORIGIN, ORIGIN)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap();
+            request
+                .extensions_mut()
+                .insert(ConnectInfo(SocketAddr::from((ip, 4000))));
+            let start = std::time::Instant::now();
+            let response = app.oneshot(request).await.unwrap();
+            let elapsed = start.elapsed();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            (status, elapsed, body)
+        }
+    };
+    let median = |mut v: Vec<std::time::Duration>| {
+        v.sort();
+        v[v.len() / 2]
+    };
+    let (mut known, mut unknown, mut challenges) = (Vec::new(), Vec::new(), Vec::new());
+    for i in 0..N {
+        let path = "/api/v1/auth/login/challenges";
+        let (s1, t1, b1) = timed(
+            path,
+            json!({"email": format!("timing{i}@example.com"), "channel": "email"}),
+            [203, 0, 113, i + 1],
+        )
+        .await;
+        let (s2, t2, _) = timed(
+            path,
+            json!({"email": format!("nobody{i}@example.com"), "channel": "email"}),
+            [198, 18, 0, i + 1],
+        )
+        .await;
+        assert_eq!((s1, s2), (StatusCode::ACCEPTED, StatusCode::ACCEPTED));
+        known.push(t1);
+        unknown.push(t2);
+        challenges.push(b1["challenge_id"].as_str().unwrap().to_owned());
+    }
+    let (mut wrong, mut missing) = (Vec::new(), Vec::new());
+    for (i, id) in challenges.iter().enumerate() {
+        let i = u8::try_from(i).unwrap();
+        let path = "/api/v1/auth/login/verify";
+        let (s1, t1, _) = timed(
+            path,
+            json!({"challenge_id": id, "code": "K7Q2-0111", "remember_me": false}),
+            [203, 0, 114, i + 1],
+        )
+        .await;
+        let mut other = id.clone();
+        let last = if other.ends_with('A') { 'B' } else { 'A' };
+        other.pop();
+        other.push(last);
+        let (s2, t2, _) = timed(
+            path,
+            json!({"challenge_id": other, "code": "K7Q2-0111", "remember_me": false}),
+            [198, 18, 1, i + 1],
+        )
+        .await;
+        assert_eq!(
+            (s1, s2),
+            (StatusCode::UNAUTHORIZED, StatusCode::UNAUTHORIZED)
+        );
+        wrong.push(t1);
+        missing.push(t2);
+    }
+    for (name, a, b) in [
+        ("requestLoginCode", known, unknown),
+        ("verifyLoginCode", wrong, missing),
+    ] {
+        assert!(
+            a.iter().chain(&b).all(|t| *t >= FLOOR),
+            "{name}: a sample under the floor"
+        );
+        let (ma, mb) = (median(a), median(b));
+        let gap = ma.abs_diff(mb);
+        eprintln!("{name}: medians {ma:?} vs {mb:?}");
+        assert!(
+            gap < std::time::Duration::from_millis(40),
+            "{name}: medians {ma:?} vs {mb:?}"
+        );
+    }
+    db.teardown().await;
+}
+
+/// Cross-user evidence (Vigia L13): another user's device, channel change, connection and
+/// challenges are 404 / not acted on, and a non-admin cannot revoke an invitation (403).
+/// Q35 off, so the owner can create the resources without step-up.
+#[tokio::test(flavor = "multi_thread")]
+async fn another_users_resources_are_never_reachable() {
+    let Some(db) = setup().await else { return };
+    let (deps, _store, delivery) = deps_with(&db, false);
+    let api = Api {
+        app: router(Arc::new(IdentityHttpState {
+            deps: deps.clone(),
+            public_origin: ORIGIN.into(),
+            trust_forwarded_for: false,
+            events: Arc::new(SseHub::new()),
+        })),
+        delivery,
+    };
+    seed_user(&deps, "admin@example.com", true).await;
+    seed_user(&deps, "ana@example.com", false).await;
+    seed_user(&deps, "bob@example.com", false).await;
+    let admin = api.login(&db, "admin@example.com").await;
+    let ana = api.login(&db, "ana@example.com").await;
+    let bob = api.login(&db, "bob@example.com").await;
+    let not_found = |r: &Reply, what: &str| {
+        assert_eq!(
+            (r.status, r.code()),
+            (StatusCode::NOT_FOUND, "common.not_found"),
+            "{what}: {:?}",
+            r.body
+        );
+    };
+
+    // Device.
+    let devices = api.get("/api/v1/me/devices", Some(&ana)).await;
+    let device = devices.body[0]["id"].as_str().unwrap().to_owned();
+    let r = api
+        .post(
+            &format!("/api/v1/me/devices/{device}/forget"),
+            Some(&bob),
+            json!({}),
+        )
+        .await;
+    not_found(&r, "forget another user's device");
+    assert_eq!(
+        api.get("/api/v1/me", Some(&ana)).await.status,
+        StatusCode::OK,
+        "ana's session survives"
+    );
+
+    // Channel change.
+    reset_send_limits(&db).await;
+    let change = api
+        .post(
+            "/api/v1/me/channel-changes",
+            Some(&ana),
+            json!({"channel": "email", "new_value": "ana.new@example.com"}),
+        )
+        .await;
+    assert_eq!(change.status, StatusCode::ACCEPTED, "{:?}", change.body);
+    let change_id = change.body["id"].as_str().unwrap().to_owned();
+    let challenge = change.body["codes"][0]["challenge_id"].clone();
+    let r = api
+        .post(
+            &format!("/api/v1/me/channel-changes/{change_id}/verify"),
+            Some(&bob),
+            json!({"challenge_id": challenge, "code": "K7Q2-0111"}),
+        )
+        .await;
+    not_found(&r, "verify another user's channel change");
+
+    // Connection: pairing code and unpair.
+    let conn = api
+        .post("/api/v1/connections", Some(&ana), json!({"name": "Desk"}))
+        .await;
+    assert_eq!(conn.status, StatusCode::CREATED, "{:?}", conn.body);
+    let conn_id = conn.body["connection"]["id"].as_str().unwrap().to_owned();
+    for (path, body) in [
+        ("pairing-code", json!({})),
+        ("unpair", json!({"acknowledge_open_positions": true})),
+    ] {
+        let r = api
+            .post(
+                &format!("/api/v1/connections/{conn_id}/{path}"),
+                Some(&bob),
+                body,
+            )
+            .await;
+        not_found(&r, path);
+    }
+
+    // Invitation: a non-admin cannot revoke (403 before anything else).
+    let inv = api
+        .post(
+            "/api/v1/admin/invitations",
+            Some(&admin),
+            json!({"email": "new@example.com", "locale": "pt-BR"}),
+        )
+        .await;
+    assert_eq!(inv.status, StatusCode::CREATED, "{:?}", inv.body);
+    let inv_id = inv.body["invitation"]["id"]
+        .as_str()
+        .or_else(|| inv.body["id"].as_str())
+        .unwrap()
+        .to_owned();
+    let r = api
+        .post(
+            &format!("/api/v1/admin/invitations/{inv_id}/revoke"),
+            Some(&ana),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code()),
+        (StatusCode::FORBIDDEN, "auth.forbidden"),
+        "{:?}",
+        r.body
+    );
+
+    // Challenges of another session: resend sends nothing, delivery is not reported.
+    reset_send_limits(&db).await;
+    let ch = api
+        .post(
+            "/api/v1/auth/step-up",
+            Some(&ana),
+            json!({"action": "source_create", "channel": "email"}),
+        )
+        .await;
+    assert_eq!(ch.status, StatusCode::ACCEPTED, "{:?}", ch.body);
+    let before = api.delivery.jobs.lock().unwrap().len();
+    let r = api
+        .post(
+            "/api/v1/auth/challenges/resend",
+            Some(&bob),
+            json!({"challenge_id": ch.body["challenge_id"]}),
+        )
+        .await;
+    assert!(
+        matches!(
+            r.status,
+            StatusCode::ACCEPTED | StatusCode::TOO_MANY_REQUESTS
+        ),
+        "{:?}",
+        r.body
+    );
+    assert_eq!(
+        api.delivery.jobs.lock().unwrap().len(),
+        before,
+        "nothing is sent for another session's challenge"
+    );
+    let r = api
+        .post(
+            "/api/v1/auth/challenges/delivery",
+            Some(&bob),
+            json!({"challenge_id": ch.body["challenge_id"]}),
+        )
+        .await;
+    assert_eq!(r.body, json!({"delivery": "not_reported"}));
+    db.teardown().await;
+}

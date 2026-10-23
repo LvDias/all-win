@@ -4,7 +4,9 @@
 #![allow(clippy::too_many_lines)]
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::rejection::RawPathParamsRejection;
 use axum::extract::{RawPathParams, RawQuery, State};
@@ -62,6 +64,27 @@ fn no_store(mut r: Response) -> Response {
 
 fn err(e: IdentityError) -> Response {
     ApiError(e).into_response()
+}
+
+/// Minimum response time of the code endpoints whose work differs for a registered and an
+/// unknown identifier or challenge (a code insert or a failed-attempt write versus a read-only
+/// placeholder, an audit row on a 429). Every answer, success or refusal, is held to at least
+/// this plus a random jitter, so the time says nothing about the account (policy §3; Vigia M2).
+/// Well above the slow path of a healthy database.
+const UNIFORM_FLOOR: Duration = Duration::from_millis(500);
+const UNIFORM_JITTER_MS: u64 = 100;
+
+async fn uniform_time(s: &IdentityHttpState, answer: impl Future<Output = Response>) -> Response {
+    let deadline = tokio::time::Instant::now() + UNIFORM_FLOOR + jitter(s);
+    let response = answer.await;
+    tokio::time::sleep_until(deadline).await;
+    response
+}
+
+fn jitter(s: &IdentityHttpState) -> Duration {
+    let mut b = [0u8; 8];
+    s.deps.random.fill(&mut b);
+    Duration::from_millis(u64::from_le_bytes(b) % UNIFORM_JITTER_MS)
 }
 
 // axum rejections are responses; boxing them would only move the allocation.
@@ -394,10 +417,13 @@ pub(super) async fn request_login_code(
         device_cookie: device,
         meta,
     };
-    match RequestLoginCode::new(s.deps.clone()).handle(cmd).await {
-        Ok(v) => json(StatusCode::ACCEPTED, &issued_dto(&v)),
-        Err(e) => err(e),
-    }
+    uniform_time(&s, async {
+        match RequestLoginCode::new(s.deps.clone()).handle(cmd).await {
+            Ok(v) => json(StatusCode::ACCEPTED, &issued_dto(&v)),
+            Err(e) => err(e),
+        }
+    })
+    .await
 }
 
 /// Sign in with the code of a login challenge.
@@ -425,11 +451,14 @@ pub(super) async fn verify_login_code(
         device_cookie: device,
         meta,
     };
-    match VerifyLoginCode::new(s.deps.clone()).handle(cmd).await {
-        Ok(v) => signed_in_response(StatusCode::OK, &v, s.deps.clock.now()),
-        Err(e @ IdentityError::CodeInvalid) => respond(&e, StatusCode::UNAUTHORIZED),
-        Err(e) => err(e),
-    }
+    uniform_time(&s, async {
+        match VerifyLoginCode::new(s.deps.clone()).handle(cmd).await {
+            Ok(v) => signed_in_response(StatusCode::OK, &v, s.deps.clock.now()),
+            Err(e @ IdentityError::CodeInvalid) => respond(&e, StatusCode::UNAUTHORIZED),
+            Err(e) => err(e),
+        }
+    })
+    .await
 }
 
 /// Send a new code for an open challenge (60-s cooldown; auth policy §2.2).
@@ -453,13 +482,16 @@ pub(super) async fn resend_code(
         challenge_id: r.challenge_id,
         meta,
     };
-    match ResendCode::new(s.deps.clone())
-        .handle(ctx.as_ref(), cmd)
-        .await
-    {
-        Ok(v) => json(StatusCode::ACCEPTED, &issued_dto(&v)),
-        Err(e) => err(e),
-    }
+    uniform_time(&s, async {
+        match ResendCode::new(s.deps.clone())
+            .handle(ctx.as_ref(), cmd)
+            .await
+        {
+            Ok(v) => json(StatusCode::ACCEPTED, &issued_dto(&v)),
+            Err(e) => err(e),
+        }
+    })
+    .await
 }
 
 /// Delivery state of a sign-up, step-up or channel-change code (never for login).
