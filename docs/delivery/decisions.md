@@ -125,3 +125,8 @@
 - **Cleanup:** branches pushed under a new name because of the incident may be deleted from GitHub after confirming their content is on the original branch.
 - **Architecture:** the user approves the two ADRs proposed by the Architect: ADR-0007 (neutral session/step-up port, crate `core/crates/access`, code consumed atomically in authorize before the action) and ADR-0008 (account ↔ platform binding owned by accounts; gateway owns platform facts and exposes query ports; `account.binding_changed` via outbox). Both still go through Code Review and QA Security.
 - **Canonical docs:** this log; ADR-0007/0008 (Architect).
+
+## 2026-10-23 — Q74 reverse on an account barred for entries; Q73 non-standard prop size
+- **Decision (Q74): (b).** When a reverse reaches an account barred for entries (out of sync, risk blocked, limits pending, no bracket profile), All Win executes only the closing part (flatten and cancel the protections) and skips the opening; the reason is audited and notified. Extends P1 (exits are never blocked). Option (a), skip the whole reverse (previous ADR-0003 text), rejected.
+- **Decision (Q73): (b), with a restriction.** For a prop account with a non-standard size, the nearest standard size (tie → the user chooses) is used **only to choose the stop/target (bracket) profile**. Balance and limits always use the account's real values.
+- **Canonical docs:** ADR-0003 §4.1 delta (Architect); slice-plan S6/S7 (PO); HTTP contract 4.4.0 queue (Compasso).
