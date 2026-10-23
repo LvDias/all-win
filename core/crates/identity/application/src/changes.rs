@@ -557,6 +557,7 @@ pub enum EndedSessions {
 pub enum Notice {
     /// To the account e-mail after a sign-in from a new device.
     NewDevice {
+        to: Destination,
         device_label: String,
         ip: Option<IpAddr>,
         channel: Channel,

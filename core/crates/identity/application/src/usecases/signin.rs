@@ -232,6 +232,7 @@ impl VerifyLoginCode {
                     user_id: owner,
                     locale: user.locale,
                     notice: Notice::NewDevice {
+                        to: Destination::Email(user.email.clone()),
                         device_label: device.label,
                         ip: Some(cmd.meta.ip),
                         channel,

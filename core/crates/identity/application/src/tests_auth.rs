@@ -2,7 +2,7 @@
 //! anti-enumeration rules, devices, step-up binding and channel changes.
 
 use chrono::Duration;
-use identity_enterprise::channel::Channel;
+use identity_enterprise::channel::{Channel, Destination};
 use identity_enterprise::channel_change::ChangeStatus;
 use identity_enterprise::ids::{ConnectionId, InvitationId};
 use identity_enterprise::invitation::Invitation;
@@ -127,17 +127,19 @@ async fn sign_in_by_code_registers_a_new_device_then_recognizes_it() {
         .committed()
         .into_iter()
         .flat_map(|c| c.events)
-        .filter(|e| {
-            matches!(
-                e,
-                IdentityEvent::NoticeRequested {
-                    notice: Notice::NewDevice { .. },
-                    ..
-                }
-            )
+        .filter_map(|e| match e {
+            IdentityEvent::NoticeRequested {
+                notice: Notice::NewDevice { to, .. },
+                ..
+            } => Some(to),
+            _ => None,
         })
-        .count();
-    assert_eq!(notices, 1);
+        .collect::<Vec<_>>();
+    assert_eq!(
+        notices,
+        [Destination::Email(user.email.clone())],
+        "one notice, to the account e-mail (QA AC-9)"
+    );
     let cookie = first.device.value.expose().to_owned();
     let second = sign_in_by_code(&w, "ana@example.com", Some(&cookie)).await;
     assert!(!second.new_device, "known browser");

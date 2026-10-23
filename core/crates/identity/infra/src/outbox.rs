@@ -226,11 +226,12 @@ fn notice_payload(locale: Locale, notice: &Notice) -> Value {
     let to = |d: &Destination| json!({ "channel": d.channel().as_str(), "value": d.normalized() });
     let body = match notice {
         Notice::NewDevice {
+            to: d,
             device_label,
             ip,
             channel,
         } => {
-            json!({ "kind": "new_device", "device_label": device_label, "ip": ip.map(|i| i.to_string()), "channel": channel.as_str() })
+            json!({ "kind": "new_device", "to": to(d), "device_label": device_label, "ip": ip.map(|i| i.to_string()), "channel": channel.as_str() })
         }
         Notice::ChannelChanged {
             to: d,
@@ -271,6 +272,7 @@ pub fn notice_from_payload(payload: &Value) -> Option<(Locale, Notice)> {
     };
     let notice = match payload.get("kind")?.as_str()? {
         "new_device" => Notice::NewDevice {
+            to: to()?,
             device_label: text("device_label")?,
             ip: text("ip").and_then(|i| i.parse().ok()),
             channel: channel("channel")?,
@@ -385,5 +387,13 @@ mod tests {
         };
         let p = notice_payload(Locale::En, &n);
         assert_eq!(notice_from_payload(&p), Some((Locale::En, n)));
+        let n = Notice::NewDevice {
+            to: Destination::Email(EmailAddress::parse("a@example.com").unwrap()),
+            device_label: "Firefox on Linux".into(),
+            ip: Some("203.0.113.7".parse().unwrap()),
+            channel: Channel::Email,
+        };
+        let p = notice_payload(Locale::PtBr, &n);
+        assert_eq!(notice_from_payload(&p), Some((Locale::PtBr, n)));
     }
 }

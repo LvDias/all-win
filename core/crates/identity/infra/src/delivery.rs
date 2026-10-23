@@ -143,7 +143,8 @@ impl NoticeSender for SmtpDevSender {
     async fn send_notice(&self, locale: Locale, notice: &Notice) -> Result<(), DeliveryError> {
         let (to, subject, body) = notice_message(locale, notice);
         match to {
-            Some(Destination::Email(e)) => self.deliver(e.normalized(), &subject, &body).await,
+            Destination::Email(e) => self.deliver(e.normalized(), &subject, &body).await,
+            // No WhatsApp sender in V1 (Q8).
             _ => Err(DeliveryError::Disabled),
         }
     }
@@ -373,10 +374,11 @@ pub fn code_message(d: &CodeDelivery) -> (String, SecretString) {
 }
 
 /// Recipient, subject and body of a notice (policy §5.3, §7, §9). No action links.
-pub fn notice_message(locale: Locale, notice: &Notice) -> (Option<Destination>, String, String) {
+pub fn notice_message(locale: Locale, notice: &Notice) -> (Destination, String, String) {
     let pt = matches!(locale, Locale::PtBr);
     match notice {
         Notice::NewDevice {
+            to,
             device_label,
             ip,
             channel,
@@ -399,7 +401,7 @@ pub fn notice_message(locale: Locale, notice: &Notice) -> (Option<Destination>, 
                     ),
                 )
             };
-            (None, subject.to_owned(), body)
+            (to.clone(), subject.to_owned(), body)
         }
         Notice::ChannelChanged {
             to,
@@ -422,7 +424,7 @@ pub fn notice_message(locale: Locale, notice: &Notice) -> (Option<Destination>, 
             } else {
                 "Account channel changed"
             };
-            (Some(to.clone()), subject.to_owned(), body)
+            (to.clone(), subject.to_owned(), body)
         }
         Notice::ChannelChangeOnHold {
             to,
@@ -447,7 +449,7 @@ pub fn notice_message(locale: Locale, notice: &Notice) -> (Option<Destination>, 
             } else {
                 "Pending channel change"
             };
-            (Some(to.clone()), subject.to_owned(), body)
+            (to.clone(), subject.to_owned(), body)
         }
         Notice::ChannelChangeCancelled { to, channel } => {
             let body = if pt {
@@ -460,7 +462,7 @@ pub fn notice_message(locale: Locale, notice: &Notice) -> (Option<Destination>, 
             } else {
                 "Channel change cancelled"
             };
-            (Some(to.clone()), subject.to_owned(), body)
+            (to.clone(), subject.to_owned(), body)
         }
     }
 }
@@ -483,6 +485,20 @@ mod tests {
         assert!(body.expose().contains("desparear") && body.expose().contains("K7Q2-0111"));
         assert!(!body.expose().contains("http"));
         assert!(!format!("{d:?}").contains("K7Q2"));
+    }
+
+    #[test]
+    fn new_device_notice_goes_to_the_account_email() {
+        let to = Destination::Email(EmailAddress::parse("ana@example.com").unwrap());
+        let n = Notice::NewDevice {
+            to: to.clone(),
+            device_label: "Firefox on Linux".into(),
+            ip: None,
+            channel: Channel::Email,
+        };
+        let (dest, subject, _) = notice_message(Locale::En, &n);
+        assert_eq!(dest, to);
+        assert_eq!(subject, "New sign-in to your All Win account");
     }
 
     #[tokio::test]
