@@ -16,7 +16,6 @@ DEV_GROUP=devs
 DEV_USERS=(dev1 dev2 dev3)
 NODE_DIR=/opt/node
 RUST_DIR=/opt/rust
-SCCACHE_DIR_PATH=/var/cache/sccache     # shared compile cache (group devs)
 PLAYWRIGHT_DIR=/opt/ms-playwright   # shared browsers, filled by `playwright install`
 WORKTREES_DIR=/srv/www/allwin.worktrees
 
@@ -44,7 +43,7 @@ step "apt packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl gnupg build-essential pkg-config libssl-dev \
-  xz-utils unzip jq postgresql-client dotnet-sdk-10.0 sccache
+  xz-utils unzip jq postgresql-client dotnet-sdk-10.0
 
 step "Docker Engine + compose plugin"
 install -m 0755 -d /etc/apt/keyrings
@@ -121,19 +120,15 @@ case ":$PATH:" in *:/opt/rust/cargo/bin:*) ;; *) PATH="/opt/rust/cargo/bin:$PATH
 case ":$PATH:" in *:/opt/node/bin:*) ;; *) PATH="/opt/node/bin:$PATH" ;; esac
 export PATH
 export PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
-# Shared host (12 CPUs, many parallel worktrees): cap cargo parallelism and share compiled crates.
+# Shared host (12 CPUs, many parallel worktrees): cap cargo parallelism.
 export CARGO_BUILD_JOBS=4
-export RUSTC_WRAPPER=sccache SCCACHE_DIR=/var/cache/sccache SCCACHE_CACHE_SIZE=20G
-export SCCACHE_SERVER_PORT=$((4400 + $(id -u) % 100))   # one sccache server per user
 # Group-writable files for agents in group devs (pnpm/cargo/git outputs, shared worktrees).
 case " $(id -nG 2>/dev/null) " in *" devs "*) umask 002 ;; esac
 SH
-for kv in RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo DOTNET_CLI_TELEMETRY_OPTOUT=1 PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
-  CARGO_BUILD_JOBS=4 RUSTC_WRAPPER=sccache SCCACHE_DIR=/var/cache/sccache SCCACHE_CACHE_SIZE=20G; do
+for kv in RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo DOTNET_CLI_TELEMETRY_OPTOUT=1 PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright CARGO_BUILD_JOBS=4; do
   grep -q "^${kv%%=*}=" /etc/environment || echo "$kv" >> /etc/environment
 done
 shared_dir "$PLAYWRIGHT_DIR"
-shared_dir "$SCCACHE_DIR_PATH"
 for b in "$CARGO_HOME"/bin/* "$NODE_DIR"/bin/{node,npm,npx,pnpm,pnpx}; do
   if [[ -e $b ]]; then ln -sfn "$b" "/usr/local/bin/$(basename "$b")"; fi
 done
