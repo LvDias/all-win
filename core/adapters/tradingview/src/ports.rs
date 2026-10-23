@@ -27,6 +27,8 @@ pub struct ResolvedSourceKey {
     pub secret_hash: Vec<u8>,
     /// Key revoked, or its source archived.
     pub revoked: bool,
+    /// The user's name for the source; audit snapshot only, never logged.
+    pub source_name: String,
 }
 
 impl std::fmt::Debug for ResolvedSourceKey {

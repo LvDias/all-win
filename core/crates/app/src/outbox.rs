@@ -43,6 +43,8 @@ pub struct OutboxEvent {
     pub user_id: UserId,
     pub event_type: String,
     pub occurred_at: DateTime<Utc>,
+    /// `app.outbox.seq`: the producer's causal order (audit `event_seq`).
+    pub seq: i64,
     pub payload: Value,
 }
 
@@ -115,6 +117,7 @@ impl EventConsumer for AuditConsumer {
             user_id: e.user_id,
             event_type: e.event_type.clone(),
             occurred_at: e.occurred_at,
+            event_seq: e.seq,
             payload: e.payload.clone(),
         };
         match self.0.handle(&event).await {
@@ -165,7 +168,7 @@ impl OutboxDispatcher {
         let types = self.consumers.types();
         let mut tx = self.worker.begin().await?;
         let rows = sqlx::query!(
-            r#"SELECT id, user_id, event_type, occurred_at, payload, attempts FROM app.outbox
+            r#"SELECT id, user_id, event_type, occurred_at, seq, payload, attempts FROM app.outbox
                WHERE published_at IS NULL AND dead_lettered_at IS NULL
                  AND next_attempt_at <= now() AND event_type = ANY($1)
                ORDER BY next_attempt_at, occurred_at LIMIT $2 FOR UPDATE SKIP LOCKED"#,
@@ -183,6 +186,7 @@ impl OutboxDispatcher {
                 user_id: UserId::from_uuid(row.user_id),
                 event_type: row.event_type,
                 occurred_at: row.occurred_at,
+                seq: row.seq,
                 payload: row.payload,
             };
             let consumers = self.consumers.for_type(&event.event_type);

@@ -14,6 +14,8 @@ pub struct NewInstruction {
     pub id: InstructionId,
     pub user_id: UserId,
     pub source_id: SourceId,
+    /// Snapshot of the source's name for the audit entry; not a `routing.instruction` column.
+    pub source_name: String,
     pub source_type: String,
     pub source_key_id: Option<String>,
     pub message_id: MessageId,
@@ -53,6 +55,10 @@ impl IngestOutcome {
                 instruction_id,
                 message_id,
                 signal_type,
+                action: instruction.action.clone(),
+                instrument_symbol: instruction.instrument_symbol.clone(),
+                quantity: instruction.quantity,
+                sent_at: instruction.times.sent_at,
             },
             Self::Duplicate(instruction_id) => IngressEventKind::DuplicateIgnored {
                 instruction_id,
@@ -64,6 +70,7 @@ impl IngestOutcome {
             user_id: instruction.user_id,
             at: instruction.times.received_at,
             source_id: instruction.source_id,
+            source_name: instruction.source_name.clone(),
             key_id: instruction.source_key_id.clone().unwrap_or_default(),
             kind,
         }
@@ -86,26 +93,51 @@ pub trait IngestStore: Send + Sync {
     async fn record_rejection(&self, event: &IngressEvent) -> Result<(), StoreError>;
 }
 
-/// Outbox payload of an ingress event (audit shape, s1-webhook-ingest §3).
+/// Outbox payload of an ingress event: the audit envelope `{actor, details, refs}`, with
+/// `details` exactly `AuditDetailsByCode[code]` (`DetailsIngress*`, HTTP 4.3.0) and the column
+/// values in `refs`. The actor is always `system` (s10 §5: an automated source, identified by
+/// `source_id`). Never a token, body value or URL: only the `key_id`.
 pub fn event_payload(event: &IngressEvent) -> Value {
-    let mut payload = Map::new();
-    payload.insert("kind".into(), json!(event.event_type()));
-    payload.insert("source_id".into(), json!(event.source_id));
-    payload.insert("key_id".into(), json!(event.key_id));
-    match &event.kind {
+    let mut refs = Map::new();
+    refs.insert("source_id".into(), json!(event.source_id));
+    refs.insert("source_name".into(), json!(event.source_name));
+    if !event.key_id.is_empty() {
+        refs.insert("source_key_id".into(), json!(event.key_id));
+    }
+    let details = match &event.kind {
         IngressEventKind::Received {
             instruction_id,
             message_id,
             signal_type,
+            action,
+            instrument_symbol,
+            quantity,
+            sent_at,
+        } => {
+            refs.insert("instruction_id".into(), json!(instruction_id));
+            refs.insert("message_id".into(), json!(message_id));
+            refs.insert("signal_type".into(), json!(signal_type));
+            let mut d = Map::new();
+            d.insert("action".into(), json!(action));
+            d.insert("instrument_symbol".into(), json!(instrument_symbol));
+            if let Some(q) = quantity {
+                d.insert("quantity".into(), json!(q));
+            }
+            d.insert(
+                "sent_at".into(),
+                json!(sent_at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)),
+            );
+            Value::Object(d)
         }
-        | IngressEventKind::DuplicateIgnored {
+        IngressEventKind::DuplicateIgnored {
             instruction_id,
             message_id,
             signal_type,
         } => {
-            payload.insert("instruction_id".into(), json!(instruction_id));
-            payload.insert("message_id".into(), json!(message_id));
-            payload.insert("signal_type".into(), json!(signal_type));
+            refs.insert("instruction_id".into(), json!(instruction_id));
+            refs.insert("message_id".into(), json!(message_id));
+            refs.insert("signal_type".into(), json!(signal_type));
+            json!({ "original_instruction_id": instruction_id })
         }
         IngressEventKind::Rejected {
             code,
@@ -113,17 +145,19 @@ pub fn event_payload(event: &IngressEvent) -> Value {
             message_id,
             size_bytes,
         } => {
-            payload.insert("code".into(), json!(code.as_str()));
-            if let Some(pointer) = pointer {
-                payload.insert("pointer".into(), json!(pointer));
-            }
             if let Some(message_id) = message_id {
-                payload.insert("message_id".into(), json!(message_id));
+                refs.insert("message_id".into(), json!(message_id));
             }
-            if let Some(size_bytes) = size_bytes {
-                payload.insert("size_bytes".into(), json!(size_bytes));
-            }
+            json!({
+                "error_code": code.as_str(),
+                // RFC 6901: "" is the whole document (no specific field).
+                "pointer": pointer.as_deref().unwrap_or(""),
+                "body_size": size_bytes.unwrap_or(0),
+            })
         }
-    }
-    Value::Object(payload)
+        IngressEventKind::RateLimited { retry_after_s } => {
+            json!({ "retry_after_s": (*retry_after_s).max(1) })
+        }
+    };
+    json!({ "actor": "system", "details": details, "refs": refs })
 }

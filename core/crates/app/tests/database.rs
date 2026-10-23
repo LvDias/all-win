@@ -106,7 +106,9 @@ async fn audit_entries_are_immutable_and_receipts_append_only() {
     // The trigger holds even for the owner; only allwin_maint may delete (closed-account erasure).
     let insert_entry = || {
         sqlx::query(
-            "INSERT INTO audit.audit_entry (id, user_id, occurred_at, source_event_id, category, code) VALUES ($1, $2, now(), $3, 'ingress', 'ingress.received')",
+            "INSERT INTO audit.audit_entry (id, user_id, occurred_at, source_event_id, category, code,
+                                            outcome, actor, safe_to_display, event_seq)
+             VALUES ($1, $2, now(), $3, 'ingress', 'ingress.received', 'received', 'system', true, 1)",
         )
         .bind(uuid::Uuid::now_v7())
         .bind(user)

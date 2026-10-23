@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO audit.audit_entry (\n                 id, user_id, occurred_at, source_event_id, event_seq, category, code, outcome,\n                 actor, safe_to_display, instruction_id, source_id, source_name, source_key_id,\n                 account_id, account_name, message_id, signal_type, is_exit, details)\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,\n                       $17, $18, $19, $20)\n               ON CONFLICT (occurred_at, source_event_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b0f935a371dba3ea803ca9a313b02481a5781391236abe2beca25620dacdfd77"
+}

@@ -28,7 +28,8 @@ impl SourceKeyResolver for PgSourceKeyResolver {
     async fn resolve(&self, key_id: &str) -> Result<Option<ResolvedSourceKey>, PortError> {
         let row = sqlx::query!(
             r#"SELECT user_id AS "user_id!", source_id AS "source_id!", source_type AS "source_type!",
-                      secret_hash AS "secret_hash!", revoked AS "revoked!"
+                      secret_hash AS "secret_hash!", revoked AS "revoked!",
+                      source_name AS "source_name!"
                  FROM identity.resolve_source_key($1)"#,
             key_id
         )
@@ -41,6 +42,7 @@ impl SourceKeyResolver for PgSourceKeyResolver {
             source_type: r.source_type,
             secret_hash: r.secret_hash,
             revoked: r.revoked,
+            source_name: r.source_name,
         }))
     }
 }

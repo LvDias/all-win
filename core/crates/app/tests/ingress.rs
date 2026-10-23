@@ -94,9 +94,23 @@ async fn accepted_then_duplicate_with_audit_entries() {
     );
 
     drain(&app, db, s.user_id).await;
-    let codes: Vec<(String, Option<String>, Value)> = as_user(db, s.user_id, |c| {
+    type Row = (
+        String,
+        Option<String>,
+        Value,
+        Option<String>,
+        String,
+        String,
+        bool,
+        i64,
+    );
+    let codes: Vec<Row> = as_user(db, s.user_id, |c| {
         Box::pin(async move {
-            sqlx::query_as("SELECT code, source_key_id, details FROM audit.audit_entry ORDER BY occurred_at, recorded_at")
+            sqlx::query_as(
+                "SELECT code, source_key_id, details, message_id, source_name, actor || '/' || outcome,
+                        safe_to_display, event_seq
+                   FROM audit.audit_entry ORDER BY event_seq",
+            )
                 .fetch_all(c)
                 .await
                 .unwrap()
@@ -110,7 +124,21 @@ async fn accepted_then_duplicate_with_audit_entries() {
             .iter()
             .all(|c| c.1.as_deref() == Some(s.key_id.as_str()))
     );
-    assert_eq!(codes[0].2["message_id"], msg.as_str());
+    // Columns from refs; details exactly DetailsIngressReceived / DetailsIngressDuplicate.
+    assert!(codes.iter().all(|c| c.3.as_deref() == Some(msg.as_str())));
+    assert!(codes.iter().all(|c| !c.4.is_empty() && c.6));
+    assert_eq!(
+        codes.iter().map(|c| c.5.as_str()).collect::<Vec<_>>(),
+        ["system/received", "system/skipped"]
+    );
+    assert!(
+        codes[0].7 > 0 && codes[1].7 > codes[0].7,
+        "event_seq is causal"
+    );
+    assert!(codes[0].2.get("message_id").is_none());
+    assert_eq!(codes[0].2["action"], "buy");
+    assert!(codes[0].2.get("sent_at").is_some());
+    assert!(codes[1].2.get("original_instruction_id").is_some());
     // Redelivery is a no-op.
     sqlx::query("UPDATE app.outbox SET published_at = NULL WHERE user_id = $1")
         .bind(s.user_id)
@@ -324,7 +352,9 @@ async fn policy_and_catalog_rejections_are_422_and_audited() {
     assert_eq!(rejected, 5);
     let sized = count(
         db,
-        "SELECT count(*) FROM audit.audit_entry WHERE code = 'ingress.rejected' AND (details->>'size_bytes')::int > 0 AND details ? 'error_code' AND details ? 'message_id'",
+        "SELECT count(*) FROM audit.audit_entry WHERE code = 'ingress.rejected' AND outcome = 'rejected'
+           AND (details->>'body_size')::int > 0 AND details ? 'error_code' AND details ? 'pointer'
+           AND message_id IS NOT NULL AND NOT details ? 'message_id'",
         s.user_id,
     )
     .await;
@@ -518,6 +548,16 @@ async fn per_key_rate_limit_answers_429_with_retry_after() {
             .unwrap()
             >= 1
     );
+    // Audited as its own code with DetailsIngressRateLimited.
+    drain(&app, db, s.user_id).await;
+    let limited = count(
+        db,
+        "SELECT count(*) FROM audit.audit_entry WHERE code = 'ingress.rate_limited' AND outcome = 'rejected'
+           AND actor = 'system' AND (details->>'retry_after_s')::int >= 1 AND source_name IS NOT NULL",
+        s.user_id,
+    )
+    .await;
+    assert_eq!(limited, 1);
 }
 
 fn from_ip(request: Request<Body>, ip: &str) -> Request<Body> {
