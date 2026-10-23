@@ -908,5 +908,192 @@
     "caption": "{firm} · {page} · acessado em {date}",
     "viewPage": "Ver página oficial",
     "newTab": "(abre em nova aba)"
+  },
+  "stanceBadge": {
+    "feminine": {
+      "allowed": "Permitida",
+      "forbidden": "Proibida",
+      "conditional": "Condicional",
+      "unknown": "Desconhecida",
+      "not_confirmed": "Não confirmada",
+      "varies_by_platform": "Varia por plataforma",
+      "required": "Exigida",
+      "not_required": "Não exigida"
+    },
+    "masculine": {
+      "allowed": "Permitido",
+      "forbidden": "Proibido",
+      "conditional": "Condicional",
+      "unknown": "Desconhecido",
+      "not_confirmed": "Não confirmado",
+      "varies_by_platform": "Varia por plataforma",
+      "required": "Exigido",
+      "not_required": "Não exigido"
+    },
+    "device": {
+      "allowed": "Permitido",
+      "forbidden": "Proibido",
+      "conditional": "Condicional",
+      "unknown": "Desconhecido",
+      "not_confirmed": "Não confirmado",
+      "varies_by_platform": "Varia por plataforma",
+      "required": "Exigido",
+      "not_required": "Não exigido"
+    }
+  },
+  "stanceBlock": {
+    "heading": {
+      "automation": "Automação",
+      "copy": "Replicação",
+      "vps": "Servidor / VPS",
+      "personalDevice": "Dispositivo pessoal"
+    },
+    "summary": {
+      "automation": {
+        "allowed": "A firma permite ordens automatizadas.",
+        "forbidden": "A firma proíbe ordens automatizadas.",
+        "conditional": "A firma permite ordens automatizadas sob condições; leia o texto da firma.",
+        "unknown": "Não encontramos uma regra sobre ordens automatizadas.",
+        "not_confirmed": "As páginas da firma divergem sobre ordens automatizadas.",
+        "varies_by_platform": "A regra muda por plataforma; veja cada plataforma."
+      },
+      "copy": {
+        "allowed": "A firma permite replicar entre contas.",
+        "forbidden": "A firma proíbe replicar entre contas.",
+        "conditional": "A firma permite replicar sob condições; leia o texto da firma.",
+        "unknown": "Não encontramos uma regra sobre replicação.",
+        "not_confirmed": "As páginas da firma divergem sobre replicação.",
+        "varies_by_platform": "A regra muda por plataforma; veja cada plataforma."
+      },
+      "vps": {
+        "allowed": "A firma permite operar de uma VPS ou servidor.",
+        "forbidden": "A firma proíbe operar de uma VPS ou servidor.",
+        "conditional": "A firma permite VPS ou servidor sob condições; leia o texto da firma.",
+        "unknown": "Não encontramos uma regra sobre VPS ou servidor.",
+        "not_confirmed": "As páginas da firma divergem sobre VPS ou servidor.",
+        "varies_by_platform": "A regra muda por plataforma; veja cada plataforma."
+      },
+      "personalDevice": {
+        "unknown": "Não encontramos uma regra sobre ordens do dispositivo pessoal.",
+        "not_confirmed": "As páginas da firma divergem sobre o dispositivo pessoal.",
+        "required": "A firma exige que as ordens saiam do seu dispositivo pessoal.",
+        "not_required": "A firma não exige que as ordens saiam do seu dispositivo pessoal."
+      }
+    },
+    "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",
+    "diverge": "As páginas oficiais divergem:",
+    "unknownSearched": "Pesquisamos as páginas oficiais em {date} e não encontramos uma regra.",
+    "verifiedOn": "Verificado em {date}"
+  },
+  "conflictPicker": {
+    "intro": "As páginas oficiais da firma divergem. Escolha um valor ou digite outro:",
+    "other": "Outro valor",
+    "source": "{page} · acessado em {date}",
+    "newTab": "(abre em nova aba)"
+  },
+  "presets": {
+    "manualOnly": "Só acompanhamento manual",
+    "manualOnlyWorks": {
+      "title": "O que funciona",
+      "text": "Regras de risco, alertas de 80 %, operações manuais e desempenho."
+    },
+    "manualOnlyFails": {
+      "title": "O que não funciona",
+      "text": "Roteamento de sinais e replicação."
+    },
+    "catalog": {
+      "title": "Presets de firmas",
+      "intro": "Regras e posições oficiais de cada firma, com fonte e data. O All Win mostra o texto da firma; não é aconselhamento jurídico.",
+      "search": "Buscar firma ou plano",
+      "more": "+{count}",
+      "notConfirmed": "{count, plural, one {# item não confirmado} other {# itens não confirmados}}",
+      "empty": "Os presets ainda não estão disponíveis.",
+      "noResults": "Nenhuma firma encontrada.",
+      "clearSearch": "Limpar busca",
+      "columns": {
+        "firm": "Firma",
+        "plans": "Planos",
+        "automation": "Automação",
+        "copy": "Replicação",
+        "unconfirmed": "Não confirmados",
+        "verified": "Verificado em"
+      }
+    },
+    "stances": {
+      "disclaimer": "As posições são citações das páginas oficiais da firma. O All Win não as interpreta por você."
+    },
+    "firm": {
+      "backToCatalog": "Voltar aos presets",
+      "notFound": "Firma não encontrada.",
+      "verified": "Verificado em {date} · versão {n}",
+      "tabs": {
+        "stances": "Posições da firma",
+        "plans": "Planos e regras",
+        "versions": "Versões"
+      }
+    },
+    "rule": {
+      "notConfirmed": "Não confirmado",
+      "source": "{page} · acessado em {date}",
+      "newTab": "(abre em nova aba)",
+      "sourcesFor": "Fontes de {field}"
+    },
+    "plans": {
+      "none": "Esta firma não tem planos disponíveis como preset.",
+      "caption": "Regras de {plan} por tamanho",
+      "filters": {
+        "plan": "Plano",
+        "phase": "Fase",
+        "platform": "Plataforma"
+      },
+      "phase": {
+        "evaluation": "Avaliação",
+        "funded": "Financiada",
+        "live": "Real"
+      },
+      "columns": {
+        "size": "Tamanho",
+        "drawdown": "Drawdown",
+        "dailyLoss": "Perda diária",
+        "dailyTarget": "Meta diária de lucro",
+        "maxContracts": "Máx. contratos",
+        "reset": "Reset do dia",
+        "consistency": "Regra de consistência",
+        "commission": "Comissão por contrato/lado",
+        "evaluationTarget": "Meta da avaliação"
+      },
+      "drawdown": {
+        "trailing_intraday": "Trailing intradiário",
+        "trailing_eod": "Trailing fim do dia",
+        "static": "Estático",
+        "other": "Outro"
+      },
+      "dailyLoss": {
+        "hard": "limite rígido",
+        "soft_pause": "pausa do dia",
+        "none": "Sem limite"
+      },
+      "excluded": "Estes planos não estão disponíveis como preset: {list}. Cadastre-os manualmente.",
+      "commissionMissing": "Traço na coluna de comissão significa que a firma não a publica; a conta mostrará \"comissão não informada\" até você informar um valor."
+    },
+    "versions": {
+      "version": "Versão {n}",
+      "material": "Mudança material",
+      "dates": "Publicada em {published} · verificada em {verified}",
+      "noChanges": "Primeira versão.",
+      "stance": {
+        "automation": "automação",
+        "copy": "replicação",
+        "vps": "VPS/servidor",
+        "personal_device": "dispositivo pessoal"
+      },
+      "changes": {
+        "stanceChanged": "A posição sobre {stance} mudou: {from} → {to}",
+        "stanceTextChanged": "O texto da regra de {stance} mudou. {reason}",
+        "ruleValueChanged": "Um valor de regra mudou.",
+        "presetAdded": "Um preset foi adicionado.",
+        "presetRemoved": "Um preset foi removido."
+      }
+    }
   }
 }

@@ -908,5 +908,192 @@
     "caption": "{firm} · {page} · accessed on {date}",
     "viewPage": "View official page",
     "newTab": "(opens in a new tab)"
+  },
+  "stanceBadge": {
+    "feminine": {
+      "allowed": "Allowed",
+      "forbidden": "Forbidden",
+      "conditional": "Conditional",
+      "unknown": "Unknown",
+      "not_confirmed": "Not confirmed",
+      "varies_by_platform": "Varies by platform",
+      "required": "Required",
+      "not_required": "Not required"
+    },
+    "masculine": {
+      "allowed": "Allowed",
+      "forbidden": "Forbidden",
+      "conditional": "Conditional",
+      "unknown": "Unknown",
+      "not_confirmed": "Not confirmed",
+      "varies_by_platform": "Varies by platform",
+      "required": "Required",
+      "not_required": "Not required"
+    },
+    "device": {
+      "allowed": "Allowed",
+      "forbidden": "Forbidden",
+      "conditional": "Conditional",
+      "unknown": "Unknown",
+      "not_confirmed": "Not confirmed",
+      "varies_by_platform": "Varies by platform",
+      "required": "Required",
+      "not_required": "Not required"
+    }
+  },
+  "stanceBlock": {
+    "heading": {
+      "automation": "Automation",
+      "copy": "Copying",
+      "vps": "VPS / server",
+      "personalDevice": "Personal device"
+    },
+    "summary": {
+      "automation": {
+        "allowed": "The firm allows automated orders.",
+        "forbidden": "The firm forbids automated orders.",
+        "conditional": "The firm allows automated orders under conditions; read the firm's text.",
+        "unknown": "We did not find a rule on automated orders.",
+        "not_confirmed": "The firm's pages disagree about automated orders.",
+        "varies_by_platform": "The rule differs by platform; see each platform."
+      },
+      "copy": {
+        "allowed": "The firm allows copying between accounts.",
+        "forbidden": "The firm forbids copying between accounts.",
+        "conditional": "The firm allows copying under conditions; read the firm's text.",
+        "unknown": "We did not find a rule on copying.",
+        "not_confirmed": "The firm's pages disagree about copying.",
+        "varies_by_platform": "The rule differs by platform; see each platform."
+      },
+      "vps": {
+        "allowed": "The firm allows running from a VPS or server.",
+        "forbidden": "The firm forbids running from a VPS or server.",
+        "conditional": "The firm allows a VPS or server under conditions; read the firm's text.",
+        "unknown": "We did not find a rule on a VPS or server.",
+        "not_confirmed": "The firm's pages disagree about a VPS or server.",
+        "varies_by_platform": "The rule differs by platform; see each platform."
+      },
+      "personalDevice": {
+        "unknown": "We did not find a rule on orders from a personal device.",
+        "not_confirmed": "The firm's pages disagree about a personal device.",
+        "required": "The firm requires orders to come from your personal device.",
+        "not_required": "The firm does not require orders to come from your personal device."
+      }
+    },
+    "summaryLabel": "All Win summary (not legal advice):",
+    "diverge": "The official pages disagree:",
+    "unknownSearched": "We searched the official pages on {date} and found no rule.",
+    "verifiedOn": "Verified on {date}"
+  },
+  "conflictPicker": {
+    "intro": "The firm's official pages disagree. Choose a value or type another:",
+    "other": "Another value",
+    "source": "{page} · accessed on {date}",
+    "newTab": "(opens in a new tab)"
+  },
+  "presets": {
+    "manualOnly": "Manual tracking only",
+    "manualOnlyWorks": {
+      "title": "What works",
+      "text": "Risk rules, 80% alerts, manual trades and performance."
+    },
+    "manualOnlyFails": {
+      "title": "What does not work",
+      "text": "Signal routing and copying."
+    },
+    "catalog": {
+      "title": "Firm presets",
+      "intro": "Official rules and positions of each firm, with source and date. All Win shows the firm's text; it is not legal advice.",
+      "search": "Search firm or plan",
+      "more": "+{count}",
+      "notConfirmed": "{count, plural, one {# item not confirmed} other {# items not confirmed}}",
+      "empty": "Presets are not available yet.",
+      "noResults": "No firm found.",
+      "clearSearch": "Clear search",
+      "columns": {
+        "firm": "Firm",
+        "plans": "Plans",
+        "automation": "Automation",
+        "copy": "Copying",
+        "unconfirmed": "Not confirmed",
+        "verified": "Verified on"
+      }
+    },
+    "stances": {
+      "disclaimer": "Positions are quoted from the firm's official pages. All Win does not interpret them for you."
+    },
+    "firm": {
+      "backToCatalog": "Back to presets",
+      "notFound": "Firm not found.",
+      "verified": "Verified on {date} · version {n}",
+      "tabs": {
+        "stances": "Firm positions",
+        "plans": "Plans and rules",
+        "versions": "Versions"
+      }
+    },
+    "rule": {
+      "notConfirmed": "Not confirmed",
+      "source": "{page} · accessed on {date}",
+      "newTab": "(opens in a new tab)",
+      "sourcesFor": "Sources for {field}"
+    },
+    "plans": {
+      "none": "This firm has no plans available as presets.",
+      "caption": "Rules of {plan} by size",
+      "filters": {
+        "plan": "Plan",
+        "phase": "Phase",
+        "platform": "Platform"
+      },
+      "phase": {
+        "evaluation": "Evaluation",
+        "funded": "Funded",
+        "live": "Live"
+      },
+      "columns": {
+        "size": "Size",
+        "drawdown": "Drawdown",
+        "dailyLoss": "Daily loss",
+        "dailyTarget": "Daily profit target",
+        "maxContracts": "Max. contracts",
+        "reset": "Day reset",
+        "consistency": "Consistency rule",
+        "commission": "Commission per contract/side",
+        "evaluationTarget": "Evaluation target"
+      },
+      "drawdown": {
+        "trailing_intraday": "Intraday trailing",
+        "trailing_eod": "End-of-day trailing",
+        "static": "Static",
+        "other": "Other"
+      },
+      "dailyLoss": {
+        "hard": "hard limit",
+        "soft_pause": "pause for the day",
+        "none": "No limit"
+      },
+      "excluded": "These plans are not available as presets: {list}. Register them manually.",
+      "commissionMissing": "A dash in the commission column means the firm does not publish it; the account will show \"commission not informed\" until you enter a value."
+    },
+    "versions": {
+      "version": "Version {n}",
+      "material": "Material change",
+      "dates": "Published {published} · verified {verified}",
+      "noChanges": "First version.",
+      "stance": {
+        "automation": "automation",
+        "copy": "copying",
+        "vps": "VPS/server",
+        "personal_device": "personal device"
+      },
+      "changes": {
+        "stanceChanged": "Position on {stance} changed: {from} → {to}",
+        "stanceTextChanged": "The text of the {stance} rule changed. {reason}",
+        "ruleValueChanged": "A rule value changed.",
+        "presetAdded": "A preset was added.",
+        "presetRemoved": "A preset was removed."
+      }
+    }
   }
 }
