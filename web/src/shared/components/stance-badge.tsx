@@ -3,8 +3,17 @@ import { useTranslations } from "next-intl";
 import { Badge, type Tone } from "@/shared/ui/badge";
 
 /** Firm positions on automation, copying, VPS/server and a personal device (S16 §7; F§7.2). */
-export type StanceValue = "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed" | "varies_by_platform" | "required" | "not_required";
-export type StanceSubject = "automation" | "copy" | "vps" | "personalDevice";
+type Position = "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed";
+/** The values the contract allows per subject (S16 §7); a badge for another value does not type-check. */
+export type StanceValues = {
+  automation: Position | "varies_by_platform";
+  copy: Position | "varies_by_platform";
+  vps: Position;
+  personalDevice: "required" | "not_required" | "unknown" | "not_confirmed";
+};
+export type StanceSubject = keyof StanceValues;
+export type StanceValue = StanceValues[StanceSubject];
+type StanceProps = { [S in StanceSubject]: { subject: S; value: StanceValues[S] } }[StanceSubject];
 
 const looks: Record<StanceValue, { tone: Tone; icon: LucideIcon }> = {
   allowed: { tone: "success", icon: CircleCheck },
@@ -18,9 +27,9 @@ const looks: Record<StanceValue, { tone: Tone; icon: LucideIcon }> = {
 };
 
 /** Icon plus text, never color alone. The wording depends on the subject (a VPS is "Permitido", automation "Permitida"). */
-export function StanceBadge({ subject, value, className }: { subject: StanceSubject; value: StanceValue; className?: string }) {
+export function StanceBadge({ subject, value, className }: StanceProps & { className?: string }) {
   const t = useTranslations("stanceBadge");
-  const { tone, icon: Icon } = looks[value];
+  const { tone, icon: Icon } = looks[value satisfies StanceValue];
   return (
     <Badge tone={tone} className={className}>
       <Icon aria-hidden="true" />

@@ -86,7 +86,7 @@ export function PlansTab({ firm }: { firm: FirmDetail }) {
               if (!query || query.isPending)
                 return <TableRow key={size.preset_version_id}><TableHead scope="row" className="sticky left-0 bg-background">{label}</TableHead><TableCell colSpan={evaluation ? 8 : 7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>;
               if (query.isError)
-                return <TableRow key={size.preset_version_id}><TableHead scope="row" className="sticky left-0 bg-background">{label}</TableHead><TableCell colSpan={evaluation ? 8 : 7} className="text-destructive">{errorMessage(tc, query.error).message}</TableCell></TableRow>;
+                return <TableRow key={size.preset_version_id}><TableHead scope="row" className="sticky left-0 bg-background">{label}</TableHead><TableCell colSpan={evaluation ? 8 : 7} className="text-status-danger">{errorMessage(tc, query.error).message}</TableCell></TableRow>;
               const rules = rulesFor(query.data, platform);
               return (
                 <TableRow key={size.preset_version_id}>

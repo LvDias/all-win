@@ -16,8 +16,8 @@ export type Provenance<V> = {
   published_values?: { value: V; sources: SourceRef[] }[];
 };
 
-/** Only http(s) links from preset data reach an `href`. */
-const safeUrl = (url: string) => (/^https?:\/\//i.test(url) ? url : undefined);
+/** Only https links from preset data reach an `href`. */
+const safeUrl = (url: string) => (/^https:\/\//i.test(url) ? url : undefined);
 
 export function SourceList({ sources }: { sources: SourceRef[] }) {
   const t = useTranslations("presets.rule");
@@ -25,11 +25,11 @@ export function SourceList({ sources }: { sources: SourceRef[] }) {
   const locale = isLocale(raw) ? raw : defaultLocale;
   return (
     <ul className="space-y-1 text-xs">
-      {sources.map((source) => {
+      {sources.map((source, index) => {
         const href = safeUrl(source.url);
         const text = t("source", { page: source.page_title ?? source.url, date: formatCalendarDate(source.accessed_at, locale) });
         return (
-          <li key={source.url}>
+          <li key={`${index}|${source.url}`}>
             {href ? (
               <a className="underline underline-offset-4" href={href} target="_blank" rel="noopener noreferrer">
                 {text}

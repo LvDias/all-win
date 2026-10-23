@@ -558,8 +558,7 @@
     "notFound": "Not found.",
     "signOutFailed": "Could not sign out. Your session may still be active.",
     "accounts": "Accounts",
-    "userMenuName": "{email}, user menu",
-    "presets": "Presets"
+    "userMenuName": "{email}, user menu"
   },
   "security": {
     "title": "Security",
@@ -936,7 +935,7 @@
       "forbidden": "Forbidden",
       "conditional": "Conditional",
       "unknown": "Unknown",
-      "not_confirmed": "Not confirmed",
+      "not_confirmed": "Unknown",
       "varies_by_platform": "Varies by platform",
       "required": "Required",
       "not_required": "Not required"
@@ -951,34 +950,31 @@
     },
     "summary": {
       "automation": {
-        "allowed": "The firm allows automated orders.",
-        "forbidden": "The firm forbids automated orders.",
-        "conditional": "The firm allows automated orders under conditions; read the firm's text.",
-        "unknown": "We did not find a rule on automated orders.",
-        "not_confirmed": "The firm's pages disagree about automated orders.",
-        "varies_by_platform": "The rule differs by platform; see each platform."
+        "allowed": "{firm} allows automated trading.",
+        "forbidden": "{firm} prohibits automated trading in its official rules.",
+        "conditional": "{firm} only allows automated trading under conditions. Read the rule.",
+        "unknown": "We found no official {firm} rule about automation.",
+        "not_confirmed": "{firm}'s official pages disagree about automation."
       },
       "copy": {
-        "allowed": "The firm allows copying between accounts.",
-        "forbidden": "The firm forbids copying between accounts.",
-        "conditional": "The firm allows copying under conditions; read the firm's text.",
-        "unknown": "We did not find a rule on copying.",
-        "not_confirmed": "The firm's pages disagree about copying.",
-        "varies_by_platform": "The rule differs by platform; see each platform."
+        "allowed": "{firm} allows copying trades between accounts.",
+        "forbidden": "{firm} prohibits copying trades between accounts in its official rules.",
+        "conditional": "{firm} only allows copying under conditions. Read the rule.",
+        "unknown": "We found no official {firm} rule about copying.",
+        "not_confirmed": "{firm}'s official pages disagree about copying."
       },
       "vps": {
-        "allowed": "The firm allows running from a VPS or server.",
-        "forbidden": "The firm forbids running from a VPS or server.",
-        "conditional": "The firm allows a VPS or server under conditions; read the firm's text.",
-        "unknown": "We did not find a rule on a VPS or server.",
-        "not_confirmed": "The firm's pages disagree about a VPS or server.",
-        "varies_by_platform": "The rule differs by platform; see each platform."
+        "allowed": "{firm} allows using a VPS/server.",
+        "forbidden": "{firm} prohibits using a VPS/server in its official rules.",
+        "conditional": "{firm} only allows a VPS/server under conditions. Read the rule.",
+        "unknown": "We found no official {firm} rule about a VPS/server.",
+        "not_confirmed": "{firm}'s official pages disagree about a VPS/server."
       },
       "personalDevice": {
-        "unknown": "We did not find a rule on orders from a personal device.",
-        "not_confirmed": "The firm's pages disagree about a personal device.",
-        "required": "The firm requires orders to come from your personal device.",
-        "not_required": "The firm does not require orders to come from your personal device."
+        "required": "{firm} requires orders to come from your personal device.",
+        "not_required": "{firm} does not require a personal device.",
+        "unknown": "We found no official {firm} rule about a personal device.",
+        "not_confirmed": "The official pages disagree on this point."
       }
     },
     "summaryLabel": "All Win summary (not legal advice):",

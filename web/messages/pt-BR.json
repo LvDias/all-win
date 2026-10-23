@@ -558,8 +558,7 @@
     "notFound": "Não encontrado.",
     "signOutFailed": "Não foi possível sair. Sua sessão pode continuar ativa.",
     "accounts": "Contas",
-    "userMenuName": "{email}, menu do usuário",
-    "presets": "Presets"
+    "userMenuName": "{email}, menu do usuário"
   },
   "security": {
     "title": "Segurança",
@@ -936,7 +935,7 @@
       "forbidden": "Proibido",
       "conditional": "Condicional",
       "unknown": "Desconhecido",
-      "not_confirmed": "Não confirmado",
+      "not_confirmed": "Desconhecido",
       "varies_by_platform": "Varia por plataforma",
       "required": "Exigido",
       "not_required": "Não exigido"
@@ -951,34 +950,31 @@
     },
     "summary": {
       "automation": {
-        "allowed": "A firma permite ordens automatizadas.",
-        "forbidden": "A firma proíbe ordens automatizadas.",
-        "conditional": "A firma permite ordens automatizadas sob condições; leia o texto da firma.",
-        "unknown": "Não encontramos uma regra sobre ordens automatizadas.",
-        "not_confirmed": "As páginas da firma divergem sobre ordens automatizadas.",
-        "varies_by_platform": "A regra muda por plataforma; veja cada plataforma."
+        "allowed": "A {firm} permite negociação automatizada.",
+        "forbidden": "A {firm} proíbe negociação automatizada nas regras oficiais.",
+        "conditional": "A {firm} só permite negociação automatizada sob condições. Leia a regra.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre automação.",
+        "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre automação."
       },
       "copy": {
-        "allowed": "A firma permite replicar entre contas.",
-        "forbidden": "A firma proíbe replicar entre contas.",
-        "conditional": "A firma permite replicar sob condições; leia o texto da firma.",
-        "unknown": "Não encontramos uma regra sobre replicação.",
-        "not_confirmed": "As páginas da firma divergem sobre replicação.",
-        "varies_by_platform": "A regra muda por plataforma; veja cada plataforma."
+        "allowed": "A {firm} permite a replicação de operações entre contas.",
+        "forbidden": "A {firm} proíbe a replicação de operações entre contas nas regras oficiais.",
+        "conditional": "A {firm} só permite a replicação sob condições. Leia a regra.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre replicação.",
+        "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre replicação."
       },
       "vps": {
-        "allowed": "A firma permite operar de uma VPS ou servidor.",
-        "forbidden": "A firma proíbe operar de uma VPS ou servidor.",
-        "conditional": "A firma permite VPS ou servidor sob condições; leia o texto da firma.",
-        "unknown": "Não encontramos uma regra sobre VPS ou servidor.",
-        "not_confirmed": "As páginas da firma divergem sobre VPS ou servidor.",
-        "varies_by_platform": "A regra muda por plataforma; veja cada plataforma."
+        "allowed": "A {firm} permite o uso de VPS/servidor.",
+        "forbidden": "A {firm} proíbe o uso de VPS/servidor nas regras oficiais.",
+        "conditional": "A {firm} só permite VPS/servidor sob condições. Leia a regra.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre VPS/servidor.",
+        "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre VPS/servidor."
       },
       "personalDevice": {
-        "unknown": "Não encontramos uma regra sobre ordens do dispositivo pessoal.",
-        "not_confirmed": "As páginas da firma divergem sobre o dispositivo pessoal.",
-        "required": "A firma exige que as ordens saiam do seu dispositivo pessoal.",
-        "not_required": "A firma não exige que as ordens saiam do seu dispositivo pessoal."
+        "required": "A {firm} exige que as ordens saiam do seu dispositivo pessoal.",
+        "not_required": "A {firm} não exige dispositivo pessoal.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre dispositivo pessoal.",
+        "not_confirmed": "As páginas oficiais divergem sobre este ponto."
       }
     },
     "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",

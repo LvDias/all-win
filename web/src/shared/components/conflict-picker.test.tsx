@@ -37,10 +37,12 @@ describe("StanceBadge", () => {
         <StanceBadge subject="automation" value="allowed" />
         <StanceBadge subject="vps" value="allowed" />
         <StanceBadge subject="personalDevice" value="not_confirmed" />
+        <StanceBadge subject="vps" value="not_confirmed" />
       </>,
     );
     expect(screen.getByText("Permitida")).toBeInTheDocument();
     expect(screen.getByText("Permitido")).toBeInTheDocument();
+    expect(screen.getByText("Desconhecido")).toBeInTheDocument();
     expect(screen.getByText("Não confirmado")).toBeInTheDocument();
   });
 });

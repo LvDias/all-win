@@ -2,7 +2,6 @@
 
 import { useTranslations } from "next-intl";
 import { StanceBlock, type StanceQuote } from "@/shared/components/stance-block";
-import type { StanceValue } from "@/shared/components/stance-badge";
 import type { FirmDetail } from "./api/types";
 
 /** S16-02 tab "Firm positions": automation, copying, VPS/server and personal device, each with the firm's own text. */
@@ -20,8 +19,8 @@ export function StancesTab({ firm }: { firm: FirmDetail }) {
       {firm.stances.copy.map((rule) => (
         <StanceBlock key={rule.id} subject="copy" firm={name} value={rule.firm_stance} quotes={quotes(rule.quotes)} searchedOn={rule.research?.searched_on} platformLabel={platformLabel(rule.firm_platform)} verifiedOn={verifiedOn} />
       ))}
-      <StanceBlock subject="vps" firm={name} value={firm.stances.vps.value as StanceValue} quotes={firm.stances.vps.quotes} searchedOn={firm.stances.vps.research?.searched_on} verifiedOn={verifiedOn} />
-      <StanceBlock subject="personalDevice" firm={name} value={firm.stances.personal_device.value as StanceValue} quotes={firm.stances.personal_device.quotes} searchedOn={firm.stances.personal_device.research?.searched_on} verifiedOn={verifiedOn} />
+      <StanceBlock subject="vps" firm={name} value={firm.stances.vps.value} quotes={firm.stances.vps.quotes} searchedOn={firm.stances.vps.research?.searched_on} verifiedOn={verifiedOn} />
+      <StanceBlock subject="personalDevice" firm={name} value={firm.stances.personal_device.value} quotes={firm.stances.personal_device.quotes} searchedOn={firm.stances.personal_device.research?.searched_on} verifiedOn={verifiedOn} />
       <p className="text-xs text-muted-foreground">{t("stances.disclaimer")}</p>
     </div>
   );

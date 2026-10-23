@@ -27,8 +27,8 @@ type ConflictPickerProps = {
   id?: string;
 };
 
-/** Only http(s) links from firm data reach an `href`. */
-const safeUrl = (url: string) => (/^https?:\/\//i.test(url) ? url : undefined);
+/** Only https links (as `FirmRuleQuote`) from firm data reach an `href`. */
+const safeUrl = (url: string) => (/^https:\/\//i.test(url) ? url : undefined);
 
 /** Official pages disagree: one choice per published value with its sources, plus "another value" (foundations F§7.4). */
 export function ConflictPicker({ legend, options, value, onValueChange, otherInput, error, id }: ConflictPickerProps) {
@@ -48,11 +48,11 @@ export function ConflictPicker({ legend, options, value, onValueChange, otherInp
               {option.label}
             </Label>
             <ul className="space-y-0.5 pl-3 text-xs text-muted-foreground">
-              {option.sources.map((source) => {
+              {option.sources.map((source, index) => {
                 const href = safeUrl(source.url);
                 const text = t("source", { page: source.page_title ?? source.url, date: formatDate(`${source.accessed_at}T12:00:00Z`, locale, "UTC") });
                 return (
-                  <li key={source.url}>
+                  <li key={`${index}|${source.url}`}>
                     {href ? (
                       <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline underline-offset-4">
                         {text}
@@ -75,7 +75,7 @@ export function ConflictPicker({ legend, options, value, onValueChange, otherInp
       </RadioGroup>
       {value === otherValue ? otherInput : null}
       {error ? (
-        <p id={errorId} className="text-sm text-destructive">
+        <p id={errorId} className="text-sm text-status-danger">
           {error}
         </p>
       ) : null}
