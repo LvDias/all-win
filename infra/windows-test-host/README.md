@@ -65,7 +65,7 @@ The VPS also needs to stay joined as a tagged, non-expiring node: confirm in the
 
 ## 3. VPS - get the scripts onto the machine
 
-The repository is private and the VNC console cannot paste, so use **option B only**: RDP from the Mac to the VPS (over the tailnet) with *Devices & Audio -> Drives* (or Clipboard) shared, then copy the two scripts from the Mac checkout of the approved commit (`infra/windows-test-host/Lock-Firewall.ps1` and `Install-AllWinTestHost.ps1`) and make the folder admin-only. In PowerShell as Administrator:
+The repository is private and the VNC console cannot paste, so use **option B only**: RDP from the Mac to the VPS (over the tailnet) with **one folder that holds only the two scripts** shared (*Devices & Audio -> Drives*, or Clipboard), not the whole Mac disk: the Administrator session can read whatever is shared. Turn the sharing off after copying, then copy the two scripts from the Mac checkout of the approved commit (`infra/windows-test-host/Lock-Firewall.ps1` and `Install-AllWinTestHost.ps1`) and make the folder admin-only. In PowerShell as Administrator:
 
 ```powershell
 mkdir C:\AllWin-setup
@@ -119,6 +119,15 @@ C:\AllWin-setup\Lock-Firewall.ps1
 **Rules you edited by hand:** the three Remote Desktop rules you already restricted to `100.64.0.0/10` pass the audit and stay enabled (the script does not touch rules whose remote address is inside the tailnet range). Any Remote Desktop rule still open to other addresses, and a pre-existing `OpenSSH-Server-In-TCP` open to any address, are **disabled** by the script. The script adds its own two interface-scoped rules next to yours.
 
 It ends with an audit of the active firewall policy and **fails** if any enabled inbound allow rule still exposes TCP/UDP 3389 or 22 outside `100.64.0.0/10` (including rules with port Any or a port range). Fix what it lists and rerun; it is idempotent. Transcripts go to the admin-only `C:\AllWin\admin-logs`.
+
+**After step 6 succeeds**, scope your hand-edited Remote Desktop rules to the Tailscale interface too (the audit checks the interface only for the two AllWin rules, so this is on you). Confirm first that RDP over the tailnet still works (it now also passes through `AllWin-Tailnet-RDP-TCP-3389`), then:
+
+```powershell
+Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-*' -InterfaceAlias Tailscale   # keeps RDP over UDP
+C:\AllWin-setup\Lock-Firewall.ps1 -CheckOnly                                         # must end with "Audit OK"
+```
+
+If RDP breaks, use the VNC console to run `Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-*' -InterfaceAlias Any` and fix Tailscale first.
 
 ## 7. Mac — RDP over the tailnet
 
