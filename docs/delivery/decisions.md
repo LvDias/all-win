@@ -114,3 +114,8 @@
 - **Decision:** when a manual trade's commission is left blank, it is filled automatically from the account's configured `commission_per_contract_side` (U20); if the account has no configured commission, the recommended option applies (zero, net = gross, labelled "comissões não informadas"). Manual trades still never feed risk.
 - **Note:** the amount is computed by the Core (the browser does no money arithmetic); the UI shows the Core's value/preview and the user may override it.
 - **Canonical docs:** slice-plan S21 AC-7 (PO); HTTP contract trades module (Compasso).
+
+## 2026-10-23 — UX rule: long forms become step-by-step
+- **Decision (user):** when a form gets long, use a step-by-step (stepper) flow, so the user adding something is not tired by seeing many fields at once. The user likes the current visual design.
+- **Application:** the Product Designer (design-system owner) defines the threshold and the stepper pattern in the foundations; specs and web forms follow it (first case: S5 "Nova conta": type → account data → platform → automation).
+- **Canonical docs:** docs/design/foundations.md (Aquarela); product-vision (PO).
