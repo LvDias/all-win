@@ -86,3 +86,21 @@
 - **Open (user):** code alphabet — 8 uppercase alphanumerics without ambiguous characters, or mixed case + digits + specials (U16). WhatsApp provider choice (cost; options with cost and lead time to be brought by the team) (U17).
 - **Superseded:** Q21/Q22 password + TOTP model; U10 (password-login lockout) and U12 (TOTP recovery code) approvals no longer apply as written; the Architect maps their intent (anti-enumeration, per-identifier throttling) to code delivery and verification.
 - **Canonical docs:** slice-plan.md / S3 spec (PO); security/auth-and-session-policy.md, HTTP contract, data model (Architect, Database Architect).
+
+## 2026-10-23 — User decisions on all open recommendations (U16–U19, M2/M3, Q28–Q68, migration, VPS, GitHub, WhatsApp)
+- **Accepted as recommended:** U16 (8-char Crockford code, `XXXX-XXXX`); M2 (72 h hold for a channel change requested from a new device); M3 (on a new device, persistence actions need the e-mail code); Q28–Q36 as recommended, including the Q35 step-up set (the user's 3 actions + source create/rotate, connection create, pairing code, admin invitation, route_enable, account_binding_change; server setting on) and proposals (i) two-channel change needs the other channel's code and (ii) 24 h freeze; U18 (pre-deploy versioning: breaking → document major, `/api/v1` kept); U19 (a) + U19.1 (b), and the user ACCEPTS the residual risk (a flatten that fails after cancelling legs → top-severity alert + out_of_sync); Q37–Q45, Q47–Q53, Q55–Q68 as recommended.
+- **Migration:** the user AUTHORIZES the destructive forward migration #2b (drop password/TOTP/reset tables and columns, delete dev sessions) on the development environment only (no production exists).
+- **Exceptions:**
+  - Commissions (recorded by the user as "Q55"; it is the commissions question, Q54): **net P&L (with commissions) is the main value, gross shown beside it**, because firms measure drawdown and limits on net. Impact on S13/S15 risk to be analysed by the Architect.
+  - Q46: **include in V1 the evaluation profit target (how much is left to pass)**; minimum days and payout later. The team reports the cost if it is complex.
+- **VPS:** the user contracts Contabo Cloud VPS 8 in St. Louis with Windows Server 2025 (2022 if unavailable) and will hand over access; the team says if Windows tests are needed earlier.
+- **GitHub:** private repository under account `LvDias`; the user registers the deploy key (standing push authorization from earlier today applies only to that private repository).
+- **WhatsApp (U17):** the user starts the Meta business verification (Meta Cloud API direct, as recommended).
+- **Canonical docs:** slice-plan / product-vision (PO); auth-and-session-policy, ADR-0004/0005, contracts (Architect); data model (Database Architect).
+
+## 2026-10-23 — Net P&L, evaluation target, commission floor (U20), GitHub remote
+- **Approved:** net P&L as the main value (gross beside it) and the V1 evaluation profit target (how much is left to pass), cost ≈ 4–6 dev-days, with **risk computed on net** (daily loss, drawdown, target, S15 enforcement).
+- **U20:** option (a) — per-account `commission_per_contract_side` (prefilled by the S16 preset when the firm publishes it, editable); effective commission per fill = max(platform-reported, configured × qty); warning when neither exists. Option (b) platform-only rejected.
+- **Evaluation target (Q46 details):** start = date given by the user, default = the account's registration date; reaching the target = notice + notification only, no automatic action. Minimum days and payout later.
+- **GitHub:** the private repository is `git@github.com:LvDias/all-win.git` with the deploy key registered; the user asks to configure the remote, test the connection and push `main` and the branches (standing authorization: push only to this private repository; never public, no deploy, no production access).
+- **Canonical docs:** slice-plan (PO); ADR-0004/0005 + protocol 1.3, auth policy (Architect); HTTP contract (Compasso); data model (Database Architect).
