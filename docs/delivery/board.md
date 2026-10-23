@@ -82,9 +82,18 @@
 | Sonda @ Dev3 (new) | QA crate core/tests/qa + S7 engine tests | — |
 | Agulha (new, Sonnet) | QA tests core/tests/qa s3_identity.rs (S3 3f23c81) | — |
 | Lente @ Dev3 | QA plan S5 web; re-verify S3 web | — |
+| Retina @ Dev3 (new, Sonnet) | QA Frontend S13 web 5b7d9be | — |
+| Bigorna @ Dev3 (new) | Core gateway (S2 Core side) milestone 1 enterprise; owns adapter-sim | — |
+| Pulso (SRE) | S1 latency A/B verdict; host CPU (allwin-heavy by Forja) | — |
 | Traço @ Dev3 | not reconnected; specs split Aquarela / Nanquim | — |
 | Nanquim @ Dev3 (new, Sonnet) | specs S21/S22/S10/S15/plugin-panels (4fad5e69d5be in review); S18 next | S18 frozen inside a37d36ba45e3 until Bisturi verdict |
 | Grosa @ Dev3 (new) | Code Review S5 web 2ab3173 | — |
+
+## Backlog (queued, not started)
+- Protocol minor delta `accounts_changed` (C→A, with ack) so a bind takes effect immediately (Esquadro X2); with Elo, Maestro schedules.
+- Late-exit audit field `late_ms` in ADR-0004 r5 / contract next 5.x.
+- 061310 / 061300 CHECKs: user authorization pending.
+- sccache / systemd slice limits only if allwin-heavy + shared target are not enough (user approval).
 
 ## Environment notes
 
