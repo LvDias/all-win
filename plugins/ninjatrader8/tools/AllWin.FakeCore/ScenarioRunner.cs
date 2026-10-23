@@ -174,6 +174,8 @@ namespace AllWin.FakeCore
             foreach (var key in new[] { "place", "modify", "cancel", "flatten" })
                 if (step[key] != null) json[key] = ResolveAliases(step[key]!.DeepClone());
             if (step["depends_on"] != null) json["depends_on"] = _commandIds[(string)step["depends_on"]!];
+            // Protocol 1.2 position-identity guard: the alias of the command that opened the position.
+            if (step["position_ref"] != null) json["refs"] = new JObject { ["position_ref"] = _commandIds[(string)step["position_ref"]!] };
             var isEntry = (string)json["kind"]! == "place" && (string?)json["place"]?["position_effect"] == "open";
             if (isEntry || step["ttl_ms"] != null)
                 json["expires_at"] = UtcTimestamp.Format(DateTime.UtcNow.AddMilliseconds((double?)step["ttl_ms"] ?? 5000));

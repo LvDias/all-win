@@ -1,12 +1,13 @@
 # Design — All Win
 
-> **Owner:** Product Designer (Aquarela @ Dev3). Business rules come from [product-vision.md](../product/product-vision.md) and the [slice plan](../product/release-1/slice-plan.md). Design never adds them.
+> **Owner:** Product Designer (Aquarela, design-system owner; other designers request changes through the Maestro). Business rules come from [product-vision.md](../product/product-vision.md) and the [slice plan](../product/release-1/slice-plan.md). Design never adds them.
 > Status vocabulary: *proposed* (pending PO review) → *reviewed* (PO ok) → *implemented* / *QA verified* (tracked on the [board](../delivery/board.md)).
 
 | Document | Scope | Status | Implementer · QA |
 |---|---|---|---|
-| [foundations.md](foundations.md) | shadcn/ui tokens (light/dark), typography, layout, number/money/price/date display, status colors (risk 80 %, account/connection), secrets pattern, mobile browsers, feedback patterns, accessibility, glossary | proposed rev. 2 | Frontend · QA |
-| [specs/v1-s3-access-sources-pairing.md](specs/v1-s3-access-sources-pairing.md) | V1-S3: login (keep me signed in), TOTP, invite sign-up, password reset, security settings, step-up, admin (invitations, users: reset link, TOTP reset), signal sources (webhook URL view-once, rotate, revoke), NinjaTrader pairing / re-pairing / unpair (web + plugin states) | final rev. 3 (contract-aligned) | Frontend, Plugin Engineer (S3-11) · QA |
+| [foundations.md](foundations.md) | shadcn/ui tokens (light/dark), typography, layout, number/money/price/date display, status colors (risk 80 %, account/connection), secrets pattern, step-up by code, mobile browsers, feedback patterns, accessibility, glossary | proposed rev. 3 | Frontend · QA |
+| [components.md](components.md) | Shared components: `CodeInput` / `CodeChallenge` (one-time codes, resend cooldown), `Stepper` (+ `FormStepper` for long forms), `EmptyState` variants, `DataTable` with row actions, `RiskBanner` (80 % / limit reached), `NotificationItem`, `NotificationBell`, `CriticalBanner` (S18) | proposed rev. 3 | Frontend · QA |
+| [specs/v1-s3-access-sources-pairing.md](specs/v1-s3-access-sources-pairing.md) | V1-S3 (passwordless): login by code, invite sign-up with e-mail confirmation, step-up by code, change e-mail, security settings, new-device notice, admin invitations, signal sources, NinjaTrader pairing / re-pairing / unpair (web + plugin states); S3b WhatsApp addendum | proposed rev. 4 (auth operations are proposals until the Architect adopts them) | Frontend, Plugin Engineer (S3-11) · QA |
 | [specs/v1-s4-language-locale.md](specs/v1-s4-language-locale.md) | V1-S4: locale resolution, language switcher, preferences (language, time zone), catalogs, plugin language, missing translations | final rev. 2 (Q23 applied), PO review | Frontend, Plugin Engineer (§6) · QA |
 | [specs/v1-s5-automation-opt-in.md](specs/v1-s5-automation-opt-in.md) | V1-S5 (+S7/S10/S16 touch points): per-account automation opt-in for firms that forbid automation (official rule quote, risk, no default, audit, step-up), suspension after rule change, routing unavailability, firm platform selection, "not confirmed" preset values | proposed rev. 2 (contract-aligned); O1/Q24–Q26 open with the user | Frontend · QA (Backend for routing skip/audit) |
 

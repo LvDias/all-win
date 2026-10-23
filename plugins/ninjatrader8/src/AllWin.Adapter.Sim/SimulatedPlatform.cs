@@ -65,9 +65,23 @@ namespace AllWin.Adapter.Sim
 
         // ------------------------------------------------------------------ setup
 
-        public void AddAccount(string name, AccountKind kind = AccountKind.Simulation, OcoLocation oco = OcoLocation.Local, string connection = "Simulated Data Feed")
+        public void AddAccount(string name, AccountKind kind = AccountKind.Simulation, OcoLocation oco = OcoLocation.Local, string connection = "Simulated Data Feed",
+            string provider = "Simulator")
         {
-            lock (_gate) _accounts[name] = new SimAccount(new PlatformAccountInfo { Name = name, Kind = kind, OcoLocation = oco, ConnectionName = connection, Connected = true });
+            lock (_gate) _accounts[name] = new SimAccount(new PlatformAccountInfo { Name = name, Kind = kind, OcoLocation = oco, ConnectionName = connection, Provider = provider, Connected = true });
+        }
+
+        /// <summary>
+        /// The kind the host derives for an account changes (e.g. the connection now reports another mode). In-memory
+        /// test double only: it never talks to a broker.
+        /// </summary>
+        public void SetKind(string account, AccountKind kind)
+        {
+            lock (_gate)
+            {
+                Account(account).Info.Kind = kind;
+                EventSink(new AccountsChangedEvent { Account = account });
+            }
         }
 
         public void SetTickSize(string symbol, decimal tickSize)
@@ -322,6 +336,12 @@ namespace AllWin.Adapter.Sim
             }
         }
 
+        /// <summary>The platform no longer lists earlier executions (NT8 retention across a restart is unverified, E4/E9).</summary>
+        public void ForgetExecutions(string account)
+        {
+            lock (_gate) Account(account).Executions.Clear();
+        }
+
         public void SetConnected(string account, bool connected)
         {
             lock (_gate)
@@ -536,7 +556,7 @@ namespace AllWin.Adapter.Sim
         }
 
         private static PlatformAccountInfo Copy(PlatformAccountInfo i) =>
-            new PlatformAccountInfo { Name = i.Name, ConnectionName = i.ConnectionName, Kind = i.Kind, OcoLocation = i.OcoLocation, Connected = i.Connected };
+            new PlatformAccountInfo { Name = i.Name, ConnectionName = i.ConnectionName, Provider = i.Provider, Kind = i.Kind, OcoLocation = i.OcoLocation, Connected = i.Connected };
 
         private static PlatformPosition Copy(PlatformPosition p) =>
             new PlatformPosition { Instrument = p.Instrument.Clone(), Quantity = p.Quantity, AveragePrice = p.AveragePrice };

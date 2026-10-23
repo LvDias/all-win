@@ -1,9 +1,10 @@
 # V1-S5 — Account registration, lifecycle and per-account opt-ins — Screen spec
 
-> **Owner:** Product Designer (Traço @ Dev3, on the Aquarela spec rev. 2) · **Status:** proposed, pending PO review · **Revision:** 3 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela; Traço @ Dev3 wrote rev. 3 and was released, the specs are now Aquarela's) · **Status:** proposed, pending PO review · **Revision:** 4 · **Date:** 2026-10-23
 > **Slice:** [V1-S5](../../product/release-1/slice-plan.md) AC-1 … AC-11 (slice-plan rev. 7), with touch points in S7 (routing), S10 (audit), S16 (presets) and S19 (followers).
 > **Foundations:** [foundations.md](../foundations.md). Section numbers like "F§7.2" point there.
 > **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/accounts.yaml` and the notes [s5-accounts](../../architecture/contracts/s5-accounts.md). Operations `listAccounts`, `createAccount`, `getAccount`, `updateAccount`, `archiveAccount`, `getAccountArchiveImpact`, `setAccountLifecycle`, `setAccountOptIn`; also [s5-design-deltas.md](../../architecture/contracts/s5-design-deltas.md) (D1–D16). **Where this spec and the contract differ, the contract wins.**
+> **Rev. 4 (2026-10-23, user UX rule in decisions.md, F§10.1):** the create form is now a **step-by-step flow** (§4.0: Tipo → Firma e plano → Dados da conta → Conta na plataforma → Ordens automatizadas → Revisar); edit stays one page with sections (§4.6) and opens a short stepper only when a rule change reopens the choice. Sections 4.1–4.5 keep their fields and rules; they now describe steps. Added the review step, the server-error mapping to a step and the tests.
 > **Rev. 3 (2026-10-23):**
 > - Deltas D1–D16 applied (names, atomic create-with-choice, five `FirmStance` values, conditional step-up, Q24/Q25/Q26 approved, provisional text-change trigger).
 > - Removed: the "saved without a choice" state, its alert and `Escolher agora`, and the Architect question about it.
@@ -112,13 +113,38 @@ Default sort: name A→Z. No pagination in V1 (a user has tens of accounts); vir
 
 **Purpose:** register an account with what the platform needs to route safely (AC-1 … AC-7, AC-9b, AC-10).
 **Entry:** `Nova conta` (list header, empty state, Getting-started card); `Editar` (list, detail).
-**Layout:** single column, max 720 px, sections as `Card`s in this order. A sticky footer with `Cancelar` and `Salvar conta` (primary) never covers the focused field (F§9). On submit: focus the first invalid field; error summary `Alert` when ≥ 3 errors (F§10).
+**Layout:** create = step-by-step flow (§4.0, F§10.1). Edit = one page with `Card` sections in the same order (§4.6). Both: max 720 px, sticky footer that never covers the focused field (F§9, 2.4.11); focus the first invalid field; error summary `Alert` when ≥ 3 errors (F§10).
 
-### 4.1 Section "Tipo" (create only)
+### 4.0 Create flow (stepper, F§10.1, C§2.1)
+
+The form is long by the F§10.1 tests (up to 15 controls, 5 sections, and the choice depends on the preset and must be read first), so create uses `FormStepper`. Steps that do not apply are left out of the list.
+
+| # | Step (pt-BR / en) | Prop | Real | Controls | Section |
+|---|---|---|---|---|---|
+| 1 | Tipo / Type | yes | yes | type | §4.1 |
+| 2 | Firma e plano / Firm and plan | yes | – | firm, plan, phase, size, firm platform (when relevant) + the S16-03 rules preview | §4.2a, S16-03 |
+| 3 | Dados da conta / Account details | yes | yes | name, maximum position, multiplier; real also size (+ tie-break `RadioGroup` when needed) | §4.2b |
+| 4 | Conta na plataforma / Platform account | yes | yes (optional) | platform account | §4.3 |
+| 5 | Ordens automatizadas / Automated orders | yes, when §5.1 requires a choice or shows the info line | – | the choice + acknowledgment | §5 |
+| 6 | Revisar / Review | yes | yes | – | §4.5 |
+
+- Prop: 6 steps. Real: 4 steps (1, 3, 4, 6), the count reads "Etapa 2 de 4". If the preset says automation is allowed (`allowed`), step 5 stays as a short step with the info line and `Ver regra oficial` and nothing to choose, so the user still sees the rule once; it has no required control.
+- Step 1 is the only step that decides which others exist. Changing the type after going forward clears prop-only values (a notice on the next step, F§10.1).
+- **Gates:** step 2 values (firm, plan, phase, size, firm platform) gate step 5. When the user returns to step 2 and changes one, and the Core returns a different `current_rule_version_id`, step 5 loses its choice and shows the §5.2 notice. The stepper marks step 5 as not done again.
+- Step 5 must load `OptInState` for the displayed selection when entered; `Skeleton` while loading, `ErrorState` with retry on failure; `Voltar` always works. The prop account cannot be created until it loads (§9).
+- `Continuar` on step 5 requires the choice and, for `accepted`, the acknowledgment (§5.4 messages). A prop account with the preset-less path (Q40) uses free-text fields in step 2.
+- **Review (step 6):** groups Tipo · Firma e plano · Dados da conta · Conta na plataforma · Ordens automatizadas, each with `Editar`. The automation group shows the choice in words and the version of the rule ("Aceita ordens automatizadas, ciente do risco · regra da {firm} versão {n}"), and when `accepted` the risk `Alert` stays visible above the button. An unbound platform account shows "Sem vínculo". Final button `Criar conta` / `Create account`.
+- The idempotency key (§14) is generated when the flow opens and sent with the single create on the review. Step-up (when a choice is `accepted`, §12) is asked at `Criar conta`; cancelling returns to the review with everything kept.
+- Server errors (contract 4.3.0, `accounts.yaml`): 422 `pointer` → step: `/display_name` (also 409 `accounts.name_taken`), `/max_position_qty` (`accounts.max_position_exceeds_preset`), `/multiplier`, `/size_amount`, `/profile_size` (`accounts.profile_size_required` / `_invalid`, the tie-break) → step 3; `/firm_name`, `/firm_id`, `/plan_name`, `/phase`, `/firm_platform` (`accounts.firm_platform_required` / `_unknown`), `/preset_version_id` (`accounts.preset_version_unknown`, `presets.use_apply_version`), `/rule_values/<field>` (`presets.required_field_unresolved`, shown on the not-confirmed field of the rules preview), `/rule_values` → step 2 (`/max_position_qty` with `presets.required_field_unresolved` → step 3); `/binding` → step 4 (409 `accounts.platform_account_taken`, `accounts.binding_open_position`; 422 `accounts.platform_account_unknown`, `accounts.platform_account_kind_not_allowed`); `/opt_ins/automation` and `/opt_ins/copy` (`accounts.opt_in_required`, `accounts.opt_in_not_applicable`) → step 5. 409 `accounts.rule_version_changed` (`error.current_rule_version_id`) → step 5 with the §5.4 alert and the choice cleared. 409 `accounts.idempotency_key_reused` → review with the code.
+- Entry: `Nova conta` opens step 1. After success: toast "Conta criada." → account detail.
+
+### 4.1 Step 1 "Tipo" (create only)
 
 `RadioGroup` (cards ≥ 44 px): `Conta de prop firm` / `Prop firm account` · `Conta real em corretora` / `Real brokerage account`. Nothing preselected; choosing reveals the rest of the form. **[Proposal]** The type is **not editable** after creation (the data model ties prop-only columns to `kind`); the edit form shows it as read-only text. To change type the user creates a new account.
 
-### 4.2 Section "Dados da conta"
+### 4.2 Steps 2 and 3 "Firma e plano" and "Dados da conta" (edit page: one section "Dados da conta")
+
+**Step 2 (prop) holds:** Firma, Plano, Fase, Tamanho, Plataforma da conta na firma. **Step 3 holds:** Nome, Máximo de contratos, Multiplicador (real: also Tamanho and the tie-break). The table below lists all fields.
 
 | Field | Component | Validation | API / data |
 |---|---|---|---|
@@ -135,7 +161,7 @@ Help under *Máximo de contratos*: "Limite de contratos que o All Win envia a es
 
 For a **real** account under "Tamanho", on an **exact tie** between two standard sizes (S6 **Q60**, provisional) the form shows a required `RadioGroup` "Copiar o perfil de stop/alvo de qual tamanho?" with the two candidates (from `getNearestProfileSize`; nothing preselected; sent as `profile_size`). Otherwise a read-only line: "Perfil de stop/alvo inicial: tamanho padrão mais próximo ({size})." (value from the Core; the profile itself is S6).
 
-### 4.3 Section "Conta na plataforma" (link, AC-1)
+### 4.3 Step 4 "Conta na plataforma" (link, AC-1)
 
 - `Select` "Conta no NinjaTrader" grouped by connection (`Connection.name`, with its status badge F§7.2). Options come from `visible_accounts` of the user's paired connections, label `{platform_account}` + kind badge.
 - Options already bound to another All Win account: disabled, "Já vinculada a {account name}." (one platform account ↔ at most one account).
@@ -145,23 +171,27 @@ For a **real** account under "Tamanho", on an **exact tie** between two standard
 - No paired connection: the select is replaced by an info `Alert` "Nenhuma conexão pareada. Você pode salvar a conta agora e vincular depois." + link to pairing.
 - Disconnected connection: its accounts remain selectable (last known list) with the note "Conexão desconectada: dados da última vez."
 
-### 4.4 Section "Ordens automatizadas nesta conta" (opt-in)
+### 4.4 Step 5 "Ordens automatizadas" (opt-in)
 
-Specified in **§5**. Shown only for prop accounts after firm, plan, phase, size and (when relevant) firm platform are selected (§5.1).
+Specified in **§5**. Prop accounts only. In the stepper it is reached after step 2, so the rule version is known when the step opens (§5.1). On the edit page it is a `Card` shown after firm, plan, phase, size and (when relevant) firm platform are selected.
 
-### 4.5 Save, validation and result
+### 4.5 Review, save, validation and result (create: step 6; edit: sticky footer)
 
 | Situation | UI |
 |---|---|
-| Client-side invalid | Inline errors under fields; focus first invalid; summary `Alert` ≥ 3 errors |
+| Client-side invalid | **Create:** `Continuar` validates the current step; inline errors; focus first invalid; summary `Alert` ≥ 3 errors. **Edit:** all sections on `Salvar` |
 | Server 422 with `pointer` | Map the JSON pointer to the field (`/display_name`, `/max_position_qty`, `/opt_ins/automation`, `/opt_ins/copy`, …) and focus it. `/opt_ins/*` focuses the radio group of that kind (D10) |
-| Step-up required (a choice is `accepted` and changes the stored state, D9) | `StepUpDialog` **before** the single save. Cancel: nothing saved, all form values and choices kept |
+| Step-up required (a choice is `accepted` and changes the stored state, D9) | `StepUpDialog` **before** the single save, at `Criar conta` / `Salvar conta`. Cancel: nothing saved, all form values and choices kept (create: back on the review) |
 | 409 `accounts.rule_version_changed` | §5.4 (D4, D11) |
 | 409 `common.version_conflict` (edit) | §2 |
 | Network or 5xx | destructive `Alert` above the footer with the code; values kept; button re-enabled |
 | Success (create) | Toast "Conta criada." → account detail. If a platform account was bound, detail shows it |
 | Success (edit) | Toast "Conta salva." → account detail |
-| Cancel with unsaved changes | `AlertDialog` "Descartar alterações?" (`Continuar editando` focused / `Descartar`) |
+| Cancel / browser back with unsaved changes | `AlertDialog` "Descartar alterações?" (`Continuar editando` focused / `Descartar`). No draft is stored in V1 (F§10.1) |
+
+### 4.6 Edit page (sections, not steps)
+
+One page, `Card` sections in the order of §4.0 (without Tipo, which is read-only text), one `Salvar conta`, `Cancelar` with the unsaved guard, and on ≥ `lg` the "Nesta página" anchors (F§10.1). **When a change reopens the automation choice** (firm, plan, phase, size or firm platform gave a different `current_rule_version_id`, §5.2, §6) the page does not turn into a stepper: `Salvar conta` opens a short `ResponsiveDialog` flow with `Stepper` (compact): 1 *Nova regra* (new quote, summary, old text in a `Collapsible`) → 2 *Sua escolha* (§5.3, nothing preselected) → 3 *Revisar*; cancelling returns to the page with the edited values kept. The dialog sends the single `updateAccount` with the choice.
 
 **Edit rules**
 
@@ -189,7 +219,7 @@ The section appears only after firm, plan, phase, size and firm platform (when r
 
 ### 5.2 Rule selection changes (D16)
 
-If the user changes firm, plan, phase, size or firm platform after choosing, and the Core returns a different `current_rule_version_id`, the choices of the affected kinds are **cleared** and an info `Alert` explains: "A regra mudou com a sua seleção. Escolha de novo." The Core is asked for the new `OptInState` on each such change (so the quote and `firm_stance` are always for the displayed selection).
+If the user changes firm, plan, phase, size or firm platform after choosing, and the Core returns a different `current_rule_version_id`, the choices of the affected kinds are **cleared** and an info `Alert` explains: "A regra mudou com a sua seleção. Escolha de novo." The Core is asked for the new `OptInState` on each such change (so the quote and `firm_stance` are always for the displayed selection). In the create flow (§4.0) this happens when the user goes back to step 2 and changes a value: step 5 loses its choice, shows this notice and the stepper marks it not done.
 
 ### 5.3 Structure (DOM order = reading order; warning before choice)
 
@@ -420,6 +450,7 @@ D7: the two routing codes replace the former text-only skip reason. Entries are 
 ## 15. Accessibility
 
 - Opt-in section: `fieldset`/`legend`; summary, quote and warning precede the radio group in the DOM; the group has `aria-describedby` → warning. `FirmRuleQuote` uses `lang` of the source text. Links say where they go ("Ver página oficial da Apex Trader Funding (abre em nova aba)").
+- Create flow: `Stepper` and focus/live-region rules of C§2 and C§2.1; the step title is the focused `h2`; the review is a `dl` per group with `Editar {group}` buttons that name the group; `Voltar`/`Continuar` keep the same position on every step; the sticky footer does not hide the focused field; nothing typed is asked twice (3.3.7); at 320 px the footer buttons stack.
 - Form: visible labels, errors linked with `aria-describedby`/`aria-invalid`, focus to first invalid field (F§11). The sticky footer must not hide the focused field (2.4.11).
 - Selects with search use the `Combobox` pattern (shadcn `Command` in `Popover`): type-ahead, `aria-expanded`, Escape closes and returns focus.
 - Lifecycle and delete dialogs: `AlertDialog`, cancel focused, focus returns to the kebab/trigger on close. Result toasts are polite.
@@ -444,6 +475,7 @@ D7: the two routing codes replace the former text-only skip reason. Entries are 
 | AC-11 suspension on stance (and provisionally text) change | §6 |
 | D1–D16 | §5 (D1–D6, D9–D13), §6 (D14), §7 (D15), §5.2 (D16), §13 (D7), §5.4 (D8: atomic) |
 | X-2, X-3, X-5, X-6 | §2, §13 |
+| User UX rule: long forms step by step (decisions.md 2026-10-23) | §4.0, §4.6, F§10.1, C§2.1 |
 
 ## 17. Open questions
 
@@ -461,3 +493,5 @@ D7: the two routing codes replace the former text-only skip reason. Entries are 
 | Q42 (was Q-S5-10) | "Material" text change (D14) | Flagged by the publisher of the version, with a reason shown to the user |
 
 **Still open (Architect):** Q-S5-12 the state name for a copy opt-in of a non-follower (no card in the UI either way); Q-S5-13 `routing.platform_unbound` and the other proposed error codes (§14).
+
+**Step-by-step form (rev. 4), for the PO:** (1) the prop create flow has six steps; "Firma e plano" was split out of "Dados da conta" so no step passes 6 controls (F§10.1), a small change from the five steps the user listed. (2) When automation is `allowed`, step 5 stays as an info step so the rule is still shown once; the PO may prefer to drop it. (3) No draft is saved if the user leaves (V1). (4) Edit stays one page; only a rule change opens a short stepper.

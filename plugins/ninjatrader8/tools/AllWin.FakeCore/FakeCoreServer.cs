@@ -115,7 +115,10 @@ namespace AllWin.FakeCore
         public Task<string> SendReliableAsync(object payload, string? msgId = null, DateTime? sentAt = null)
         {
             var id = msgId ?? Ids.New();
-            var frame = ProtocolCodec.Encode(payload, id, sentAt ?? DateTime.UtcNow);
+            string version;
+            lock (_gate) version = _session?.Version ?? ProtocolCodec.Version;
+            // Envelopes created after welcome carry the negotiated version (ADR-0004 §9); a 1.2 reduce needs it.
+            var frame = ProtocolCodec.Encode(payload, id, sentAt ?? DateTime.UtcNow, version);
             lock (_gate) _outbox.Add((id, frame, DateTime.UtcNow));
             return SendRawAsync(frame).ContinueWith(_ => id, TaskScheduler.Default);
         }

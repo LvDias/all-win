@@ -283,6 +283,84 @@ namespace AllWin.Adapter.Core.Protocol.Schema
           }
         }
       }
+    },
+    {
+      ""description"": ""refs (position-identity guard) exists only from protocol 1.2."",
+      ""if"": {
+        ""properties"": {
+          ""type"": {
+            ""const"": ""command""
+          },
+          ""protocol_version"": {
+            ""pattern"": ""^1\\.[01]$""
+          }
+        },
+        ""required"": [
+          ""type"",
+          ""protocol_version""
+        ]
+      },
+      ""then"": {
+        ""properties"": {
+          ""payload"": {
+            ""not"": {
+              ""required"": [
+                ""refs""
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      ""description"": ""From protocol 1.2 a reduce must carry refs.position_ref."",
+      ""if"": {
+        ""properties"": {
+          ""type"": {
+            ""const"": ""command""
+          },
+          ""protocol_version"": {
+            ""not"": {
+              ""pattern"": ""^1\\.[01]$""
+            }
+          },
+          ""payload"": {
+            ""properties"": {
+              ""kind"": {
+                ""const"": ""place""
+              },
+              ""place"": {
+                ""properties"": {
+                  ""position_effect"": {
+                    ""const"": ""reduce""
+                  }
+                },
+                ""required"": [
+                  ""position_effect""
+                ]
+              }
+            },
+            ""required"": [
+              ""kind"",
+              ""place""
+            ]
+          }
+        },
+        ""required"": [
+          ""type"",
+          ""protocol_version"",
+          ""payload""
+        ]
+      },
+      ""then"": {
+        ""properties"": {
+          ""payload"": {
+            ""required"": [
+              ""refs""
+            ]
+          }
+        }
+      }
     }
   ],
   ""$defs"": {
@@ -807,6 +885,20 @@ namespace AllWin.Adapter.Core.Protocol.Schema
           ""description"": ""command_id that must complete first on this account (e.g. reverse = flatten then place). If it fails, this command is reported rejected with command.prerequisite_failed."",
           ""$ref"": ""#/$defs/uuid""
         },
+        ""refs"": {
+          ""description"": ""Protocol 1.2+. References the adapter checks before executing (ADR-0004 §5 \""Position-identity guard\""). Only on place with position_effect reduce, where it is required from 1.2."",
+          ""type"": ""object"",
+          ""additionalProperties"": false,
+          ""required"": [
+            ""position_ref""
+          ],
+          ""properties"": {
+            ""position_ref"": {
+              ""description"": ""command_id of the All Win place (open) command whose fill took this account's position in this instrument from flat to non-flat (the position's opening command, also the shared-bracket owner). The adapter executes the reduce only if its current position has this identity; otherwise rejected + command.position_changed."",
+              ""$ref"": ""#/$defs/uuid""
+            }
+          }
+        },
         ""place"": {
           ""type"": ""object"",
           ""additionalProperties"": false,
@@ -1112,6 +1204,33 @@ namespace AllWin.Adapter.Core.Protocol.Schema
             ""required"": [
               ""expires_at""
             ]
+          }
+        },
+        {
+          ""if"": {
+            ""required"": [
+              ""refs""
+            ]
+          },
+          ""then"": {
+            ""required"": [
+              ""place""
+            ],
+            ""properties"": {
+              ""kind"": {
+                ""const"": ""place""
+              },
+              ""place"": {
+                ""required"": [
+                  ""position_effect""
+                ],
+                ""properties"": {
+                  ""position_effect"": {
+                    ""const"": ""reduce""
+                  }
+                }
+              }
+            }
           }
         }
       ]

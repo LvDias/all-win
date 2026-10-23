@@ -23,10 +23,10 @@ namespace AllWin.Adapter.Core.Protocol
         public const int Major = 1;
 
         /// <summary>Highest minor this adapter implements.</summary>
-        public const int Minor = 1;
+        public const int Minor = 2;
 
         /// <summary>Versions advertised in hello, lowest first (Architect answer F).</summary>
-        public static readonly string[] SupportedVersions = { "1.0", "1.1" };
+        public static readonly string[] SupportedVersions = { "1.0", "1.1", "1.2" };
 
         private static readonly JsonSerializer Serializer = JsonSerializer.Create(new JsonSerializerSettings
         {

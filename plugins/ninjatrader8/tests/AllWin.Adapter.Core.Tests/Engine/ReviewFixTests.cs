@@ -29,6 +29,13 @@ namespace AllWin.Adapter.Core.Tests.Engine
             return h;
         }
 
+        private static WelcomePayload Welcome10()
+        {
+            var welcome = DefaultWelcome();
+            welcome.ProtocolVersion = "1.0";
+            return welcome;
+        }
+
         private static PlatformOrder Leg(EngineHarness h, string commandId, char role) => h.Platform.OrderByName(Sim101, "aw:" + commandId + ":" + role)!;
 
         // ------------------------------------------------------------------ QA H1: protection never exceeds the position
@@ -38,7 +45,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         {
             using var h = Ready();
             h.Deliver(Place(C1, Side.Buy, 2, protection: Individual(40, 80)));
-            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce));
+            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce, positionRef: C1));
             Assert.Equal(1, Leg(h, C1, 's').Quantity);
             Assert.Equal(1, Leg(h, C1, 't').Quantity);
             h.Platform.SetPrice("MNQ", 21024.50m);
@@ -51,7 +58,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         {
             using var h = Ready(price: 21000m);
             h.Deliver(Place(C1, Side.Buy, 2, protection: Shared(8, 16)));
-            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce));
+            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce, positionRef: C1));
             Assert.Equal(1, Leg(h, C1, 's').Quantity);
             h.Platform.SetPrice("MNQ", 20998m);
             h.Settle();
@@ -77,7 +84,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             using var h = Ready(oco: false);
             h.Deliver(Place(C1, Side.Buy, 1, protection: Individual(40, 80)));
             h.Deliver(Place(C2, Side.Buy, 1, protection: Individual(40, 80), expiresAt: h.Clock.UtcNow.AddSeconds(5)));
-            h.Deliver(Place(C3, Side.Sell, 1, PositionEffect.Reduce));
+            h.Deliver(Place(C3, Side.Sell, 1, PositionEffect.Reduce, positionRef: C1));
             Assert.All(h.Reports(C1).Where(r => r.Status == ReportStatus.Cancelled), r => Assert.Equal(ReasonCodes.OrderOrphanCancelled, r.ReasonCode));
             Assert.True(Leg(h, C1, 's').IsTerminal && Leg(h, C1, 't').IsTerminal);
             Assert.False(Leg(h, C2, 's').IsTerminal);
@@ -107,7 +114,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             h.Deliver(Flatten(C2));
             Assert.Equal(ReportStatus.Unknown, h.Reports(C2).Last().Status);
             Assert.Single(h.Platform.CallLog, c => c.Contains(C2 + ":x")); // never submitted again
-            h.Deliver(Place(C3, Side.Sell, 1, PositionEffect.Reduce));
+            h.Deliver(Place(C3, Side.Sell, 1, PositionEffect.Reduce, positionRef: C1));
             Assert.Contains(h.Reports(C3), r => r.Status == ReportStatus.Filled);
         }
 
@@ -158,7 +165,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             h.Deliver(Place(C1, Side.Buy, 1));
             h.Platform.ClearPrice("MNQ");
             h.Deliver(Flatten(C2));
-            h.Deliver(Place(C3, Side.Sell, 1, PositionEffect.Reduce));
+            h.Deliver(Place(C3, Side.Sell, 1, PositionEffect.Reduce, positionRef: C1));
             Assert.DoesNotContain(h.Platform.CallLog, c => c.Contains(C3));
             for (var i = 0; i < 7; i++)
             {
@@ -301,7 +308,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             h.Tick(TimeSpan.FromDays(8));
             h.Disconnect();
             h.Connect();
-            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce));
+            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce, positionRef: C1));
             Assert.Equal(1, Leg(h, C1, 's').Quantity);
         }
 
@@ -377,7 +384,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         [Fact]
         public void F_outbox_frames_keep_their_original_version_bytes_in_a_1_1_session()
         {
-            using var h = Ready();
+            using var h = Ready(welcome: Welcome10());
             var before = h.Sent(MessageTypes.PositionSnapshot).Single();
             h.Disconnect();
             var welcome = DefaultWelcome();
@@ -640,7 +647,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         [Fact]
         public void Rollback_account_state_on_a_1_0_session_is_refused_with_unsupported_value()
         {
-            using var h = Ready();
+            using var h = Ready(welcome: Welcome10());
             var msgId = Ids.New();
             var state = new AccountStatePayload { AccountId = AccountId, PlatformAccount = Sim101, SyncState = SyncState.OutOfSync, SyncReasons = { "sync.x_y" }, ChangedAt = h.Clock.UtcNow };
             h.DeliverRaw(ProtocolCodec.Encode(state, msgId, h.Clock.UtcNow, "1.1"));
@@ -744,12 +751,15 @@ namespace AllWin.Adapter.Core.Tests.Engine
             h.Engine.OnConnected(h.Sink);
             h.Deliver(Flatten(C1, FlattenReason.Reverse));
             h.Deliver(Place(C2, Side.Sell, 1, dependsOn: C1, expiresAt: h.Clock.UtcNow.AddSeconds(5)));
-            h.Deliver(Place(C3, Side.Buy, 1, PositionEffect.Reduce));
+            h.Deliver(Place(C3, Side.Buy, 1, PositionEffect.Reduce, positionRef: C2));
             h.Deliver(DefaultWelcome());
             Assert.Contains(h.Reports(C2), r => r.Status == ReportStatus.Filled);
-            var c3 = h.Reports(C3).Last();
-            Assert.True(c3.Status == ReportStatus.Filled, c3.Status + " " + c3.ReasonCode);
-            Assert.Equal(0, h.Platform.Position(Sim101, "MNQ"));
+            // C3 is dispatched in the same pump, before C2's fill is processed: the platform position is ahead of the
+            // identity record (an execution still queued), so the guard fails closed (ADR-0004 §5, U13).
+            var c3 = Assert.Single(h.Reports(C3), r => r.Status != ReportStatus.Received);
+            Assert.Equal(ReasonCodes.CommandPositionChanged, c3.ReasonCode);
+            Assert.DoesNotContain(h.Platform.CallLog, c => c.Contains(C3));
+            Assert.Equal(-1, h.Platform.Position(Sim101, "MNQ"));
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AllWin.Adapter.Core.Engine;
 using AllWin.Adapter.Core.Protocol;
 
 namespace AllWin.Adapter.Core.Localization
@@ -38,6 +39,24 @@ namespace AllWin.Adapter.Core.Localization
                 "O relógio deste computador difere do All Win em mais de 10 segundos. Sincronize o relógio do Windows.",
             },
             ["account.not_simulation"] = new[] { "Not a simulation account: this plugin build does not trade it.", "Não é uma conta de simulação: esta versão do plugin não opera nela." },
+            ["live.state.blocked"] = new[] { "Real accounts: blocked on this computer", "Contas reais: bloqueadas neste computador" },
+            ["live.state.allowed"] = new[] { "Real accounts: allowed on this computer", "Contas reais: permitidas neste computador" },
+            ["live.kind_unknown"] = new[] { "Unknown account type: All Win does not trade this account.", "Tipo desconhecido: o All Win não opera nesta conta." },
+            [AdapterEngine.NoticeUnconsentedActions] = new[]
+            {
+                "Real account without consent: All Win orders were cancelled or reduced; everything else stays with you in NinjaTrader.",
+                "Conta real sem consentimento: ordens All Win canceladas/reduzidas; o restante fica com você no NinjaTrader.",
+            },
+            [AdapterEngine.NoticeKindUnknown] = new[]
+            {
+                "Unknown account type; All Win cannot act on this account (not even to close it).",
+                "Tipo da conta desconhecido; o All Win não consegue agir nesta conta (nem zerar).",
+            },
+            [AdapterEngine.NoticeUnprotectedPosition] = new[]
+            {
+                "Open position without protection; manage it in NinjaTrader.",
+                "Posição aberta sem proteção; gerencie no NinjaTrader.",
+            },
             ["account.out_of_sync"] = new[] { "Out of sync: no new entries until you resolve it in All Win.", "Fora de sincronia: nenhuma nova entrada até você resolver no All Win." },
 
             [ReasonCodes.SyncBracketIntegrityUnknown] = new[] { "Bracket integrity unknown while the account cannot be observed.", "Integridade do stop/alvo desconhecida enquanto a conta não pode ser observada." },
@@ -45,6 +64,7 @@ namespace AllWin.Adapter.Core.Localization
             [ReasonCodes.SyncBracketDoubleFill] = new[] { "Both stop and target filled: an unintended position was opened.", "Stop e alvo foram executados: uma posição não desejada foi aberta." },
             [ReasonCodes.SyncBracketIncomplete] = new[] { "Open position without a working stop or target. Check the account.", "Posição aberta sem stop ou alvo ativo. Verifique a conta." },
             [ReasonCodes.SyncSimulationReset] = new[] { "Simulation account reset or Playback rewind.", "Conta de simulação reiniciada ou Playback rebobinado." },
+            ["sync.position_changed"] = new[] { "The position changed before a partial exit: nothing was sent. Check the account.", "A posição mudou antes de uma saída parcial: nada foi enviado. Verifique a conta." },
             ["sync.disconnected_in_trade"] = new[] { "Disconnected with an open position or a command in progress.", "Desconectado com posição aberta ou comando em andamento." },
             ["sync.unknown"] = new[] { "Out of sync.", "Fora de sincronia." },
 
@@ -54,15 +74,17 @@ namespace AllWin.Adapter.Core.Localization
             [ReasonCodes.CommandPrerequisiteFailed] = new[] { "Previous step failed; not sent.", "A etapa anterior falhou; não foi enviado." },
             [ReasonCodes.CommandAccountNotMapped] = new[] { "Account not linked in All Win.", "Conta não vinculada no All Win." },
             [ReasonCodes.CommandAccountNotDestination] = new[] { "Account is not a destination.", "A conta não é de destino." },
-            [ReasonCodes.CommandAccountNotSimulation] = new[] { "Not a simulation account.", "Não é uma conta de simulação." },
+            [ReasonCodes.CommandAccountNotSimulation] = new[] { "Not allowed on this account: not a simulation account, or real accounts are blocked on this computer.", "Não permitido nesta conta: não é de simulação, ou contas reais estão bloqueadas neste computador." },
             [ReasonCodes.CommandInstrumentUnavailable] = new[] { "Instrument not available in NinjaTrader.", "Instrumento indisponível no NinjaTrader." },
             [ReasonCodes.CommandTargetNotFound] = new[] { "Order to change was not found.", "A ordem a alterar não foi encontrada." },
             [ReasonCodes.CommandAlreadyFlat] = new[] { "Nothing to close.", "Nada a fechar." },
             [ReasonCodes.CommandPlatformDisconnected] = new[] { "Account connection is down; not sent.", "A conexão da conta caiu; não foi enviado." },
             [ReasonCodes.CommandNothingToReduce] = new[] { "Nothing to reduce.", "Nada a reduzir." },
+            [ReasonCodes.CommandPositionChanged] = new[] { "The position is not the one this exit was meant for: nothing was sent.", "A posição não é a que esta saída visava: nada foi enviado." },
             [ReasonCodes.OrderQuantityCapped] = new[] { "Quantity limited to the open position.", "Quantidade limitada à posição aberta." },
             [ReasonCodes.OrderPlatformRejected] = new[] { "Rejected by NinjaTrader.", "Rejeitada pelo NinjaTrader." },
             [ReasonCodes.OrderOrphanCancelled] = new[] { "Cancelled: the position is closed.", "Cancelada: a posição foi fechada." },
+            [ReasonCodes.OrderLiveConsentCancelled] = new[] { "Cancelled by the plugin: real accounts are not allowed on this computer.", "Cancelada pelo plugin: contas reais não estão permitidas neste computador." },
             [ReasonCodes.OrderProtectionFailed] = new[] { "Stop or target could not be placed or changed.", "Não foi possível colocar ou alterar o stop ou alvo." },
             [ReasonCodes.OrderCancelFailed] = new[] { "Cancellation failed.", "O cancelamento falhou." },
             [ReasonCodes.OrderProtectionNotSubmitted] = new[] { "Stop and target were not placed: the entry filled while the plugin was closed. Check the account.", "Stop e alvo não foram colocados: a entrada foi executada com o plugin fechado. Verifique a conta." },

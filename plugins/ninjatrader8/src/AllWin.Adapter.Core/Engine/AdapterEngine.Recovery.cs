@@ -133,6 +133,7 @@ namespace AllWin.Adapter.Core.Engine
                 }
             }
             finally { _catchUp = false; }
+            VerifyIdentities();
 
             foreach (var record in _commands.Values.Where(r => r.Phase == CommandPhase.Dispatched && r.Command.Kind == CommandKind.Flatten).OrderBy(r => r.Seq).ToList())
             {
@@ -209,7 +210,7 @@ namespace AllWin.Adapter.Core.Engine
                 if (doubleFill) AddStickyReason(account, ReasonCodes.SyncBracketDoubleFill);
                 if (quantity == 0 && instrumentLegs.Count > 0)
                 {
-                    CancelOrphans(account, instrumentLegs);
+                    CancelOrphans(account, instrumentLegs, LiveRow.CancelOrphanLeg);
                     AddStickyReason(account, ReasonCodes.SyncBracketOrphanLeg);
                 }
                 else if (quantity != 0)
@@ -266,6 +267,8 @@ namespace AllWin.Adapter.Core.Engine
                     OcoLocation = info.OcoLocation,
                     PlatformConnected = info.Connected,
                     ExecutionAllowed = IsExecutionAllowed(info),
+                    LiveState = AccountLiveState(info),
+                    Notices = _liveNotices.TryGetValue(info.Name, out var notices) ? notices.OrderBy(n => n, System.StringComparer.Ordinal).ToArray() : new string[0],
                     CoreSyncState = core?.State,
                     CoreSyncReasons = core?.Reasons ?? new string[0],
                     LocalSyncReasons = local.Distinct().ToArray(),

@@ -2,7 +2,7 @@
 
 > **Canonical location:** `docs/product/product-vision.md`
 > **Owner:** the user (business decisions). The Product Owner maintains this document; every agent reads it before working on this project.
-> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 6 — opt-ins, preset rules, items 1–22, Q24–Q27 recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
+> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 9 — net P&L risk, evaluation target, commission floor; rev. 8 — user decisions of 2026-10-23e; rev. 7 — passwordless sign-in; rev. 6 — opt-ins, preset rules, items 1–22, Q24–Q27 recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
 > Labels used below: **[Decision]** confirmed by the user · **[Proposal]** recommended, awaiting user confirmation · **[Open]** unresolved question.
 
 ---
@@ -21,7 +21,7 @@ This platform gives the trader one place to:
 - Individual traders who trade US index futures across multiple accounts they own. **[Decision]**
 - Interface in **Brazilian Portuguese and English**. **[Decision]**
 - Every user sees and controls only their own accounts and data.
-- Release 1 sign-up is **invite-only**; two-factor authentication (authenticator app) is optional and strongly suggested. **[Decision 2026-10-23]**
+- Release 1 sign-up is **invite-only**; there is **no password**: users prove access with a one-time code sent to their e-mail (first) or WhatsApp (later slice); sensitive actions ask for a new code. Details in [release-1/slice-plan.md](release-1/slice-plan.md) S3/S3b. **[Decision 2026-10-23, supersedes password + optional authenticator-app 2FA]**
 - Notifications in release 1 are in-app only (web application and platform adapter). **[Decision 2026-10-23]**
 - The platform adapter's language follows the user's web language. **[Decision 2026-10-23]**
 
@@ -104,7 +104,7 @@ Draft fields (final contract to be defined by the Software Architect):
 - `quantity` is the base size; each target account applies its own **multiplier** (§8). **[Decision]**
 - **Stop and target come from the target account's profile**, not from the instruction. **[Decision]**
 - **Authentication:** every source uses its own secret so no one else can send instructions to the user's accounts. For the TradingView webhook the secret travels **in the webhook URL** (not in the message, so the indicator holds no secret), and it is **masked in every log** (proxy, Core, audit). **[Decision 2026-10-23]**
-- **Conflicting instructions:** an entry opposite to the current position (e.g., `buy` while short) is rejected for that account and the user is notified; `close` always flattens the whole position; `reverse` while flat opens the position. **[Decision 2026-10-23]**
+- **Conflicting instructions:** an entry opposite to the current position (e.g., `buy` while short) is rejected for that account and the user is notified; `close` always flattens the whole position; `reverse` while flat opens the position. A `reverse` on an account barred from entries (out of sync, risk-blocked, limits pending, no stop/target profile) runs only the closing leg (flatten and cancel protections) and skips the opening leg, audited and notified (extension of P1). **[Decision 2026-10-23]** **[Decision 2026-10-23g]**
 - `modify`/`cancel` are not accepted from TradingView in release 1; they are used for master-account replication. **[Decision 2026-10-23]**
 - `modify`/`cancel` and master-account replication need identifiers that link instructions to the same position/order; the Software Architect defines them. **[Open]**
 
@@ -181,7 +181,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 
 ### Accounts
 - Manual registration. Types: **prop firm account** (firm, plan, size, phase) and **real brokerage account**, on any supported platform. **[Decision]**
-- Real accounts may have any size; they start from the default profile of the nearest standard size. **Pause** = temporary stop keeping all configuration; **disable** = off until re-enabled; both leave open positions untouched. **[Decision 2026-10-23]**
+- Real accounts may have any size; they start from the default profile of the nearest standard size. A prop account (manual or from a preset) with a size outside the standard list follows the same rule; the nearest standard size selects only the stop/target profile, while balance and limits use the account's real values. **[Decision 2026-10-23g]** **Pause** = temporary stop keeping all configuration; **disable** = off until re-enabled; both leave open positions untouched. **[Decision 2026-10-23]**
 
 ### Rules per account
 - Drawdown (with its type, e.g., trailing intraday, end-of-day trailing, static), daily profit target, daily loss limit, and firm-specific rules such as consistency rules. **[Decision]**
@@ -204,6 +204,8 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - **No early unlock:** a blocked account stays blocked until the reset. **[Decision]**
 - **Warnings at 80%** of each limit, shown in the web application and in the platform adapter (e.g., NinjaTrader). **[Decision]**
 - **Daily profit target:** per account, "notify only" (default) or "flatten and block". **[Decision 2026-10-23]**
+- **Net P&L and commissions:** limits, drawdown, the profit targets and enforcement are measured on **net P&L**. Each account has a commission per contract per side, prefilled by the preset when the firm publishes it and editable; the effective commission of a fill is the greater of the platform-reported value and the configured value × quantity; when neither exists the account shows a "commission not reported" warning. **[Decision 2026-10-23f]**
+- **Evaluation profit target:** on evaluation accounts the product shows how much profit is left to reach the preset's evaluation target (net P&L since the start of the count). The count starts on the date given by the user (default: the account's registration date), with an optional amount already earned and a "restart the count" action, both audited; on reaching the target the user gets a notice and a notification, nothing automatic. Minimum trading days and payout rules are not part of release 1. **[Decision 2026-10-23e/f]**
 - **Consistency rules:** tracked and warned in release 1, not enforced. **[Decision 2026-10-23]**
 - **Core gate with enforcement off:** the Core still refuses new instructions to an account that has reached a limit (it never closes trades). **[Decision 2026-10-23]**
 - In NinjaTrader the block is reactive: orders placed manually on a blocked account are cancelled/flattened right after submission. **[Decision 2026-10-23, plan approval]**
@@ -212,7 +214,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 ## 10. Performance analysis
 
 - Trades are captured automatically from execution results (Output) or entered manually. **[Decision]**
-- Per trade: account, instrument, direction, quantity, entry and exit time and price, **time in trade**, P&L, **maximum adverse excursion**, maximum favorable excursion, and the originating signal/source. **[Decision]**
+- Per trade: account, instrument, direction, quantity, entry and exit time and price, **time in trade**, **net P&L (with commissions) as the main value and gross P&L beside it** **[Decision 2026-10-23e]**, **maximum adverse excursion**, maximum favorable excursion, and the originating signal/source. **[Decision]**
 - **Phase 1:** metrics computed by the platform adapter (e.g., in NinjaTrader with the user's own data); only computed numbers are sent. **[Decision]**
 - **Phase 2:** trade-on-chart views with licensed data (same provider decision as §7 Phase 2). The platform must not store or redistribute price data from the user's own data feeds. **[Decision]**
 
@@ -222,6 +224,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - **Precision:** prices, P&L, and money use exact numeric representations.
 - **Security and privacy:** strict per-user isolation; secrets and credentials never stored in plain text or logs.
 - **Transparency:** every automatic action (route, skip, flatten, block) is visible to the user with its reason.
+- **Long forms are step-by-step:** when a form gets long, it is split into steps (a stepper) so the user is not shown many fields at once. When a form counts as long, and the default step pattern, are defined by the Product Designer in the design system. The current visual design is kept. **[Decision 2026-10-23]**
 
 ## 12. Compliance notes (to verify with qualified professionals)
 
@@ -261,7 +264,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 ## 15. Decision log (2026-10-23)
 
 - V1 slice plan approved ([release-1/slice-plan.md](release-1/slice-plan.md)); all recommendations Q1–Q16 and A1–A6 accepted ([delivery decision log](../delivery/decisions.md)).
-- Stack per ADR-0001; production in the US central region; webhook secret in the URL, masked in every log; replication always via the Core in V1; optional TOTP; invite-only sign-up.
+- Stack per ADR-0001; production in the US central region; webhook secret in the URL, masked in every log; replication always via the Core in V1; ~~optional TOTP~~ (superseded, see §17); invite-only sign-up.
 - Conflicting instructions rejected; `close` flattens all; no `modify`/`cancel` from TradingView in V1; followers' initial stop/target from their own profile; master replication as V1.1.
 - Profit target per account (notify only by default); consistency rules tracked only; Core gate refuses new instructions at limit even with enforcement off; out-of-sync accounts stop receiving until cleared; short command expiry, editable per account.
 - In-app notifications only; plugin follows web language; real accounts of any size; pause vs disable defined; firms forbidding copying still ship with stance shown.
@@ -272,8 +275,26 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 
 - Firms that forbid automation: explicit per-account opt-in, no default, warning with the firm's rule text, audited (option A). Master replication stays V1.1.
 - Presets: stance with source and date; conflicting items ship "not confirmed"; platform stored.
-- ADR-0003/0004 accepted (P1–P5, T1–T3); audit retention 24 months; one max position per account; profiles keyed by instrument; signal filter per (source, account); several named TradingView sources; invite/e-mail/session/TOTP/locale rules per slice-plan Q17–Q23.
+- ADR-0003/0004 accepted (P1–P5, T1–T3); audit retention 24 months; one max position per account; profiles keyed by instrument; signal filter per (source, account); several named TradingView sources; invite/e-mail/session/~~TOTP~~/locale rules per slice-plan Q17–Q23 (password reset, TOTP and recovery codes superseded, see §17).
 - User-owned pending: review NinjaTrader terms (ToS §5(a)(viii), EULA) before offering the product to other people.
 - Third batch: Q24–Q27 accepted (copy opt-in, opt-in for any non-"allowed" stance, suspension on stance change, auto-flatten only the orphan-leg position); R1 conflict recommendations accepted with Apex Legacy and Phidias LIVE excluded, the 31 conflicts reviewed later ("not confirmed" until then).
 - Fourth batch: Topstep manual-only preset; TPT conditional copying; Topstep Labs/Pro and TPT PRO+ excluded; VPS/personal-device rules recorded per firm.
 - Open: remaining R2 items ([presets/r2-conflicts-for-user.md](presets/r2-conflicts-for-user.md)).
+
+## 17. Decision log (2026-10-23, fifth batch) — passwordless sign-in
+
+- **[Decision 2026-10-23, user requirement change]** Replaces password + optional TOTP (Q20 reset part, Q22, A5). Sign-up is invite-only; the user gives e-mail and WhatsApp number and confirms each with a code. Sign-in: the user picks e-mail or WhatsApp to receive a code; **no password exists**.
+- Code: single-use, valid 10 minutes, invalidated after 5 wrong attempts, send limits per user and per IP. A new-device sign-in sends an e-mail notice. Sensitive actions (turning automation on for an account, unpairing NinjaTrader, changing e-mail or WhatsApp) ask for a new code. Changing e-mail or WhatsApp needs a code on both the old and the new channel.
+- Slicing: e-mail first (V1-S3); WhatsApp later (V1-S3b), after the supplier decision.
+- **Decided 2026-10-23e:** see §18. U16 (code format) and U17 (supplier: Meta WhatsApp Cloud API direct) are no longer open.
+
+## 18. Decision log (2026-10-23, sixth batch) — passwordless details, screens, commissions, evaluation target
+
+- **[Decision 2026-10-23e]** The user accepted every recommendation of U16, M2, M3 and Q28–Q68 ([release-1/slice-plan.md](release-1/slice-plan.md) §7), with two exceptions below.
+- **Sign-in details:** code of 8 Crockford Base32 characters shown as `XXXX-XXXX`; channel changes from a device first seen less than 7 days ago take a 72-hour hold; on such a device the persistence actions need the e-mail code; loss of every channel is recovered by the admin after an out-of-band identity check (72-hour hold); one account per e-mail and per number; WhatsApp optional; sensitive actions (the user's three plus source create/rotate, connection create, pairing code, admin invitation, route enable and platform-link change) ask a fresh code each time. WhatsApp via the Meta Cloud API direct; the user started the business verification.
+- **Exception 1 — commissions (Q54):** **net P&L (with commissions) is the main value, gross beside it**, because firms measure drawdown and limits on net. This changes the figures behind the risk state (S13, S15), the trade list (S21) and the metrics (S22).
+- **Exception 2 — Q46:** the **evaluation profit target** (how much is left to pass) is included in V1 as a new slice (V1-S13b); minimum trading days and payout rules come later.
+- **Details 2026-10-23f:** risk on net P&L; evaluation target start = user-given date (default registration), notice + notification only on reaching it; **U20 (a)** commission floor per account, prefilled by the preset, editable, warning when no commission exists.
+- **Q71 decided 2026-10-23f:** a manual trade with the commission left blank is filled automatically with the account's configured commission per contract per side (× quantity × 2 sides), labeled as estimated; with no configured commission it counts as zero, labeled "comissões não informadas". Manual trades never feed risk.
+- **UX rule (2026-10-23):** long forms become step-by-step flows (see §11); the threshold and the pattern belong to the design system.
+- **Decisions 2026-10-23g:** Q74 (b) — a `reverse` on an entry-barred account runs only the closing leg (extension of P1); Q73 (b) — a prop account (manual or preset) outside the standard sizes uses the nearest standard size for the stop/target profile only; balance and limits stay real.

@@ -21,6 +21,8 @@ namespace AllWin.Adapter.Core.Engine
                 {
                     case AccountsChangedEvent _:
                         RefreshTrackedOrders();
+                        EnforceLiveTable(); // a known non-live kind invalidates a confirmation (ADR-0005 N11)
+                        CheckUnknownKinds(_clock.UtcNow); // the 10-s unknown alert counts from the change, not the next tick
                         RaiseChanged();
                         return;
                     case AccountConnectionEvent connection:
@@ -246,8 +248,10 @@ namespace AllWin.Adapter.Core.Engine
             };
             report.PlatformTime = execution.PlatformTime ?? (execution.Time == default ? (DateTime?)null : execution.Time);
 
+            var after = position?.Quantity ?? 0;
             var fillRecord = new FillRecord
             {
+                PositionSeq = live?.PositionSeq ?? existing?.PositionSeq ?? PositionSeqFor(account, execution, deltaQuantity, after),
                 FillId = execution.ExecutionId,
                 Quantity = operation == FillOperation.Remove ? oldQuantity : execution.Quantity,
                 Price = operation == FillOperation.Remove ? oldPrice : execution.Price,
@@ -255,9 +259,11 @@ namespace AllWin.Adapter.Core.Engine
                 CommandId = commandId,
                 RoleLetter = letter == '\0' ? null : letter.ToString(),
                 RecordedAt = _clock.UtcNow,
+                Instrument = execution.Instrument.Clone(),
             };
             _fills[key] = fillRecord;
             Put(Collections.Fills, key, fillRecord);
+            UpdateIdentity(account, execution, operation, deltaQuantity, commandId, letter, position?.Quantity ?? 0); // same journal batch
             Emit(record, report);
 
             // Every fill can change what the brackets must cover: entries, protective legs, exits, external fills.
@@ -284,9 +290,11 @@ namespace AllWin.Adapter.Core.Engine
         /// after a flip, are cancelled with order.orphan_cancelled. <paramref name="position"/> must be the
         /// position right after the fill being processed (execution PositionAfter), not a later one.
         /// </summary>
-        private void ReconcileProtection(string account, Instrument instrument, PlatformPosition? position, CommandRecord? filledEntry, bool live)
+        /// <param name="allowInitial">False when only shrinking is wanted (ADR-0005 §N11 transitions): no first bracket.</param>
+        private void ReconcileProtection(string account, Instrument instrument, PlatformPosition? position, CommandRecord? filledEntry, bool live, bool allowInitial = true)
         {
             var restricted = _catchUp || !live;
+            var liveState = RestrictingLiveState(account, instrument);
             var quantity = position?.Quantity ?? 0;
             if (quantity == 0) return; // flat: the orphan rule (HandlePosition) cancels every leg
 
@@ -304,14 +312,14 @@ namespace AllWin.Adapter.Core.Engine
                 var ownerSide = owner.Command.Place!.Side;
                 var covered = (ownerSide == Side.Buy) == (quantity > 0) ? Math.Abs(quantity) : 0;
                 var basePrice = position!.AveragePrice ?? TickMath.Vwap(owner.EntryNotional, Math.Max(owner.EntryFilled, 1));
-                ApplyBracket(owner, ownerSide, basePrice, covered, restricted);
+                ApplyBracket(owner, ownerSide, basePrice, covered, restricted, filledEntry, liveState, allowInitial);
             }
 
             foreach (var allocation in IndividualAllocations(account, instrument, quantity))
             {
                 var record = allocation.Key;
                 // Answer 7: prices from the VWAP of this entry order.
-                ApplyBracket(record, record.Command.Place!.Side, TickMath.Vwap(record.EntryNotional, record.EntryFilled), allocation.Value, restricted);
+                ApplyBracket(record, record.Command.Place!.Side, TickMath.Vwap(record.EntryNotional, record.EntryFilled), allocation.Value, restricted, filledEntry, liveState, allowInitial);
             }
         }
 
@@ -358,7 +366,10 @@ namespace AllWin.Adapter.Core.Engine
         /// catch-up (answer A) nothing is submitted late and legs are only resized down: anything else is left
         /// to the user as sync.bracket_incomplete (alert and wait).
         /// </summary>
-        private void ApplyBracket(CommandRecord owner, Side entrySide, decimal basePrice, int covered, bool restricted)
+        /// <param name="trigger">The entry whose fill is being processed, if any (row 6 vs row 7 of ADR-0005 §N11).</param>
+        /// <param name="liveState">The live-account state when it restricts (outside state B), else null.</param>
+        private void ApplyBracket(CommandRecord owner, Side entrySide, decimal basePrice, int covered, bool restricted, CommandRecord? trigger,
+            LiveState? liveState, bool allowInitial)
         {
             var account = owner.PlatformAccount;
             var instrument = owner.Command.Instrument;
@@ -372,10 +383,18 @@ namespace AllWin.Adapter.Core.Engine
             var (stopPrice, targetPrice) = TickMath.Protective(entrySide, basePrice, tick.Value, protection.StopTicks, protection.TargetTicks);
             var exitSide = entrySide == Side.Buy ? Side.Sell : Side.Buy;
 
+            // ADR-0005 §N11 row 6: outside state B only the consented entry's own fills are protected, capped to what it filled.
+            // In shared mode the owner's legs also protect consented adds (QA M2): their growth is row 6, not row 7.
+            var shared = owner.Command.Place!.Protection!.Mode == ProtectionMode.Shared;
+            var ownGrowth = trigger != null && trigger.ConsentedLive
+                && (trigger == owner || (shared && trigger.Command.Place?.Protection?.Mode == ProtectionMode.Shared && trigger.Command.Place.Side == entrySide));
+            if (liveState.HasValue && ownGrowth) covered = Math.Min(covered, ConsentedOpenQuantity(owner, shared));
+
             if (!owner.BracketSubmitted)
             {
-                if (covered <= 0) return;
+                if (covered <= 0 || !allowInitial) return;
                 if (owner.ProtectionWithheld) return; // decided once: alert and wait, never submitted later
+                if (liveState.HasValue && !(ownGrowth && TableAllows(LiveRow.InitialBracket, liveState.Value))) restricted = true;
                 var oco = stopPrice.HasValue && targetPrice.HasValue ? OrderName.Prefix + owner.CommandId : null;
                 var requests = new List<OrderRequest>();
                 if (stopPrice.HasValue)
@@ -384,7 +403,7 @@ namespace AllWin.Adapter.Core.Engine
                     requests.Add(ProtectiveRequest(owner.CommandId, ChildRole.Target, instrument, exitSide, OrderType.Limit, covered, targetPrice, null, oco));
                 if (restricted)
                 {
-                    // Answers A and R1: no late bracket for a fill we did not observe live (restart catch-up, broker
+                    // Answers A and R1 (and §N11 row 6 refused): no late bracket for a fill we did not observe live (restart catch-up, broker
                     // outage, or delayed delivery). Each withheld leg is reported; the Core raises
                     // sync.bracket_incomplete (sync.* codes are Core-only; the local hint is display only).
                     _log.Write(LogLevel.Warning, "bracket.not_submitted_late", owner.CommandId);
@@ -412,7 +431,8 @@ namespace AllWin.Adapter.Core.Engine
                 if (toSubmit.Count == 0) return;
                 try
                 {
-                    var handles = GuardedSubmit(account, toSubmit);
+                    var handles = GuardedSubmit(account, instrument, toSubmit, LiveRow.InitialBracket);
+                    if (liveState.HasValue) NoteLiveAction(account, liveState.Value, LiveRow.InitialBracket, toSubmit.Count);
                     for (var i = 0; i < toSubmit.Count && i < handles.Count; i++) TrackSubmitted(account, handles[i], toSubmit[i], null);
                 }
                 catch (PlatformException e)
@@ -435,7 +455,7 @@ namespace AllWin.Adapter.Core.Engine
                 if (covered <= 0)
                 {
                     // Nothing left to protect on this side (fully reduced, or flipped): cancel (answer B).
-                    CancelOrphans(account, new[] { leg });
+                    CancelOrphans(account, new[] { leg }, LiveRow.CancelWrongSideLeg);
                     continue;
                 }
                 var desired = leg.ExecFilled + covered;
@@ -453,11 +473,30 @@ namespace AllWin.Adapter.Core.Engine
                     }
                     newPrice = null;
                 }
+                var rows = new List<LiveRow>();
+                if (newQuantity > leg.Order.Quantity)
+                {
+                    var growthRow = ownGrowth ? LiveRow.InitialBracket : LiveRow.UpsizeLeg;
+                    if (liveState.HasValue && !TableAllows(growthRow, liveState.Value))
+                    {
+                        // §N11 row 7 refused: the user manages the rest (alert and wait).
+                        AddStickyReason(account, ReasonCodes.SyncBracketIncomplete);
+                        newQuantity = null;
+                    }
+                    else rows.Add(growthRow);
+                }
+                else if (newQuantity < leg.Order.Quantity) rows.Add(LiveRow.ShrinkLeg);
+                if (newPrice.HasValue)
+                {
+                    if (liveState.HasValue && !TableAllows(LiveRow.RepriceLeg, liveState.Value)) newPrice = null; // row 8
+                    else rows.Add(LiveRow.RepriceLeg);
+                }
                 if (!newQuantity.HasValue && !newPrice.HasValue) continue;
                 try
                 {
                     // One change for quantity and price together (answer 7).
-                    GuardedChange(account, leg.Handle, newQuantity, letter == 't' ? newPrice : null, letter == 's' ? newPrice : null);
+                    GuardedChange(account, instrument, leg.Handle, newQuantity, letter == 't' ? newPrice : null, letter == 's' ? newPrice : null, rows.ToArray());
+                    if (liveState.HasValue) NoteLiveAction(account, liveState.Value, rows[0], 1);
                 }
                 catch (PlatformException e)
                 {
@@ -482,6 +521,45 @@ namespace AllWin.Adapter.Core.Engine
             Emit(owner, report);
         }
 
+        /// <summary>
+        /// What row 6 may protect outside state B: the consented entry's own open quantity; in shared mode, the consented
+        /// shared entries on the owner's side (owner and later adds of the current position) less what the owner's legs
+        /// closed. Entries of earlier, closed positions are older than the owner and never count (QA LN1).
+        /// </summary>
+        private int ConsentedOpenQuantity(CommandRecord owner, bool shared)
+        {
+            if (!shared) return owner.ConsentedLive ? OpenQuantity(owner) : 0;
+            var consented = new HashSet<string>(_commands.Values.Where(r => r.PlatformAccount == owner.PlatformAccount && r.Command.Kind == CommandKind.Place
+                && r.ConsentedLive && r.Command.Instrument.Equals(owner.Command.Instrument) && r.Command.Place!.Side == owner.Command.Place!.Side
+                && r.Command.Place.Protection?.Mode == ProtectionMode.Shared).Select(r => r.CommandId), StringComparer.Ordinal);
+            // By fill, not by intake (QA M10): only entry fills that applied to the current position count.
+            var current = CurrentPositionSeq(owner.PlatformAccount, owner.Command.Instrument);
+            var prefix = owner.PlatformAccount + "|";
+            var filled = _fills.Where(p => p.Key.StartsWith(prefix, StringComparison.Ordinal) && !p.Value.Removed && p.Value.RoleLetter == "e"
+                && p.Value.PositionSeq == current && p.Value.CommandId != null && consented.Contains(p.Value.CommandId)).Sum(p => p.Value.Quantity);
+            return Math.Max(0, filled - LegFilled(owner.PlatformAccount, owner.CommandId, 's') - LegFilled(owner.PlatformAccount, owner.CommandId, 't'));
+        }
+
+        /// <summary>The position number for a new fill: a new one from flat or on a flip, else the current one.</summary>
+        private long PositionSeqFor(string account, PlatformExecution execution, int deltaQuantity, int after)
+        {
+            var key = OwnerKey(account, execution.Instrument);
+            var signed = execution.Side == Side.Buy ? deltaQuantity : -deltaQuantity;
+            var before = after - signed;
+            var current = CurrentPositionSeq(account, execution.Instrument);
+            if (after == 0 || (before != 0 && (before > 0) == (after > 0))) return current;
+            _positionSeqs[key] = current + 1;
+            Put(Collections.Meta, "position_seqs", _positionSeqs);
+            return current + 1;
+        }
+
+        private long CurrentPositionSeq(string account, Instrument instrument) =>
+            _positionSeqs.TryGetValue(OwnerKey(account, instrument), out var seq) ? seq : 0;
+
+        /// <summary>Quantity of this entry not yet closed by its own legs.</summary>
+        private int OpenQuantity(CommandRecord entry) =>
+            Math.Max(0, entry.EntryFilled - LegFilled(entry.PlatformAccount, entry.CommandId, 's') - LegFilled(entry.PlatformAccount, entry.CommandId, 't'));
+
         private enum Adoption { None, Adopted, Ambiguous, LookupFailed }
 
         /// <summary>
@@ -492,7 +570,8 @@ namespace AllWin.Adapter.Core.Engine
         /// ignores terminal matches: its re-tries re-use aw:&lt;cmd&gt;:x and the position is re-evaluated first.
         /// Two or more adoptable matches are ambiguous: none is adopted and nothing is submitted.
         /// </summary>
-        private Adoption AdoptExisting(string account, string name, bool liveOnly = false)
+        /// <param name="beforeAdopt">Runs before a match is adopted, e.g. to persist the command as dispatched.</param>
+        private Adoption AdoptExisting(string account, string name, bool liveOnly = false, Action? beforeAdopt = null)
         {
             IReadOnlyList<PlatformOrder> orders;
             try { orders = _platform.GetOrders(account); }
@@ -509,6 +588,7 @@ namespace AllWin.Adapter.Core.Engine
                 return Adoption.Ambiguous;
             }
             _log.Write(LogLevel.Warning, "order.adopted", name + " state=" + matches[0].State);
+            beforeAdopt?.Invoke();
             AdoptPlatformOrder(account, matches[0]);
             return Adoption.Adopted;
         }
@@ -576,17 +656,19 @@ namespace AllWin.Adapter.Core.Engine
             {
                 var key = OwnerKey(account, instrument);
                 if (_owners.Remove(key)) _pending.Add(new Store.StoreOp(Collections.Owners, key, null)); // ownership ends when flat
-                CancelOrphans(account, LiveOrders(account, instrument).Where(o => o.IsProtective).ToList());
+                CancelOrphans(account, LiveOrders(account, instrument).Where(o => o.IsProtective).ToList(), LiveRow.CancelOrphanLeg);
             }
             var flatten = ActiveFlatten(account, instrument);
             if (flatten != null) AdvanceFlatten(flatten);
         }
 
         /// <summary>Whenever a position becomes flat, remaining All Win stop/target orders are cancelled (vision §8).</summary>
-        private void CancelOrphans(string account, IReadOnlyList<TrackedOrder> legs)
+        private void CancelOrphans(string account, IReadOnlyList<TrackedOrder> legs, LiveRow row)
         {
             var toCancel = legs.Where(o => !o.CancelRequested && !o.Order.IsTerminal).ToList();
             if (toCancel.Count == 0) return;
+            var instrument = toCancel[0].Order.Instrument;
+            var liveState = RestrictingLiveState(account, instrument);
             foreach (var leg in toCancel)
             {
                 leg.CancelRequested = true;
@@ -595,7 +677,8 @@ namespace AllWin.Adapter.Core.Engine
             _log.Write(LogLevel.Info, "orphan.cancel", account + " orders=" + toCancel.Count.ToString(CultureInfo.InvariantCulture));
             try
             {
-                GuardedCancel(account, toCancel.Select(o => o.Handle).ToList());
+                GuardedCancel(account, instrument, toCancel.Select(o => o.Handle).ToList(), new[] { row });
+                if (liveState.HasValue) NoteLiveAction(account, liveState.Value, row, toCancel.Count);
             }
             catch (PlatformException e)
             {
@@ -621,8 +704,10 @@ namespace AllWin.Adapter.Core.Engine
                 if (connection.Connected)
                 {
                     RefreshTrackedOrders(connection.Account);
+                    VerifyIdentities(connection.Account);
                     EvaluateIntegrity(connection.Account);
                     RecoverDeferredFlattens(connection.Account);
+                    EnforceLiveTable(connection.Account);
                 }
             }
             RaiseChanged();
@@ -632,6 +717,7 @@ namespace AllWin.Adapter.Core.Engine
         {
             // A discontinuity, never fills (S11 AC-6): forget local order state and re-read the platform.
             AddStickyReason(account, ReasonCodes.SyncSimulationReset);
+            ForgetIdentities(account);
             foreach (var key in _owners.Keys.Where(k => k.StartsWith(account + "|", StringComparison.Ordinal)).ToList())
             {
                 _owners.Remove(key);
@@ -660,17 +746,17 @@ namespace AllWin.Adapter.Core.Engine
         // ------------------------------------------------------------------ guarded platform writes
 
         /// <summary>
-        /// Every order action passes the simulation guard at the moment it is made (ADR-0005 N4), not only
-        /// when the command was accepted: automatic actions (orphan cancels, bracket resizes, flatten steps)
-        /// included. A refused account gets no order activity at all.
+        /// Every order action passes the simulation guard and the live-account table at the moment it is made
+        /// (ADR-0005 N4, N11), not only when the command was accepted: automatic actions (orphan cancels, bracket
+        /// resizes, flatten steps) included. Each write names its table row(s); a refusal means no order activity.
         /// </summary>
-        private void EnsureWritable(string account)
+        private void EnsureWritable(string account, Instrument instrument, LiveRow[] rows, DateTime? receivedAt)
         {
-            var info = SafeAccounts().FirstOrDefault(a => a.Name == account);
-            if (info == null || !IsExecutionAllowed(info))
+            if (!WriteAllowed(account, instrument, receivedAt, rows, out var state))
             {
-                _log.Write(LogLevel.Error, "guard.refused", account);
-                throw new PlatformException("account refused by the simulation guard");
+                _log.Write(LogLevel.Error, "guard.refused", account + (state.HasValue ? " state=" + state.Value : "")
+                    + " rows=" + string.Join(",", rows.Select(r => ((int)r).ToString(CultureInfo.InvariantCulture))));
+                throw new PlatformException("account refused by the simulation guard or the live-account table");
             }
         }
 
@@ -678,25 +764,26 @@ namespace AllWin.Adapter.Core.Engine
         // that died without a verdict: for Submit the outcome is unknown (never re-submitted blindly), for
         // Change/Cancel it is treated as a failed operation and reported.
 
-        private IReadOnlyList<string> GuardedSubmit(string account, IReadOnlyList<OrderRequest> orders)
+        private IReadOnlyList<string> GuardedSubmit(string account, Instrument instrument, IReadOnlyList<OrderRequest> orders, LiveRow row, DateTime? receivedAt = null)
         {
-            EnsureWritable(account);
+            EnsureWritable(account, instrument, new[] { row }, receivedAt);
             try { return _platform.Submit(account, orders); }
             catch (PlatformException) { throw; }
             catch (Exception e) { throw new PlatformOutcomeUnknownException(e); }
         }
 
-        private void GuardedChange(string account, string handle, int? quantity, decimal? limit, decimal? stop)
+        private void GuardedChange(string account, Instrument instrument, string handle, int? quantity, decimal? limit, decimal? stop, LiveRow[] rows,
+            DateTime? receivedAt = null)
         {
-            EnsureWritable(account);
+            EnsureWritable(account, instrument, rows, receivedAt);
             try { _platform.Change(account, handle, quantity, limit, stop); }
             catch (PlatformException) { throw; }
             catch (Exception e) { throw new PlatformException("change failed: " + e.GetType().Name, e); }
         }
 
-        private void GuardedCancel(string account, IReadOnlyList<string> handles)
+        private void GuardedCancel(string account, Instrument instrument, IReadOnlyList<string> handles, LiveRow[] rows, DateTime? receivedAt = null)
         {
-            EnsureWritable(account);
+            EnsureWritable(account, instrument, rows, receivedAt);
             try { _platform.Cancel(account, handles); }
             catch (PlatformException) { throw; }
             catch (Exception e) { throw new PlatformException("cancel failed: " + e.GetType().Name, e); }

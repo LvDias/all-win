@@ -60,6 +60,9 @@ namespace AllWin.Adapter.Core.Platform
         public string Name { get; set; } = "";
         public string? ConnectionName { get; set; }
 
+        /// <summary>Connection.Options.Provider name; part of the live-account consent key (ADR-0005 N11).</summary>
+        public string? Provider { get; set; }
+
         /// <summary>Derived by the host from Connection.Options.Mode and the provider (ADR-0005 N4); unknown on any doubt.</summary>
         public AccountKind Kind { get; set; } = AccountKind.Unknown;
 
