@@ -324,7 +324,8 @@
         "maxPositionInvalid": "Informe um número inteiro de contratos, 1 ou mais.",
         "optInRequired": "Escolha se esta conta aceita ordens automatizadas.",
         "ackRequired": "Confirme que leu a regra para aceitar.",
-        "summary": "Corrija os campos destacados."
+        "summary": "Corrija os campos destacados.",
+        "sizeAmbiguous": "Digite a parte decimal explicitamente, por exemplo 25000,00 ou 2,5."
       },
       "success": {
         "created": "Conta criada.",
