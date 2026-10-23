@@ -6,6 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 pub use catalog_enterprise as enterprise;
 
+pub mod instrument;
 pub mod rule_version;
 use catalog_enterprise::Symbol;
 
