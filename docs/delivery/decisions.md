@@ -130,3 +130,6 @@
 - **Decision (Q74): (b).** When a reverse reaches an account barred for entries (out of sync, risk blocked, limits pending, no bracket profile), All Win executes only the closing part (flatten and cancel the protections) and skips the opening; the reason is audited and notified. Extends P1 (exits are never blocked). Option (a), skip the whole reverse (previous ADR-0003 text), rejected.
 - **Decision (Q73): (b), with a restriction.** For a prop account with a non-standard size, the nearest standard size (tie → the user chooses) is used **only to choose the stop/target (bracket) profile**. Balance and limits always use the account's real values.
 - **Canonical docs:** ADR-0003 §4.1 delta (Architect); slice-plan S6/S7 (PO); HTTP contract 4.4.0 queue (Compasso).
+
+## 2026-10-23 — Correction: Q73/Q74 canonical contract version
+- **Correction (not a new decision):** the Q73/Q74 entry above lists "HTTP contract 4.4.0 queue" as a canonical document. The change shipped as HTTP contract **5.0.0** (major, ba676fd), extended by 5.1.0 (66f77f0). Q73 applies to any prop account outside the standard size list, manual or preset (slice-plan S6 AC-8, d/product c94caa8).
