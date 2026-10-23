@@ -1,0 +1,123 @@
+# Module `performance` — V1-S22 (performance metrics over the same trade set as V1-S21).
+# Owner: Compasso (Software Architect). Notes: docs/architecture/contracts/s22-performance.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/performance:
+    get:
+      tags: [performance]
+      operationId: getPerformance
+      summary: Totals and per-trade averages for a period and a set of accounts, split by source and signal type
+      description: |
+        The trade set is exactly `listTrades` with the same `from` / `to` (exit time, Q53) and
+        `account_id` filters, restricted to trades recorded at or before `as_of` (S22 AC-2). `as_of` is
+        the instant of this computation; pass it as `recorded_before` to `listTrades` /
+        `getTradesSummary` to show the same set (a manual edit or delete after `as_of` is the only way
+        the two can differ, and it raises `trade.captured` / the audit). Every figure is computed by the
+        Core with exact decimals (X-3); the browser does no arithmetic, bar lengths included.
+        Rounding: half away from zero (a negative average −12.345 → −12.35, symmetric with positives):
+        money averages to 2 decimals; `win_rate` to one decimal (Q-S22-2); `avg_duration_seconds` to whole
+        seconds; `bar_ratio` to 4 decimals. Averages are
+        absent (UI `—`) when no trade enters them. Totals exist only for P&L and the number of trades;
+        time, MAE and MFE are averages only (Q-S22-3).
+        Isolation (X-2): an unknown or another user's `account_id` simply matches nothing, as in
+        `listTrades` / `listActivity` (empty totals and groups; never a different status such as 404), so
+        the response never reveals whether an account exists. Required test: two users, each filtering by
+        the other's account id, get `trade_count` 0 and no groups (QA Security, 3.4.0 info).
+      parameters:
+        - $ref: 'trades.yaml#/components/parameters/TradeFrom'
+        - $ref: 'trades.yaml#/components/parameters/TradeTo'
+        - $ref: 'trades.yaml#/components/parameters/TradeAccountIds'
+        - name: group_by
+          in: query
+          required: false
+          schema: { type: string, enum: [source_signal, source, signal_type], default: source_signal }
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [total_pnl, trade_count, avg_pnl, win_rate], default: total_pnl }
+        - name: order
+          in: query
+          required: false
+          schema: { type: string, enum: [desc, asc], default: desc }
+      responses:
+        '200':
+          description: The figures.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Performance' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  schemas:
+    WinRate:
+      type: string
+      pattern: '^(100\.0|[0-9]{1,2}\.[0-9])$'
+      description: Percent with exactly one decimal (Q-S22-2).
+    PerformanceFigures:
+      type: object
+      additionalProperties: false
+      required: [trade_count, win_count, loss_count, breakeven_count, total_pnl, mae_sample_count, mfe_sample_count]
+      description: |
+        Win rate = trades with P&L > 0 ÷ all trades (provisional, Q58 a: P&L = 0 is not a win; the counts
+        are shown). MAE / MFE averages use only trades that have the value (`*_sample_count` of
+        `trade_count`, Q55).
+      properties:
+        trade_count: { type: integer, minimum: 0 }
+        win_count: { type: integer, minimum: 0 }
+        loss_count: { type: integer, minimum: 0 }
+        breakeven_count: { type: integer, minimum: 0 }
+        total_pnl: { $ref: 'audit.yaml#/components/schemas/Money' }
+        pnl_basis: { type: string, enum: [gross] }
+        avg_pnl: { $ref: 'audit.yaml#/components/schemas/Money' }
+        win_rate: { $ref: '#/components/schemas/WinRate' }
+        avg_duration_seconds: { type: integer, minimum: 0 }
+        avg_mae: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        mae_sample_count: { type: integer, minimum: 0 }
+        avg_mfe: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        mfe_sample_count: { type: integer, minimum: 0 }
+      allOf:
+        - if: { properties: { trade_count: { const: 0 } } }
+          then: { not: { anyOf: [{ required: [avg_pnl] }, { required: [win_rate] }, { required: [avg_duration_seconds] }] } }
+          else: { required: [avg_pnl, win_rate, avg_duration_seconds] }
+        - if: { properties: { mae_sample_count: { const: 0 } } }
+          then: { not: { required: [avg_mae] } }
+          else: { required: [avg_mae] }
+        - if: { properties: { mfe_sample_count: { const: 0 } } }
+          then: { not: { required: [avg_mfe] } }
+          else: { required: [avg_mfe] }
+    PerformanceGroup:
+      type: object
+      additionalProperties: false
+      required: [origin, figures, bar_ratio]
+      description: |
+        One group with at least one trade. Keys by `group_by`: `source_signal` → origin + source (routed) +
+        signal type; `source` → origin + source; `signal_type` → signal type (origin `manual` /
+        `platform` trades form their own groups without a signal type, Q-S22-7).
+      properties:
+        origin: { $ref: 'trades.yaml#/components/schemas/TradeOrigin' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_name: { type: string, maxLength: 60 }
+        source_revoked: { type: boolean }
+        signal_type: { $ref: 'audit.yaml#/components/schemas/AuditSignalType' }
+        master_account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        master_account_name: { type: string, maxLength: 80 }
+        figures: { $ref: '#/components/schemas/PerformanceFigures' }
+        bar_ratio:
+          type: string
+          pattern: '^(1\.0000|0\.[0-9]{4})$'
+          description: '|total_pnl| of this group ÷ the largest |total_pnl| among the groups (the bar length; its sign comes from `total_pnl`). `0.0000` for every group when the largest |total_pnl| is 0.'
+    Performance:
+      type: object
+      additionalProperties: false
+      required: [as_of, group_by, totals, groups]
+      properties:
+        as_of:
+          description: The instant the set was taken; pass it as `recorded_before` to the S21 list for the same trades.
+          $ref: '../openapi.yaml#/components/schemas/Timestamp'
+        group_by: { type: string, enum: [source_signal, source, signal_type] }
+        totals:
+          description: The whole filtered set; equals `getTradesSummary` for the same filters and `recorded_before = as_of` (S22 AC-2).
+          $ref: '#/components/schemas/PerformanceFigures'
+        groups: { type: array, items: { $ref: '#/components/schemas/PerformanceGroup' } }

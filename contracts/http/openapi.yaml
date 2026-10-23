@@ -1,18 +1,28 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 1.1.3
+  version: 3.4.1
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
-    Covers V1-S1 (TradingView webhook ingress), V1-S3 (auth, invitations, sessions, sources,
-    NinjaTrader connections and pairing) and the S5 per-account opt-in operation (automation / copy) requested by design.
+    Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
+    sessions, devices, channel changes, sources, NinjaTrader connections and pairing) in this root, and in
+    `modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`), the V1-S16 prop firm catalog and
+    the account's preset (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`), V1-S10
+    activity (`audit`), V1-S13 risk (`risk`) and V1-S18
+    notifications (`notifications`; codes in contracts/notifications/v1/registry.json) and V1-S21 trades
+    (`trades`), V1-S22 performance (`performance`). 3.0.0 is the first consumable release of the modules; 2.1.0–2.5.0 were never merged or
+    deployed. Security rules: auth-and-session-policy.md rev. 2.
+    Version 2.0.0 is breaking (password and TOTP removed). Paths stay `/api/v1`: no version was ever deployed
+    and there are no external clients, so the path major moves only for breaking changes after the first
+    production deploy (ADR-0002 §4).
     The Core generates its own spec from handlers (utoipa); CI fails on any drift from this file.
 
     Conventions
     - Base paths: `/api/v1` (web, cookie session), `/ingress/v1` (webhooks), `/adapter/v1` (plugin HTTP;
       the WebSocket `/adapter/v1` is specified by ADR-0004 and contracts/adapter-protocol/v1).
     - Authentication: the root `security` requires a full `session` for every operation. Public
-      operations declare `security: []`; the login verify endpoints accept only a `pendingSession`.
+      operations declare `security: []`. There are no passwords: a session starts only from a one-time code
+      (`verifyLoginCode`, `completeSignup`).
       Every session operation answers 401 `auth.unauthenticated` without a valid session.
     - JSON only (`application/json; charset=utf-8`), except the ingress which also accepts `text/plain`.
     - Decimals are strings; timestamps are RFC 3339 UTC with `Z`; ids are lowercase UUIDs.
@@ -29,15 +39,19 @@ info:
       different `Origin` gets 403 `common.forbidden_origin`. The rule does not apply to `/ingress/v1`
       (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not a browser).
     - Sensitive operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition
-      in `x-step-up-when`. They return 403 `auth.step_up_required` when the session's last
-      authentication is older than 15 minutes; the client calls `POST /api/v1/auth/step-up` and retries
-      (auth-and-session-policy.md §1).
+      in `x-step-up-when`. Every such operation is POST or PUT, and its JSON body has an optional `step_up`
+      property (`StepUpProof`: `challenge_id` + `code`). The client first calls `requestStepUp` for that
+      action and target; one code authorizes one action (auth policy §6). Missing proof → 403
+      `auth.step_up_required`; a wrong, expired, used or mismatched proof → 403 `auth.code_invalid`.
+      The proof travels in the body, never in a header, so access logs cannot record it.
+    - One-time codes: every verification failure is the single `auth.code_invalid` (401 when signing in or up,
+      403 on an authenticated operation); code requests always answer 202 (auth policy §3).
     - Check precedence (first failure wins): 401 `auth.unauthenticated` → 403 `common.forbidden_origin`
       → 403 `auth.forbidden` (admin operations, non-admin caller) → 400 `common.invalid_request` →
-      404 `common.not_found` → 403 `auth.step_up_required` → operation-specific 409/422.
+      404 `common.not_found` → 403 `auth.step_up_required` / `auth.code_invalid` → operation-specific 409/422.
       A non-admin therefore never sees `auth.step_up_required` on an admin operation.
-    - Secrets (session cookie, ingress token, invitation/reset tokens, pairing codes, device tokens,
-      TOTP secrets, recovery codes) are never logged (ADR-0001 §5, auth policy §3). One-time values are
+    - Secrets (session and device cookies, ingress token, invitation tokens, one-time codes, challenge
+      tokens, pairing codes, device tokens) are never logged; e-mail addresses and phone numbers are masked (ADR-0001 §5, auth policy §3). One-time values are
       returned exactly once.
     - Response headers (ADR-0001 §9): every Core response (`/api`, `/ingress`, `/adapter`) carries
       `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`. Responses that carry a one-time
@@ -63,6 +77,14 @@ tags:
   - name: pairing
   - name: events
   - name: accounts
+  - name: presets
+  - name: routing
+  - name: profiles
+  - name: audit
+  - name: risk
+  - name: notifications
+  - name: trades
+  - name: performance
 
 paths:
   /ingress/v1/tradingview/{token}:
@@ -157,15 +179,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IngressRejected' }
 
-  /api/v1/auth/login:
+  /api/v1/auth/login/challenges:
     post:
       tags: [auth]
-      operationId: login
-      summary: Sign in with e-mail and password
+      operationId: requestLoginCode
+      summary: Request a sign-in code on a channel (always 202; auth policy §3)
       description: |
-        Same response and timing for unknown e-mail, wrong password and closed user (S3 AC-5).
-        On success sets `__Host-aw_session`. When TOTP is enabled the session is in `pending_2fa`
-        state (5 minutes) and grants nothing but the verify endpoints.
+        Always answers 202 with a fresh sealed `challenge_id`, whether or not the e-mail is registered,
+        active, or has the chosen channel; nothing is sent in those cases. Response and timing are identical:
+        delivery runs after the response (auth policy §2.3). Send limits are keyed by the identifier HMAC and
+        device class and behave the same for unknown identifiers (§4); over a limit → 429 with `Retry-After`.
+        The login screen always shows the same text and never reports a delivery failure.
       security: []
       requestBody:
         required: true
@@ -174,31 +198,73 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [email, password, remember_me]
+              required: [email, channel]
               properties:
                 email: { type: string, format: email, maxLength: 254 }
-                password: { type: string, minLength: 1, maxLength: 1024 }
+                channel: { $ref: '#/components/schemas/CodeChannel' }
+      responses:
+        '202':
+          description: Challenge issued (a code may or may not have been sent).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChallengeIssued' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/auth/login/verify:
+    post:
+      tags: [auth]
+      operationId: verifyLoginCode
+      summary: Sign in with the code of a login challenge
+      description: |
+        On success starts a session (`__Host-aw_session`) and, when the browser has no valid device cookie of
+        this user, issues `__Host-aw_device` and sends the new-device e-mail notice (auth policy §5.2–§5.3).
+        Every failure (wrong, expired, used, invalidated after 5 wrong attempts, unknown or forged challenge)
+        is the single 401 `auth.code_invalid`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [challenge_id, code, remember_me]
+              properties:
+                challenge_id: { $ref: '#/components/schemas/ChallengeId' }
+                code: { $ref: '#/components/schemas/OneTimeCode' }
                 remember_me: { type: boolean }
       responses:
         '200':
-          description: Authenticated, or second factor required.
+          description: Authenticated.
           headers:
-            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+            Set-Cookie: { $ref: '#/components/headers/SessionAndDeviceCookies' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResult' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '401': { $ref: '#/components/responses/CodeInvalid' }
         '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/auth/login/totp:
+  /api/v1/auth/challenges/resend:
     post:
       tags: [auth]
-      operationId: verifyLoginTotp
-      summary: Complete sign-in with a TOTP code
-      security: [{ pendingSession: [] }]
+      operationId: resendCode
+      summary: Send a new code for an open challenge (60-s cooldown; auth policy §2.2)
+      description: |
+        Replaces the challenge's code; wrong attempts already made still count. A closed (expired, used,
+        invalidated after 5 wrong attempts), unknown or forged challenge gets the same 202 and nothing is sent.
+        **The response and the limits depend only on the sealed token and the counters, never on the code row**
+        (auth policy §3): every resend of a valid token counts in the identifier and IP limits and starts the
+        60-s cooldown, and the body is always `expires_at` = now + 10 min and `resend_after_s` = 60, whether
+        or not a code was sent. Within the cooldown → 429 with `Retry-After`, identically for registered and
+        unknown identifiers. A forged token counts only in the IP limits.
+        A `step_up` or `channel_change` challenge is resent only for the session that created it.
+      security: [{ session: [] }, {}]
       requestBody:
         required: true
         content:
@@ -206,33 +272,32 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [code]
+              required: [challenge_id]
               properties:
-                code: { type: string, pattern: '^[0-9]{6}$' }
+                challenge_id: { $ref: '#/components/schemas/ChallengeId' }
       responses:
-        '200':
-          description: Authenticated; session id rotated.
-          headers:
-            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+        '202':
+          description: Accepted (a code may or may not have been sent).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/LoginResult' }
+              schema: { $ref: '#/components/schemas/ChallengeIssued' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401':
-          description: '`auth.invalid_code` (wrong or replayed code) or `auth.pending_expired`.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
         '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/auth/login/recovery-code:
+  /api/v1/auth/challenges/delivery:
     post:
       tags: [auth]
-      operationId: verifyLoginRecoveryCode
-      summary: Complete sign-in with a single-use recovery code (Q22)
-      security: [{ pendingSession: [] }]
+      operationId: getChallengeDelivery
+      summary: Delivery state of a sign-up, step-up or channel-change code (never for login)
+      description: |
+        Lets the client offer another channel when a delivery failed (auth policy §2.3, S3b AC-5).
+        - `login` challenges, closed, unknown or forged challenges, and challenges of another session always
+          answer `not_reported`.
+        - A send suppressed because the new value belongs to another account answers `sent`, exactly like a
+          real send (§3).
+      security: [{ session: [] }, {}]
       requestBody:
         required: true
         content:
@@ -240,26 +305,21 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [code]
+              required: [challenge_id]
               properties:
-                code:
-                  type: string
-                  description: 10 Crockford Base32 characters; case, spaces and hyphens ignored.
-                  maxLength: 20
+                challenge_id: { $ref: '#/components/schemas/ChallengeId' }
       responses:
         '200':
-          description: Authenticated; `recovery_codes_remaining` is included.
-          headers:
-            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+          description: Delivery state.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/LoginResult' }
+              schema:
+                type: object
+                additionalProperties: false
+                required: [delivery]
+                properties:
+                  delivery: { type: string, enum: [pending, sent, failed, not_reported] }
         '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401':
-          description: '`auth.invalid_code` or `auth.pending_expired`.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
         '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -269,21 +329,55 @@ paths:
       tags: [auth]
       operationId: logout
       summary: End the current session (server-side)
-      description: Idempotent. Accepts a full or pending session, or none; answers 204 to every same-origin request.
-      security: [{ session: [] }, { pendingSession: [] }, {}]
+      description: Idempotent. Accepts a session or none; answers 204 to every same-origin request. The device cookie is kept.
+      security: [{ session: [] }, {}]
       responses:
         '204':
-          description: Session ended; cookie cleared.
+          description: Session ended; session cookie cleared.
           headers:
             Set-Cookie: { $ref: '#/components/headers/SessionCookieClear' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/auth/logout-everywhere:
+    post:
+      tags: [auth]
+      operationId: signOutEverywhere
+      summary: Sair de todos os dispositivos — end every session and revoke every device (no step-up)
+      description: |
+        Ends every session of the user, including the current one (`session.ended` reason
+        `signed_out_everywhere`), and revokes all devices; the next sign-in from any browser is a new device.
+        Source tokens and pairings are not touched; the client then shows them with their revoke/unpair
+        actions (auth policy §5.3). Audited.
+      responses:
+        '204':
+          description: Done; session and device cookies cleared.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionAndDeviceCookiesClear' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/step-up:
     post:
       tags: [auth]
-      operationId: stepUp
-      summary: Re-authenticate before a sensitive action (15-minute rule)
+      operationId: requestStepUp
+      summary: Request a step-up code for one sensitive action (auth policy §6)
+      description: |
+        Sends a `step_up` code bound to this session, the `action` and the `target_id`. The action request then
+        carries `step_up: { challenge_id, code }` in its body (schema `StepUpProof`); the code authorizes that
+        one action only (Q30 a: every action asks a new code).
+        - `target_id` is **required** for `source_rotate`, `pairing_code_new`, `connection_unpair`,
+          `account_opt_in_accept`, `route_enable` and `account_binding_change`, and **forbidden** for the other
+          actions; a violation → 400
+          `common.invalid_request` with pointer `/target_id`.
+        - A target that does not exist or belongs to another user → 404 `common.not_found`; no code is sent and
+          nothing is counted against the user's send limit.
+        - `admin_invitation_create` from a non-admin → 403 `auth.forbidden`, no code sent (same precedence as
+          admin operations).
+        - 422 `auth.channel_unavailable`: the user has no confirmed value for `channel`.
+        - 422 `auth.step_up_channel_not_allowed`: the policy requires another channel for this action on this
+          device (auth policy §6.2 M3, if adopted; the client then offers e-mail).
       requestBody:
         required: true
         content:
@@ -291,26 +385,28 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [password]
+              required: [action, channel]
               properties:
-                password: { type: string, minLength: 1, maxLength: 1024 }
-                code:
-                  type: string
-                  pattern: '^[0-9]{6}$'
-                  description: |
-                    Required when TOTP is enabled; omitting it then gives 401 `auth.invalid_code`, not
-                    400 `common.invalid_request`. Ignored when TOTP is disabled.
+                action: { $ref: '#/components/schemas/StepUpAction' }
+                target_id:
+                  description: Required for source_rotate, pairing_code_new, connection_unpair, account_opt_in_accept, route_enable, account_binding_change; forbidden otherwise.
+                  $ref: '#/components/schemas/Uuid'
+                channel: { $ref: '#/components/schemas/CodeChannel' }
       responses:
-        '204': { description: Re-authenticated; `authenticated_at` refreshed. }
+        '202':
+          description: Code sent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChallengeIssued' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401':
-          description: |
-            `auth.unauthenticated` (no session), `auth.reauth_failed` (wrong password) or `auth.invalid_code`
-            (wrong, replayed or missing code when TOTP is enabled).
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: '`auth.channel_unavailable` or `auth.step_up_channel_not_allowed`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -318,7 +414,7 @@ paths:
     post:
       tags: [auth]
       operationId: lookupInvitation
-      summary: Read an invitation before accepting it
+      summary: Read an invitation before signing up
       description: |
         The token travels in the request body, never in a URL path or query. Invitation links use a
         URL fragment (`/{locale}/invite#t=<token>`), which browsers never send to servers, so the token
@@ -348,11 +444,43 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/auth/invitations/accept:
+  /api/v1/auth/signup/challenges:
     post:
       tags: [auth]
-      operationId: acceptInvitation
-      summary: Create the account from an invitation and sign in (S3 AC-1)
+      operationId: startSignup
+      summary: Send the sign-up code to the invited e-mail (S3 AC-1/AC-2)
+      description: |
+        Nothing is created yet: the account exists only when the code is confirmed (`completeSignup`). An
+        abandoned sign-up leaves the invitation usable until it expires. Sign-up is e-mail only (Q31 a,
+        pending); WhatsApp is added later as a channel change.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenBody' }
+      responses:
+        '202':
+          description: Code sent to the invited e-mail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChallengeIssued' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/auth/signup/verify:
+    post:
+      tags: [auth]
+      operationId: completeSignup
+      summary: Confirm the sign-up code; create the account and sign in
+      description: |
+        Creates the user (e-mail confirmed), consumes the invitation, and starts the first session with its
+        device cookie. The sign-up session sends no new-device notice (S3 AC-9). An invitation that closed
+        after `startSignup` (expired, revoked, already used, including a concurrent confirmation) invalidates
+        its code, so every failure here is 401 `auth.code_invalid`.
       security: []
       requestBody:
         required: true
@@ -361,78 +489,29 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [token, password, locale, time_zone]
+              required: [challenge_id, code, locale, time_zone, remember_me]
               properties:
-                token: { type: string, maxLength: 128 }
-                password: { $ref: '#/components/schemas/NewPassword' }
+                challenge_id: { $ref: '#/components/schemas/ChallengeId' }
+                code: { $ref: '#/components/schemas/OneTimeCode' }
                 locale: { $ref: '#/components/schemas/Locale' }
                 time_zone: { $ref: '#/components/schemas/TimeZone' }
+                remember_me: { type: boolean }
       responses:
         '201':
           description: Account created; session started.
           headers:
-            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+            Set-Cookie: { $ref: '#/components/headers/SessionAndDeviceCookies' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResult' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/CodeInvalid' }
         '403': { $ref: '#/components/responses/ForbiddenOrigin' }
-        '404': { $ref: '#/components/responses/InvitationInvalid' }
-        '422': { $ref: '#/components/responses/PasswordRejected' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /api/v1/auth/password-reset/request:
-    post:
-      tags: [auth]
-      operationId: requestPasswordReset
-      summary: Request a reset link by e-mail (always 202, Q20)
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [email]
-              properties:
-                email: { type: string, format: email, maxLength: 254 }
-      responses:
-        '202':
-          description: Returned for every well-formed same-origin request, whether or not the e-mail exists or the request was throttled.
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /api/v1/auth/password-reset/confirm:
-    post:
-      tags: [auth]
-      operationId: confirmPasswordReset
-      summary: Set a new password with a reset token; ends ALL sessions
-      description: Reset links use a URL fragment (`/{locale}/reset-password#t=<token>`); the token goes in the body.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [token, new_password]
-              properties:
-                token: { type: string, maxLength: 128 }
-                new_password: { $ref: '#/components/schemas/NewPassword' }
-      responses:
-        '204': { description: Password changed; every session of the user ended. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
-        '404':
-          description: '`auth.reset_token_invalid` (unknown, used, expired or superseded; one code for all).'
+        '422':
+          description: '`me.invalid_time_zone`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-        '422': { $ref: '#/components/responses/PasswordRejected' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -485,48 +564,110 @@ paths:
       operationId: getMySecurity
       responses:
         '200':
-          description: Security state for the settings page.
+          description: Channels, current session and any pending channel change, for the settings page.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SecurityState' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/me/totp/setup:
-    post:
+  /api/v1/me/devices:
+    get:
       tags: [me]
-      operationId: startTotpSetup
-      summary: Start TOTP enrolment (step-up)
-      x-step-up: true
+      operationId: listDevices
       responses:
         '200':
-          description: Enrolment secret, shown once; expires if not confirmed within 10 minutes.
-          headers:
-            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          description: Browsers that signed in to this account and are not revoked.
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required: [otpauth_uri, secret, expires_at]
-                properties:
-                  otpauth_uri: { type: string, description: 'otpauth://totp/All%20Win:<email>?secret=…&issuer=All%20Win' }
-                  secret: { type: string, description: 'Base32, for manual entry.' }
-                  expires_at: { $ref: '#/components/schemas/Timestamp' }
+                type: array
+                items: { $ref: '#/components/schemas/Device' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/me/devices/{device_id}/forget:
+    post:
+      tags: [me]
+      operationId: forgetDevice
+      summary: Forget a device — revokes it and ends its sessions (no step-up)
+      description: |
+        Ends the sessions bound to that device (`session.ended` reason `device_revoked`). Its cookie then counts
+        as none: the next sign-in from that browser is a new device (auth policy §5.2). Idempotent. Audited.
+      parameters:
+        - { $ref: '#/components/parameters/DeviceId' }
+      responses:
+        '204': { description: Revoked. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/me/channel-changes:
+    post:
+      tags: [me]
+      operationId: startChannelChange
+      summary: Start changing the e-mail or adding/changing WhatsApp (codes to the current and the new value; S3 AC-11)
+      description: |
+        Sends one code to the **current** value of that channel (for a first WhatsApp: to the e-mail) and one
+        to the **new** value, under one flow (auth policy §7). After S3b, when the user has another confirmed
+        channel, a third code goes to it ([Proposed] §7). The change applies only when every code is confirmed
+        within 10 minutes; until then the current value stays in force.
+        - If the new value belongs to another account nothing reveals it: its code is not sent, its delivery
+          reads `sent`, and its verification fails with `auth.code_invalid` (§3).
+        - 409 `me.channel_change_too_soon`: a change completed less than 24 h ago.
+        - 409 `me.channel_change_pending`: another change is open or on hold.
+        - 422 `me.channel_unchanged`: the new value equals the current one.
+        - 422 `auth.channel_unavailable`: WhatsApp is not offered yet (S3b).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [channel, new_value]
+              properties:
+                channel: { $ref: '#/components/schemas/CodeChannel' }
+                new_value:
+                  type: string
+                  maxLength: 254
+                  description: An e-mail address for `email`; an E.164 number (`+5511…`) for `whatsapp`.
+      responses:
+        '202':
+          description: Codes sent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChannelChange' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '409':
-          description: '`auth.totp_already_enabled`.'
+          description: '`me.channel_change_too_soon` or `me.channel_change_pending`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: '`me.channel_unchanged`, `auth.channel_unavailable`, or `me.invalid_channel_value` (pointer `/new_value`).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/me/totp/confirm:
+  /api/v1/me/channel-changes/{change_id}/verify:
     post:
       tags: [me]
-      operationId: confirmTotpSetup
-      summary: Confirm enrolment with a code; returns recovery codes once; ends other sessions
+      operationId: verifyChannelChangeCode
+      summary: Confirm one code of a channel change
+      description: |
+        When the last code is confirmed the change either completes (`completed`: the value is replaced, other
+        sessions end with reason `channel_changed`, the current session is rotated, notices go to the old value
+        and the other channel) or goes `on_hold` until `hold_until` (auth policy §9 hold, and §7 M2 if adopted),
+        cancellable with `cancelChannelChange`.
+      parameters:
+        - { $ref: '#/components/parameters/ChangeId' }
       requestBody:
         required: true
         content:
@@ -534,108 +675,51 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [code]
+              required: [challenge_id, code]
               properties:
-                code: { type: string, pattern: '^[0-9]{6}$' }
+                challenge_id: { $ref: '#/components/schemas/ChallengeId' }
+                code: { $ref: '#/components/schemas/OneTimeCode' }
       responses:
         '200':
-          description: TOTP enabled.
+          description: Updated state of the change.
           headers:
-            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/RecoveryCodes' }
+              schema: { $ref: '#/components/schemas/ChannelChange' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/CodeInvalidOrOrigin' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`me.channel_change_closed` (expired, cancelled or completed).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/me/channel-changes/{change_id}/cancel:
+    post:
+      tags: [me]
+      operationId: cancelChannelChange
+      summary: Cancelar troca — cancel an open or on-hold channel change from any session of the user
+      description: |
+        Explicit action; signing in does not cancel. Audited, with notices to every channel. A new change
+        requested after a cancellation raises an admin alert (auth policy §9). Idempotent on a cancelled change.
+      parameters:
+        - { $ref: '#/components/parameters/ChangeId' }
+      responses:
+        '204': { description: Cancelled. }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrigin' }
-        '422':
-          description: '`auth.invalid_code` or `auth.totp_setup_expired`.'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`me.channel_change_closed` (already completed or expired).'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /api/v1/me/totp/disable:
-    post:
-      tags: [me]
-      operationId: disableTotp
-      summary: Disable TOTP (password + current code, Q22); ends other sessions
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/PasswordAndCode' }
-      responses:
-        '204': { description: TOTP disabled; recovery codes deleted. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401':
-          description: '`auth.unauthenticated`, `auth.reauth_failed` or `auth.invalid_code`.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /api/v1/me/recovery-codes/regenerate:
-    post:
-      tags: [me]
-      operationId: regenerateRecoveryCodes
-      summary: Replace the recovery code batch (password + current code)
-      description: In V1 scope per the design default; PO confirms (spec §4).
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/PasswordAndCode' }
-      responses:
-        '200':
-          description: New batch, shown once; the old batch is invalid.
-          headers:
-            Cache-Control: { $ref: '#/components/headers/NoStore' }
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/RecoveryCodes' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401':
-          description: '`auth.unauthenticated`, `auth.reauth_failed` or `auth.invalid_code`.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /api/v1/me/password:
-    post:
-      tags: [me]
-      operationId: changePassword
-      summary: Change password (step-up); ends other sessions
-      description: In V1 scope per the design default; PO confirms (spec §4).
-      x-step-up: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [current_password, new_password]
-              properties:
-                current_password: { type: string, minLength: 1, maxLength: 1024 }
-                new_password: { $ref: '#/components/schemas/NewPassword' }
-      responses:
-        '204': { description: 'Changed; current session rotated, other sessions ended.' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401':
-          description: '`auth.unauthenticated` or `auth.reauth_failed` (wrong `current_password`).'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
-        '422': { $ref: '#/components/responses/PasswordRejected' }
-        '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/admin/invitations:
@@ -656,7 +740,9 @@ paths:
     post:
       tags: [admin]
       operationId: createInvitation
-      summary: Issue an invitation bound to one e-mail (Q19); link returned once
+      summary: Issue an invitation bound to one e-mail (Q19; step-up); link returned once
+      x-step-up: conditional
+      x-step-up-when: Core setting step_up.q35_persistence_actions is on (pending the user's Q35; default on)
       requestBody:
         required: true
         content:
@@ -669,6 +755,7 @@ paths:
                 email: { type: string, format: email, maxLength: 254 }
                 locale: { $ref: '#/components/schemas/Locale' }
                 send_email: { type: boolean, default: true }
+                step_up: { $ref: '#/components/schemas/StepUpProof' }
       responses:
         '201':
           description: Created. `invite_url` (fragment form) is returned only here.
@@ -686,7 +773,7 @@ paths:
                   email_sent: { type: boolean, description: False when e-mail is disabled or failed (`invites.email_send_failed` is then logged); the admin delivers the link manually. }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403': { $ref: '#/components/responses/ForbiddenOrStepUp' }
         '409':
           description: '`invites.email_taken` (a user or an open invitation already exists for this e-mail; admin-only screen).'
           content:
@@ -724,56 +811,6 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/admin/users/{user_id}/password-reset-link:
-    post:
-      tags: [admin]
-      operationId: adminCreateResetLink
-      summary: Generate a reset link when e-mail is unavailable (Q20 fallback; step-up)
-      description: |
-        Written to the affected user's visible audit log ("reset link generated by an administrator",
-        with the admin's id and the time; never the link) and to the admin trail.
-      x-step-up: true
-      parameters:
-        - { $ref: '#/components/parameters/UserId' }
-      responses:
-        '201':
-          description: Link returned once (fragment form), valid 30 minutes; supersedes earlier links.
-          headers:
-            Cache-Control: { $ref: '#/components/headers/NoStore' }
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [reset_url, expires_at]
-                properties:
-                  reset_url: { type: string, description: 'https://<host>/<locale>/reset-password#t=<token>' }
-                  expires_at: { $ref: '#/components/schemas/Timestamp' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/ForbiddenOrStepUp' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /api/v1/admin/users/{user_id}/totp-reset:
-    post:
-      tags: [admin]
-      operationId: adminResetTotp
-      summary: Remove a user's TOTP after an identity check (Q22; step-up); ends that user's sessions
-      description: |
-        Ends every session of the affected user (`session.ended` reason `admin_totp_reset`). Written to the
-        affected user's visible audit log with the admin's id and the time, and to the admin trail.
-      x-step-up: true
-      parameters:
-        - { $ref: '#/components/parameters/UserId' }
-      responses:
-        '204': { description: TOTP and recovery codes removed; audited with the admin's id. }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/ForbiddenOrStepUp' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
   /api/v1/sources:
     get:
       tags: [sources]
@@ -797,7 +834,8 @@ paths:
       tags: [sources]
       operationId: createSource
       summary: Create a named source; webhook URL returned once (S3 AC-3, Q17; step-up)
-      x-step-up: true
+      x-step-up: conditional
+      x-step-up-when: Core setting step_up.q35_persistence_actions is on (pending the user's Q35; default on)
       requestBody:
         required: true
         content:
@@ -809,6 +847,7 @@ paths:
               properties:
                 name: { $ref: '#/components/schemas/DisplayName' }
                 source_type: { type: string, enum: [tradingview] }
+                step_up: { $ref: '#/components/schemas/StepUpProof' }
       responses:
         '201':
           description: Created.
@@ -819,7 +858,7 @@ paths:
               schema: { $ref: '#/components/schemas/SourceWithUrl' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '403': { $ref: '#/components/responses/StepUpFailed' }
         '409':
           description: '`sources.name_taken` (case-insensitive, among active sources).'
           content:
@@ -865,9 +904,15 @@ paths:
       tags: [sources]
       operationId: rotateSource
       summary: Replace the token immediately (old URL stops working at once; step-up)
-      x-step-up: true
+      x-step-up: conditional
+      x-step-up-when: Core setting step_up.q35_persistence_actions is on (pending the user's Q35; default on)
       parameters:
         - { $ref: '#/components/parameters/SourceId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StepUpBody' }
       responses:
         '200':
           description: New URL returned once.
@@ -878,7 +923,7 @@ paths:
               schema: { $ref: '#/components/schemas/SourceWithUrl' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '403': { $ref: '#/components/responses/StepUpFailed' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: '`sources.revoked` (a revoked source cannot be rotated).'
@@ -925,7 +970,8 @@ paths:
       tags: [connections]
       operationId: createConnection
       summary: Create a connection and its first pairing code (step-up)
-      x-step-up: true
+      x-step-up: conditional
+      x-step-up-when: Core setting step_up.q35_persistence_actions is on (pending the user's Q35; default on)
       requestBody:
         required: true
         content:
@@ -936,6 +982,7 @@ paths:
               required: [name]
               properties:
                 name: { $ref: '#/components/schemas/DisplayName' }
+                step_up: { $ref: '#/components/schemas/StepUpProof' }
       responses:
         '201':
           description: Created, awaiting pairing.
@@ -952,7 +999,7 @@ paths:
                   pairing: { $ref: '#/components/schemas/PairingCode' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '403': { $ref: '#/components/responses/StepUpFailed' }
         '409':
           description: '`connections.name_taken` (case-insensitive, among the user''s connections that are not unpaired).'
           content:
@@ -1004,9 +1051,15 @@ paths:
         (WebSocket close 4002). Account bindings follow the connection by `platform_account` name
         (ADR-0004 §8 "Re-pairing"); accounts not reported by the new instance become out of sync with
         reason `sync.account_not_found_after_repair`.
-      x-step-up: true
+      x-step-up: conditional
+      x-step-up-when: Core setting step_up.q35_persistence_actions is on (pending the user's Q35; default on)
       parameters:
         - { $ref: '#/components/parameters/ConnectionId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StepUpBody' }
       responses:
         '201':
           description: New code.
@@ -1017,7 +1070,7 @@ paths:
               schema: { $ref: '#/components/schemas/PairingCode' }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '403': { $ref: '#/components/responses/StepUpFailed' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: '`connections.unpaired` (an unpaired connection cannot get a code; create a new one).'
@@ -1046,11 +1099,12 @@ paths:
                 acknowledge_open_positions:
                   type: boolean
                   description: Must be true when any mapped account has an open position (design S3-10 checkbox).
+                step_up: { $ref: '#/components/schemas/StepUpProof' }
       responses:
         '204': { description: Unpaired; WebSocket closed with 4002; audited. }
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '403': { $ref: '#/components/responses/StepUpFailed' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: '`connections.open_positions_not_acknowledged` (body lists nothing sensitive; the client re-reads the connection).'
@@ -1115,7 +1169,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429':
-          description: '`pairing.rate_limited` (10/min per IP) or `pairing.temporarily_locked` (global lock after 100 failures in 10 minutes). Header `Retry-After`.'
+          description: '`pairing.rate_limited` (per-IP and per-prefix limits, ADR-0004 §8; there is no global lock, U11). Header `Retry-After`.'
           headers:
             Retry-After: { $ref: '#/components/headers/RetryAfter' }
           content:
@@ -1143,63 +1197,58 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/accounts/{account_id}/opt-ins/{kind}:
-    put:
-      tags: [accounts]
-      operationId: setAccountOptIn
-      summary: Record or change an explicit per-account opt-in (automation or copy) after the account exists
-      description: |
-        Decisions 2026-10-23: option A (explicit per-account opt-in), Q24 (separate `copy` opt-in for
-        followers of master replication), Q25 (the choice is required when the firm's stance for that kind
-        is forbidden, conditional, unknown or not confirmed), Q26 (a new preset version that changes the
-        stance moves the state to `pending_review` and suspends that kind until the user chooses again).
-        **Provisional (Architect, 2026-10-23, awaiting user confirmation):** a material change of the
-        official rule text, with the same stance, also triggers `pending_review`, because the audit stores
-        the exact text the user saw. Typo/formatting-only edits of a quote do not.
-        - `automation` covers automated sources (TradingView webhook, future signal engine).
-        - `copy` covers receiving master-account replication as a follower.
-        The first choice is made **atomically with account creation**: the S5 create/update requests carry
-        an `opt_ins` property of schema `OptInChoices` (pointer `/opt_ins/automation`, `/opt_ins/copy`);
-        a missing required choice is rejected with 422 `accounts.opt_in_required` and nothing is saved
-        (docs/architecture/contracts/s5-design-deltas.md). The `copy` choice is made atomically with adding
-        the account as a follower (S7/S19). This operation is for later changes and for resolving
-        `pending_review`. `rule_version_id` must be the preset rule version whose text the user saw; if it
-        is stale the Core answers 409 `accounts.rule_version_changed` and saves nothing. Every change is
-        audited (date, user, kind, choice, rule version, previous value).
-      x-step-up: conditional
-      x-step-up-when: choice == accepted
-      parameters:
-        - { $ref: '#/components/parameters/AccountId' }
-        - name: kind
-          in: path
-          required: true
-          schema: { $ref: '#/components/schemas/OptInKind' }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/OptInChoiceRequest' }
-      responses:
-        '200':
-          description: Saved and audited.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OptInState' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpRequired' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: '`accounts.rule_version_changed` — `error.current_rule_version_id` carries the current version; nothing saved.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '422':
-          description: '`accounts.opt_in_not_applicable` (state is `not_required`: real account, or the firm allows that kind).'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '500': { $ref: '#/components/responses/InternalError' }
+  # V1-S5 (module accounts) and the S5 part of the S16 catalog (module presets); owner Compasso.
+  /api/v1/accounts: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts' }
+  /api/v1/accounts/{account_id}: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}' }
+  /api/v1/accounts/{account_id}/archive-impact: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1archive-impact' }
+  /api/v1/accounts/{account_id}/lifecycle: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1lifecycle' }
+  /api/v1/accounts/{account_id}/opt-ins/{kind}: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1opt-ins~1{kind}' }
+  /api/v1/opt-in-rules: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1opt-in-rules' }
+  /api/v1/rule-versions/{rule_version_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1rule-versions~1{rule_version_id}' }
+  # V1-S7 (module routing); owner Compasso.
+  /api/v1/routes: { $ref: 'modules/routing.yaml#/paths/~1api~1v1~1routes' }
+  /api/v1/routes/{route_id}: { $ref: 'modules/routing.yaml#/paths/~1api~1v1~1routes~1{route_id}' }
+  /api/v1/route-candidates: { $ref: 'modules/routing.yaml#/paths/~1api~1v1~1route-candidates' }
+  # V1-S6 (module profiles); owner Compasso.
+  /api/v1/instruments: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1instruments' }
+  /api/v1/default-profiles: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1default-profiles' }
+  /api/v1/default-profiles/{instrument_id}/{size_amount}: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1default-profiles~1{instrument_id}~1{size_amount}' }
+  /api/v1/accounts/{account_id}/profiles: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1profiles' }
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1profiles~1{instrument_id}' }
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}/restore: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1profiles~1{instrument_id}~1restore' }
+  /api/v1/profile-sizes/nearest: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1profile-sizes~1nearest' }
+  /api/v1/profile-preview: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1profile-preview' }
+  # V1-S10 (module audit); owner Compasso.
+  /api/v1/activity: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity' }
+  /api/v1/activity/filter-options: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity~1filter-options' }
+  /api/v1/activity/{entry_id}: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity~1{entry_id}' }
+  /api/v1/instructions/{instruction_id}/timeline: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1instructions~1{instruction_id}~1timeline' }
+  # V1-S16 catalog (module presets); owner Compasso.
+  /api/v1/firms: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1firms' }
+  /api/v1/firms/{firm_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1firms~1{firm_id}' }
+  /api/v1/firms/{firm_id}/releases: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1firms~1{firm_id}~1releases' }
+  /api/v1/preset-versions/{preset_version_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1preset-versions~1{preset_version_id}' }
+  /api/v1/accounts/{account_id}/preset: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset' }
+  /api/v1/accounts/{account_id}/preset-diff: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-diff' }
+  /api/v1/accounts/{account_id}/preset-version: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-version' }
+  /api/v1/accounts/{account_id}/preset-values/{field}/restore: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-values~1{field}~1restore' }
+  # V1-S13 (module risk); owner Compasso.
+  /api/v1/accounts/{account_id}/risk: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1risk' }
+  /api/v1/risk-summaries: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1risk-summaries' }
+  /api/v1/accounts/{account_id}/risk-rules: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1risk-rules' }
+  /api/v1/accounts/{account_id}/risk-rules/preview: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1risk-rules~1preview' }
+  # V1-S18 (module notifications); owner Compasso.
+  /api/v1/notifications: { $ref: 'modules/notifications.yaml#/paths/~1api~1v1~1notifications' }
+  /api/v1/notifications/unread-count: { $ref: 'modules/notifications.yaml#/paths/~1api~1v1~1notifications~1unread-count' }
+  /api/v1/notifications/{notification_id}/read: { $ref: 'modules/notifications.yaml#/paths/~1api~1v1~1notifications~1{notification_id}~1read' }
+  /api/v1/notifications/read: { $ref: 'modules/notifications.yaml#/paths/~1api~1v1~1notifications~1read' }
+  # V1-S21 (module trades); owner Compasso.
+  /api/v1/trades: { $ref: 'modules/trades.yaml#/paths/~1api~1v1~1trades' }
+  /api/v1/trades/summary: { $ref: 'modules/trades.yaml#/paths/~1api~1v1~1trades~1summary' }
+  /api/v1/trades/{trade_id}: { $ref: 'modules/trades.yaml#/paths/~1api~1v1~1trades~1{trade_id}' }
+  /api/v1/trade-preview: { $ref: 'modules/trades.yaml#/paths/~1api~1v1~1trade-preview' }
+  # V1-S22 (module performance); owner Compasso.
+  /api/v1/performance: { $ref: 'modules/performance.yaml#/paths/~1api~1v1~1performance' }
 
 components:
   securitySchemes:
@@ -1207,12 +1256,7 @@ components:
       type: apiKey
       in: cookie
       name: __Host-aw_session
-      description: Server-side session (HttpOnly; Secure; SameSite=Lax; Path=/). Full session.
-    pendingSession:
-      type: apiKey
-      in: cookie
-      name: __Host-aw_session
-      description: Same cookie in `pending_2fa` state; accepted only by the login verify endpoints.
+      description: Server-side session (HttpOnly; Secure; SameSite=Lax; Path=/).
 
   headers:
     RetryAfter:
@@ -1224,6 +1268,17 @@ components:
     SessionCookieClear:
       description: Expires the session cookie.
       schema: { type: string }
+    SessionAndDeviceCookies:
+      description: |
+        `__Host-aw_session` (as SessionCookie) and, when the browser has no valid device cookie of this user,
+        `__Host-aw_device=<256-bit random>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=34560000` (400 days;
+        auth policy §5.2). Only an unknown or revoked value is replaced. A value that is valid for **another**
+        user of the same browser is kept, and this user gets their own device row with the same value, so a
+        shared browser stays a known device for each of its users.
+      schema: { type: string }
+    SessionAndDeviceCookiesClear:
+      description: Expires the session and device cookies.
+      schema: { type: string }
     NoStore:
       description: The response carries a one-time secret; no cache may store it.
       schema: { type: string, const: no-store }
@@ -1234,15 +1289,12 @@ components:
     SourceId: { name: source_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
     ConnectionId: { name: connection_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
     AccountId: { name: account_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    DeviceId: { name: device_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    ChangeId: { name: change_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
 
   responses:
     Unauthenticated:
-      description: '`auth.unauthenticated` (no session, expired, or pending_2fa on a full-session endpoint). Web redirects to login with `?reason=session_expired`.'
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    InvalidCredentials:
-      description: '`auth.invalid_credentials` — identical for unknown e-mail, wrong password and closed user.'
+      description: '`auth.unauthenticated` (no session, or expired). Web redirects to sign-in with `?reason=session_expired`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1253,8 +1305,26 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
-    StepUpRequired:
-      description: '`auth.step_up_required` — call POST /api/v1/auth/step-up and retry; or `common.forbidden_origin`.'
+    StepUpFailed:
+      description: |
+        `auth.step_up_required` (the body has no `step_up` proof: call `requestStepUp`, then retry with
+        `step_up: { challenge_id, code }`), `auth.code_invalid` (the proof is wrong, expired, used, bound to
+        another session, action or target: one code for all), or `common.forbidden_origin`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            missing:
+              value: { error: { code: auth.step_up_required } }
+            invalid:
+              value: { error: { code: auth.code_invalid } }
+    CodeInvalid:
+      description: '`auth.code_invalid` — wrong, expired, used, invalidated after 5 wrong attempts, unknown or forged challenge (one code for all; auth policy §3).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    CodeInvalidOrOrigin:
+      description: '`auth.code_invalid` (as CodeInvalid) or `common.forbidden_origin`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1266,7 +1336,7 @@ components:
     ForbiddenOrStepUp:
       description: |
         `auth.forbidden` (not a platform admin; checked first, so a non-admin never gets a step-up prompt),
-        `auth.step_up_required`, or `common.forbidden_origin`.
+        `auth.step_up_required`, `auth.code_invalid` (as StepUpFailed), or `common.forbidden_origin`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1300,12 +1370,6 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
-    PasswordRejected:
-      description: '`auth.password_too_short`, `auth.password_too_long` or `auth.password_breached` (pointer to the field).'
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-
   schemas:
     Uuid:
       type: string
@@ -1325,24 +1389,12 @@ components:
       type: string
       minLength: 1
       maxLength: 60
-    NewPassword:
-      type: string
-      description: 12–128 characters after NFKC normalization; breached/common list rejected (auth policy §2). Length limits are enforced by the Core after normalization.
-      minLength: 1
-      maxLength: 1024
     TokenBody:
       type: object
       additionalProperties: false
       required: [token]
       properties:
         token: { type: string, maxLength: 128 }
-    PasswordAndCode:
-      type: object
-      additionalProperties: false
-      required: [password, code]
-      properties:
-        password: { type: string, minLength: 1, maxLength: 1024 }
-        code: { type: string, pattern: '^[0-9]{6}$' }
     ErrorCode:
       type: string
       pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
@@ -1393,44 +1445,133 @@ components:
     LoginResult:
       type: object
       additionalProperties: false
-      required: [state]
+      required: [user, new_device]
       properties:
-        state: { type: string, enum: [authenticated, pending_2fa] }
         user: { $ref: '#/components/schemas/Me' }
-        pending_expires_at: { $ref: '#/components/schemas/Timestamp' }
-        recovery_codes_remaining: { type: integer, minimum: 0, maximum: 10 }
+        new_device: { type: boolean, description: True when this sign-in registered a new device (the notice e-mail was sent; never on sign-up). }
+    CodeChannel:
+      type: string
+      enum: [email, whatsapp]
+      description: '`whatsapp` is accepted by the schema from 2.0.0 and becomes usable with S3b (U17).'
+    ChallengeId:
+      type: string
+      description: Sealed challenge token (auth policy §3); opaque to clients. Never logged.
+      pattern: '^[A-Za-z0-9_-]{16,256}$'
+    OneTimeCode:
+      type: string
+      description: |
+        The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,
+        uppercase, O→0, I/L→1, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or
+        malformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400
+        `common.invalid_request`, which counts no attempt and reveals nothing. Never logged.
+      minLength: 1
+      maxLength: 32
+    ChallengeIssued:
+      type: object
+      additionalProperties: false
+      required: [challenge_id, expires_at, resend_after_s]
+      properties:
+        challenge_id: { $ref: '#/components/schemas/ChallengeId' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        resend_after_s: { type: integer, minimum: 0, description: Seconds until `resendCode` is accepted (60 after a send). }
+    StepUpAction:
+      type: string
+      description: |
+        Actions that need a step-up code (auth policy §6.2). The user's three actions are
+        `account_opt_in_accept` / `account_create_opt_in_accept`, `connection_unpair`, and the channel change
+        (its own flow). **Included pending Q35:** `source_create`, `source_rotate`, `connection_create`,
+        `pairing_code_new`, `admin_invitation_create` (the policy's security musts), `route_enable`,
+        `account_binding_change` (QA Security M1/L1 on 2.4.0, same setting `step_up.q35_persistence_actions`,
+        default on, conditional). The enum is a superset so it never has to change: whether those
+        operations **require** the proof is a Core setting (`step_up.q35_persistence_actions`, default on),
+        shown as `x-step-up: conditional`. The setting is server configuration only (never an admin/UI/DB
+        toggle); missing or invalid means on (fail-closed). If the user rejects them, the setting goes off and
+        the values stay valid but unused. Enforcement-off / max-position values are added when Q35 decides.
+        - `source_create`, `source_rotate` (target = source), `connection_create`, `pairing_code_new` (target = connection),
+          `connection_unpair` (target = connection), `account_opt_in_accept` (target = account; automation or copy,
+          setAccountOptIn, applyPresetVersion and the S5/S7 update operations), `account_create_opt_in_accept` (no
+          target; S5 create with an accepted opt-in), `admin_invitation_create`.
+        - `route_enable` (target = account; createRoute/updateRoute enabling an automated-source route to an account
+          whose automation was not accepted with step-up: a real account or opt-in not_required).
+        - `account_binding_change` (target = account; updateAccount changing the platform binding of an account that
+          receives automation: opt-in accepted or an active automated route).
+      enum: [source_create, source_rotate, connection_create, pairing_code_new, connection_unpair, account_opt_in_accept, account_create_opt_in_accept, admin_invitation_create, route_enable, account_binding_change]
+    StepUpProof:
+      type: object
+      additionalProperties: false
+      required: [challenge_id, code]
+      description: Step-up proof carried in the body of a step-up operation; consumed in the action's transaction.
+      properties:
+        challenge_id: { $ref: '#/components/schemas/ChallengeId' }
+        code: { $ref: '#/components/schemas/OneTimeCode' }
+    StepUpBody:
+      type: object
+      additionalProperties: false
+      description: Body of a step-up operation that has no other input.
+      properties:
+        step_up: { $ref: '#/components/schemas/StepUpProof' }
+    Device:
+      type: object
+      additionalProperties: false
+      required: [id, label, first_seen_at, last_seen_at, current]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        label: { type: string, maxLength: 128, description: 'Coarse browser and OS family from the User-Agent, e.g. "Chrome on Windows".' }
+        first_seen_at: { $ref: '#/components/schemas/Timestamp' }
+        last_seen_at: { $ref: '#/components/schemas/Timestamp' }
+        current: { type: boolean, description: True for the device of this request. }
+    ChannelChange:
+      type: object
+      additionalProperties: false
+      required: [id, channel, status, masked_new_value, codes, expires_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        channel: { $ref: '#/components/schemas/CodeChannel' }
+        status:
+          type: string
+          enum: [awaiting_codes, on_hold, completed, cancelled, expired]
+          description: '`on_hold` = every code confirmed, the change waits until `hold_until` (auth policy §9 hold; §7 M2 if adopted) and can be cancelled.'
+        masked_new_value: { type: string, maxLength: 64 }
+        codes:
+          type: array
+          description: One entry per code of the flow.
+          items:
+            type: object
+            additionalProperties: false
+            required: [role, challenge_id, confirmed]
+            properties:
+              role: { type: string, enum: [current_value, new_value, other_channel] }
+              challenge_id: { $ref: '#/components/schemas/ChallengeId' }
+              confirmed: { type: boolean }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        hold_until: { $ref: '#/components/schemas/Timestamp' }
       allOf:
-        - if: { properties: { state: { const: authenticated } } }
-          then: { required: [user] }
-          else: { required: [pending_expires_at] }
+        - if: { properties: { status: { const: on_hold } } }
+          then: { required: [hold_until] }
     SecurityState:
       type: object
       additionalProperties: false
-      required: [totp_enabled, recovery_codes_remaining, session]
+      required: [email, session, channel_change_allowed_at]
       properties:
-        totp_enabled: { type: boolean }
-        recovery_codes_remaining: { type: integer, minimum: 0, maximum: 10 }
+        email: { type: string, format: email }
+        whatsapp:
+          type: string
+          description: Confirmed WhatsApp number (E.164), absent until added (S3b).
+          pattern: '^\+[1-9][0-9]{7,14}$'
+        channel_change_allowed_at:
+          description: When a new channel change is accepted (24 h after the last one; auth policy §7). In the past when allowed now.
+          $ref: '#/components/schemas/Timestamp'
+        pending_channel_change: { $ref: '#/components/schemas/ChannelChange' }
         session:
           type: object
           additionalProperties: false
-          required: [persistent, idle_timeout_s, absolute_timeout_s, idle_expires_at, absolute_expires_at, step_up_valid_until]
+          required: [persistent, idle_timeout_s, absolute_timeout_s, idle_expires_at, absolute_expires_at]
           properties:
             persistent: { type: boolean }
             idle_timeout_s: { type: integer, description: '43200 (12 h) or 604800 (7 d) — Q21.' }
             absolute_timeout_s: { type: integer, description: '86400 (24 h) or 2592000 (30 d) — Q21.' }
             idle_expires_at: { $ref: '#/components/schemas/Timestamp' }
             absolute_expires_at: { $ref: '#/components/schemas/Timestamp' }
-            step_up_valid_until: { $ref: '#/components/schemas/Timestamp' }
-    RecoveryCodes:
-      type: object
-      additionalProperties: false
-      required: [recovery_codes]
-      properties:
-        recovery_codes:
-          type: array
-          minItems: 10
-          maxItems: 10
-          items: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$' }
     Invitation:
       type: object
       additionalProperties: false
@@ -1446,12 +1587,12 @@ components:
     AdminUser:
       type: object
       additionalProperties: false
-      required: [id, email, status, totp_enabled, created_at]
+      required: [id, email, status, whatsapp_verified, created_at]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         email: { type: string, format: email }
         status: { type: string, enum: [active, closed] }
-        totp_enabled: { type: boolean }
+        whatsapp_verified: { type: boolean }
         is_platform_admin: { type: boolean }
         created_at: { $ref: '#/components/schemas/Timestamp' }
         last_sign_in_at: { $ref: '#/components/schemas/Timestamp' }
@@ -1545,81 +1686,19 @@ components:
           items: { type: string }
         created_at: { $ref: '#/components/schemas/Timestamp' }
         unpaired_at: { $ref: '#/components/schemas/Timestamp' }
-    OptInKind:
-      type: string
-      enum: [automation, copy]
-    FirmStance:
-      type: string
-      enum: [allowed, forbidden, conditional, unknown, not_confirmed]
-      description: Stance of the account's preset version for the opt-in kind. A missing stance in the preset is `unknown`.
-    OptInChoiceRequest:
-      type: object
-      additionalProperties: false
-      required: [choice, rule_version_id]
-      properties:
-        choice: { type: string, enum: [accepted, declined] }
-        rule_version_id:
-          description: Preset rule version whose text was displayed.
-          $ref: '#/components/schemas/Uuid'
-    OptInChoices:
-      description: |
-        Embedded as the `opt_ins` property of the S5 account create/update request bodies (atomic
-        create-with-choice; the rest of those operations is defined in the S5 contract). Must contain every
-        kind whose choice is required for the account's preset version and is not already `chosen` for that
-        version; otherwise 422 `accounts.opt_in_required` with `pointer` `/opt_ins/automation` or
-        `/opt_ins/copy`, and nothing is saved. A stale `rule_version_id` gives 409
-        `accounts.rule_version_changed`. The S5 create/update operations are `x-step-up: conditional`,
-        `x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state`; the step-up happens
-        before the single save, so cancelling it saves nothing. A kind that is `not_required` is ignored.
-      type: object
-      additionalProperties: false
-      minProperties: 1
-      properties:
-        automation: { $ref: '#/components/schemas/OptInChoiceRequest' }
-        copy: { $ref: '#/components/schemas/OptInChoiceRequest' }
-    OptInState:
-      type: object
-      additionalProperties: false
-      required: [kind, state, firm_stance]
-      properties:
-        kind: { $ref: '#/components/schemas/OptInKind' }
-        firm_stance: { $ref: '#/components/schemas/FirmStance' }
-        state:
-          type: string
-          enum: [not_required, chosen, pending_review]
-          description: |
-            not_required = real account or the stance is `allowed`; chosen = an explicit choice exists for
-            the current rule version; pending_review = the stance (or, provisionally, its official text)
-            changed after the choice, or a requirement appeared for an account that had none (Q26).
-            Routing treats `pending_review` and `declined` as not accepted (`routing.automation_not_accepted`
-            / `routing.copy_not_accepted`). There is no "saved without a choice" state: first choices are
-            atomic with creation.
-        choice:
-          type: string
-          enum: [accepted, declined]
-          description: |
-            With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in
-            force), present only if one was ever made, so the review dialog can show it; it is never
-            preselected. Absent with `not_required`.
-        chosen_at: { $ref: '#/components/schemas/Timestamp' }
-        rule_version_id:
-          description: Rule version the `choice` was made against.
-          $ref: '#/components/schemas/Uuid'
-        current_rule_version_id:
-          description: The preset rule version currently in force for this account.
-          $ref: '#/components/schemas/Uuid'
-      allOf:
-        - if: { properties: { state: { const: chosen } } }
-          then: { required: [choice, chosen_at, rule_version_id, current_rule_version_id] }
-        - if: { properties: { state: { const: pending_review } } }
-          then:
-            required: [current_rule_version_id]
-            dependentRequired: { choice: [chosen_at, rule_version_id] }
-        - if: { properties: { state: { const: not_required } } }
-          then: { not: { anyOf: [{ required: [choice] }, { required: [chosen_at] }, { required: [rule_version_id] }] } }
     Event:
       description: SSE payloads (field `data`). `type` equals the SSE `event` name; `at` is when the event happened (server clock).
       oneOf:
+        - $ref: 'modules/accounts.yaml#/components/schemas/AccountChangedEvent'
+        - $ref: 'modules/accounts.yaml#/components/schemas/AccountArchivedEvent'
+        - $ref: 'modules/routing.yaml#/components/schemas/RouteChangedEvent'
+        - $ref: 'modules/audit.yaml#/components/schemas/AuditEntryRecordedEvent'
+        - $ref: 'modules/presets.yaml#/components/schemas/PresetVersionAvailableEvent'
+        - $ref: 'modules/risk.yaml#/components/schemas/RiskStateChangedEvent'
+        - $ref: 'modules/notifications.yaml#/components/schemas/NotificationCreatedEvent'
+        - $ref: 'modules/notifications.yaml#/components/schemas/NotificationUpdatedEvent'
+        - $ref: 'modules/notifications.yaml#/components/schemas/NotificationReadEvent'
+        - $ref: 'modules/trades.yaml#/components/schemas/TradeCapturedEvent'
         - type: object
           additionalProperties: false
           required: [type, at, connection_id, status]
@@ -1646,11 +1725,11 @@ components:
             type: { const: connection.pairing_code_invalidated }
             at: { $ref: '#/components/schemas/Timestamp' }
             connection_id: { $ref: '#/components/schemas/Uuid' }
-            reason: { type: string, enum: [superseded, pairing_locked] }
+            reason: { type: string, enum: [superseded] }
         - type: object
           additionalProperties: false
           required: [type, at, reason]
           properties:
             type: { const: session.ended }
             at: { $ref: '#/components/schemas/Timestamp' }
-            reason: { type: string, enum: [logout, expired, password_reset, password_changed, totp_changed, admin_totp_reset] }
+            reason: { type: string, enum: [logout, expired, signed_out_everywhere, device_revoked, channel_changed] }
