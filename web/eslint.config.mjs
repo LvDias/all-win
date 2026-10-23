@@ -80,7 +80,7 @@ export default defineConfig([
   },
   {
     // Playwright fixtures name their callback `use`, which the hooks rule mistakes for a React hook.
-    files: ["e2e/**/*.ts"],
+    files: ["e2e/**/*.ts", "tests/qa/e2e/**/*.ts"],
     rules: { "react-hooks/rules-of-hooks": "off" },
   },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "src/shared/api/schema.gen.ts", "playwright-report/**", "test-results/**"]),
