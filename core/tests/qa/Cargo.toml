@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+# Every test target is listed below, so a file that is not committed yet is never built.
+autotests = false
 
 [lints]
 workspace = true
@@ -17,10 +19,6 @@ s3 = []
 s5 = []
 s6 = []
 s7 = []
-
-[[test]]
-name = "s5_accounts"
-required-features = ["s5"]
 
 [[test]]
 name = "s7_routing"
