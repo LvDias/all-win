@@ -7,6 +7,12 @@
   "engines": {
     "node": ">=24"
   },
+  "browserslist": [
+    "chrome >= 106",
+    "edge >= 106",
+    "safari >= 15.4",
+    "firefox >= 116"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",

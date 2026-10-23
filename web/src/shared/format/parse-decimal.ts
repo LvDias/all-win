@@ -12,7 +12,7 @@ export type ParseOptions = {
 };
 
 /**
- * Exact input parser (F§6.3): text in, canonical decimal string out ("1234.50"). No floats.
+ * Exact input parser (F§6.3): text in, canonical decimal string out (trailing zeros dropped: "1234.5"; same value, the tick check works on the scale). No floats.
  * pt-BR accepts "," and "." as the decimal separator; en only ".". Grouping separators are rejected.
  */
 export function parseDecimalInput(text: string, locale: Locale, options: ParseOptions = {}): ParseResult {

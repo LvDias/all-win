@@ -102,3 +102,19 @@ test("the missing-translation gate detects a marker and an i18n console error", 
   await expect(assertNoI18nProblems(page, ["[i18n] missing message: a.b"])).rejects.toThrow();
   await assertNoI18nProblems(page, []);
 });
+
+test("pages carry the security headers and a nonce on the framework scripts", async ({ page, api }) => {
+  await api.signedOut();
+  const response = await page.goto("/pt-BR");
+  const headers = response?.headers() ?? {};
+  const csp = headers["content-security-policy"] ?? "";
+  const nonce = /'nonce-([^']+)'/.exec(csp)?.[1];
+  expect(nonce).toBeTruthy();
+  expect(csp).toContain("frame-ancestors 'none'");
+  expect(headers["x-content-type-options"]).toBe("nosniff");
+  expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  expect(headers["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=()");
+  const scripts = await page.locator("script[src]").evaluateAll((nodes) => nodes.map((node) => (node as HTMLScriptElement).nonce));
+  expect(scripts.length).toBeGreaterThan(0);
+  expect(scripts.every((value) => value === nonce)).toBe(true);
+});

@@ -61,7 +61,7 @@
     "unknown": "Erro inesperado (código: {code})",
     "accounts": {
       "opt_in_not_applicable": "Esta opção não se aplica a esta conta.",
-      "opt_in_required": "Ative esta opção na conta antes de continuar.",
+      "opt_in_required": "Escolha se esta conta aceita ordens automatizadas.",
       "rule_version_changed": "As regras mudaram enquanto você revisava. Revise a versão atual e confirme de novo."
     },
     "auth": {
@@ -116,8 +116,8 @@
       "temporarily_locked": "Pareamento bloqueado temporariamente. Aguarde alguns minutos."
     },
     "routing": {
-      "automation_not_accepted": "A automação ainda não foi aceita para esta conta.",
-      "copy_not_accepted": "A cópia de operações ainda não foi aceita para esta conta."
+      "automation_not_accepted": "Esta conta não aceita ordens automatizadas (ou a escolha está pendente).",
+      "copy_not_accepted": "Esta conta não aceita cópia de operações (ou a escolha está pendente)."
     },
     "sources": {
       "name_taken": "Você já tem uma fonte com este nome.",

@@ -16,7 +16,16 @@ function exact(value: string): `${number}` {
   return value as `${number}`;
 }
 
+let exactStrings: boolean | undefined;
+
+/** Older engines coerce the string to a Number without error; refuse to format money there (F§6.1.1). */
+function assertExactStringSupport() {
+  exactStrings ??= new Intl.NumberFormat("en-US", { useGrouping: false, maximumFractionDigits: 3 }).format("9007199254740993.123" as `${number}`) === "9007199254740993.123";
+  if (!exactStrings) throw new Error("This browser cannot format decimal strings exactly (needs Intl.NumberFormat v3).");
+}
+
 function numberFormat(locale: Locale, options: Intl.NumberFormatOptions) {
+  assertExactStringSupport();
   return new Intl.NumberFormat(intlLocales[locale], options);
 }
 

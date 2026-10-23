@@ -13,10 +13,17 @@ export function flatten(tree: Tree, prefix = ""): Map<string, string> {
   return out;
 }
 
+/** ICU argument names in a message, including those inside plural/select arms. */
+export function placeholders(message: string): string[] {
+  return [...new Set([...message.matchAll(/\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,}]/g)].map((m) => m[1] ?? ""))].sort();
+}
+
 export function compareCatalogs(a: Map<string, string>, b: Map<string, string>, nameA: string, nameB: string): string[] {
   const problems: string[] = [];
   for (const [key, value] of a) {
-    if (!b.has(key)) problems.push(`${key}: missing in ${nameB}`);
+    const other = b.get(key);
+    if (other === undefined) problems.push(`${key}: missing in ${nameB}`);
+    else if (placeholders(value).join() !== placeholders(other).join()) problems.push(`${key}: placeholders differ between ${nameA} and ${nameB}`);
     if (value.trim() === "") problems.push(`${key}: empty in ${nameA}`);
   }
   for (const [key, value] of b) {

@@ -1,4 +1,7 @@
+strictDepBuilds: true
 allowBuilds:
   '@parcel/watcher': false
   '@swc/core': false
+  sharp: true
+  msw: true
   unrs-resolver: false

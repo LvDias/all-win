@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { hasLocale } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
@@ -27,6 +28,8 @@ export async function generateMetadata({ params }: Pick<LayoutProps, "params">):
 }
 
 export default async function LocaleLayout({ children, params }: LayoutProps) {
+  // Pages carry a per-request CSP nonce, so they render per request, never from the static cache.
+  await connection();
   const { locale } = await params;
   if (!hasLocale(locales, locale)) notFound();
   setRequestLocale(locale);
