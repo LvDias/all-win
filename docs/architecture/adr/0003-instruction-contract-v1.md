@@ -134,7 +134,7 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 | `position_effect: reduce` | rejected in V1 (`ingress.action_not_allowed_for_source`) | allowed |
 | `order.type` | `market` only (or omitted) | any |
 | `refs.order_ref` on `buy`/`sell`/`reverse` | optional | **required** (`ingress.missing_order_ref`) |
-| `signal_type` | `trigger`, `trade_plan`, `nq_trigger` | `master_account` |
+| `signal_type` | `trigger`, `trade_plan`, `nq_trigger`; anything else rejected (`ingress.signal_type_not_allowed_for_source`) | `master_account` |
 | Transport | HTTPS webhook (§7) | Adapter protocol message `instruction` (ADR-0004), authenticated by the device token |
 
 `source.type` must equal the type bound to the credential (`ingress.source_mismatch`). A master-account instruction is accepted only for an account the user has designated as a master. Followers are configured in routing (S7/S19).
