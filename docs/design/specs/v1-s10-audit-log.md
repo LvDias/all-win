@@ -1,9 +1,9 @@
 # V1-S10 — Audit log and activity view — Screen spec
 
-> **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Nanquim) · **Status:** proposed, PO review (Rumo) applied · **Revision:** 2 · **Date:** 2026-10-23
 > **Slice:** [V1-S10](../../product/release-1/slice-plan.md) AC-1 … AC-4 (slice-plan rev. 7); cross-cutting X-2, X-4, X-5, X-6, X-8. Entry points from S3 (AC-16 events), S5, S6, S7, S11, S14, S15, S18.
 > **Foundations:** [foundations.md](../foundations.md) (F§6.4 time, F§7 status, F§10 feedback) · **Related:** [S5](v1-s5-automation-opt-in.md) §13, [S6](v1-s6-stop-target-profiles.md) §8, [S7](v1-s7-routing.md) §9 (events they emit).
-> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/audit.yaml` and the notes [s10-audit](../../architecture/contracts/s10-audit.md). Operations `listActivity`, `getActivityFilterOptions`, `getActivityEntry`, `getInstructionTimeline`; storage `audit.audit_entry` ([data model §6.4](../../architecture/data/wave1-data-model.md)). **Where this spec and the contract differ, the contract wins.**
+> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9): `contracts/http/modules/audit.yaml` and the notes [s10-audit](../../architecture/contracts/s10-audit.md). Operations `listActivity`, `getActivityFilterOptions`, `getActivityEntry`, `getInstructionTimeline`; storage `audit.audit_entry` ([data model §6.4](../../architecture/data/wave1-data-model.md)). **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Writing entries, redaction and retention are the Core's (Backend). QA owns the checks.
 
 ---
@@ -180,15 +180,18 @@ Texts use `{placeholders}` filled from `details`. Codes marked *(proposal)* are 
 | routing | `routing.copy_not_accepted` | Replicação ignorada para {account}: a conta não aceita replicação / escolha pendente | Replication skipped for {account}: … | same |
 | routing | `routing.signal_type_not_selected` | Ignorada para {account}: tipo de sinal {type} não selecionado nesta rota | Skipped for {account}: signal type {type} isn't selected on this route | route |
 | routing | `routing.account_inactive` | Ignorada para {account}: conta {pausada / desativada} (também bloqueia saídas) | Skipped for {account}: account {paused / disabled} (exits are blocked too) | state |
-| routing | `routing.out_of_sync` | Recusada para {account}: conta fora de sincronia | Refused for {account}: account out of sync | sync reason |
-| routing | `routing.risk_blocked` | Recusada para {account}: limite de risco atingido | Refused for {account}: risk limit reached | limit, value |
+| routing | `routing.out_of_sync` | Entrada recusada para {account}: conta fora de sincronia (saídas continuam) | Entry refused for {account}: account out of sync (exits continue) | sync reason |
+| routing | `routing.risk_blocked` | Entrada recusada para {account}: limite de risco atingido (saídas continuam) | Entry refused for {account}: risk limit reached (exits continue) | limit, value |
 | routing | `routing.expired` | Comando expirado para {account}: não foi executado | Command expired for {account}: not executed | TTL, base time |
 | routing | `routing.quantity_capped` | Quantidade cortada em {account}: {executed} de {requested} | Quantity capped on {account}: {executed} of {requested} | requested, multiplier, maximum position, skipped excess |
 | routing | `routing.routed` *(new)* | Roteada para {account}: {quantity} (instrução × {multiplier}) | Routed to {account}: {quantity} (instruction × {multiplier}) | requested quantity, multiplier, maximum position, signal type |
-| routing | `routing.no_bracket_profile` *(new; Q43 provisional)* | Entrada ignorada para {account}: sem perfil de stop/alvo (saídas continuam) | Entry skipped for {account}: no stop/target profile (exits continue) | account size |
+| routing | `routing.no_bracket_profile` *(new; Q43 decided)* | Entrada ignorada para {account}: sem perfil de stop/alvo (saídas continuam) | Entry skipped for {account}: no stop/target profile (exits continue) | account size |
 | routing | `routing.max_position_reached` | Ignorada para {account}: posição máxima atingida | Skipped for {account}: maximum position reached | maximum |
 | routing | `routing.position_conflict` | Recusada para {account}: a entrada é oposta à posição atual | Refused for {account}: entry opposes the current position | position, action |
-| routing | `routing.nothing_to_close` / `.nothing_to_reduce` | Nada a {fechar / reduzir} em {account} | Nothing to {close / reduce} on {account} | |
+| routing | `routing.nothing_to_close` | Nada a fechar em {account}: a conta está sem posição | Nothing to close on {account}: the account is flat | Occurs **only on an in-sync flat account** (Q75). On an out-of-sync account believed flat, a close is sent as a flatten (next rows) |
+| routing | `routing.nothing_to_reduce` | Redução não enviada para {account}: nada a reduzir | Reduce not sent to {account}: nothing to reduce | Audited on an in-sync flat account **and** on an out-of-sync account believed flat (Q76 (a), S7 AC-8b): the reduce is never sent and never becomes a flatten. The user is **notified only when out of sync** (S18; ADR-0003 r4); on an in-sync flat account it is audit only |
+| routing | *reverse on a barred account (Q74)* — gate code of the entry (`routing.out_of_sync`, `routing.risk_blocked`, `routing.limits_pending`, `routing.no_bracket_profile`) | Reversão em {account}: só a saída foi feita; a entrada foi ignorada ({reason}) | Reverse on {account}: only the exit was done; the entry was skipped ({reason}) | Audit entry carries the **gate's own code**, outcome `partial`, `executed_qty` 0 for the open and `reverse_closed_qty` (the closing leg: flatten and cancel protective orders; Q74 (b), S7 AC-8). On an out-of-sync account the closed quantity is unknown at the decision: `expected_flat = true`, no `reverse_closed_qty`, and the result arrives in the execution entries. The user notification `routing.reverse_close_only` is an **S18 notification code**, not an audit code |
+| routing | *close on an out-of-sync account believed flat (Q75)* — decision `routing.routed` with `expected_flat = true` | Fechamento em {account} enviado como zeragem: a conta está fora de sincronia | Close on {account} sent as a flatten: the account is out of sync | The result comes in the execution entries: `execution.cancelled` plus `command.already_flat`, or fills (Q75 (b), S7 AC-8b). Audited; `already_flat` alone raises no alert. The sentence "ordens pendentes no contrato, inclusive manuais, foram canceladas" belongs to the **notification** `routing.out_of_sync_flatten` (S18) and is **provisional pending Q75-1** (the plugin cancels every working order on the contract; Esquadro/Elo still settle "only All Win" vs "manual included") |
 | routing | `routing.no_correlated_order` | Ignorada para {account}: nenhuma ordem correspondente | Skipped for {account}: no matching order | |
 | execution | `execution.command_sent` | Comando enviado para {account}: {action} {quantity} | Command sent to {account}: {action} {quantity} | `command_id`, expiry time |
 | execution | `execution.bracket_calculated` | Stop e alvo calculados em {account} | Stop and target calculated on {account} | unit, requested distance, whole ticks used, **rounding adjustment**, resulting prices (S6 AC-4) |
@@ -221,7 +224,7 @@ Texts use `{placeholders}` filled from `details`. Codes marked *(proposal)* are 
 | config | `routing.subscription_changed` | S7 §9 | | |
 | config | `profiles.default_changed` / `.account_changed` | S6 §8 | | |
 
-Rules for the catalog: skip/refusal texts always name the account; texts for exits say "saída" when the Core flags the entry with `is_exit` (the client does not know the action rules); security entries never show a code, challenge id, token, cookie, or an unmasked e-mail or number (X-4, S3 AC-5), only the Core's masked values; wording must not sound like legal advice (vision §12). Detail fields that cannot be shown (secret-like) are removed by the Core before sending.
+Rules for the catalog: skip/refusal texts always name the account; **only entries are refused or blocked**: exits are never refused (P1), so refusal texts say "entrada" and the wording never suggests an exit was refused; texts for exits say "saída" when the Core flags the entry with `is_exit` (the client does not know the action rules); security entries never show a code, challenge id, token, cookie, or an unmasked e-mail or number (X-4, S3 AC-5), only the Core's masked values; wording must not sound like legal advice (vision §12). Detail fields that cannot be shown (secret-like) are removed by the Core before sending.
 
 ---
 
@@ -250,20 +253,24 @@ Rules for the catalog: skip/refusal texts always name the account; texts for exi
 - **Open codes:** `code` is a pattern, not an enum, so a new slice's code never breaks an older client: it renders "Evento {code}" (§2). `KnownAuditCode` is the list the i18n parity check (QA) iterates over; `sync.*` (S11), `risk.*` (S13–S15) and `notifications.*` (S18) join with their own contracts.
 - **SSE** `audit.entry_recorded` carries no details (`entry_id`, `category`, `outcome`, `account_id`, `instruction_id`); the client refetches. It drives the "novas entradas" banner and the live timeline.
 - Isolation: unknown, foreign and purged ids give the same 404; foreign ids in filters match nothing.
-- CSV export is not in V1 (**Q44, provisional**: the user decides).
+- CSV export is not in V1 (Q44 (a) [Decision 2026-10-23]).
 
 ## 10. Decisions and open questions
 
 **Closed by the PO (Rumo, 2026-10-23):** Q-S10-3 exact search by `message_id` accepted; Q-S10-5 security events share this list under category `Segurança` (S3 AC-16: sign-ins, failed or rate-limited attempts, new-device notice, step-up, channel change), and **no code is ever shown** (X-4, S3 AC-5); Q-S10-7 the `Master` signal filter appears only when the Core returns such entries (S19 is V1.1).
 
+**Gap, not drawn (T1):** "late exits are audited as late" has no audit code or field in the contract today (5.1.1 / 5.2.0 draft). The catalog lists nothing for it. Compasso queued the gap for Esquadro (proposal: an optional field such as `late_ms` on `execution.command_sent` / `execution.filled` of an exit sent after the account TTL); S10 adds a detail field when it has a name.
+
 **Architect (Compasso):** Q-S10-2 closed — final outcome list, `execution.*` codes, `details` per code and `safe_to_display` are in the contract (§3.3, §7, §9); Q-S10-6 duplicate shown inside the original instruction's timeline.
 
-**User questions drawn as recommendation (a), provisional:**
+**Decided by the user (2026-10-23):**
 
-| ID | Question | Spec default (provisional) |
+| ID | Question | Decision |
 |---|---|---|
-| Q44 | CSV export of the log | Not in V1: **not drawn** |
-| Q45 | Retention of 24 months | Read-only line for the user ("Os registros ficam guardados por {n} meses."); only the admin changes it |
+| Q44 | CSV export of the log | (a): not in V1, **not drawn** |
+| Q43 | Entry with no stop/target profile | Entry skipped with `routing.no_bracket_profile`; exits continue |
+| Q74 / Q75 / Q76 | Reverse, close and reduce on barred or out-of-sync accounts | Audit side in §7 (gate code with `reverse_closed_qty` / `expected_flat`, `routing.routed` + `expected_flat`, `routing.nothing_to_reduce`); the notification codes `routing.reverse_close_only` and `routing.out_of_sync_flatten` are S18's (registry 1.2.1) |
+| Q45 | Retention of 24 months | (a): read-only line for the user ("Os registros ficam guardados por {n} meses."); only the admin changes it |
 
 ## 11. AC traceability
 
@@ -271,6 +278,7 @@ Rules for the catalog: skip/refusal texts always name the account; texts for exi
 |---|---|
 | AC-1 every instruction, routing decision per account with reason, execution result: time, source, account | §3.2, §5, §7 |
 | AC-2 list/filter by date, account, source, signal type, outcome; follow one instruction | §3.1, §5 |
+| Q74–Q76 behaviour with audit codes | §7 |
 | AC-3 entries not editable; retention 24 months rolling (configurable) | §2, §3 header, §9 |
 | AC-4 no secrets | §2, §4 technical data, §9 |
 | X-2, X-5, X-6, X-8 | §2, §7 (pt-BR/en), time rule |
