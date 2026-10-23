@@ -92,16 +92,37 @@ pub fn router(state: Arc<ProfilesHttpState>) -> Router {
 }
 
 #[derive(utoipa::OpenApi)]
-#[openapi(paths(
-    list_default_profiles,
-    put_default_profile,
-    list_account_profiles,
-    put_account_profile,
-    restore_account_profile,
-    get_nearest_profile_size,
-    preview_profile,
-))]
+#[openapi(
+    paths(
+        list_default_profiles,
+        put_default_profile,
+        list_account_profiles,
+        put_account_profile,
+        restore_account_profile,
+        get_nearest_profile_size,
+        preview_profile,
+    ),
+    modifiers(&OptionalRestoreBody)
+)]
 pub struct ProfilesApi;
+
+/// The restore body is optional (`requestBody.required: false`) with the plain object schema:
+/// `Option<T>` would render `oneOf [T, null]`, which the contract does not have.
+struct OptionalRestoreBody;
+
+impl utoipa::Modify for OptionalRestoreBody {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let body = openapi
+            .paths
+            .paths
+            .get_mut("/api/v1/accounts/{account_id}/profiles/{instrument_id}/restore")
+            .and_then(|item| item.post.as_mut())
+            .and_then(|op| op.request_body.as_mut());
+        if let Some(utoipa::openapi::RefOr::T(body)) = body {
+            body.required = Some(utoipa::openapi::Required::False);
+        }
+    }
+}
 
 pub use schemas::raw_components;
 
@@ -491,7 +512,7 @@ async fn put_account_profile(
         ("account_id" = contracts::http::Uuid, Path),
         ("instrument_id" = contracts::http::Uuid, Path),
     ),
-    request_body(content = Option<ProfileRestoreRequestSchema>, content_type = "application/json"),
+    request_body(content = ProfileRestoreRequestSchema, content_type = "application/json"),
     responses(
         (status = 200, description = "Restored.", body = AccountProfileSchema),
         (status = 400, description = "Invalid request.", body = contracts::http::Error),
