@@ -1,6 +1,6 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 2. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. No migration written yet.
+- **Status:** Accepted (2026-10-23), rev. 3. Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1–#3 are written and under DBA review (not yet run against PostgreSQL).
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
@@ -90,15 +90,19 @@ CREATE POLICY account_owner ON accounts.account
 | `allwin_maint` | Partition creation, retention purge, erasure after account closure | `BYPASSRLS`; partition DDL on `audit.audit_entry`; `DELETE` on activity tables |
 
 - **Pre-authentication lookups** (the user is not known yet) go through `SECURITY DEFINER` functions in `identity`. Each one returns only what its caller needs:
-  - `identity.resolve_source_key(key_id)` → `(user_id, source_id, source_type, secret_hash, revoked)`
+  - `identity.resolve_source_key(key_id)` → `(user_id, source_id, source_type, secret_hash, revoked)`; `revoked` is true when the key is revoked, the source is archived or the user is not `active`
   - `identity.resolve_device_token(key_id)` → `(user_id, connection_id, token_hash, revoked)`
   - `identity.resolve_session(token_hash)`
   - `identity.resolve_invitation(token_hash)`
   - `identity.resolve_password_reset(token_hash)`
   - `identity.find_user_for_login(email_normalized)`
-  - `identity.redeem_pairing_code(code_hmac, …)`
+  - `identity.email_registered(email_normalized)` → boolean (createInvitation). Gated like `admin_list_users`: it returns false unless `app.current_user_id()` is an active platform admin, so it is never an e-mail existence oracle
+  - `identity.admin_list_users()`: returns rows only when `app.current_user_id()` is an active platform admin
+  - `identity.resolve_pairing_code(code_hmacs bytea[])`: read-only, one HMAC per accepted pepper version. Redemption is a conditional `UPDATE … SET used_at = now() WHERE used_at IS NULL AND invalidated_at IS NULL AND expires_at > now()`, run in the user-scoped transaction that records the instance and swaps the device token. A concurrent second redemption updates 0 rows
 
   `allwin_app` may execute these functions but cannot read other users' rows.
+- **FORCE RLS also binds the owner.** So each table read by a `SECURITY DEFINER` function gets a policy `FOR SELECT TO allwin_owner USING (true)`. `allwin_owner` never logs in at runtime, and this is narrower than giving it `BYPASSRLS`. Each function sets `search_path = pg_catalog, pg_temp` and uses schema-qualified names.
+- **Migrations run as `allwin_owner`**, the login used by `sqlx migrate`. The default privileges of #1 apply only to objects that `allwin_owner` creates. A superuser run would leave new tables without the `allwin_app` grants.
 - **Unscoped tables** (no RLS): `catalog.*` (global reference data) and `identity.invitation` (admin data; read only through admin use cases and `resolve_invitation`).
 - **CI lint test:** a query on `pg_class`/`pg_policy` asserts that every table with a `user_id` column has `relrowsecurity` and `relforcerowsecurity` set and at least one policy. The X-2 cross-user tests run with RLS on.
 
@@ -125,16 +129,21 @@ CREATE TABLE identity.app_user (
 CREATE TABLE identity.invitation (                       -- admin data, no RLS
   id               uuid PRIMARY KEY,
   email_normalized text NOT NULL,
+  locale           text NOT NULL CHECK (locale IN ('pt-BR','en')),  -- language of the invitation e-mail/page
   token_hash       bytea NOT NULL UNIQUE,                -- SHA-256 of 256-bit token
   issued_by        uuid NOT NULL REFERENCES identity.app_user(id),
   created_at       timestamptz NOT NULL DEFAULT now(),
   expires_at       timestamptz NOT NULL,                 -- +7 days (security policy §3)
   accepted_at      timestamptz,
   accepted_user_id uuid REFERENCES identity.app_user(id),
-  revoked_at       timestamptz
+  revoked_at       timestamptz,
+  superseded_at    timestamptz,                          -- replaced by a new invitation to the same e-mail
+  CHECK ((accepted_at IS NULL) = (accepted_user_id IS NULL))
 );
 CREATE UNIQUE INDEX invitation_open_email_key ON identity.invitation (email_normalized)
-  WHERE accepted_at IS NULL AND revoked_at IS NULL;
+  WHERE accepted_at IS NULL AND revoked_at IS NULL AND superseded_at IS NULL;
+-- Re-inviting after expiry sets superseded_at on the expired row in the same transaction, so the admin
+-- list still shows it as expired, not revoked. An unexpired open invitation → 409 invites.email_taken (HTTP 1.1.0).
 
 CREATE TABLE identity.session (
   id                  uuid PRIMARY KEY,
@@ -143,12 +152,13 @@ CREATE TABLE identity.session (
   is_persistent       boolean NOT NULL,                  -- "keep me signed in"
   mfa_state           text NOT NULL CHECK (mfa_state IN ('not_required','pending','verified')),
   created_at          timestamptz NOT NULL DEFAULT now(),
+  login_at            timestamptz NOT NULL,              -- password sign-in; absolute-timeout base, kept across rotation
   authenticated_at    timestamptz NOT NULL,              -- last password(+TOTP) proof → 15-min step-up rule
   last_activity_at    timestamptz NOT NULL,              -- user-initiated requests only (SSE excluded)
   idle_expires_at     timestamptz NOT NULL,
   absolute_expires_at timestamptz NOT NULL,
   ended_at            timestamptz,
-  end_reason          text CHECK (end_reason IN ('logout','expired','password_reset','password_changed','totp_changed','rotated')),
+  end_reason          text CHECK (end_reason IN ('logout','expired','password_reset','password_changed','totp_changed','admin_totp_reset','rotated')),
   ip_address          inet,                              -- security; same retention as the activity record
   user_agent          text
 );
@@ -218,12 +228,24 @@ CREATE TABLE identity.adapter_connection (
   instance_id      uuid,                                 -- hello.instance_id
   instance_name    text,
   adapter_version  text,
+  status           text NOT NULL DEFAULT 'awaiting_pairing'
+                   CHECK (status IN ('awaiting_pairing','connected','disconnected','outdated','unpaired')),  -- HTTP contract Connection.status
+  status_changed_at timestamptz NOT NULL DEFAULT now(),  -- = created_at until the first change
   paired_at        timestamptz,
   last_seen_at     timestamptz,
   created_at       timestamptz NOT NULL DEFAULT now(),
-  archived_at      timestamptz,                          -- unpaired (Q18)
-  UNIQUE (user_id, id)
+  archived_at      timestamptz,                          -- unpaired (Q18); row becomes read-only history
+  UNIQUE (user_id, id),
+  CHECK ((status = 'unpaired') = (archived_at IS NOT NULL)),
+  CHECK (status = 'awaiting_pairing' OR status = 'unpaired' OR paired_at IS NOT NULL)
 );
+CREATE UNIQUE INDEX adapter_connection_user_name_key ON identity.adapter_connection (user_id, lower(name))
+  WHERE archived_at IS NULL;                             -- connections.name_taken, case-insensitive, ignores unpaired
+-- status: 'unpaired' is set by the unpair use case; the live states (connected/disconnected/outdated) are
+-- written by identity from gateway session events (outbox), so status_changed_at survives a Core restart.
+-- At Core startup, before accepting adapter connections, identity sets every 'connected'/'outdated' row to
+-- 'disconnected' with status_changed_at = now() and audits it: after a crash no socket exists, and the UI must
+-- not show a live plugin that is not there.
 
 CREATE TABLE identity.pairing_code (
   id            uuid PRIMARY KEY,
@@ -328,14 +350,28 @@ CREATE TABLE accounts.account (
   automation_choice text CHECK (automation_choice IN ('accepted','declined')),  -- no default: NULL until the user chooses
   automation_rule_version_id uuid,                       -- preset version whose rule text the user saw (S16)
   automation_chosen_at timestamptz,
+  copy_state        text NOT NULL DEFAULT 'not_required'
+                    CHECK (copy_state IN ('not_required','chosen','pending_review')),  -- copy opt-in (Q24, approved)
+  copy_choice       text CHECK (copy_choice IN ('accepted','declined')),
+  copy_rule_version_id uuid,
+  copy_chosen_at    timestamptz,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
   archived_at       timestamptz,                         -- "deleted" (S5 AC-6); history keeps the id
   row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
   UNIQUE (user_id, id),
   CHECK (kind = 'prop' OR (firm_id IS NULL AND plan_name IS NULL AND phase IS NULL AND preset_version_id IS NULL)),
-  CHECK (kind = 'prop' OR automation_state = 'not_required'),
-  CHECK (automation_state <> 'chosen' OR (automation_choice IS NOT NULL AND automation_chosen_at IS NOT NULL))
+  CHECK (kind = 'prop' OR (automation_state = 'not_required' AND copy_state = 'not_required')),
+  -- OptInState: chosen → choice + time set; pending_review → previous choice kept (shown, never preselected)
+  -- or NULL if never chosen; not_required → all NULL. choice and chosen_at are set together.
+  CHECK ((automation_choice IS NULL) = (automation_chosen_at IS NULL)),
+  CHECK (automation_state <> 'chosen' OR automation_choice IS NOT NULL),
+  CHECK (automation_state <> 'not_required' OR (automation_choice IS NULL AND automation_rule_version_id IS NULL)),
+  CHECK ((copy_choice IS NULL) = (copy_chosen_at IS NULL)),
+  CHECK (copy_state <> 'chosen' OR copy_choice IS NOT NULL),
+  CHECK (copy_state <> 'not_required' OR (copy_choice IS NULL AND copy_rule_version_id IS NULL)),
+  CHECK (automation_choice IS NULL OR automation_rule_version_id IS NOT NULL),  -- a choice always names the rule seen
+  CHECK (copy_choice IS NULL OR copy_rule_version_id IS NOT NULL)               -- (choices exist only from S16)
 );
 CREATE UNIQUE INDEX account_user_name_key ON accounts.account (user_id, lower(display_name)) WHERE archived_at IS NULL;
 CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_at IS NULL;
@@ -348,7 +384,9 @@ CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_
   - Routing reads it through the `accounts` query port. An account accepts automated sources only when `automation_state = 'not_required'`, or when `automation_state = 'chosen'` and `automation_choice = 'accepted'`. A `declined` or `pending_review` account is skipped and audited.
   - The row holds only the **current** choice. Each change is written to the audit log **in the same transaction** through `app.outbox`: user, time, choice, preset version, and the source URL and access date of the rule text (spec O6). That gives the "date and user" record the decision requires, and it cannot be lost on a crash.
   - Real accounts are always `not_required` (enforced by a `CHECK`). Prop accounts stay `not_required` until S16 brings presets. The S16 migration then moves prop accounts whose stance requires a choice to `pending_review` (spec §2, PO to confirm).
-  - Open user questions in the S5 spec (Q24 copy opt-in, Q25 which stances, Q26 rule change) fit these columns without a schema change, except Q24 = yes, which adds a parallel `copy_*` set of columns.
+  - **Copy opt-in (Q24, approved):** the `copy_*` columns mirror `automation_*` with the same states and `CHECK`s, and gate master replication (S19).
+  - **`pending_review`** keeps the previous choice, its time and its rule version, so the UI can show them. The UI never preselects them. With `not_required`, all of them are `NULL`. Q25 and Q26 fit these columns without a schema change.
+  - Not stored, because they are derived: `Source.is_automated` comes from `source_type`, and event `at` comes from the audit `occurred_at`.
   - The firm platform (spec O9) is a nullable prop-only column reserved for S16, like `firm_id`.
 - **Single writer per flag:**
   - out-of-sync state belongs to `gateway` (§6.3);
@@ -519,12 +557,13 @@ INSERT INTO routing.message_receipt (user_id, message_id, instruction_id, receiv
 VALUES ($user, $msg, $new_id, $now)
 ON CONFLICT (user_id, message_id) DO NOTHING
 RETURNING instruction_id;
--- 1 row  → INSERT instruction + app.outbox('instruction.accepted') → COMMIT → 200 accepted
--- 0 rows → SELECT instruction_id FROM routing.message_receipt …  → audit 'ingress.duplicate' → 200 duplicate
+-- 1 row  → INSERT instruction + app.outbox('instruction.accepted') → audit 'ingress.received' → COMMIT → 200 accepted
+-- 0 rows → SELECT instruction_id FROM routing.message_receipt …  → audit 'ingress.duplicate_ignored' → 200 duplicate
 ```
 
+- Ingress audit codes (contract, S1 notes §3): `ingress.received` | `ingress.duplicate_ignored` | `ingress.rejected`. `audit_entry.code` has no enumerating `CHECK` (codes are contract-owned); the S1 integration tests assert these three.
 - A concurrent duplicate blocks on the primary-key entry until the first transaction commits, then takes the `DO NOTHING` path. Exactly one insert wins, as covered by the ADR-0001 §10 race test.
-- Rejections create no receipt and no instruction. With a valid token they produce an audit entry holding only the error code, JSON pointer and size (Q13 §8). An unknown token goes to the redacted technical log only.
+- Rejections create no receipt and no instruction. With a valid token they produce an audit entry `ingress.rejected` holding only the error code, JSON pointer and size (Q13 §8). An unknown token goes to the redacted technical log only.
 
 ### 6.2 Routing outcomes and correlation
 
@@ -730,6 +769,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `routing.message_receipt` | `(user_id, message_id)` | no | **kept** until the user is erased |
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
 | `app.outbox` (published), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days / 48 h / 7 days |
+| `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 
 Nightly maintenance (`allwin_maint`, outside trading hours):
 1. create the next 3 partitions;
@@ -777,17 +817,25 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 
 | # | Migration | Slice |
 |---|---|---|
-| 1 | `app_bootstrap`: schemas, `app.current_user_id()`, default privileges, `app.outbox` | first to merge (S1 or S3) |
+| 1 | `app_bootstrap`: schemas, `app.current_user_id()`, default privileges, `app.outbox` | S1 (Ferro); merged alone and first, since S1 and S3 both build on it |
 | 2 | `identity_create_users_sessions`: `app_user`, `invitation`, `session`, `password_reset`, `totp_credential`, `recovery_code`, `resolve_*` / `find_user_for_login` | S3 |
-| 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S1 (M1 seed) / S3 |
+| 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
 | 5 | `accounts_create_account`: `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6) | before M1, so seeds use real tables |
-| 6 | `routing_create_instruction`: `message_receipt`, `instruction`, `routing_decision`, `subscription` | S1 / M1 |
+| 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
+| 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` | M1 / S7 |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
-| 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `redeem_pairing_code` | S2 / S3 |
+| 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
 | 10 | `risk_create_account_limits` | S13 (Wave 3) |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
+
+**Dependencies across branches:**
+- #6 has a foreign key to `identity.app_user` (#2).
+- S1 authenticates the webhook through `identity.source_key` / `resolve_source_key` (#3).
+- So #2 and #3 (S3, Brasa) merge before #6 and #7. Until then the S1 branch builds on the S3 branch.
+- No branch writes its own copy of another module's table.
+- Provisional versions: `20261023060000` #1, `…060100`/`…060200` #2/#3, `…060300` #4, `…060400` #5, `…060500` #6, `…060600` #7. Final versions are assigned at integration.
 
 ## 9. Validation plan (once PostgreSQL is provisioned)
 
@@ -807,7 +855,10 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - the token-pattern `CHECK` rejects a planted `awk_`/`awd_` token, and the `key_id` / hash-length `CHECK`s reject malformed rows;
    - fills: a redelivered `event_id` is a no-op; a second `add` for the same `(account_id, fill_id)` fails; an `amend` and a `remove` with new `event_id`s are accepted, and the effective fill is the latest one;
    - `command.step`: `modify:0` with kind `modify` and `orphan_flatten:<uuid>` with kind `flatten` pass; `modify:0` with kind `cancel`, `orphan_flatten:<uuid>` with kind `cancel`, `place:1`, `modify:01` and an upper-case UUID fail;
-   - an account with `automation_state = 'chosen'` and no choice fails; a real account with `pending_review` fails;
+   - opt-in (`automation_*` and `copy_*`): `chosen` with no choice fails; `not_required` with a choice fails; `pending_review` keeping the previous choice passes; a choice without `chosen_at` fails; a real account with `pending_review` fails;
+   - `adapter_connection`: a second live connection named `Desk A`/`desk a` fails; reusing the name of an unpaired one passes; `status = 'unpaired'` without `archived_at` fails; after a simulated Core restart, rows left `connected`/`outdated` become `disconnected` with a new `status_changed_at` and an audit entry, before any adapter can connect;
+   - `email_registered` and `admin_list_users` return false / no rows for a non-admin `app.user_id`;
+   - a choice without `*_rule_version_id` fails;
    - decimal round-trip at maximum scale (`NUMERIC(22,10)`, `NUMERIC(18,4)`) through sqlx `rust_decimal`.
 3. The RLS lint test (§3) runs in CI.
 4. The Q13 §9 size measurement on 1 M synthetic audit rows.
