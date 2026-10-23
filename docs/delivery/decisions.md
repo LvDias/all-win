@@ -152,3 +152,24 @@
 - **Decision:** DevOps provides an isolated Docker PostgreSQL test environment for QA, reused by every slice.
 - **Decision:** agents not reconnected within 10 minutes are replaced with a state handoff; if Esquadro does not return, ADR-0003/0004 r4 goes to Compasso.
 - **Canonical doc:** this log.
+
+## 2026-10-24 — User accepts all pending recommendations (Q75 side effects, Q77, Q79–Q90, migrations 061300/061310, presets S-R3-1..5, 2nd VPS timing)
+- **Q75-1: yes.** A Q75 flatten on an out-of-sync account that is really flat cancels every working order on the contract, manual ones included; the user is notified (routing.out_of_sync_flatten).
+- **Q75-2: yes.** A reverse X on an out-of-sync account that All Win believes flat but really holds X closes that real X position and opens nothing.
+- **Q77 (a):** keep the source policy — `position_effect: reduce` stays refused from TradingView in V1, allowed from master replication.
+- **Q79 (a):** archived accounts' trades are kept, selectable through an "archived" filter.
+- **Q80 (a/b):** trades closed while NT/plugin was off are captured on reconnect from the execution history (deduplicated, labelled "recovered") if the Architect confirms the platform exposes it; otherwise (b).
+- **Q81 (a):** alert only for venue accounts that were bound then unbound/archived while they still had All Win working orders; never-bound (manual) accounts are ignored.
+- **Q82 (a):** while an account is blocked until the reset, unpairing the instance, unlinking or disabling the account is refused until the reset, with the reason.
+- **Q83 (a):** out-of-sync cannot be cleared while the account is unobservable; only after the reconnect check reports.
+- **Q84 (a):** out-of-sync may be cleared with a position open, with a confirmation dialog that lists the position and whether it is protected.
+- **Q85 (a):** confirms the contract: a lower or removed commission floor applies from the next trading day; a higher one at once.
+- **Q86 (b):** changing the stop/target mode (individual/shared) is refused while the account has an open position or working orders.
+- **Q87 (a):** no narrowing — with the server setting on, every route switch-on requires the route_enable step-up.
+- **Q88 (a):** "sign out everywhere" cancels a pending user-requested channel change; "forget device" only when that device requested it; notices to all channels, audited, no 24 h freeze; admin recovery (AC-12) only by explicit "Cancelar troca".
+- **Q89 (b):** V1 treats CME holidays/early closes as normal days with the limitation stated in the Risk tab and guide.
+- **Q90 (a):** model the trailing-drawdown lock point (stops_trailing_at) as a structured preset/rule field used by the Core and the plugin floor; until it lands, the floor keeps trailing with a visible warning.
+- **Migrations A (061300) and B (061310): authorized.** They only add CHECK constraints (no data deleted; 0 violations measured in all test databases; no production exists). The user asks to be told BEFORE any migration that deletes non-test data.
+- **Presets S-R3-1..5: (a)** — FFF opt-in with the verbatim ban; Phoenix per-platform preset, dxFeed manual-tracking-only; Elite conditional, off by default, written-authorisation warning; NT8-unreachable platforms → preset shown, account manual-tracking-only; Earn2Trade follower opt-in with the text.
+- **2nd Windows VPS:** contract only when V1.1 (S19) tests are near; the Maestro warns the user in advance.
+- **Canonical docs:** slice-plan / presets (PO); ADR-0003/0004 r4 + r5, auth policy rev. 3.2 (Architect); HTTP contracts 5.2.0–5.4.0 (Compasso); data model (Database Architect).
