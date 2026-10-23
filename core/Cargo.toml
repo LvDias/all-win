@@ -9,6 +9,7 @@ members = [
     "crates/*/application",
     "crates/*/infra",
     "adapters/*",
+    "tools/*",
 ]
 
 [workspace.package]
@@ -39,6 +40,7 @@ audit-infra = { path = "crates/audit/infra" }
 gateway-enterprise = { path = "crates/gateway/enterprise" }
 gateway-application = { path = "crates/gateway/application" }
 gateway-infra = { path = "crates/gateway/infra" }
+adapter-sim = { path = "tools/adapter-sim" }
 adapter-tradingview = { path = "adapters/tradingview" }
 
 # runtime / http
