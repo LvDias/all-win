@@ -9,6 +9,7 @@ export const apiError = (status: number, code: string, extra: Record<string, unk
 export function accountHandlers(initial: Account[] = [propAccount(), realAccount()], rules: OptInRules = genericRules) {
   const accounts = new Map(initial.map((a) => [a.id, a]));
   const seenKeys = new Map<string, Account>();
+  const seenBodies = new Map<string, string>();
   const calls = { create: [] as { body: AccountCreateBody; key: string | null }[], update: [] as AccountUpdateBody[], lifecycle: [] as unknown[], optIn: [] as unknown[] };
 
   const handlers = [
@@ -17,7 +18,9 @@ export function accountHandlers(initial: Account[] = [propAccount(), realAccount
       const body = (await request.json()) as AccountCreateBody;
       const key = request.headers.get("Idempotency-Key");
       calls.create.push({ body, key });
+      if (key && !seenBodies.has(key)) seenBodies.set(key, JSON.stringify({ ...body, step_up: undefined }));
       const replay = key ? seenKeys.get(key) : undefined;
+      if (!replay && key && seenBodies.has(key) && seenBodies.get(key) !== JSON.stringify({ ...body, step_up: undefined })) return apiError(409, "accounts.idempotency_key_reused");
       if (replay) return HttpResponse.json(replay, { status: 200 });
       if ([...accounts.values()].some((a) => a.display_name.toLowerCase() === body.display_name.toLowerCase()))
         return apiError(409, "accounts.name_taken", { pointer: "/display_name" });

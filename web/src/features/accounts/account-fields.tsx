@@ -1,10 +1,12 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { formatMoney } from "@/shared/format";
 import { defaultLocale, isLocale } from "@/shared/i18n/config";
+import { withLocale } from "@/shared/i18n/paths";
 import { Alert } from "@/shared/ui/alert";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -118,7 +120,15 @@ export function BindingField({ form, formId, accountId, locked }: { form: Form; 
   const paired = (connections.data ?? []).filter((c) => c.status !== "unpaired" && c.status !== "awaiting_pairing");
   const options = paired.flatMap((c) => (c.visible_accounts ?? []).map((v) => ({ value: `${c.id}|${v.platform_account}`, conn: c, v })));
   const id = `${formId}-binding`;
-  if (paired.length === 0) return <Alert tone="info">{t("form.binding.noConnections")}</Alert>;
+  const raw = useLocale();
+  const locale = isLocale(raw) ? raw : defaultLocale;
+  if (paired.length === 0)
+    return (
+      <Alert tone="info" className="flex-wrap items-center justify-between">
+        <span>{t("form.binding.noConnections")}</span>
+        <Link className="underline underline-offset-4" href={withLocale(locale, "/connections/ninjatrader")}>{t("form.binding.pair")}</Link>
+      </Alert>
+    );
   return (
     <Field id={id} label={t("form.binding.label")} error={error}>
       <Controller
@@ -131,9 +141,11 @@ export function BindingField({ form, formId, accountId, locked }: { form: Form; 
               <SelectItem value={noBinding}>{t("form.binding.none")}</SelectItem>
               {options.map(({ value, conn, v }) => {
                 const other = boundByOther.get(value);
+                // No environment flag reaches the web: live and unknown kinds stay blocked (spec §4.3); the Core also refuses them.
+                const blocked = v.kind === "live" || v.kind === "unknown";
                 return (
-                  <SelectItem key={value} value={value} disabled={other !== undefined}>
-                    {[`${v.platform_account} · ${conn.name} (${t(`platformKind.${v.kind}`)})`, other ? t("form.binding.taken", { name: other }) : null].filter(Boolean).join(" — ")}
+                  <SelectItem key={value} value={value} disabled={other !== undefined || blocked}>
+                    {[`${v.platform_account} · ${conn.name} (${t(`platformKind.${v.kind}`)})`, other ? t("form.binding.taken", { name: other }) : null, blocked ? t("form.binding.liveBlocked") : null].filter(Boolean).join(" — ")}
                   </SelectItem>
                 );
               })}

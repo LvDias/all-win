@@ -1,6 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { formatDate } from "@/shared/format";
 import { defaultLocale, isLocale } from "@/shared/i18n/config";
 import { Alert } from "@/shared/ui/alert";
@@ -40,6 +40,14 @@ export function OptInSection({ kind, rule, value, onChange, choiceError, ackErro
   const locale = isLocale(raw) ? raw : defaultLocale;
   const warningId = useId();
   const errorId = useId();
+  const groupRef = useRef<HTMLDivElement>(null);
+  // A rejected or missing choice must be reachable by keyboard and announced: move focus to the group when its error appears.
+  // Deferred so it lands after the stepper moves focus to the step heading in the same commit; the timer is cleared on unmount.
+  useEffect(() => {
+    if (!choiceError) return;
+    const timer = setTimeout(() => groupRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [choiceError]);
   const firm = rule.firm_name ?? firmFallback;
   const stance = rule.firm_stance === "allowed" ? null : rule.firm_stance;
 
@@ -86,6 +94,8 @@ export function OptInSection({ kind, rule, value, onChange, choiceError, ackErro
           </Alert>
 
           <RadioGroup
+            ref={groupRef}
+            tabIndex={-1}
             aria-label={t("legend")}
             aria-describedby={choiceError ? `${warningId} ${errorId}` : warningId}
             aria-invalid={choiceError ? true : undefined}

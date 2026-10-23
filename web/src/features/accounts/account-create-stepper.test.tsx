@@ -25,6 +25,11 @@ const connection = {
   ],
 };
 const connectionsHandler = http.get("/api/v1/connections", () => HttpResponse.json([connection]));
+// Keys requested from the catalog owner (profile size on a tie); remove with the `extra` argument once merged.
+const profileSizeMessages = {
+  accounts: { form: { profileSize: { label: "Perfil inicial", help: "Escolha o tamanho padrão de onde copiar o perfil." } } },
+  errors: { accounts: { profile_size_required: "Escolha o tamanho padrão de onde copiar o perfil." } },
+};
 type User = ReturnType<typeof userEvent.setup>;
 
 const next = (user: User) => user.click(screen.getByRole("button", { name: "Continuar" }));
@@ -145,6 +150,45 @@ describe("AccountCreateStepper", () => {
     await next(user);
     expect(await screen.findByText("Escolha se esta conta aceita ordens automatizadas.")).toBeInTheDocument();
     expect(calls.create).toHaveLength(0);
+    await waitFor(() => expect(group).toContainElement(document.activeElement as HTMLElement));
+    expect(group).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("a server 422 opt_in_required returns to the opt-in step and focuses the radio group", async () => {
+    const { handlers } = accountHandlers([]);
+    server.use(http.post("/api/v1/accounts", () => apiError(422, "accounts.opt_in_required", { pointer: "/opt_ins/automation" })), connectionsHandler, ...handlers);
+    const user = userEvent.setup();
+    renderAccounts(<AccountCreateStepper />);
+    await toOptIn(user);
+    await user.click(await screen.findByRole("radio", { name: /Não aceitar ordens automatizadas/ }));
+    await next(user);
+    await user.click(await screen.findByRole("button", { name: "Salvar conta" }));
+    const group = await screen.findByRole("radiogroup", { name: "Ordens automatizadas nesta conta" });
+    await waitFor(() => expect(group).toContainElement(document.activeElement as HTMLElement));
+    expect(group).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("disables live and unknown platform accounts with the reason, and links to pairing when nothing is paired", async () => {
+    const { handlers } = accountHandlers([]);
+    const live = { ...connection, visible_accounts: [{ platform_account: "Live1", kind: "live", oco_location: "local" }, { platform_account: "Sim101", kind: "simulation", oco_location: "local" }] };
+    server.use(http.get("/api/v1/connections", () => HttpResponse.json([live])), ...handlers);
+    const user = userEvent.setup();
+    const view = renderAccounts(<AccountCreateStepper />);
+    await pick(user, "Conta real em corretora");
+    await next(user);
+    await fillData(user, "Nova");
+    await next(user);
+    await user.click(await screen.findByRole("combobox", { name: "Conta no NinjaTrader" }));
+    expect(await screen.findByRole("option", { name: /Live1.*Contas live não são permitidas neste ambiente/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: /Sim101/ })).not.toHaveAttribute("aria-disabled", "true");
+    view.unmount();
+    server.use(http.get("/api/v1/connections", () => HttpResponse.json([])));
+    renderAccounts(<AccountCreateStepper />);
+    await pick(user, "Conta real em corretora");
+    await next(user);
+    await fillData(user, "Outra");
+    await next(user);
+    expect(await screen.findByRole("link", { name: "Parear o NinjaTrader" })).toHaveAttribute("href", "/pt-BR/connections/ninjatrader");
   });
 
   it("sends a declined choice with the rule version seen, without step-up", async () => {
@@ -216,6 +260,58 @@ describe("AccountCreateStepper", () => {
     await user.click(await screen.findByRole("button", { name: "Salvar conta" }));
     expect(await screen.findByText("A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha.")).toBeInTheDocument();
     expect(await screen.findByRole("radio", { name: /Não aceitar ordens automatizadas/ })).not.toBeChecked();
+  });
+
+  it("a corrected body after a failure goes out with a new idempotency key", async () => {
+    const { handlers, calls } = accountHandlers([propAccount({ display_name: "Taken" })]);
+    server.use(connectionsHandler, ...handlers);
+    const user = userEvent.setup();
+    renderAccounts(<AccountCreateStepper />);
+    await pick(user, "Conta real em corretora");
+    await next(user);
+    await fillData(user, "Taken");
+    await next(user);
+    await next(user);
+    await user.click(await screen.findByRole("button", { name: "Salvar conta" }));
+    await waitFor(() => expect(calls.create).toHaveLength(1));
+    const name = await screen.findByLabelText("Nome");
+    await user.clear(name);
+    await user.type(name, "Another name");
+    await next(user);
+    await next(user);
+    await user.click(await screen.findByRole("button", { name: "Salvar conta" }));
+    await waitFor(() => expect(calls.create).toHaveLength(2));
+    expect(calls.create[1]?.key).not.toBe(calls.create[0]?.key);
+    await waitFor(() => expect(nav.push).toHaveBeenCalled());
+  });
+
+  it("an exact-tie size asks which standard size to copy the profile from, then sends profile_size", async () => {
+    const { handlers, calls } = accountHandlers([]);
+    server.use(
+      http.post("/api/v1/accounts", async ({ request }) => {
+        const body = (await request.clone().json()) as { profile_size?: string };
+        if (!body.profile_size) return apiError(422, "accounts.profile_size_required", { pointer: "/profile_size" });
+        return undefined; // falls through to the in-memory Core
+      }),
+      http.get("/api/v1/instruments", () => HttpResponse.json({ instruments: [{ id: ids.conn }] })),
+      http.get("/api/v1/profile-sizes/nearest", () => HttpResponse.json({ size_amount: "75000.00", candidates: [{ size_amount: "50000.00", has_default: true }, { size_amount: "100000.00", has_default: false }] })),
+      connectionsHandler,
+      ...handlers,
+    );
+    const user = userEvent.setup();
+    renderAccounts(<AccountCreateStepper />, "pt-BR", profileSizeMessages);
+    await pick(user, "Conta real em corretora");
+    await next(user);
+    await fillData(user, "Between", "75000");
+    await next(user);
+    await next(user);
+    await user.click(await screen.findByRole("button", { name: "Salvar conta" }));
+    expect(await screen.findByText("Perfil inicial")).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /100\.000/ }));
+    await next(user);
+    await next(user);
+    await user.click(await screen.findByRole("button", { name: "Salvar conta" }));
+    await waitFor(() => expect(calls.create.at(-1)?.body).toMatchObject({ profile_size: "100000.00" }));
   });
 
   it("the review lists each group with an Editar action", async () => {
