@@ -1,0 +1,57 @@
+# All Win — Caddy (dev). Contract: docs/architecture/contracts/s1-webhook-ingest.md §4, ADR-0001 §5.
+# The secret part of an ingress token must never reach any log: every logger below
+# passes through the same redaction filter (access log AND error log, which also echoes the request).
+{
+	admin off
+	auto_https disable_redirects
+	# Internal CA for local TLS only; never a public certificate in dev.
+	local_certs
+	# Server errors/info go through the redacting logger; no debug level.
+	log default {
+		level INFO
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "(/ingress/v1/tradingview/awk_[A-Za-z0-9]+)_[A-Za-z0-9_-]+" "${1}_REDACTED"
+			}
+		}
+	}
+}
+
+(redacted_log) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "(/ingress/v1/tradingview/awk_[A-Za-z0-9]+)_[A-Za-z0-9_-]+" "${1}_REDACTED"
+			}
+		}
+	}
+}
+
+# Dev origin. Host port is published on 127.0.0.1 only (see docker-compose.dev.yml).
+https://localhost:{$CADDY_HTTPS_PORT:8443} {
+	import redacted_log
+	tls internal
+
+	encode zstd gzip
+
+	handle /ingress/* {
+		# Hard transport cap; the Core enforces the 16 KiB contract limit (413).
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy core:{$CORE_PORT:8080}
+	}
+
+	handle /api/* {
+		reverse_proxy core:{$CORE_PORT:8080}
+	}
+
+	# `web` joins here once S3/S4 provide it (same origin, ADR-0001).
+	handle {
+		respond "All Win dev edge" 200
+	}
+}

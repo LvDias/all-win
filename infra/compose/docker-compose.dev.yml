@@ -1,0 +1,57 @@
+# All Win — dev stack (PostgreSQL 16 + Core + Caddy). Simulation/dev only.
+# Every published port is bound to 127.0.0.1; nothing is exposed to the network.
+# Usage: infra/scripts/dev-stack.sh up   (needs infra/compose/.env, see .env.example)
+name: allwin-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-allwin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/compose/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-allwin}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  core:
+    build:
+      context: ../..
+      dockerfile: infra/docker/core.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-allwin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-allwin}
+      CORE_BIND: 0.0.0.0:${CORE_PORT:-8080}
+      RUST_LOG: ${RUST_LOG:-info}
+    # Reachable only through Caddy (and 127.0.0.1 for local debugging).
+    ports:
+      - "127.0.0.1:${CORE_HOST_PORT:-8080}:${CORE_PORT:-8080}"
+    profiles: ["core"]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      CADDY_HTTPS_PORT: ${CADDY_HTTPS_PORT:-8443}
+      CORE_PORT: ${CORE_PORT:-8080}
+    ports:
+      - "127.0.0.1:${CADDY_HTTPS_PORT:-8443}:${CADDY_HTTPS_PORT:-8443}"
+    volumes:
+      - ../caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
