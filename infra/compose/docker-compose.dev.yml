@@ -40,7 +40,7 @@ services:
       WORKER_DATABASE_URL: postgres://allwin_worker:${ALLWIN_WORKER_PASSWORD}@postgres:5432/allwin
       # When set, the binary applies the migrations at startup as the owner role.
       MIGRATION_DATABASE_URL: postgres://allwin_owner:${ALLWIN_OWNER_PASSWORD}@postgres:5432/allwin
-      # Core is reachable only through Caddy and 127.0.0.1: the client IP is the last X-Forwarded-For.
+      # Core is reachable only through Caddy: the client IP is the last X-Forwarded-For.
       INGRESS_TRUST_FORWARDED_FOR: "true"
       # Dev/E2E only: enables the seed and revoke-key commands. Never set outside dev.
       ALLWIN_ENABLE_DEV_COMMANDS: "true"
