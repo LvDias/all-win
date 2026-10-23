@@ -22,7 +22,8 @@ import {
   mark,
   post,
 } from '../../src/harness.ts';
-import { psql, lit, serviceLogs, shell, composeShellPrefix } from '../../src/stack.ts';
+import { serviceLogs, shell, composeShellPrefix } from '../../src/stack.ts';
+import { auditForMessage, expectReceivedDetails, waitAudit } from '../../src/audit.ts';
 
 interface Variant {
   id: string;
@@ -66,22 +67,6 @@ const V: Variant[] = [
   },
 ];
 
-async function auditRowsFor(messageId: string): Promise<string[]> {
-  const sql = `SELECT row_to_json(x)::text FROM ${config.sql.audit} x WHERE row_to_json(x)::text LIKE ${lit(`%${messageId}%`)};`;
-  return psql(ctx().s, sql).split('\n').filter(Boolean);
-}
-
-async function waitAudit(messageId: string, predicate: (rows: string[]) => boolean): Promise<string[]> {
-  const deadline = Date.now() + config.auditWaitMs;
-  let rows: string[] = [];
-  while (Date.now() < deadline) {
-    rows = await auditRowsFor(messageId);
-    if (predicate(rows)) return rows;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return rows;
-}
-
 test.describe('S1 masking (contract §4.3)', () => {
   // Stable per run: a worker restarted after a failure must post the same message in M2.
   const m1Body = validInstruction({ message_id: `e2e-m1-${config.project}` });
@@ -101,9 +86,10 @@ test.describe('S1 masking (contract §4.3)', () => {
     const res = await post(ingress(a.value), m1Body);
     if (isFull()) {
       expectAccepted('M1', res, 'accepted');
-      const rows = await waitAudit(String(m1Body.message_id), (r) => r.some((x) => x.includes('ingress.received')));
-      expect(rows.some((x) => x.includes('ingress.received')), 'M1: audit entry "ingress.received" for the message').toBe(true);
-      expect(rows.some((x) => x.includes(a.keyId)), 'M1: audit entry carries the key_id').toBe(true);
+      const read = () => auditForMessage(a.keyId, String(m1Body.message_id)).filter((r) => r.code === 'ingress.received');
+      const rows = await waitAudit(read, (r) => r.length > 0);
+      expect(rows.length, 'M1: audit entry "ingress.received" for the message (found by key_id)').toBe(1);
+      expectReceivedDetails('M1', rows[0]!, m1Body);
     }
     const sources = await allSources(since, [{ label: 'M1', res }]);
     if (isFull()) {

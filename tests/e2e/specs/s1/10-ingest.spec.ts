@@ -15,22 +15,13 @@ import {
 } from '../../src/instructions.ts';
 import { ctx, expectAccepted, expectEmpty404, expectRejected, ingress, isFull, post } from '../../src/harness.ts';
 import { lit, psql } from '../../src/stack.ts';
+import { auditForMessage, dbNow, expectDuplicateDetails, expectReceivedDetails, expectRejectedDetails, rejectedSince, waitAudit } from '../../src/audit.ts';
 
 function count(sql: string): number {
   return Number.parseInt(psql(ctx().s, sql).trim(), 10);
 }
 const instructionRows = (msg: string) => count(`SELECT count(*) FROM ${config.sql.instruction} WHERE message_id = ${lit(msg)};`);
 const receiptRows = (msg: string) => count(`SELECT count(*) FROM ${config.sql.receipt} WHERE message_id = ${lit(msg)};`);
-
-async function waitAuditCode(msg: string, code: string): Promise<boolean> {
-  const deadline = Date.now() + config.auditWaitMs;
-  const sql = `SELECT count(*) FROM ${config.sql.audit} x WHERE row_to_json(x)::text LIKE ${lit(`%${msg}%`)} AND row_to_json(x)::text LIKE ${lit(`%${code}%`)};`;
-  while (Date.now() < deadline) {
-    if (count(sql) > 0) return true;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return false;
-}
 
 test.describe('S1 ingest', () => {
   test.skip(!isFull(), 'needs the Core (edge-only mode)');
@@ -54,10 +45,27 @@ test.describe('S1 ingest', () => {
       });
     }
 
-    test('AC-1 audit entry "received"', async () => {
+    test('AC-1 audit entry "received" with the 4.3.0 details', async () => {
+      const { a } = ctx();
       const body = validInstruction();
-      expectAccepted('AC-1', await post(ingress(ctx().a.value), body), 'accepted');
-      expect(await waitAuditCode(String(body.message_id), 'ingress.received'), 'AC-1: audit ingress.received').toBe(true);
+      const id = expectAccepted('AC-1', await post(ingress(a.value), body), 'accepted');
+      const read = () => auditForMessage(a.keyId, String(body.message_id)).filter((r) => r.code === 'ingress.received');
+      const rows = await waitAudit(read, (r) => r.length > 0);
+      expect(rows.length, 'AC-1: one audit ingress.received').toBe(1);
+      expect(rows[0]!.instruction_id, 'AC-1: audit instruction_id').toBe(id);
+      expectReceivedDetails('AC-1', rows[0]!, body);
+    });
+
+    test('rejection with a valid token → audit "rejected" with error_code, pointer, body_size and no body', async () => {
+      const { a } = ctx();
+      const since = dbNow();
+      const body = validInstruction({ quantity: 0 });
+      const payload = JSON.stringify(body);
+      const r = expectRejected('rejected', await post(ingress(a.value), payload), 400, 'ingress.schema_violation');
+      const rows = await waitAudit(() => rejectedSince(a.keyId, since), (x) => x.length > 0);
+      expect(rows.length, 'one audit ingress.rejected').toBe(1);
+      expectRejectedDetails('rejected', rows[0]!, { code: 'ingress.schema_violation', pointer: String(r.error.pointer), bodySize: Buffer.byteLength(payload) });
+      expect(rows[0]!.raw.includes(String(body.message_id)), 'rejected audit row holds no body content (message_id)').toBe(false);
     });
 
     test('text/plain body is accepted like application/json', async () => {
@@ -177,7 +185,10 @@ test.describe('S1 ingest', () => {
       expect(instructionRows(msg), 'one instruction row').toBe(1);
       expect(receiptRows(msg), 'one receipt row').toBe(1);
       // Contract §3 kind (wave1-data-model §6.1 prose says 'ingress.duplicate'; the contract wins).
-      expect(await waitAuditCode(msg, 'ingress.duplicate_ignored'), 'audit ingress.duplicate_ignored').toBe(true);
+      const read = () => auditForMessage(ctx().a.keyId, msg).filter((r) => r.code === 'ingress.duplicate_ignored');
+      const rows = await waitAudit(read, (r) => r.length > 0);
+      expect(rows.length, 'one audit ingress.duplicate_ignored').toBe(1);
+      expectDuplicateDetails('duplicate', rows[0]!, first);
     });
 
     test('a different body with the same message_id is still a duplicate', async () => {
