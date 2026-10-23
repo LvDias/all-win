@@ -182,3 +182,12 @@
 - **S17-c:** opening = BUY/SELL; Trade Plan by the target's direction; Bull buys, Bear sells. The indicator's take/stop alerts never become orders (stop/target come from the account profile); they are only recorded. Opposite signal with an open position: ANSWER PENDING.
 - **S17-d:** base quantity 1 for every signal (the account multiplier applies on top).
 - **Canonical docs:** auth policy rev. 3.2 (Q91 risk acceptance, Architect); adapter protocol 1.4 + S13/S15 (Q92, Compasso/Esquadro/Malha); integrations/tradingview guide + Pine (S17, Plugin Engineer); slice-plan (PO).
+
+## 2026-10-24 — S17-c, Q93–Q96
+- **S17-c (opposite signal with an open position):** not an All Win decision. Per the product vision, the instruction's action decides: `reverse` reverses, `close` only flattens, and a buy/sell that conflicts with the position is rejected and notified (Q1). The source chooses the action. The Pine function gets an input so the user picks what the opposite signal sends: reverse / close / do not send. Contract unchanged (ADR-0003).
+- **Q93 (a):** a position carried across the trading-day boundary counts its whole unrealized P&L in the day being measured.
+- **Q94 (a):** Topstep V1 presets cover the Trading Combine only; Express Funded (XFA) and Live Funded (LFA) are registered by hand.
+- **Q95 yes:** "clear out of sync" requires the step-up code (added to the Q35 set).
+- **Q96 yes:** "restart today's count" (Q92 re-anchor) requires the step-up code (added to the Q35 set).
+- **Repeated in this message (unchanged):** Q91 (a), Q92 (c), S17-a, S17-b, S17-d, take/stop alerts recorded only.
+- **Canonical docs:** integrations/tradingview guide + Pine (S17-c input, Plugin Engineer); ADR-0004 / protocol 1.4 (Q93, Architect); presets (Q94, PO); auth policy step-up set + HTTP 5.3.0/5.4.0 (Q95/Q96, Architect/Compasso).
