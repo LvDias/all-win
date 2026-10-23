@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 16.7 (1c93eb2); **rev. 16.8 proposed**: S16 publication (Esquadro (B): `publish_seq`, advisory publish lock, `allwin_publisher`, release-file deltas, cursor table #11c) in §5.7; two-step reverse `leg` on `routing_decision` (§6.2); duplicate-with-different-body hash `…061250` (§6.1); S3 AC-12 admin recovery `…061800` (§4); §8 rows.
+- **Status:** Accepted (2026-10-24), rev. 16.8 (208e920); **rev. 16.8.1 proposed** (Esmeril L1/L2/N3/N4, Cinzel): body hash without `sent_at` (§6.1); admin self-recovery is always and only break-glass, admin step-up without a session (`admin_recovery` action) (§4); two-key advisory publish lock (§5.7); `routing_decision` `ON CONFLICT` target (§6.2).
+- Rev. 16.8 (208e920): S16 publication (Esquadro (B): `publish_seq`, advisory publish lock, `allwin_publisher`, release-file deltas, cursor table #11c) in §5.7; two-step reverse `leg` on `routing_decision` (§6.2); duplicate-with-different-body hash `…061250` (§6.1); S3 AC-12 admin recovery `…061800` (§4); §8 rows.
 - Rev. 16.7 (1c93eb2; Bigorna): the `gateway.execution_report` `child_role` and `reason_code` `CHECK`s match the adapter protocol schema (`exit`, `flatten`; codes with one or more dots), §6.3.
 - Rev. 16.6 (11dfba5): migration #9 `…061600` (Bigorna, gateway gaps G1–G8: stored `frame` for byte-identical retransmission, `undelivered`, `position_effect`, per-contract columns and `execution_report.seq`, `reason_code` CHECK, role split; no connection table per Esquadro B4 = b); S11 sync storage (`account_sync.version`, per-occurrence `account_sync_reason` with `dedupe_key` and `resolved_at`); §5.6 `risk.applied_fill` (#10b `…061510`), the #10 grants (DELETE only on `scheduled_limit`, worker column grants) and #10 `…061500`; §6.4 backfill alert note and indentation (Esmeril notes b, c); §6.5 and §8 rows.
 - Rev. 16.4/16.5 (aa60b31; Brasa's access patterns, Esmeril): §6.4 rule 2 gets the DDL of `app.outbox_consumer` and `app.outbox_delivery` (per-consumer retries), registration, retirement, fetch and dead-letter rules; `published_at` is materialized as "done for all", so the purge needs no join; §8 #14 = `…061400`; §8 also lists `…060630` (#2c) and reserves `…061310` (#2d, `identity.source.name` CHECK, Crivo L1, needs user authorization); §6.1 lists the four ingress codes. **Rev. 16.5** (Esmeril on 16.4, Brasa aligned): a new `backfill` consumer resets `published_at` on retained rows; `outbox_delivery_event_idx` for the purge cascade; `app.outbox.dead_lettered_at` is legacy-only (#1b) and filtered in the fetch; L3 accepted for V1; cutover rules; delivery-consumer test instead of an FK; §8 row order.
@@ -311,7 +312,7 @@ ALTER TABLE identity.channel_change
   ADD CONSTRAINT channel_change_kind_fields CHECK (
         (kind = 'admin_recovery' AND admin_user_id IS NOT NULL AND verified_by IS NOT NULL AND verification_ref IS NOT NULL)
      OR (kind = 'user_change' AND admin_user_id IS NULL AND verified_by IS NULL AND verification_ref IS NULL AND NOT break_glass)),
-  ADD CONSTRAINT channel_change_break_glass_check CHECK (NOT break_glass OR admin_user_id = user_id),  -- I3: the admin recovering themself
+  ADD CONSTRAINT channel_change_break_glass_check CHECK (kind <> 'admin_recovery' OR break_glass = (admin_user_id = user_id)),  -- rev. 16.8.1: I3, self-recovery is always and only break-glass
   ADD CONSTRAINT channel_change_verification_ref_no_token CHECK (verification_ref !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}');
 -- An admin_recovery goes through the same 10-min code phase and 72-h hold (ApplyDueChannelHolds). An open
 -- user_change is first cancelled by the Core (cancelled_by_session_id NULL), so channel_change_one_open holds.
@@ -362,6 +363,15 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   --   WHEN 'step_up' THEN session_id IS NOT NULL ELSE (session_id IS NOT NULL OR code_role = 'new_value') END).
   -- A session-less code is the new-value code of an admin_recovery change; the Core allows it only for that
   -- kind (a CHECK cannot read channel_change), with DB tests in both directions.
+  -- rev. 16.8.1 (Cinzel; Esquadro (a)/(b), HTTP 5.4.0 StepUpAction admin_recovery): the operator command makes the
+  -- ADMIN do a step-up (user_id = the admin; start: target_id = the target's user_id; confirm/cancel: target_id =
+  -- the change id). The CLI has no session, so #2e also adds 'admin_recovery' to the action CHECK and to the
+  -- target-required list of one_time_code_step_up_check, and the step_up branch of the session CHECK becomes
+  -- (session_id IS NULL) = (action = 'admin_recovery'):
+  --   CASE purpose WHEN 'login' THEN session_id IS NULL
+  --                WHEN 'step_up' THEN (session_id IS NULL) = (action = 'admin_recovery')
+  --                ELSE (session_id IS NOT NULL OR code_role = 'new_value') END
+  -- Tests: an admin_recovery step-up without a session passes, with a session fails; another action without a session fails.
   CONSTRAINT one_time_code_whatsapp_check CHECK (channel <> 'whatsapp' OR destination ~ '^\+[1-9][0-9]{7,14}$'),
   FOREIGN KEY (user_id, session_id) REFERENCES identity.session (user_id, id),
   FOREIGN KEY (user_id, channel_change_id) REFERENCES identity.channel_change (user_id, id)
@@ -1029,7 +1039,7 @@ CREATE INDEX applied_fill_trading_date_idx ON risk.applied_fill (trading_date); 
 Global catalog, no RLS, written only by the publishing use case.
 - **Publication (rev. 16.8; Esquadro (B), Torno #11 `…061700`, #11b `…061710`, #11c `…061720`):**
   - Only the publish-release CLI writes the catalog, as `allwin_publisher` (`NOBYPASSRLS`, created by DevOps in every environment before #11): `SELECT, INSERT` on the immutable tables, the column `UPDATE`s below, `SELECT` on `instrument` and `standard_account_size`; nothing outside `catalog`, no outbox, no audit.
-  - The CLI takes `pg_advisory_xact_lock(hashtext('catalog.publish'))` as the first statement of its transaction. `LOCK TABLE … EXCLUSIVE` would need table-level `UPDATE`, which the publisher must not have. So publications are serial and commit in `publish_seq` order; a rollback leaves a gap, and the cursor reads `> last`, so it never skips a committed release.
+  - The CLI takes `pg_advisory_xact_lock(hashtext('catalog'), hashtext('publish'))` as the first statement of its transaction (rev. 16.8.1, Esmeril N4: the two-key form; PostgreSQL keeps the one-key `bigint` space, used by the outbox consumer-name locks, separate from the two-key space). Two-key locks are namespaced by `hashtext('<module>')` as the first key. `LOCK TABLE … EXCLUSIVE` would need table-level `UPDATE`, which the publisher must not have. So publications are serial and commit in `publish_seq` order; a rollback leaves a gap, and the cursor reads `> last`, so it never skips a committed release.
   - An accounts worker job polls `releases_published_after(publish_seq)` through the catalog query port (every 30 s and at start). For each release in order, it suspends the affected opt-ins in one user-scoped transaction per user (`accounts.opt_in_suspended`, `presets.version_available`, idempotent by `(release_id, account_id)`), then advances the cursor by compare-and-set. The routing gate keeps the window fail-closed.
   - The publication's trail is the immutable `firm_release` row (`published_at`, `source_sha256`, `published_by`) plus redacted structured logs.
   - #11b uses the composite FK `(firm_id, release_id) → firm_release (firm_id, id)`, so a rule version cannot name another firm's release.
@@ -1233,7 +1243,7 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
 
 ### 6.1 Idempotency kept separate from retention
 
-- **Duplicate with a different body (rev. 16.8, Esquadro):** the same `message_id` with the same `body_sha256` → `200` duplicate, as before. A different hash → still `200`, nothing executed, and audit `ingress.duplicate_conflict` (code from the next 5.x contract; details: source name, `message_id`, the first and second `received_at`, the names of the differing fields only, never a body). The field names come from comparing with `routing.instruction.payload`. Once that instruction is purged by retention (the receipt is kept forever), the entry carries no field names. A row from before `…061250` has `body_sha256` NULL: the `NOT VALID` constraint applies to new rows only and is never validated. Such a duplicate is treated as same-body, which concerns DEV data only. Only accepted messages have a receipt, so a duplicate of a rejected message is a new message.
+- **Duplicate with a different body (rev. 16.8, Esquadro):** `body_sha256` hashes the canonical JSON, after parsing, of a **closed list of compared fields** (rev. 16.8.1, Esquadro's final rule; Esmeril L1): `source`, `signal_type`, `action`, `position_effect`, `side`, `instrument`, `quantity`, `order`, `changes`, `refs` (absent ≠ null, as in the schema). Excluded: `message_id` (the key), `sent_at`, `reference_price`, `details` and `schema_version`. A new instruction field joins the list only by an explicit contract decision; the list lives in the instruction/v1 README and the audit code's description, not in the schema. `differing_fields` names compared fields only, never values. Expiry and everything else keep the first receipt's values. Tests: only `sent_at`, only `details` or only `reference_price` changed → no conflict; `quantity` changed → conflict `[quantity]`. The same `message_id` with the same `body_sha256` → `200` duplicate, as before. A different hash → still `200`, nothing executed, and audit `ingress.duplicate_conflict` (code from the next 5.x contract; details: source name, `message_id`, the first and second `received_at`, the names of the differing fields only, never a body). The field names come from comparing with `routing.instruction.payload`. Once that instruction is purged by retention (the receipt is kept forever), the entry carries no field names. A row from before `…061250` has `body_sha256` NULL: the `NOT VALID` constraint applies to new rows only and is never validated. Such a duplicate is treated as same-body, which concerns DEV data only. Only accepted messages have a receipt, so a duplicate of a rejected message is a new message.
 
 ADR-0003 §5 makes `message_id` unique **per user, forever**. Q13 option (b) purges instructions after the retention window. To keep both promises, the dedupe key lives in a slim table that is never purged; it is erased only with the user:
 
@@ -1248,7 +1258,7 @@ CREATE TABLE routing.message_receipt (                   -- ≈ 100 B/row; ≈ 2
 -- rev. 16.8, forward migration #6d `…061250` routing_message_receipt_body_hash (Ferro; Esquadro: duplicate with a
 -- different body; expand-only):
 ALTER TABLE routing.message_receipt
-  ADD COLUMN body_sha256 bytea CHECK (octet_length(body_sha256) = 32);   -- sha256 of the canonical parsed JSON (Core)
+  ADD COLUMN body_sha256 bytea CHECK (octet_length(body_sha256) = 32);   -- sha256 of the canonical JSON of the compared fields only (Core; rev. 16.8.1)
 ALTER TABLE routing.message_receipt
   ADD CONSTRAINT message_receipt_body_sha256_present CHECK (body_sha256 IS NOT NULL) NOT VALID;  -- new rows only
 
@@ -1324,6 +1334,8 @@ CREATE UNIQUE INDEX routing_decision_leg_key ON routing.routing_decision
 -- gate's code, or routing.expired). A one-step decision is 'whole'. 'whole' and 'close' exclude each other, and a
 -- pair has at most one 'open'; an 'open' row only after a 'close' row is a Core rule plus a DB test. Still
 -- append-only. The outcome list narrows (no 'rejected') in the same unmerged …061200 once contract 5.2.0 freezes.
+-- rev. 16.8.1 (Esmeril N3): inserts name the expression index, ON CONFLICT (instruction_id, account_id,
+-- (CASE leg WHEN 'open' THEN 'open' ELSE 'first' END)) DO NOTHING; the edit keeps RLS and REVOKE UPDATE/DELETE.
 -- Audit: one decision entry per (instruction, account), written at step 2 or by the TTL sweeper (expired
 -- close-only); the step-1 flatten shows at once through gateway's execution.* entries (Esquadro, option 1).
 CREATE INDEX routing_decision_user_account_idx ON routing.routing_decision (user_id, account_id, decided_at DESC);
