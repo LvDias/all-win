@@ -52,8 +52,11 @@ if [ "$FRESH" = 1 ]; then
   sha="$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)"
   git diff --quiet HEAD 2>/dev/null || sha="$sha-dirty"
   export CARGO_TARGET_DIR="$TARGET_ROOT/verify-$sha-$$"
-else
-  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$TARGET_ROOT}"
+elif [ -z "${CARGO_TARGET_DIR:-}" ]; then
+  # One target per worktree: two worktrees with the same layout give our path crates the same metadata, so a shared
+  # target mixes their artifacts (false failures, and a test could pass against another worktree's code).
+  wt_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+  export CARGO_TARGET_DIR="$TARGET_ROOT/wt-$(printf '%s' "${wt_root##*/}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-40)-$(printf '%s' "$wt_root" | sha1sum | cut -c1-10)"
 fi
 mkdir -p -- "$CARGO_TARGET_DIR"
 # Web Playwright (web/playwright.config.ts reuses any server already listening on PLAYWRIGHT_PORT when not in CI):

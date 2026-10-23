@@ -26,7 +26,7 @@ infra/scripts/allwin-heavy pnpm test
    cwd, environment, tty and exit code pass through. Without a user bus it falls back to `nice -n 10` only
    and says so.
 3. **Defaults** (override by exporting first): `CARGO_BUILD_JOBS=2`, `RUST_TEST_THREADS=2`,
-   `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target`, `PLAYWRIGHT_PORT` = a free port in 3200-3899 chosen per
+   `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target/wt-<worktree>-<hash>` (one per worktree), `PLAYWRIGHT_PORT` = a free port in 3200-3899 chosen per
    worktree, and `PLAYWRIGHT_BASE_URL=http://localhost:$PLAYWRIGHT_PORT` (see "Playwright ports").
 4. **Shared toolchain and compile cache** (see below): `RUSTUP_HOME`/`CARGO_HOME` under `/opt/rust` and `RUSTC_WRAPPER=sccache`.
 5. **dotnet:** `MSBUILDDISABLENODEREUSE=1` and no MSBuild server, so nothing stays resident.
@@ -43,28 +43,21 @@ side only.
 
 A test that times out only while the host is loaded is not a finding until it passes or fails alone.
 
-## One cargo target directory per account
+## One cargo target directory per worktree
 
-Each worktree used to build its own `core/target` (63 GB in total, every dependency cold). Use one directory per
-account instead; it needs no sudo and `allwin-heavy` sets it by default. For plain `cargo` runs, put this in `~/.profile`:
+Our own crates have the same relative layout in every worktree, hence the same metadata hash: **a target directory shared
+by two worktrees mixes their artifacts** (a clippy run compiled against another worktree's crate; a test can even pass
+against the wrong code). Never share a target between worktrees.
 
-```bash
-export CARGO_TARGET_DIR="$HOME/.cache/allwin/cargo-target"
-```
+`allwin-heavy` therefore defaults to `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target/wt-<worktree>-<hash of its path>`:
+one per worktree and account, outside the repository, no sudo. An exported `CARGO_TARGET_DIR` wins (for example
+`CARGO_TARGET_DIR=$PWD/target`). For plain `cargo` outside the wrapper, `core/target` (the default) is already per worktree.
 
-- **One target per account is enough, not one per branch family.** Third-party crates (the expensive part) are keyed
-  by crate, version, features and toolchain, so every worktree on the same `rust-toolchain.toml` reuses them. Our own
-  crates are keyed by path and are rebuilt per worktree (cheap); artifacts from different worktrees coexist.
-- The shared target is for day-to-day builds only. Our own crates have the same relative layout in every
-  worktree, hence the same metadata hash, so artifacts of two snapshots can mix and produce a **false compile
-  failure** (seen by QA). The uplifted top-level binaries (`target/debug/allwin-core`, examples) are also
-  overwritten by the last worktree that built them.
-- Cargo's build-directory lock serializes concurrent builds in the same directory ("Blocking waiting for file lock"),
-  which is what we want on this host.
-- Accounts do not share a target directory (separate home, no cross-account write access).
-- Nothing in the repo depends on `core/target`. To trim the directory: `cargo clean -p <our-crate>`; delete the
-  whole directory when the toolchain changes (`rm -rf "$HOME/.cache/allwin/cargo-target"`).
-- Old per-worktree `core/target` directories can be removed once the owner no longer needs them.
+- Third-party crates are rebuilt once per worktree; that is the price of isolation until the compile cache is enabled.
+- Cargo's build-directory lock serializes concurrent builds inside one worktree's target.
+- Nothing in the repo depends on `core/target`. Delete a worktree's target with its worktree
+  (`rm -rf "$HOME"/.cache/allwin/cargo-target/wt-<name>-*`), and everything when the toolchain changes.
+- The uplifted binaries (`target/debug/allwin-core`, examples) belong to that worktree's last build only.
 
 ## QA verdict runs: fresh target per SHA
 
@@ -112,10 +105,10 @@ cache directory. The wrapper also
 points every account at the same toolchain (`RUSTUP_HOME=/opt/rust/rustup`, `CARGO_HOME=/opt/rust/cargo`, rustc 1.99.1)
 and runs with `umask 002`, so cache keys match across `dev2` and `dev3` and files stay group-writable.
 
-- Third-party crates hit the cache across worktrees and accounts. Our own workspace crates are keyed by path and miss
-  once per worktree (cheap).
-- A fresh target per SHA (`--fresh-target`, QA verdict runs) is therefore cheap: the dependencies come from the cache
-  and nothing from another snapshot can leak in. Use it for every verdict run.
+- **Known limit (SRE, sccache 0.18):** the cache key includes the absolute target-directory path. A build hits only when
+  the same path built the same input before, so with per-worktree or per-SHA (`--fresh-target`, unique path) targets
+  it does not hit across worktrees or accounts. It stays off until the targets have stable paths (a proposal: one
+  target path per slot, emptied at the start of the job); do not count on it for speed.
 - `ALLWIN_HEAVY_NO_SCCACHE=1` forces the cache off even when enabled;
   `allwin-heavy bash -c 'cargo build && sccache --show-stats'` shows hits and misses of that job's server (the stats
   die with it).
