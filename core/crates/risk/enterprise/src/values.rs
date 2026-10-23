@@ -84,13 +84,15 @@ impl Rate {
     }
 }
 
-/// The consistency threshold: 0–100 with at most one decimal (Q-S13-7, `NUMERIC(4,1)`).
+/// The consistency threshold: (0, 100] with at most one decimal (Q-S13-7, `NUMERIC(4,1)`). 0 is
+/// refused (`risk.amount_invalid`): no day's share could be compared with it, so the meter would
+/// never warn. The contract pattern still admits "0" (change requested from the Architect).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThresholdPct(Decimal);
 
 impl ThresholdPct {
     pub fn new(value: Decimal) -> Result<Self, ValueError> {
-        if value < Decimal::ZERO || value > Decimal::ONE_HUNDRED {
+        if value <= Decimal::ZERO || value > Decimal::ONE_HUNDRED {
             return Err(ValueError::OutOfRange);
         }
         if value.normalize().scale() > 1 {
@@ -150,7 +152,9 @@ mod tests {
     #[test]
     fn thresholds_are_bounded_with_one_decimal() {
         assert!(ThresholdPct::parse("100.0").is_ok());
-        assert!(ThresholdPct::parse("0").is_ok());
+        assert!(ThresholdPct::parse("0.1").is_ok());
+        assert_eq!(ThresholdPct::parse("0"), Err(ValueError::OutOfRange));
+        assert_eq!(ThresholdPct::parse("0.0"), Err(ValueError::OutOfRange));
         assert_eq!(ThresholdPct::parse("100.1"), Err(ValueError::OutOfRange));
         assert_eq!(ThresholdPct::parse("30.25"), Err(ValueError::Scale));
     }

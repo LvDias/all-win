@@ -145,18 +145,32 @@ async fn create_database() -> Option<(String, String)> {
     Some((admin, name))
 }
 
-/// A user row (identity owns the table; the superuser seeds it for these tests).
+/// A user row (identity owns the table; the superuser seeds it for these tests). Works before and
+/// after the passwordless migration (`…060800`: `password_hash` dropped, `email_verified_at NOT
+/// NULL` added), whichever this branch carries.
 pub async fn user(db: &TestDb) -> Uuid {
     let id = Uuid::now_v7();
     let email = format!("{}@example.invalid", id.simple());
-    sqlx::query(
-        "INSERT INTO identity.app_user (id, email, email_normalized, password_hash, time_zone)
-         VALUES ($1, $2, $2, 'unusable', 'America/Sao_Paulo')",
+    let passwordless: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'identity' AND table_name = 'app_user'
+             AND column_name = 'email_verified_at')",
     )
-    .bind(id)
-    .bind(email)
-    .execute(&db.admin)
+    .fetch_one(&db.admin)
     .await
     .unwrap();
+    let sql = if passwordless {
+        "INSERT INTO identity.app_user (id, email, email_normalized, email_verified_at, time_zone)
+         VALUES ($1, $2, $2, now(), 'America/Sao_Paulo')"
+    } else {
+        "INSERT INTO identity.app_user (id, email, email_normalized, password_hash, time_zone)
+         VALUES ($1, $2, $2, 'unusable', 'America/Sao_Paulo')"
+    };
+    sqlx::query(sql)
+        .bind(id)
+        .bind(email)
+        .execute(&db.admin)
+        .await
+        .unwrap();
     id
 }
