@@ -46,8 +46,8 @@ The user is always told what happened and what All Win did or did not do. All Wi
 | Entry command expired | S12 AC-2b | "Uma ordem de entrada expirou sem ser executada." | `execution.expired`; **does not** flag when it is the open leg of a reverse that never left the Core (5.1.1 exception, ADR-0004 §5) |
 | Order state unknown after recovery | — | "Não sabemos o estado de uma ordem depois da reconexão." | `execution.state_unknown` (S10 *Indeterminada*) |
 | Orphan cancellation failed | S9 AC-3 | "Não conseguimos cancelar uma ordem órfã." | which order, platform message as text |
-| Any flatten failure that leaves a position after the legs were cancelled | U19 (user decision 2026-10-23, residual risk accepted; covers whichever flow sent the flatten: close/reverse, enforcement, orphan leg: **Q-S11-6** asks Compasso/Esquadro to confirm the flows) | "Falhou o fechamento da posição depois do cancelamento das ordens." | **top severity: critical** (`CriticalBanner`) + out of sync, like 5 iii |
-| Cancel/flatten of the reactive block that fails while **no unprotected position remains** | S15 AC-6 | "Não foi possível fechar ou cancelar tudo em {account}." | `danger`; the plugin panel already shows it. Exclusive with the U19 row: if a position is left after the legs were cancelled it is U19, critical |
+| Flatten failed **after cancelling protections** and left a position open whose All Win protection was cancelled by that flatten (all legs or only some) | U19 (user decision 2026-10-23, residual risk accepted; Architect/Esquadro, ADR-0005 §N11: covers **every** flatten origin: Core command close, closing leg of a reverse incl. the Q75 flatten, orphan-leg flatten (Q27), and the local enforcement flatten) | "Posição aberta sem proteção; gerencie no NinjaTrader." | **top severity: critical** (`CriticalBanner`) + out of sync, like 5 iii. The plugin shows the same maximum alert |
+| Flatten or cancel failed but the open position keeps its protection | S15 AC-6 (same event as U19 when protection was already cancelled; Architect/Esquadro) | "Não foi possível fechar tudo em {account}." | `danger` + out of sync. Cases: the cancel failed before any leg went out (`order.cancel_failed`); a position with no All Win protection from the start (a manual order blocked reactively); only entry orders were cancelled. **Never** the words "sem proteção" here |
 | External order or fill | 7 | "Uma ordem ou execução fora do All Win foi detectada nesta conta." | only on master-replication destinations (S19, V1.1); TradingView-only destinations are audited only, no flag |
 | Disconnected by the user in the plugin | — | "Você desconectou este computador no plugin com posição aberta." | `sync.disconnected_by_user` (S10, proposal already in plugin panels) |
 
@@ -98,8 +98,8 @@ Notifications are one pointer per event with a link to the account; the current 
 | Opposite position flattened | 5 iii | **critical** (`CriticalBanner`, C§8; one of **two** critical cases, with U19 below: S18 AC-5 / Q51, Q27) | "{account}: fechamos {qty} criados pela perna órfã. Confira a conta." | account detail |
 | `reverse` with an opposite position on an out-of-sync account | 4 | danger | "Inversão em {account}: só a posição foi fechada ({closed_qty} {long\|short})" (`routing.reverse_close_only`, one per occurrence, S7 §5.4) | S10 row |
 | Entry command expired / state unknown / orphan cancellation failed | S12 AC-2b, S9 AC-3 | danger | "{account}: {reason}" | account detail |
-| Any flatten failure leaving a position after the legs were cancelled (U19) | U19 | **critical** (`CriticalBanner`, C§8) | "{account}: não foi possível fechar a posição. Confira a conta agora." | account detail |
-| Cancel/flatten of the reactive block failed, no unprotected position remains | S15 AC-6 | danger | "{account}: não foi possível fechar ou cancelar tudo." | account detail |
+| Flatten failed after cancelling protections, position left unprotected (U19, any flatten origin) | U19 | **critical** (`CriticalBanner`, C§8) | "{account}: posição aberta sem proteção. Gerencie no NinjaTrader." | account detail |
+| Flatten or cancel failed, position keeps its protection | S15 AC-6 | danger | "{account}: não foi possível fechar tudo." | account detail |
 | Entry skipped on an out-of-sync account | 4 | per the S18 reopen rule (`routing.out_of_sync`, danger, Q68 b) | "Entrada recusada em {account}: conta fora de sincronia" | S10 row |
 | Flag cleared | 3 | none (audit only) | — | — |
 
@@ -121,7 +121,7 @@ Keys: `accounts.sync.*`, `activity.sync.*`, `notifications.sync.*` (pt-BR = en).
 |---|---|---|---|
 | Q83 (Q-S11-1) | May the user clear the flag while the account is not observable (bracket integrity unknown), or must the plugin report first? Proposal: allowed with the extra warning (the user decides, vision §8 "wait for the user"). | PO | S11-02 |
 | Q84 (Q-S11-2, provisional; PO rec. (a) yes) | Should clearing be offered while a position is still open per the last data? Proposal: yes, with the same confirmation (the user may keep the position). | PO | S11-02 |
-| Q-S11-6 | Which flows does U19 cover (close/reverse flatten, enforcement flatten, orphan-leg flatten), and is the S15 AC-6 "não foi possível fechar tudo" the same event when the legs were already cancelled? Spec: exclusive split above. | Architect / PO | S11-01, S11-04 |
+| Q-S11-6 | **Closed by the Architect (Esquadro):** U19 covers every flatten origin; S15 AC-6 is the same event when the flatten failed after cancelling protection of an open position (critical), and danger when the position keeps its protection. Criteria in §S11-01 / S11-04. | — | closed |
 | Q-S11-3 | Contract: sync state object (reasons[], what the Core did), clear operation, reason codes, check-in-progress reason, notification codes. | Architect | whole spec |
 | Q-S11-4 | Audit/notification entries for reconnect-check results (S11 AC-5 i–iv) and missed instructions while disconnected (S12 AC-2) are requested by the PO for the S10/S18 catalogs; this spec lists them, the catalogs must follow. | Aquarela (S10/S18) | S10, S18 |
 
