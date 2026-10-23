@@ -11,6 +11,9 @@ Owner: Software Architect. Status vocabulary for ADRs: **Proposed** → **Accept
 | [0003](adr/0003-instruction-contract-v1.md) | Standard instruction contract v1 and correlation identifiers | Accepted (2026-10-23) |
 | [0004](adr/0004-adapter-protocol-v1.md) | Core ↔ platform adapter protocol v1 | Accepted (2026-10-23) |
 | [0005](adr/0005-nt8-plugin-implementation.md) | NinjaTrader 8 plugin implementation decisions | Proposed (confirmed by the spike) |
+| [0006](adr/0006-derived-state-across-modules.md) | Derived state across modules: versioned events and a staleness gate | Accepted (2026-10-23) |
+| [0007](adr/0007-access-port.md) | Access port: authenticated caller and step-up across modules | Accepted (2026-10-23) |
+| [0008](adr/0008-account-platform-binding.md) | Account ↔ platform account binding is owned by `accounts` | Accepted (2026-10-23) |
 
 ## Other architecture documents
 
