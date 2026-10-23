@@ -10,12 +10,21 @@ paths:
       summary: The caller's activity entries, newest first, filtered, with a cursor
       description: |
         Filters combine with AND; the values inside one array filter combine with OR. Array filters
-        repeat the parameter (`account_id=a&account_id=b`). `from` defaults to 24 h before `to`; `to`
-        defaults to now; both are instants (X-8). `q` is an exact instruction id or `message_id`: it
-        returns the entries of that instruction (no free-text search). An unknown or foreign id in a
-        filter simply matches nothing. Entries older than the retention horizon no longer exist.
-        `next_cursor` is opaque and bound to the same filters; a cursor used with other filters gets
-        400 `common.invalid_request` (pointer `/query/cursor`).
+        repeat the parameter (`account_id=a&account_id=b`). `from` defaults to the retention horizon and
+        `to` to now; both are instants (X-8); the UI sends `from` for its period chips (default 24 h), so a
+        search or a deep link without `from` covers the whole retained history. `from` after `to` gets 400
+        `common.invalid_request` (pointer `/query/from`). `q` is an exact instruction id or `message_id`:
+        a UUID-shaped `q` is tried as both; it returns the entries of that instruction, including its
+        duplicates (no free-text search). An ingress rejection creates no instruction, so `q` never finds
+        `ingress.rejected` entries. An unknown or foreign id in a filter simply matches nothing.
+        Paging: the first page resolves `from` / `to` (so `to` = the time of the first request) and the
+        filters into `next_cursor`, an opaque token authenticated by the Core (MAC). Later pages send
+        `cursor` (and optionally `limit`); filter parameters sent with a cursor must equal the captured
+        ones. A tampered, foreign or mismatching cursor gets 400 (pointer `/query/cursor`). Paging is
+        eventually consistent: an entry recorded late with an older `occurred_at` may be missed once
+        paged past; the "n new entries" banner covers newer ones. Order: newest first by
+        (`occurred_at`, event sequence, `id`); `id` breaks ties for old rows without a sequence. The
+        cursor carries all three.
       parameters:
         - { name: from, in: query, required: false, schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' } }
         - { name: to, in: query, required: false, schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' } }
@@ -115,8 +124,9 @@ paths:
       description: |
         `intake` holds the receipt steps, including every `ingress.duplicate_ignored` of the same
         `message_id` (Q-S10-6). `accounts` holds one block per account the instruction was routed to or
-        skipped for, sorted by account name, each with its steps in `occurred_at` order (ties by the
-        Core's sequence) and its final outcome. Unknown, foreign and purged-by-retention ids all get the
+        skipped for, sorted by account name, each with its steps in causal order (the event
+        sequence the Core assigns when it records the event, `audit_entry.event_seq`: a later step always
+        has a higher sequence) and its final outcome. Unknown, foreign and purged-by-retention ids all get the
         same 404 `common.not_found`. While `status` is `in_progress` new steps arrive as
         `audit.entry_recorded` events; the client refetches.
       parameters:
@@ -150,7 +160,8 @@ components:
         - `executed` — an order filled;
         - `partial` — quantity capped at the maximum position, or a partial fill;
         - `skipped` — not sent by a configuration rule (duplicate, signal type not selected, opt-in not
-          accepted, account inactive, no stop/target profile, maximum already reached, nothing to close);
+          accepted, account inactive, no stop/target profile, limits not yet derived, maximum already
+          reached, nothing to close);
         - `refused` — not sent by a protective gate (out of sync, risk block, position conflict);
         - `rejected` — refused by validation (ingress) or by the platform;
         - `expired` — command TTL exceeded, not executed;
@@ -184,6 +195,7 @@ components:
         - routing.copy_not_accepted
         - routing.account_inactive
         - routing.no_bracket_profile
+        - routing.limits_pending
         - routing.out_of_sync
         - routing.risk_blocked
         - routing.position_conflict
@@ -203,6 +215,16 @@ components:
         - execution.state_unknown
         - execution.fill_corrected
         - connection.status_changed
+        - sources.created
+        - sources.renamed
+        - sources.rotated
+        - sources.revoked
+        - connections.created
+        - connections.renamed
+        - connections.pairing_code_issued
+        - connections.paired
+        - connections.repaired
+        - connections.unpaired
         - security.signed_in
         - security.sign_in_failed
         - security.code_rate_limited
@@ -256,15 +278,20 @@ components:
         source_key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$', description: The only part of a source token that may be shown. }
         signal_type: { $ref: '#/components/schemas/AuditSignalType' }
         command_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        actor:
+          type: string
+          enum: [user, system, platform_admin]
+          description: Who caused the entry. `platform_admin` is reserved for admin actions on the user's data (Q28 recovery); absent on old entries.
         details:
           type: object
           description: |
             Typed per code: the schema is `AuditDetailsByCode[code]` (an empty object for codes without
-            one). Money, prices and distances are decimal strings. Never holds a secret: the Core redacts
-            before writing and storage refuses token-shaped strings.
+            one). Money, prices and distances are decimal strings. Never holds a secret, whatever
+            `safe_to_display` says: the Core redacts before writing (free-text fields such as pointers and
+            device labels are truncated and redacted) and storage refuses token-shaped strings.
         safe_to_display:
           type: boolean
-          description: True when the raw `details` JSON may be shown in "technical data". The rendered fields of the catalog are always shown.
+          description: Presentation only — true when the raw `details` JSON may be shown in "technical data". The rendered fields of the catalog are always shown. It is not a secrecy flag (see `details`).
       allOf:
         - if: { required: [account_id] }
           then: { required: [account_name, account_deleted] }
@@ -375,14 +402,18 @@ components:
     AuditEntryRecordedEvent:
       type: object
       additionalProperties: false
-      required: [type, at, entry_id, category, outcome]
-      description: A new entry was recorded for the caller (drives the "n new entries" banner and the live timeline). Carries no details.
+      required: [type, at, entry_id, occurred_at, category, code, outcome]
+      description: A new entry was recorded for the caller. Carries the filter keys (so the "n new entries" banner counts only entries that match the active filters) and no details.
       properties:
         type: { const: audit.entry_recorded }
         at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         entry_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        occurred_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         category: { $ref: '#/components/schemas/AuditCategory' }
+        code: { $ref: '#/components/schemas/AuditCode' }
         outcome: { $ref: '#/components/schemas/AuditOutcome' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        signal_type: { $ref: '#/components/schemas/AuditSignalType' }
         account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
 
@@ -428,7 +459,7 @@ components:
       description: Never the body (Q13 §8).
       properties:
         error_code: { $ref: '../openapi.yaml#/components/schemas/ErrorCode' }
-        pointer: { type: string, maxLength: 256 }
+        pointer: { type: string, maxLength: 256, description: 'Truncated and redacted by the Core (it derives from client input).' }
         body_size: { type: integer, minimum: 0 }
     DetailsIngressRateLimited:
       type: object
@@ -450,6 +481,11 @@ components:
           items: { type: string, pattern: '^sync\.[a-z][a-z0-9_]*$' }
         position_side: { type: string, enum: [long, short, flat] }
         account_size: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        instrument_ids:
+          description: With `routing.no_bracket_profile`.
+          type: array
+          items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        limits_version: { type: integer, minimum: 1, description: With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006). }
         ttl_ms: { type: integer, minimum: 1 }
         expiry_base: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
     DetailsCommandSent:
@@ -509,11 +545,14 @@ components:
       type: object
       additionalProperties: false
       required: [field]
-      description: One changed field; values are strings (money as decimal strings), absent when empty.
+      description: |
+        One changed field; values are strings, absent when empty. Scalars as their string form (money as
+        decimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string
+        amounts, e.g. `{"amount":"2000.00","type":"static"}`.
       properties:
         field: { type: string, pattern: '^[a-z][a-z0-9_.]*$', maxLength: 64 }
-        old: { type: string, maxLength: 200 }
-        new: { type: string, maxLength: 200 }
+        old: { type: string, maxLength: 1000 }
+        new: { type: string, maxLength: 1000 }
     DetailsAccountChange:
       type: object
       additionalProperties: false
@@ -611,7 +650,7 @@ components:
     DeviceLabel:
       type: string
       maxLength: 64
-      description: Coarse browser/OS family (`Device.label`), never a full user agent.
+      description: Coarse browser/OS family (`Device.label`), never a full user agent; truncated and redacted by the Core.
     DetailsSecuritySignedIn:
       type: object
       additionalProperties: false
@@ -683,10 +722,11 @@ components:
     DetailsPresetApplied:
       type: object
       additionalProperties: false
-      required: [from_preset_version_id, to_preset_version_id, changes]
+      required: [from_preset_version_id, to_preset_version_id, from_version_number, to_version_number, changes]
       properties:
         from_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         to_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        from_version_number: { type: integer, minimum: 1 }
         to_version_number: { type: integer, minimum: 1 }
         changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
         kept_fields: { type: array, description: 'Edited fields the user kept (`keep_mine`).', items: { $ref: 'presets.yaml#/components/schemas/RuleField' } }
@@ -696,6 +736,30 @@ components:
       required: [change]
       properties:
         change: { $ref: '#/components/schemas/FieldChange' }
+    DetailsSourceLifecycle:
+      type: object
+      additionalProperties: false
+      required: [source_id, source_name, key_id]
+      description: '`sources.*` (S3). Only the 12-character `key_id` of a token, never the URL or the token.'
+      properties:
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_name: { type: string, minLength: 1, maxLength: 60 }
+        previous_name: { type: string, maxLength: 60 }
+        key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$' }
+        previous_key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$', description: With `sources.rotated`. }
+    DetailsConnectionLifecycle:
+      type: object
+      additionalProperties: false
+      required: [connection_id, connection_name]
+      description: '`connections.*` (S3). Never a pairing code or device token.'
+      properties:
+        connection_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        connection_name: { type: string, maxLength: 60 }
+        previous_name: { type: string, maxLength: 60 }
+        instance_name: { type: string, maxLength: 64 }
+        adapter_version: { type: string, maxLength: 32 }
+        code_expires_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        open_positions_acknowledged: { type: boolean, description: With `connections.unpaired`. }
     AuditDetailsByCode:
       type: object
       additionalProperties: false
@@ -715,6 +779,7 @@ components:
         routing.copy_not_accepted: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.account_inactive: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.no_bracket_profile: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.limits_pending: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.out_of_sync: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.risk_blocked: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.position_conflict: { $ref: '#/components/schemas/DetailsRoutingDecision' }
@@ -734,6 +799,16 @@ components:
         execution.state_unknown: { $ref: '#/components/schemas/DetailsExecution' }
         execution.fill_corrected: { $ref: '#/components/schemas/DetailsExecution' }
         connection.status_changed: { $ref: '#/components/schemas/DetailsConnectionStatus' }
+        sources.created: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        sources.renamed: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        sources.rotated: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        sources.revoked: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        connections.created: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.renamed: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.pairing_code_issued: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.paired: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.repaired: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.unpaired: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
         security.signed_in: { $ref: '#/components/schemas/DetailsSecuritySignedIn' }
         security.sign_in_failed: { $ref: '#/components/schemas/DetailsSecurityChannel' }
         security.code_rate_limited: { $ref: '#/components/schemas/DetailsSecurityRateLimited' }

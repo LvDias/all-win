@@ -1,14 +1,15 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 2.5.0
+  version: 3.0.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
     sessions, devices, channel changes, sources, NinjaTrader connections and pairing) in this root, and in
     `modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`), the V1-S16 prop firm catalog and
     the account's preset (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`) and V1-S10
-    activity (`audit`). Security rules: auth-and-session-policy.md rev. 2.
+    activity (`audit`). 3.0.0 is the first consumable release of the modules; 2.1.0–2.5.0 were never merged or
+    deployed. Security rules: auth-and-session-policy.md rev. 2.
     Version 2.0.0 is breaking (password and TOTP removed). Paths stay `/api/v1`: no version was ever deployed
     and there are no external clients, so the path major moves only for breaking changes after the first
     production deploy (ADR-0002 §4).
@@ -360,8 +361,9 @@ paths:
         Sends a `step_up` code bound to this session, the `action` and the `target_id`. The action request then
         carries `step_up: { challenge_id, code }` in its body (schema `StepUpProof`); the code authorizes that
         one action only (Q30 a: every action asks a new code).
-        - `target_id` is **required** for `source_rotate`, `pairing_code_new`, `connection_unpair` and
-          `account_opt_in_accept`, and **forbidden** for the other actions; a violation → 400
+        - `target_id` is **required** for `source_rotate`, `pairing_code_new`, `connection_unpair`,
+          `account_opt_in_accept`, `route_enable` and `account_binding_change`, and **forbidden** for the other
+          actions; a violation → 400
           `common.invalid_request` with pointer `/target_id`.
         - A target that does not exist or belongs to another user → 404 `common.not_found`; no code is sent and
           nothing is counted against the user's send limit.
@@ -381,7 +383,7 @@ paths:
               properties:
                 action: { $ref: '#/components/schemas/StepUpAction' }
                 target_id:
-                  description: Required for source_rotate, pairing_code_new, connection_unpair, account_opt_in_accept; forbidden otherwise.
+                  description: Required for source_rotate, pairing_code_new, connection_unpair, account_opt_in_accept, route_enable, account_binding_change; forbidden otherwise.
                   $ref: '#/components/schemas/Uuid'
                 channel: { $ref: '#/components/schemas/CodeChannel' }
       responses:
@@ -1455,16 +1457,22 @@ components:
         Actions that need a step-up code (auth policy §6.2). The user's three actions are
         `account_opt_in_accept` / `account_create_opt_in_accept`, `connection_unpair`, and the channel change
         (its own flow). **Included pending Q35:** `source_create`, `source_rotate`, `connection_create`,
-        `pairing_code_new`, `admin_invitation_create` (the policy's security musts). The enum is a superset so it never has to change: whether those
+        `pairing_code_new`, `admin_invitation_create` (the policy's security musts), `route_enable`,
+        `account_binding_change` (QA Security M1/L1 on 2.4.0, same setting `step_up.q35_persistence_actions`,
+        default on, conditional). The enum is a superset so it never has to change: whether those
         operations **require** the proof is a Core setting (`step_up.q35_persistence_actions`, default on),
         shown as `x-step-up: conditional`. The setting is server configuration only (never an admin/UI/DB
         toggle); missing or invalid means on (fail-closed). If the user rejects them, the setting goes off and
         the values stay valid but unused. Enforcement-off / max-position values are added when Q35 decides.
         - `source_create`, `source_rotate` (target = source), `connection_create`, `pairing_code_new` (target = connection),
           `connection_unpair` (target = connection), `account_opt_in_accept` (target = account; automation or copy,
-          setAccountOptIn and the S5/S7 update operations), `account_create_opt_in_accept` (no target; S5 create
-          with an accepted opt-in), `admin_invitation_create`.
-      enum: [source_create, source_rotate, connection_create, pairing_code_new, connection_unpair, account_opt_in_accept, account_create_opt_in_accept, admin_invitation_create]
+          setAccountOptIn, applyPresetVersion and the S5/S7 update operations), `account_create_opt_in_accept` (no
+          target; S5 create with an accepted opt-in), `admin_invitation_create`.
+        - `route_enable` (target = account; createRoute/updateRoute enabling an automated-source route to an account
+          whose automation was not accepted with step-up: a real account or opt-in not_required).
+        - `account_binding_change` (target = account; updateAccount changing the platform binding of an account that
+          receives automation: opt-in accepted or an active automated route).
+      enum: [source_create, source_rotate, connection_create, pairing_code_new, connection_unpair, account_opt_in_accept, account_create_opt_in_accept, admin_invitation_create, route_enable, account_binding_change]
     StepUpProof:
       type: object
       additionalProperties: false

@@ -115,20 +115,27 @@ paths:
       description: |
         The body is the whole editable state (the edit form sends every field): an absent `binding`
         unbinds, an absent `multiplier` resets it to 1; `kind` cannot change. Changing the
-        preset version, the firm platform or the manual prop fields may select a different rule version:
-        the request must then carry `opt_ins` for each kind whose choice becomes required, or the Core
-        answers 422 `accounts.opt_in_required` (D16). Selecting another preset re-fills the rule values
+        preset version, the firm platform or the manual prop fields may select a different rule version.
+        `opt_ins.automation` is then required when this request changes the automation rule version and
+        the new one needs a choice (422 `accounts.opt_in_required`, D16). Nothing else is required by an
+        edit: a kind already `pending_review`, or whose rule version this request does not change, is
+        resolved with `setAccountOptIn`; `copy` is never required here (it is not on the account form;
+        a follower whose copy rule version changes goes to `pending_review`). Selecting another preset re-fills the rule values
         from it (the UI confirms first). Applying a newer version of the same preset (S16 AC-3) is
         `applyPresetVersion`, not this operation (422 `presets.use_apply_version`).
         Changing or removing the binding while the account has an open position is refused with 409
         `accounts.binding_open_position` (provisional, Q38). Lowering `max_position_qty` below an open
         position is allowed; open positions are not changed.
         Step-up: when an `opt_ins.*.choice` is `accepted` and changes the stored state, the body must
-        carry `step_up` for action `account_opt_in_accept` with target = this account. Check order after
+        carry `step_up` for action `account_opt_in_accept` with target = this account. Changing or
+        removing the binding of an account that receives automation (automation `chosen` + `accepted`, or
+        an enabled route from an automated source) needs `step_up` for action `account_binding_change`
+        (target = this account; QA Security L1; superset pending the user with Q35, Core setting, default
+        on). One proof covers the request; when both apply, `account_opt_in_accept` is used. Check order after
         authentication, Origin and schema: 404 → step-up → 409 → 422. Audited as
         `accounts.updated` (changed fields with old and new values) and `accounts.opt_in_chosen`.
       x-step-up: conditional
-      x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state
+      x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state, or the binding of an account that receives automation changes (Q35 setting on)
       parameters:
         - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
       requestBody:
@@ -254,8 +261,10 @@ paths:
         changes and for resolving `pending_review`. `rule_version_id` must be the rule version whose text
         the user saw; if it is stale the Core answers 409 `accounts.rule_version_changed` and saves
         nothing. Every change is audited (date, user, kind, choice, rule version, previous value).
+        Idempotent: the same choice for the same rule version as the stored `chosen` state is a no-op
+        (200, not audited, no step-up), so a retry after success never fails on a consumed code.
       x-step-up: conditional
-      x-step-up-when: choice == accepted
+      x-step-up-when: choice == accepted and it changes the stored state
       parameters:
         - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
         - name: kind
@@ -333,8 +342,9 @@ components:
       description: |
         Valid shape, refused by a rule; nothing saved. Codes and pointers:
         - `accounts.opt_in_required` — `/opt_ins/automation` or `/opt_ins/copy`;
-        - `accounts.opt_in_not_applicable` — `/opt_ins/<kind>` (real account, or the kind is
-          `not_required` for the selection); the client refetches and drops the section;
+        - `accounts.opt_in_not_applicable` — `/opt_ins/<kind>` (the kind is `not_required` for the
+          selection, or `opt_ins` on update of a real account; on create a real account with `opt_ins`
+          is a schema error, 400); the client refetches and drops the section;
         - `accounts.max_position_exceeds_preset` — `/max_position_qty` (above the preset maximum);
         - `accounts.preset_version_unknown` — `/preset_version_id` (unknown, withdrawn, or a superseded
           version on create);
@@ -348,7 +358,9 @@ components:
         - `presets.required_field_unresolved` — `/rule_values/<field>` or `/max_position_qty` (a required
           rule field of the preset is not confirmed and the body does not resolve it; S16 AC-6);
         - `presets.use_apply_version` — `/preset_version_id` (update to a newer version of the same
-          preset; use `applyPresetVersion`).
+          preset; use `applyPresetVersion`);
+        - `accounts.rule_values_without_selection_change` — `/rule_values` (update with the same preset
+          selection; edit rules with `putAccountRiskRules`).
       content:
         application/json:
           schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -370,8 +382,8 @@ components:
       enum: [active, paused, disabled]
     SizeAmount:
       type: string
-      description: 'Account size in `currency` (decimal string, at most 2 decimals). Must be > 0: zero gets 400 `common.invalid_request`.'
-      pattern: '^[0-9]{1,12}(\.[0-9]{1,2})?$'
+      description: 'Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.'
+      pattern: '^([1-9][0-9]{0,11}(\.[0-9]{1,2})?|0\.([1-9][0-9]?|0[1-9]))$'
     MaxPositionQty:
       type: integer
       minimum: 1
@@ -431,9 +443,13 @@ components:
         display_name: { $ref: '#/components/schemas/AccountName' }
         firm_name:
           type: string
+          maxLength: 120
           description: Prop only. From the preset when `preset_version_id` is set, else the manual text.
-        plan_name: { type: string, description: Prop only (as `firm_name`). }
-        phase: { type: string, description: Prop only (as `firm_name`). }
+        plan_name: { type: string, maxLength: 120, description: Prop only (as `firm_name`). }
+        phase: { type: string, maxLength: 80, description: 'Prop only: the preset phase code (`evaluation`, `funded`, `live`) or the manual text.' }
+        preset_update_available:
+          type: boolean
+          description: Prop with a preset only — a newer version of the account's preset exists (list link "Preset novo"; details in `getAccountPreset`).
         firm_id:
           description: Prop with a preset only (S16 catalog).
           $ref: '../openapi.yaml#/components/schemas/Uuid'
@@ -545,19 +561,25 @@ components:
           description: The platform account to bind; absent means unbound.
           $ref: '#/components/schemas/PlatformAccountRef'
         rule_values:
-          description: Prop with a preset only. Full replacement of the account's own rule values (absent fields take the preset value; S16 AC-2, AC-6). Restoring one value is `restorePresetValue`.
+          description: |
+            Only when the preset selection changes (another `preset_version_id` or `firm_platform`): the
+            account's own values for the new preset (edited or resolving not-confirmed fields; absent fields
+            take the new preset's value). With an unchanged selection it must be absent (422
+            `accounts.rule_values_without_selection_change`) and the stored rule values are kept; they are
+            edited with `putAccountRiskRules` (S13) and restored with `restorePresetValue`.
           $ref: 'presets.yaml#/components/schemas/PresetRuleValues'
         opt_ins: { $ref: '#/components/schemas/OptInChoices' }
         step_up:
-          description: Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`, target = this account).
+          description: Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`), or when the binding of an account that receives automation changes (action `account_binding_change`); target = this account.
           $ref: '../openapi.yaml#/components/schemas/StepUpProof'
       allOf:
         - if: { required: [preset_version_id] }
-          then: { not: { anyOf: [{ required: [firm_name] }, { required: [plan_name] }, { required: [phase] }] } }
-        - if: { required: [firm_name] }
-          then: { required: [plan_name, phase, size_amount] }
-        - if: { not: { required: [preset_version_id] } }
-          then: { not: { anyOf: [{ required: [firm_platform] }, { required: [rule_values] }] } }
+          then: { not: { anyOf: [{ required: [firm_name] }, { required: [plan_name] }, { required: [phase] }, { required: [size_amount] }] } }
+          else:
+            required: [size_amount]
+            not: { anyOf: [{ required: [firm_platform] }, { required: [rule_values] }] }
+        - if: { anyOf: [{ required: [firm_name] }, { required: [plan_name] }, { required: [phase] }] }
+          then: { required: [firm_name, plan_name, phase, size_amount] }
     LifecycleRequest:
       type: object
       additionalProperties: false
@@ -615,11 +637,12 @@ components:
           $ref: '../openapi.yaml#/components/schemas/Uuid'
     OptInChoices:
       description: |
-        The `opt_ins` property of `createAccount` / `updateAccount` (atomic create-with-choice). Must
-        contain every kind whose choice is required for the account's rule version and is not already
-        `chosen` for that version; otherwise 422 `accounts.opt_in_required` with `pointer`
-        `/opt_ins/automation` or `/opt_ins/copy`, and nothing is saved. `copy` is required only when the
-        account is a follower (S19), so it is normally absent here. A stale `rule_version_id` gives 409
+        The `opt_ins` property of `createAccount` / `updateAccount` / `applyPresetVersion` (atomic with the
+        save). Required kinds: on create, `automation` when its rule version needs a choice; on update and
+        apply, only `automation`, and only when that request changes the automation rule version and the
+        new version needs a choice. Otherwise 422 `accounts.opt_in_required` with `pointer`
+        `/opt_ins/automation`, and nothing is saved. `copy` is never required by these operations (it is
+        chosen in the follower flow, S7/S19); it may be sent when the UI shows it. A stale `rule_version_id` gives 409
         `accounts.rule_version_changed`. The step-up (when a choice is `accepted` and changes the stored
         state) happens before the single save, so cancelling it saves nothing.
       type: object
@@ -653,7 +676,9 @@ components:
           description: |
             With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is
             flagged as a material text change (provisional, Q42; `RuleVersion.change` has the reason
-            text); `preset_attached` = a preset was attached to an account that had none (provisional, Q41).
+            text); `preset_attached` = reserved for provisional Q41: only a data migration that attaches a
+            preset to an account without a user request would produce it. No operation of this contract
+            does (a user who selects a preset sends the new choice inline, D16).
         choice:
           type: string
           enum: [accepted, declined]

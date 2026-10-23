@@ -103,7 +103,8 @@ paths:
         Applies to the next entries only; open positions and working orders are not changed (Q-S6-5).
         `row_version` is required when the account already has a profile for the instrument (stale or
         missing → 409 `common.version_conflict`) and must be absent when it has none (an account created
-        while its size had no default, Q43). Audited as `profiles.account_changed` (`edited`).
+        while its size had no default, Q43; a `row_version` sent then also gets 409). The same values as
+        stored are a no-op (200, not audited, `row_version` unchanged). Audited as `profiles.account_changed` (`edited`).
       parameters:
         - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
         - { $ref: '#/components/parameters/InstrumentIdPath' }
@@ -136,13 +137,30 @@ paths:
       operationId: restoreAccountProfile
       summary: Replace the account's profile with the current default of its size (Q-S6-4)
       description: |
-        Copies the current default of the account's size (the nearest standard size for a real account
-        of another size, chosen by the Core). Idempotent in effect: restoring twice leaves the same
-        profile (the second call is not audited). Applies to the next entries only. Audited as
-        `profiles.account_changed` (`restored`).
+        Copies the current default of the size the profile was copied from (`copied_from_size`, which
+        keeps the user's Q60 tie choice). For a profile without one (`set_by_user`) the Core uses the
+        account's size, or the nearest standard size for a real account; on an exact tie (Q60,
+        provisional) the body must name `profile_size` (one of `getNearestProfileSize`'s candidates),
+        else 422 `profiles.profile_size_required` / `profiles.profile_size_invalid`. An account with no
+        profile gets its first copy this way (origin `size_default` / `nearest_size_default`). Optional
+        `row_version` (stale → 409 `common.version_conflict`). No-op when the profile already equals that
+        default and is not customized (200, not audited). Applies to the next
+        entries only. Audited as `profiles.account_changed` (`restored`).
       parameters:
         - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
         - { $ref: '#/components/parameters/InstrumentIdPath' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                profile_size:
+                  description: Only for a `set_by_user` (or missing) profile of a real account whose size is a tie.
+                  $ref: 'accounts.yaml#/components/schemas/SizeAmount'
+                row_version: { type: integer, minimum: 1 }
       responses:
         '200':
           description: Restored.
@@ -153,8 +171,13 @@ paths:
         '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
         '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
         '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`common.version_conflict` — nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
         '422':
-          description: '`profiles.default_missing` — the size has no default profile yet; nothing changed.'
+          description: '`profiles.default_missing` (the size has no default profile yet), `profiles.profile_size_required` or `profiles.profile_size_invalid` (pointer `/profile_size`); nothing changed.'
           content:
             application/json:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -259,6 +282,10 @@ components:
       type: string
       pattern: '^[0-9]{1,12}(\.[0-9]{1,10})?$'
       description: Exact decimal as a string (no sign, no exponent, no separators).
+    MoneyString:
+      type: string
+      pattern: '^[0-9]{1,14}(\.[0-9]{1,4})?$'
+      description: Non-negative money as a decimal string (NUMERIC(18,4)).
     Instrument:
       type: object
       additionalProperties: false
@@ -272,8 +299,8 @@ components:
         tick_size: { $ref: '#/components/schemas/DecimalString' }
         tick_value:
           description: Money per tick (tick_size × point_value, computed by the Core).
-          $ref: '#/components/schemas/DecimalString'
-        point_value: { $ref: '#/components/schemas/DecimalString' }
+          $ref: '#/components/schemas/MoneyString'
+        point_value: { $ref: '#/components/schemas/MoneyString' }
         price_decimals: { type: integer, minimum: 0, maximum: 10, description: Decimals to display prices and points with. }
     InstrumentList:
       type: object
@@ -311,7 +338,7 @@ components:
       properties:
         ticks: { type: integer, minimum: 1, maximum: 10000 }
         points: { $ref: '#/components/schemas/DecimalString' }
-        usd: { $ref: '#/components/schemas/DecimalString' }
+        usd: { $ref: '#/components/schemas/MoneyString' }
         rounded:
           type: boolean
           description: True when the requested distance was not a whole number of ticks and was rounded toward the entry.
@@ -395,8 +422,8 @@ components:
           enum: [size_default, nearest_size_default, set_by_user]
           description: |
             Where the values came from when last copied: the default of the account's size, the default of
-            the nearest standard size (real account of another size, chosen by the Core), or typed by the
-            user on an account that had no profile.
+            the nearest standard size (real account of another size; on an exact tie the size the user
+            picked, Q60), or typed by the user on an account that had no profile.
         copied_from_size:
           description: With `size_default` / `nearest_size_default`.
           $ref: 'accounts.yaml#/components/schemas/SizeAmount'

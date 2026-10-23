@@ -16,7 +16,7 @@
 
 SSE: `route.changed` (create, update, delete). Status changes caused by the account, the opt-in, sync, risk or the connection arrive as `account.changed` / `connection.status_changed`; the client then refetches `listRoutes`.
 
-No step-up in S7. Follower routes with the copy choice (`account_opt_in_accept`, target = the follower) come with S19 (V1.1).
+Step-up (3.0.0, QA Security M1; superset pending the user with Q35, Core setting, default on): `createRoute` / `updateRoute` need `step_up` (action `route_enable`, target = the account) when a route from an automated source is switched on for an account whose automation was not accepted with a step-up (a real account, or an opt-in that is `not_required`). Otherwise a stolen session could start automated trading without a fresh code. Follower routes with the copy choice (`account_opt_in_accept`, target = the follower) come with S19 (V1.1).
 
 ## 2. Decisions
 
@@ -30,15 +30,22 @@ No step-up in S7. Follower routes with the copy choice (`account_opt_in_accept`,
    - `connection_disconnected`;
    - `out_of_sync`;
    - `risk_blocked` (from S14);
+   - `no_bracket_profile` (S6, Q43 provisional; + `instrument_ids`: profiles are per account × instrument);
+   - `limits_pending` (ADR-0006: the account's limits are not yet derived; entries only);
    - `route_disabled`.
+
+   `blocks` is fixed per code: `entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`; `all_actions` otherwise. `connection_disconnected` covers every connection status other than `connected`.
 
    The skip audit uses the gate codes of ADR-0003 §4.1. The enum may grow in a minor version, and clients show a generic text for an unknown code.
 4. **What blocks creation:** only `automation_not_accepted` (automated source) and `platform_unbound` (provisional, Q37). Every other reason, paused accounts included, only affects `status_if_routed`. Manual-only accounts are never candidates (S7 AC-7b) and are listed apart, with the preset's reason (empty before S16).
-5. **Inactive routes are kept (Q-S7-2).** A route whose account declined automation stays saved, with its reason. Turning it on is allowed: it is saved, and its status still shows the reason.
-6. **Revoked sources (Q-S7-3):** their routes are listed and are read-only. `updateRoute` and `deleteRoute` get 409 `routing.source_revoked`.
-7. **Disconnected connection (Q-S7-5):** configuration is allowed; the status shows `routing.connection_disconnected`.
-8. **Signal types:** `trigger`, `trade_plan`, `nq_trigger`, at least one, none preselected (Q-S7-1). An empty list is a schema error: 400 `common.invalid_request`, pointer `/signal_types`. `master_account` is not accepted here (S19).
-9. **Isolation:** a foreign `source_id` / `account_id` in a body gets the same 422 as an unknown one (`routing.source_unknown` / `routing.account_unknown`). In a query filter it gives an empty list (`listRoutes`) or 404 (`listRouteCandidates`).
+5. **Inactive routes are kept (Q-S7-2).** A route whose account declined automation stays saved, with its reason.
+   - Turning it on is allowed today: it is saved, and its status still shows the reason.
+   - Q67 (with the user), provisional option (b): switching on would be refused with 422 (reserved on `updateRoute`, `/is_enabled`), and the Core would switch routes off when their account becomes ineligible. Clients already handle that 422, so (b) needs no breaking change.
+6. **Live status (3.0.0, S7-1):** `route.changed` (`cause: status`) is sent whenever any route's effective status changes, whatever the cause.
+7. **Revoked sources (Q-S7-3):** their routes are listed and are read-only. `updateRoute` and `deleteRoute` get 409 `routing.source_revoked`.
+8. **Disconnected connection (Q-S7-5):** configuration is allowed; the status shows `routing.connection_disconnected`.
+9. **Signal types:** `trigger`, `trade_plan`, `nq_trigger`, at least one, none preselected (Q-S7-1). An empty list is a schema error: 400 `common.invalid_request`, pointer `/signal_types`. `master_account` is not accepted here (S19).
+10. **Isolation:** a foreign `source_id` / `account_id` in a body gets the same 422 as an unknown one (`routing.source_unknown` / `routing.account_unknown`). In a query filter it gives an empty list (`listRoutes`) or 404 (`listRouteCandidates`).
 
 ## 3. Error codes
 

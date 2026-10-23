@@ -1,6 +1,6 @@
 # S5 — Accounts HTTP contract notes
 
-- **Status:** proposed (2026-10-23), for Code Review. Owner: Software Architect (Compasso). Contract version **2.1.0**, which applies on top of 2.0.0 (passwordless, Esquadro).
+- **Status:** proposed (2026-10-23), for Code Review. Owner: Software Architect (Compasso). Written as 2.1.0 and released as **3.0.0** together with the Code Review fixes (ADR-0002 §4: a breaking change before the first deploy bumps the document major). Applies on top of 2.0.0 (passwordless, Esquadro).
 - **Contract:** [`contracts/http/modules/accounts.yaml`](../../../contracts/http/modules/accounts.yaml) and the S5 part of [`modules/presets.yaml`](../../../contracts/http/modules/presets.yaml), bundled into `openapi.bundled.yaml`.
 - **Inputs:** slice-plan rev. 7, V1-S5 AC-1…AC-11 · design spec `v1-s5-automation-opt-in.md` rev. 3b §14/§17 · [s5-design-deltas.md](s5-design-deltas.md) D1–D16 (still valid) · [wave1-data-model.md](../data/wave1-data-model.md) §5.2–§5.3 · auth policy rev. 2 §6 (step-up).
 - **Provisional:** everything that depends on Q37–Q42 (user questions, slice-plan §7) follows the PO recommendation and is marked "provisional" in the contract. If the user decides otherwise, the affected parts change in a minor version.
@@ -41,7 +41,15 @@ SSE (`/api/v1/events`): `account.changed` (any change the user sees, so the clie
 9. **Q-S5-3 (PO: yes):** a published rule version with a suspending cause moves `chosen` accounts to `pending_review` even before the user applies the new preset version to the account (S16 AC-3).
 10. **Schema errors stay 400.** A fractional multiplier, a size with more than 2 decimals, a zero size or a blank name get 400 `common.invalid_request` with the pointer. The spec's `accounts.multiplier_invalid` is not needed: the UI maps the pointer.
 11. **Profile size tie (Q60, provisional option c):** a real account copies the default of the nearest standard size. Distance is the absolute difference; below 25k the Core uses 25k, above 300k it uses 300k. On an exact tie the Core does not choose: `getNearestProfileSize` (S6) returns both candidates, and `createAccount` then requires `profile_size` (422 `accounts.profile_size_required` / `accounts.profile_size_invalid`). If the user decides (a) smaller or (b) larger, the candidate list has one entry and the contract does not change.
-12. **Isolation:** another user's account or connection is indistinguishable from a non-existent one (404 `common.not_found`; 422 `accounts.platform_account_unknown`). `accounts.platform_account_taken` (409) is only ever about the caller's own accounts.
+12. **3.0.0 review fixes (Crivo, 2.4.0):**
+   - `updateAccount` requires `opt_ins.automation` only when that request changes the automation rule version; `copy` is never required there (S5-1).
+   - `setAccountOptIn` is idempotent for the same choice and version (no step-up on the no-op).
+   - `preset_attached` is reserved for a data-migration attach (Q41); no operation produces it.
+   - `AccountUpdateRequest` mirrors the create rules: preset XOR manual, `size_amount` without a preset.
+   - `SizeAmount` refuses zero by pattern.
+   - Response schemas are deliberately looser than the data-model `CHECK`s; the Core never returns a row that breaks them.
+   - Step-up (QA Security L1; superset pending the user with Q35): changing the binding of an account that receives automation needs action `account_binding_change` (target = account).
+13. **Isolation:** another user's account or connection is indistinguishable from a non-existent one (404 `common.not_found`; 422 `accounts.platform_account_unknown`). `accounts.platform_account_taken` (409) is only ever about the caller's own accounts.
 
 ## 3. Error codes (for the UI and i18n)
 

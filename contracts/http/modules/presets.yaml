@@ -211,9 +211,13 @@ paths:
         either `choices.<field>` (`keep_mine` / `use_preset`, for edited fields; nothing preselected,
         Q-S16-4) or `rule_values.<field>` (the user's value, for not-confirmed fields), else 422
         `presets.choice_required` (pointer `/choices/<field>`). A required not-confirmed field left
-        unresolved gets 422 `presets.required_field_unresolved` (pointer `/rule_values/<field>`). When the
+        unresolved gets 422 `presets.required_field_unresolved` (pointer `/rule_values/<field>`; the
+        maximum position is always resolved, because `max_position_qty` is required). When the
         target changes the opt-in rule version, `opt_ins` must carry the new choices (S5 D16); step-up when
         an `accepted` choice changes the stored state (action `account_opt_in_accept`, target = account).
+        Choices made in `opt_ins` are audited as `accounts.opt_in_chosen` as well. A not-confirmed
+        maximum position is resolved by the top-level `max_position_qty` (any value up to the highest
+        published value; the Core records whether it equals a published one).
         Check order after authentication, Origin and schema: 404 → step-up → 409 → 422.
       x-step-up: conditional
       x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state
@@ -248,7 +252,8 @@ paths:
             `presets.choice_required` (`/choices/<field>`); `presets.required_field_unresolved`
             (`/rule_values/<field>`); `accounts.max_position_exceeds_preset` (`/max_position_qty`; the new
             cap is lower than the account's value and the body did not lower it);
-            `accounts.opt_in_required` (`/opt_ins/<kind>`).
+            `accounts.opt_in_required` (`/opt_ins/<kind>`); `accounts.firm_platform_required` /
+            `accounts.firm_platform_unknown` (`/firm_platform`).
           content:
             application/json:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -327,7 +332,7 @@ components:
       type: object
       additionalProperties: false
       required: [text, language, page_title, url, accessed_at]
-      description: A verbatim quote of the firm's official text, in the firm's language (never translated).
+      description: A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).
       properties:
         text: { type: string, minLength: 1, maxLength: 20000 }
         language: { type: string, pattern: '^[a-z]{2,3}(-[A-Z]{2})?$', description: "BCP 47, e.g. 'en'." }
@@ -343,6 +348,9 @@ components:
         id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
         firm_stance: { $ref: 'accounts.yaml#/components/schemas/FirmStance' }
+        firm_platform:
+          description: The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules.
+          $ref: 'accounts.yaml#/components/schemas/FirmPlatform'
         is_generic:
           type: boolean
           description: True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning).
@@ -388,16 +396,13 @@ components:
                 text case is provisional, Q42: the publisher flagged it as material). `not_material` never
                 suspends (typo or format fix).
             reason:
-              description: The publisher's explanation shown to the user; required for `text_changed`.
+              description: The publisher's explanation shown to the user, expected with `text_changed` (optional while Q42 is provisional).
               $ref: '#/components/schemas/LocalizedText'
-          allOf:
-            - if: { properties: { cause: { const: text_changed } } }
-              then: { required: [reason] }
       allOf:
         - if: { properties: { is_generic: { const: true } } }
           then:
             properties: { firm_stance: { const: unknown }, quotes: { maxItems: 0 } }
-            not: { anyOf: [{ required: [firm_id] }, { required: [firm_name] }, { required: [research] }] }
+            not: { anyOf: [{ required: [firm_id] }, { required: [firm_name] }, { required: [research] }, { required: [firm_platform] }] }
           else: { required: [firm_id, firm_name] }
     OptInRules:
       type: object
@@ -488,7 +493,7 @@ components:
       properties:
         status: { $ref: '#/components/schemas/ProvenanceStatus' }
         value: { $ref: '#/components/schemas/MaxPositionValue' }
-        sources: { type: array, items: { $ref: '#/components/schemas/SourceRef' } }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
         published_values:
           type: array
           minItems: 2
@@ -509,7 +514,7 @@ components:
       properties:
         status: { $ref: '#/components/schemas/ProvenanceStatus' }
         value: { $ref: '#/components/schemas/DrawdownValue' }
-        sources: { type: array, items: { $ref: '#/components/schemas/SourceRef' } }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
         published_values:
           type: array
           minItems: 2
@@ -530,7 +535,7 @@ components:
       properties:
         status: { $ref: '#/components/schemas/ProvenanceStatus' }
         value: { $ref: '#/components/schemas/DailyLossValue' }
-        sources: { type: array, items: { $ref: '#/components/schemas/SourceRef' } }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
         published_values:
           type: array
           minItems: 2
@@ -551,7 +556,7 @@ components:
       properties:
         status: { $ref: '#/components/schemas/ProvenanceStatus' }
         value: { $ref: '#/components/schemas/DailyProfitTargetValue' }
-        sources: { type: array, items: { $ref: '#/components/schemas/SourceRef' } }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
         published_values:
           type: array
           minItems: 2
@@ -572,7 +577,7 @@ components:
       properties:
         status: { $ref: '#/components/schemas/ProvenanceStatus' }
         value: { $ref: '#/components/schemas/TradingDayResetValue' }
-        sources: { type: array, items: { $ref: '#/components/schemas/SourceRef' } }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
         published_values:
           type: array
           minItems: 2
@@ -593,7 +598,7 @@ components:
       properties:
         status: { $ref: '#/components/schemas/ProvenanceStatus' }
         value: { $ref: '#/components/schemas/ConsistencyValue' }
-        sources: { type: array, items: { $ref: '#/components/schemas/SourceRef' } }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
         published_values:
           type: array
           minItems: 2
@@ -655,12 +660,13 @@ components:
       additionalProperties: false
       required: [automation, copy, vps, personal_device]
       description: |
-        `automation` / `copy` are the rule versions of the opt-ins (`RuleVersion`). `vps` ∈ allowed /
+        `automation` / `copy` are the rule versions of the opt-ins: one entry without `firm_platform` when
+        the stance is the same on every platform, otherwise one entry per firm platform. `vps` ∈ allowed /
         forbidden / conditional / unknown / not_confirmed; `personal_device` ∈ required / not_required /
         unknown (Q-S16-2).
       properties:
-        automation: { $ref: '#/components/schemas/RuleVersion' }
-        copy: { $ref: '#/components/schemas/RuleVersion' }
+        automation: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
+        copy: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
         vps:
           allOf:
             - $ref: '#/components/schemas/StanceInfo'
@@ -691,12 +697,16 @@ components:
           additionalProperties: false
           required: [automation, copy, vps, personal_device]
           properties:
-            automation: { $ref: 'accounts.yaml#/components/schemas/FirmStance' }
-            copy: { $ref: 'accounts.yaml#/components/schemas/FirmStance' }
+            automation: { $ref: '#/components/schemas/StanceSummary' }
+            copy: { $ref: '#/components/schemas/StanceSummary' }
             vps: { type: string, enum: [allowed, forbidden, conditional, unknown, not_confirmed] }
             personal_device: { type: string, enum: [required, not_required, unknown] }
         not_confirmed_count: { type: integer, minimum: 0 }
         release: { $ref: '#/components/schemas/FirmReleaseRef' }
+    StanceSummary:
+      type: string
+      enum: [allowed, forbidden, conditional, unknown, not_confirmed, varies_by_platform]
+      description: A `FirmStance`, or `varies_by_platform` when the firm's platforms have different stances (the firm detail lists them).
     FirmReleaseRef:
       type: object
       additionalProperties: false
@@ -772,32 +782,47 @@ components:
         to: { type: string, maxLength: 32 }
         material:
           type: boolean
-          description: With `stance_text_changed` — flagged by the publisher as a material change (Q42, provisional); only material automation/copy text changes suspend.
+          description: |
+            With `stance_text_changed` — flagged by the publisher as a material change (Q42, provisional;
+            `reason` is expected but optional while Q42 is open); only material automation/copy text
+            changes suspend. Always consistent with the new `RuleVersion.change.cause`: material ⇔
+            `text_changed`, not material ⇔ `not_material`.
         reason: { $ref: '#/components/schemas/LocalizedText' }
         field: { $ref: '#/components/schemas/RuleField' }
         preset_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
       allOf:
         - if: { properties: { kind: { enum: [stance_changed, stance_text_changed] } } }
           then: { required: [stance] }
+        - if: { properties: { kind: { const: stance_changed } } }
+          then: { required: [from, to] }
+        - if: { properties: { kind: { enum: [preset_added, preset_removed] } } }
+          then: { required: [preset_id] }
         - if: { properties: { kind: { const: stance_text_changed } } }
           then: { required: [material] }
-        - if: { properties: { kind: { const: stance_text_changed }, material: { const: true } }, required: [material] }
-          then: { required: [reason] }
         - if: { properties: { kind: { const: rule_value_changed } } }
           then: { required: [field, preset_id] }
     FirmRelease:
       type: object
       additionalProperties: false
-      required: [version_number, published_at, verified_on, changes, rule_version_ids]
+      required: [version_number, published_at, verified_on, changes, rule_versions, vps, personal_device]
       properties:
         version_number: { type: integer, minimum: 1 }
         published_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         verified_on: { type: string, format: date }
         changes: { type: array, items: { $ref: '#/components/schemas/ReleaseChange' } }
-        rule_version_ids:
+        rule_versions:
           type: array
           description: The opt-in rule versions of this release (texts viewable with `getRuleVersion`).
-          items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, kind]
+            properties:
+              id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
+              firm_platform: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
+        vps: { $ref: '#/components/schemas/StanceInfo' }
+        personal_device: { $ref: '#/components/schemas/StanceInfo' }
     FirmReleaseList:
       type: object
       additionalProperties: false
@@ -861,6 +886,7 @@ components:
       allOf:
         - if: { properties: { origin: { const: chosen_from_conflict } } }
           then: { required: [chose, chosen_at, account_value] }
+          else: { not: { anyOf: [{ required: [chose] }, { required: [chosen_at] }] } }
         - if: { properties: { origin: { const: unresolved } } }
           then: { not: { required: [account_value] } }
           else: { required: [account_value] }
@@ -902,12 +928,19 @@ components:
     PresetDiff:
       type: object
       additionalProperties: false
-      required: [account_id, from_preset_version_id, to_preset_version_id, rows, opt_in_changes]
+      required: [account_id, from_preset_version_id, to_preset_version_id, rows, opt_in_changes, firm_platform_required]
       properties:
         account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         from_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         to_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         rows: { type: array, items: { $ref: '#/components/schemas/PresetDiffRow' } }
+        firm_platform_required:
+          type: boolean
+          description: True when the target has platform-specific rules and the account must name (or confirm) its `firm_platform` in the apply request.
+        firm_platforms:
+          type: array
+          description: The target's firm platforms (with `firm_platform_required`).
+          items: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
         opt_in_changes:
           type: object
           additionalProperties: false
@@ -923,6 +956,9 @@ components:
       properties:
         target_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         row_version: { type: integer, minimum: 1 }
+        firm_platform:
+          description: Required when the target has platform-specific rules and the account has no platform yet, or to change it (`PresetDiff.firm_platform_required`).
+          $ref: 'accounts.yaml#/components/schemas/FirmPlatform'
         choices:
           type: object
           additionalProperties: false
@@ -940,6 +976,13 @@ components:
         step_up:
           description: Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`, target = this account).
           $ref: '../openapi.yaml#/components/schemas/StepUpProof'
+      description: A field appears in `choices` or in `rule_values`, never in both (400 otherwise).
+      allOf:
+        - not: { required: [choices, rule_values], properties: { choices: { required: [drawdown] }, rule_values: { required: [drawdown] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [daily_loss_limit] }, rule_values: { required: [daily_loss_limit] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [daily_profit_target] }, rule_values: { required: [daily_profit_target] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [trading_day_reset] }, rule_values: { required: [trading_day_reset] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [consistency_rule] }, rule_values: { required: [consistency_rule] } } }
     ApplyChoice:
       type: string
       enum: [keep_mine, use_preset]

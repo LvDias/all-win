@@ -1,5 +1,38 @@
 # HTTP API — changelog
 
+## 3.0.0 — 2026-10-23 (BREAKING for 2.1.0–2.5.0 readers; Code Review fixes of 2.4.0 and 2.5.0)
+- **Versioning:** 2.1.0 changed response shapes (`OptInState.firm_stance` / `current_rule_version_id` became optional; `copy` may be `not_required`), and 2.5.0 changed `updateAccount` semantics. Following ADR-0002 §4 (before the first deploy, a breaking change bumps the document major; paths stay `/api/v1`), the modules are released as 3.0.0. 2.1.0–2.5.0 were never merged or deployed; 3.0.0 is the first consumable release of the modules (agreed with Esquadro).
+- **accounts:**
+  - `updateAccount` requires `opt_ins.automation` only when that request changes the automation rule version; `copy` is never required there.
+  - `rule_values` on update only with a changed preset selection (422 `accounts.rule_values_without_selection_change`).
+  - `AccountUpdateRequest` mirrors the create rules. `SizeAmount` refuses zero.
+  - `setAccountOptIn` is idempotent (same choice and version: 200, no step-up).
+  - `Account.preset_update_available`; `maxLength` on the firm/plan/phase names.
+  - `preset_attached` is reserved (Q41).
+- **presets:**
+  - `RuleVersion.change.reason` and the material `ReleaseChange.reason` are optional (Q42 provisional).
+  - `RuleVersion.firm_platform`. Stances are listed per platform (`FirmStances` lists, `StanceSummary.varies_by_platform`). `FirmRelease.rule_versions` (labelled, replaces `rule_version_ids`), with `vps` / `personal_device`.
+  - `applyPresetVersion` takes `firm_platform`; `PresetDiff.firm_platform_required` / `firm_platforms`.
+  - Stricter provenance and change schemas. A field may not be in both `choices` and `rule_values`.
+- **routing:**
+  - `route.changed` (+ `cause`) on every effective-status change.
+  - `routing.no_bracket_profile` carries `instrument_ids`. New `routing.limits_pending` (ADR-0006).
+  - `blocks` and `status` are enforced per code.
+  - Reserved 422 on `updateRoute` (Q67 option b). The manual-only reason is a `RuleQuote`.
+- **profiles:**
+  - `restoreAccountProfile` reuses `copied_from_size`, requires `profile_size` on a tie (Q60), and takes an optional `row_version`; its no-op rules are stated.
+  - `putAccountProfile` rejects a `row_version` sent without a profile (409). Money patterns on `tick_value`, `point_value` and `usd`.
+- **security (QA Security, Vigia):** step-up supersets, pending the user with Q35 (Core setting, default on).
+  - M1: `createRoute` / `updateRoute` require `step_up` (action `route_enable`, target = account) when they switch on a route from an automated source for an account whose automation was not accepted with step-up (real or `not_required`).
+  - L1: `updateAccount` requires `step_up` (action `account_binding_change`, target = account) when it changes the binding of an account that receives automation.
+  - Root (agreed with Esquadro, root owner): `StepUpAction` gains `route_enable` and `account_binding_change` (pending Q35, setting `step_up.q35_persistence_actions`), both with target = account; `requestStepUp` requires `target_id` for them; the description lists `applyPresetVersion` under `account_opt_in_accept`.
+  - I2: `RuleQuote` is plain text, never rendered as HTML.
+- **audit:**
+  - `listActivity`: `from` defaults to the horizon; `from` > `to` → 400; the MAC cursor captures the resolved window and filters; order (`occurred_at`, event sequence, `id`).
+  - The timeline is ordered by the causal event sequence.
+  - `audit.entry_recorded` carries the filter keys. New `actor`. `safe_to_display` is presentation only.
+  - Codes `sources.*`, `connections.*`, `routing.limits_pending`. `DetailsPresetApplied` has both version numbers; `FieldChange` serialization is defined.
+
 ## 2.5.0 — 2026-10-23 (V1-S16 prop firm presets; additive) — notes: docs/architecture/contracts/s16-presets.md
 - Module `presets`: `listFirms`, `getFirm`, `listFirmReleases`, `getPresetVersion`, `getAccountPreset`, `getAccountPresetDiff`, `applyPresetVersion` (per-field `choices` / `rule_values`, `opt_ins`, step-up `account_opt_in_accept`), `restorePresetValue`; SSE `presets.version_available`. Typed rule values with provenance (`verified` / `not_confirmed` + published values), VPS and personal-device stances, manual-only reason.
 - `createAccount` / `updateAccount` gain `rule_values` (prop with a preset); `updateAccount` to a newer version of the same preset → 422 `presets.use_apply_version`.

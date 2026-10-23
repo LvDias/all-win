@@ -28,7 +28,7 @@ SSE: `presets.version_available` (`firm_id`, `account_ids`).
    - the first four are required to save (S16 AC-6);
    - evaluation profit target, minimum trading days and payout rules are not in the contract until the user decides Q46.
 3. **Provenance per value:** `verified` → `value` + `sources`; `not_confirmed` → at least two `published_values`, each with its sources, and never a `value` (S16 AC-5/AC-6: never prefilled).
-4. **The account's values** travel as `rule_values` (only where they differ from the preset or resolve a not-confirmed field). `max_position_qty` stays the account's top-level field (S5).
+4. **The account's values** travel as `rule_values` (only where they differ from the preset or resolve a not-confirmed field). They are sent on create and on an update that changes the preset selection; with an unchanged selection `updateAccount` refuses `rule_values` (422 `accounts.rule_values_without_selection_change`), so saving the account form never resets risk edits. Later edits go through `putAccountRiskRules` (S13). `max_position_qty` stays the account's top-level field (S5).
    - `getAccountPreset` reports each field's `origin` ∈ `preset` / `edited` / `chosen_from_conflict` / `unresolved`.
    - **Q-S16-3:** a resolved value is stored with `chose` ∈ `published_value` / `other_value` and `chosen_at` (F§7.4 popover "Escolhido por você entre valores divergentes em {date}").
 5. **Applying a version (S16 AC-3).** `applyPresetVersion` is the only way to move to a newer version of the same preset; `updateAccount` refuses it with 422 `presets.use_apply_version`. `updateAccount` with another preset is a re-selection that re-fills the values. Every `requires_choice` row needs one of:
@@ -43,6 +43,24 @@ SSE: `presets.version_available` (`firm_id`, `account_ids`).
 7. **Manual-only (S16 AC-7, Q-S16-6):** `manual_only.reason` is a `RuleQuote` (verbatim, source, date). The frame around it is UI text.
 8. **Material change (Q42, provisional):** `ReleaseChange` `stance_text_changed` carries `material` (and a bilingual `reason` when material). This matches `RuleVersion.change` (S5).
 9. **Suspension before applying (Q-S5-3, PO yes):** `AccountPresetState.newer_version.suspends` tells the UI the opt-in is already `pending_review`.
+10. **3.0.0 review fixes (Crivo, 2.5.0):**
+   - P2: `applyPresetVersion` takes `firm_platform`; the diff has `firm_platform_required` / `firm_platforms`.
+   - P3: `RuleVersion.firm_platform`. `FirmStances.automation` / `copy` are lists, one per platform when the stance varies. `FirmSummary` shows `varies_by_platform`. `FirmRelease.rule_versions` are labelled `{id, kind, firm_platform}`, and each release carries its VPS and device stances.
+   - P4: the manual-only reason is a `RuleQuote` everywhere (routing candidates too).
+   - P5: Q41 is modelled only as the reserved `pending_reason: preset_attached`. A user who attaches a preset through `updateAccount` sends the new choice inline (D16), and nothing attaches presets automatically.
+   - Lows:
+     - verified rules need at least one source;
+     - `ReleaseChange` rules are enforced by the schema;
+     - a field is in `choices` or `rule_values`, never both;
+     - `chose` only with `chosen_from_conflict`;
+     - `Account.preset_update_available` is added;
+     - a not-confirmed maximum position is resolved by `max_position_qty` (cap = the highest published value);
+     - apply audits `presets.version_applied` with both version numbers, plus `accounts.opt_in_chosen` for inline choices;
+     - `FieldChange` serializes object values as compact JSON.
+11. **Q1 — publishing path:** releases are published outside the HTTP contract, by the catalog seed/CLI that Backend owns, run by the admin from the reviewed research files.
+   - The tool writes the release, its `changes` (with the Q42 material flag and the bilingual reason) and the rule versions.
+   - In the same transaction it moves the affected `chosen` opt-ins to `pending_review` and writes one `accounts.opt_in_suspended` audit entry per account. SSE `presets.version_available` follows.
+   - No HTTP publish or edit operation exists.
 
 ## 3. Error codes
 
@@ -53,6 +71,7 @@ SSE: `presets.version_available` (`firm_id`, `account_ids`).
 | `presets.choice_required` | 422 | `/choices/<field>` | apply |
 | `presets.required_field_unresolved` | 422 | `/rule_values/<field>` or `/max_position_qty` | create, update, apply |
 | `presets.use_apply_version` | 422 | `/preset_version_id` | update |
+| `accounts.rule_values_without_selection_change` | 422 | `/rule_values` | update |
 | `presets.value_not_confirmed` | 422 | — | restore |
 | `accounts.max_position_exceeds_preset` | 422 | `/max_position_qty` | create, update, apply |
 | `common.version_conflict` | 409 | — | apply, restore |

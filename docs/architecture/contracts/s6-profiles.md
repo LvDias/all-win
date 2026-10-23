@@ -29,7 +29,7 @@ No step-up (Q35 list). No SSE: the tab refetches on focus (spec §9).
    - `profiles.distance_too_large` applies above 10 000 ticks (the structural cap of command quantities and distances).
    - `profiles.default_missing` applies on restore when the size has no default.
 4. **Q-S6-6:** dollars accept at most **2 decimals** in the contract. The data model's 4 decimals stay as storage headroom.
-5. **Q-S6-7 → Q60 (nearest size), provisional option (c):**
+5. **Q-S6-7 → Q60 (nearest size), provisional option (c)** (3.0.0: `restoreAccountProfile` reuses `copied_from_size`, so the user's tie choice is kept; with no stored size and a tie it requires `profile_size`):
    - Distance is the absolute difference between the account size and each standard size. Below 25k the Core uses 25k; above 300k it uses 300k (PO premises).
    - `getNearestProfileSize` (`GET /api/v1/profile-sizes/nearest?size_amount=&instrument_id=`) returns 1 candidate, or 2 on an exact tie. Each candidate has `has_default`.
    - On a tie the user picks one, and `createAccount.profile_size` carries the choice. The Core never chooses.
@@ -55,5 +55,5 @@ Rendering belongs to S10.
   - A copy has both columns.
   - A restore sets `copied_at = now()` and `customized = false`.
 
-  Applied in data model rev. 8 (Lastro, 5dd2d45), except the new `CHECK`.
+  Applied in data model rev. 8 (Lastro, 5dd2d45); the `set_by_user` `CHECK` in rev. 9.
 - `distance_unit = 'usd'`: the contract limits it to 2 decimals; the `CHECK` at 4 can stay.
