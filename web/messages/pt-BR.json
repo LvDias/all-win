@@ -158,7 +158,8 @@
       "source_mismatch": "A instrução não corresponde à fonte que a enviou.",
       "unsupported_instrument": "Instrumento não suportado.",
       "unsupported_media_type": "Tipo de conteúdo não suportado.",
-      "unsupported_version": "Versão da instrução não suportada."
+      "unsupported_version": "Versão da instrução não suportada.",
+      "signal_type_not_allowed_for_source": "O tipo de sinal não é permitido para esta fonte."
     },
     "invites": {
       "email_send_failed": "Não foi possível enviar o e-mail do convite.",

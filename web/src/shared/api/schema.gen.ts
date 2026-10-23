@@ -1127,7 +1127,7 @@ export interface operations {
                     "application/json": components["schemas"]["IngressAccepted"];
                 };
             };
-            /** @description `ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version`. */
+            /** @description `ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version` (pointer `/schema_version`; a minor newer than the Core supports). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1166,7 +1166,8 @@ export interface operations {
             };
             /**
              * @description Source policy or catalog: `ingress.action_not_allowed_for_source` (modify/cancel/reduce from
-             *     TradingView), `ingress.order_type_not_allowed_for_source`, `ingress.source_mismatch`,
+             *     TradingView), `ingress.order_type_not_allowed_for_source`, `ingress.signal_type_not_allowed_for_source`
+             *     (`signal_type` not allowed for TradingView, e.g. `master_account`), `ingress.source_mismatch`,
              *     `ingress.unsupported_instrument` (symbol not enabled in the instrument catalog, S1 AC-7).
              */
             422: {

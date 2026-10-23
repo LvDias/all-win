@@ -158,7 +158,8 @@
       "source_mismatch": "The instruction does not match the source that sent it.",
       "unsupported_instrument": "Unsupported instrument.",
       "unsupported_media_type": "Unsupported content type.",
-      "unsupported_version": "Unsupported instruction version."
+      "unsupported_version": "Unsupported instruction version.",
+      "signal_type_not_allowed_for_source": "The signal type is not allowed for this source."
     },
     "invites": {
       "email_send_failed": "Could not send the invitation email.",
