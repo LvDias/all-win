@@ -188,6 +188,18 @@ pub struct AccountFacts {
     pub platform_bound: bool,
     pub automation: OptIn,
     pub connection_connected: bool,
+    pub sizing: AccountSizing,
+}
+
+/// The account's sizing and command TTL (S5 `accounts.account`), read at each decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccountSizing {
+    /// 1–1000.
+    pub multiplier: u32,
+    /// 1–10000 (Q-A1).
+    pub max_position_qty: u32,
+    /// 1000–60000, default 5000 (Q16/T2).
+    pub command_ttl_ms: u32,
 }
 
 #[async_trait]
@@ -562,7 +574,9 @@ impl CreateRoute {
             .get(&cmd.account_id)
             .ok_or(RouteError::AccountUnknown)?;
         let facts = book.facts(account, &source);
-        if cmd.is_enabled && facts.enable_needs_step_up() {
+        // Q35 (setting on; decisions.md, HTTP 5.2.0): every switch-on needs a `route_enable`
+        // step-up for the account, whatever the source or the opt-in.
+        if cmd.is_enabled {
             step_up
                 .authorize(cmd.account_id)
                 .await
@@ -652,7 +666,7 @@ impl UpdateRoute {
             .ok_or(RouteError::NotFound)?;
         let facts = book.facts(account, &source);
         let switching_on = cmd.is_enabled && !current.is_enabled;
-        if switching_on && facts.enable_needs_step_up() {
+        if switching_on {
             step_up
                 .authorize(current.account_id)
                 .await
@@ -814,12 +828,32 @@ impl SwitchOffIneligibleRoutes {
             if !book.facts(account, &source).must_switch_off() {
                 continue;
             }
+            let id = route.id;
+            if self.switch_off(user, account, &source, route).await? {
+                off.push(id);
+            }
+        }
+        Ok(off)
+    }
+
+    /// Switches one route off. A concurrent edit (`row_version` moved) is re-read and retried,
+    /// so a user's change never leaves an ineligible route on (Q67 b); a route already off or
+    /// gone needs nothing. After [`Self::ATTEMPTS`] conflicts the error is returned and the
+    /// event delivery retries.
+    async fn switch_off(
+        &self,
+        user: UserId,
+        account: &AccountFacts,
+        source: &SourceFacts,
+        mut route: RouteRecord,
+    ) -> Result<bool, RouteError> {
+        for _ in 0..Self::ATTEMPTS {
             let now = self.deps.clock.now();
             let change = RouteChange {
                 route_id: route.id,
                 source_id: route.source_id,
                 source_name: source.name.clone(),
-                account_id,
+                account_id: account.id,
                 account_name: account.display_name.clone(),
                 action: ChangeAction::Disabled,
                 cause: ChangeCause::AccountIneligible,
@@ -827,27 +861,28 @@ impl SwitchOffIneligibleRoutes {
                 new: Some((route.signal_types.clone(), false)),
                 at: now,
             };
-            if let UpdateOutcome::Updated(_) = self
-                .deps
-                .routes
-                .update(
-                    &RouteUpdate {
-                        user_id: user,
-                        id: route.id,
-                        expected_version: route.row_version,
-                        signal_types: route.signal_types.clone(),
-                        is_enabled: false,
-                        at: now,
-                    },
-                    Some(&change),
-                )
-                .await?
-            {
-                off.push(route.id);
+            let update = RouteUpdate {
+                user_id: user,
+                id: route.id,
+                expected_version: route.row_version,
+                signal_types: route.signal_types.clone(),
+                is_enabled: false,
+                at: now,
+            };
+            match self.deps.routes.update(&update, Some(&change)).await? {
+                UpdateOutcome::Updated(_) => return Ok(true),
+                UpdateOutcome::NotFound => return Ok(false),
+                UpdateOutcome::VersionConflict => match self.deps.routes.get(user, route.id).await?
+                {
+                    Some(current) if current.is_enabled => route = current,
+                    _ => return Ok(false),
+                },
             }
         }
-        Ok(off)
+        Err(RouteError::VersionConflict)
     }
+
+    const ATTEMPTS: usize = 3;
 }
 
 #[cfg(test)]

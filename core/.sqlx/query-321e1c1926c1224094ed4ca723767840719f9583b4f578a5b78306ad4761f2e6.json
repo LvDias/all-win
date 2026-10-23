@@ -1,0 +1,127 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, source_id, message_id, signal_type, action, instrument_symbol, quantity,\n                      expiry_base,\n                      payload->>'position_effect' AS position_effect,\n                      payload->>'side' AS side\n                 FROM routing.instruction\n                WHERE user_id = $1 AND id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "source_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "source_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "message_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "signal_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "signal_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "action",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "action"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "instrument_symbol",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "instrument_symbol"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "quantity",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "quantity"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "expiry_base",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "expiry_base"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "position_effect",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "side",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "321e1c1926c1224094ed4ca723767840719f9583b4f578a5b78306ad4761f2e6"
+}

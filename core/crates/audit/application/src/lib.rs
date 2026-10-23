@@ -14,7 +14,8 @@
 //! `account_name`, `message_id`, `signal_type`, `is_exit`). Column values that the `details`
 //! schema itself has (`source_id`, `source_name`, `key_id`, `account_id`, `account_name`) are
 //! copied from `details` and stay there. Outcome and `safe_to_display` are decided here, per
-//! code (s10 §2.1/§5).
+//! code (s10 §2.1/§5), except a routing decision's outcome, which the producer sets in
+//! `refs.outcome` from a closed list.
 
 use std::sync::Arc;
 
@@ -75,15 +76,31 @@ impl RecordAuditEntry {
 /// How the Core records one code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CodeRule {
-    pub outcome: Outcome,
+    pub outcome: OutcomeRule,
     /// Whether the raw `details` may be shown; each code's `details` schema is closed and
     /// checked by a contract test.
     pub safe_to_display: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutcomeRule {
+    Fixed(Outcome),
+    /// A routing decision code: the producer sets `refs.outcome`, because the same code can
+    /// be a skip or the open leg of a close-only `reverse` (Q74). Only the listed outcomes are
+    /// accepted for that code (Architect, 2026-10-23; decision `capped` is audited `partial`).
+    PerDecision(&'static [Outcome]),
+}
+
+const fn decision(allowed: &'static [Outcome]) -> Option<CodeRule> {
+    Some(CodeRule {
+        outcome: OutcomeRule::PerDecision(allowed),
+        safe_to_display: true,
+    })
+}
+
 const fn rule(outcome: Outcome, safe_to_display: bool) -> Option<CodeRule> {
     Some(CodeRule {
-        outcome,
+        outcome: OutcomeRule::Fixed(outcome),
         safe_to_display,
     })
 }
@@ -99,6 +116,31 @@ pub fn rule_for(code: &str) -> Option<CodeRule> {
         "ingress.rejected" | "ingress.rate_limited" => rule(Rejected, true),
         // S7.
         "routing.subscription_changed" => rule(Info, true),
+        // S7 decisions (`DetailsRoutingDecision`), one per (instruction, account), with the
+        // outcomes each code may carry. Safe to display (Architect, 2026-10-23): the producer's
+        // tests validate every emitted code against the contract, and the schema has no free
+        // string (routing-application `decisions_tests`).
+        "routing.routed" => decision(&[Routed]),
+        "routing.quantity_capped" => decision(&[Partial]),
+        // Not sent, or the close-only open leg of a `reverse` (Q74; M = 0 for
+        // max_position). Protective gates refuse, configuration rules skip (HTTP 5.1.1
+        // `AuditOutcome`, which wins over the first table).
+        "routing.out_of_sync" | "routing.risk_blocked" => decision(&[Refused, Partial]),
+        "routing.max_position_reached"
+        | "routing.limits_pending"
+        | "routing.no_bracket_profile" => decision(&[Skipped, Partial]),
+        "routing.expired" => decision(&[Expired, Partial]),
+        "routing.account_inactive"
+        | "routing.platform_unbound"
+        | "routing.automation_not_accepted"
+        | "routing.copy_not_accepted"
+        | "routing.signal_type_not_selected"
+        | "routing.nothing_to_close"
+        | "routing.nothing_to_reduce"
+        | "routing.position_unknown"
+        | "routing.adapter_protocol_outdated"
+        | "routing.no_correlated_order" => decision(&[Skipped]),
+        "routing.position_conflict" => decision(&[Refused]),
         // S3 (28 codes): refused attempts are `rejected`, the rest `info`.
         "security.sign_in_failed" | "security.step_up_failed" | "security.code_rate_limited" => {
             rule(Rejected, true)
@@ -188,6 +230,15 @@ pub fn entry_for(event: &PublishedEvent) -> Result<AuditEntry, AuditError> {
             .map(str::to_owned)
     };
     let ref_text = |k: &str| refs.get(k).and_then(Value::as_str).map(str::to_owned);
+    let outcome = match rule.outcome {
+        OutcomeRule::Fixed(o) => o,
+        OutcomeRule::PerDecision(allowed) => refs
+            .get("outcome")
+            .and_then(Value::as_str)
+            .and_then(Outcome::parse)
+            .filter(|o| allowed.contains(o))
+            .ok_or_else(|| not_auditable(code, "missing or invalid refs.outcome"))?,
+    };
     let id = |k: &str| {
         refs.get(k)
             .or_else(|| details.get(k))
@@ -202,7 +253,7 @@ pub fn entry_for(event: &PublishedEvent) -> Result<AuditEntry, AuditError> {
         event_seq: event.event_seq,
         category,
         code: code.to_owned(),
-        outcome: rule.outcome,
+        outcome,
         actor,
         safe_to_display: rule.safe_to_display,
         instruction_id: id("instruction_id"),
@@ -259,6 +310,90 @@ mod tests {
         assert_eq!(a.signal_type.as_deref(), Some("trigger"));
         assert_eq!(a.details, details);
         assert_eq!(a.source_event_id, e.id);
+    }
+
+    #[test]
+    fn a_routing_decision_takes_its_outcome_from_refs() {
+        let decision = |outcome: Value| {
+            event(
+                "routing.out_of_sync",
+                json!({"actor":"system",
+                       "details":{"sizing":{"multiplier":1,"max_position_qty":2},"reverse_closed_qty":1},
+                       "refs":{"outcome":outcome,"account_id":Uuid::now_v7(),"account_name":"Apex",
+                               "is_exit":false}}),
+            )
+        };
+        let a = entry_for(&decision(json!("partial"))).unwrap();
+        assert_eq!(
+            (a.category, a.outcome),
+            (Category::Routing, Outcome::Partial)
+        );
+        assert!(a.safe_to_display);
+        assert_eq!(a.is_exit, Some(false));
+        assert_eq!(
+            entry_for(&decision(json!("refused"))).unwrap().outcome,
+            Outcome::Refused
+        );
+        // Missing, unknown, or not allowed for this code: fail closed.
+        for bad in [
+            Value::Null,
+            json!("bogus"),
+            json!("info"),
+            json!("routed"),
+            json!("expired"),
+            json!("skipped"),
+        ] {
+            assert!(matches!(
+                entry_for(&decision(bad)),
+                Err(AuditError::NotAuditable(_))
+            ));
+        }
+        // The closed per-code table.
+        let allowed = |code: &str| match rule_for(code).map(|r| r.outcome) {
+            Some(OutcomeRule::PerDecision(a)) => a.to_vec(),
+            other => panic!("{code}: {other:?}"),
+        };
+        use Outcome::*;
+        assert_eq!(allowed("routing.routed"), [Routed]);
+        assert_eq!(allowed("routing.quantity_capped"), [Partial]);
+        for gate in ["routing.out_of_sync", "routing.risk_blocked"] {
+            assert_eq!(allowed(gate), [Refused, Partial], "{gate}");
+        }
+        for gate in [
+            "routing.max_position_reached",
+            "routing.limits_pending",
+            "routing.no_bracket_profile",
+        ] {
+            assert_eq!(allowed(gate), [Skipped, Partial], "{gate}");
+        }
+        assert_eq!(allowed("routing.expired"), [Expired, Partial]);
+        for skip in [
+            "routing.account_inactive",
+            "routing.platform_unbound",
+            "routing.automation_not_accepted",
+            "routing.copy_not_accepted",
+            "routing.signal_type_not_selected",
+            "routing.nothing_to_close",
+            "routing.nothing_to_reduce",
+            "routing.position_unknown",
+            "routing.adapter_protocol_outdated",
+            "routing.no_correlated_order",
+        ] {
+            assert_eq!(allowed(skip), [Skipped], "{skip}");
+        }
+        assert_eq!(allowed("routing.position_conflict"), [Refused]);
+        let routed_as_skip = event(
+            "routing.routed",
+            json!({"actor":"system","details":{},"refs":{"outcome":"skipped"}}),
+        );
+        assert!(entry_for(&routed_as_skip).is_err());
+        // A fixed-outcome code ignores refs.outcome.
+        let a = entry_for(&event(
+            "sources.created",
+            json!({"actor":"user","details":{},"refs":{"outcome":"skipped"}}),
+        ))
+        .unwrap();
+        assert_eq!(a.outcome, Outcome::Info);
     }
 
     #[test]
@@ -409,7 +544,7 @@ mod tests {
                 "no category",
             ),
             (
-                "routing.routed",
+                "routing.not_a_code",
                 json!({"actor":"system","details":{}}),
                 "no rule",
             ),

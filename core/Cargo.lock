@@ -1625,11 +1625,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "jsonschema",
  "routing-enterprise",
  "serde_json",
  "shared-kernel",
  "thiserror",
  "tokio",
+ "yaml_serde",
 ]
 
 [[package]]

@@ -10,6 +10,9 @@ use super::*;
 struct FakeRoutes {
     rows: Mutex<Vec<RouteRecord>>,
     changes: Mutex<Vec<RouteChange>>,
+    /// The next N updates race with a user edit: it lands first (signal types change, version
+    /// bumps) and the update gets `VersionConflict`.
+    concurrent_edits: Mutex<usize>,
 }
 
 #[async_trait]
@@ -67,6 +70,13 @@ impl RouteStore for FakeRoutes {
         else {
             return Ok(UpdateOutcome::NotFound);
         };
+        let mut edits = self.concurrent_edits.lock().unwrap();
+        if *edits > 0 {
+            *edits -= 1;
+            row.signal_types =
+                SignalTypes::new([RouteSignalType::Trigger, RouteSignalType::TradePlan]).unwrap();
+            row.row_version += 1;
+        }
         if row.row_version != u.expected_version {
             return Ok(UpdateOutcome::VersionConflict);
         }
@@ -175,6 +185,11 @@ fn account(id: AccountId, name: &str) -> AccountFacts {
         platform_bound: true,
         automation: OptIn::Accepted { with_step_up: true },
         connection_connected: true,
+        sizing: AccountSizing {
+            multiplier: 1,
+            max_position_qty: 2,
+            command_ttl_ms: 5000,
+        },
     }
 }
 
@@ -359,17 +374,17 @@ async fn ineligible_account_cannot_get_a_route() {
 }
 
 #[tokio::test]
-async fn non_automated_source_ignores_the_automation_opt_in_and_the_step_up() {
+async fn non_automated_source_ignores_the_automation_opt_in_but_not_the_step_up() {
     let w = world();
     w.set_source(false, false);
     w.set_account(|a| a.automation = OptIn::NotAccepted(NotAccepted::PendingReview));
-    let auth = Authorizer::denying(StepUpDenied::Required);
+    let auth = Authorizer::allowing();
     let v = CreateRoute::new(w.deps.clone())
         .handle(w.user, w.create_cmd(true), &auth)
         .await
         .unwrap();
     assert_eq!(v.effective.status, Status::Receiving);
-    assert_eq!(auth.calls(), 0);
+    assert_eq!(auth.calls(), 1);
 }
 
 #[tokio::test]
@@ -391,9 +406,22 @@ async fn manual_only_and_revoked_are_refused_on_create() {
 }
 
 #[tokio::test]
-async fn step_up_is_asked_only_when_switching_on_without_a_stepped_up_acceptance() {
+async fn step_up_is_asked_for_every_switch_on() {
+    // Q35 (HTTP 5.2.0): even an automation acceptance confirmed with a step-up, or a real
+    // account, needs a fresh `route_enable` step-up to switch a route on.
+    for automation in [OptIn::Accepted { with_step_up: true }, OptIn::NotRequired] {
+        let w = world();
+        w.set_account(|a| a.automation = automation);
+        let auth = Authorizer::denying(StepUpDenied::Required);
+        let err = CreateRoute::new(w.deps.clone())
+            .handle(w.user, w.create_cmd(true), &auth)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RouteError::StepUp(StepUpDenied::Required)));
+        assert_eq!(auth.calls(), 1);
+        assert!(w.actions().is_empty());
+    }
     let w = world();
-    w.set_account(|a| a.automation = OptIn::NotRequired);
     // Created off: no step-up.
     let auth = Authorizer::denying(StepUpDenied::Required);
     let off = CreateRoute::new(w.deps.clone())
@@ -614,6 +642,35 @@ async fn ineligible_account_routes_are_switched_off_once_and_stay_off() {
     assert_eq!(p["details"]["cause"], "account_ineligible");
     assert_eq!(p["details"]["previous_is_enabled"], true);
     assert_eq!(p["details"]["is_enabled"], false);
+}
+
+/// Esmeril P4: a user edit racing the Q67 b switch-off never leaves the route on.
+#[tokio::test]
+async fn the_switch_off_retries_a_concurrent_edit_and_gives_up_loudly() {
+    let w = world();
+    let v = w.create(true).await;
+    w.set_account(|a| a.automation = OptIn::NotAccepted(NotAccepted::Declined));
+    *w.routes.concurrent_edits.lock().unwrap() = 1;
+    let uc = SwitchOffIneligibleRoutes::new(w.deps.clone());
+    assert_eq!(uc.handle(w.user, w.account).await.unwrap(), [v.route.id]);
+    let row = w.routes.rows.lock().unwrap()[0].clone();
+    assert!(!row.is_enabled);
+    assert_eq!(row.row_version, 3);
+    // The audit carries the signal types the user's edit left.
+    let last = w.routes.changes.lock().unwrap().last().unwrap().clone();
+    assert_eq!(last.previous.unwrap().0.iter().count(), 2);
+
+    // A route that keeps changing under it: the error goes back to the event delivery.
+    let w = world();
+    w.create(true).await;
+    w.set_account(|a| a.automation = OptIn::NotAccepted(NotAccepted::Declined));
+    *w.routes.concurrent_edits.lock().unwrap() = 10;
+    let err = SwitchOffIneligibleRoutes::new(w.deps.clone())
+        .handle(w.user, w.account)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, RouteError::VersionConflict));
+    assert!(w.routes.rows.lock().unwrap()[0].is_enabled);
 }
 
 #[tokio::test]

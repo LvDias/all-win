@@ -253,17 +253,11 @@ pub enum OptIn {
 }
 
 impl OptIn {
-    const fn not_accepted(self) -> Option<NotAccepted> {
+    pub const fn not_accepted(self) -> Option<NotAccepted> {
         match self {
             Self::NotAccepted(n) => Some(n),
             _ => None,
         }
-    }
-
-    /// Q35 (setting on): switching on an automated route needs a fresh `route_enable`
-    /// step-up unless the automation acceptance was already confirmed with one.
-    const fn accepted_with_step_up(self) -> bool {
-        matches!(self, Self::Accepted { with_step_up: true })
     }
 }
 
@@ -351,11 +345,6 @@ impl RouteFacts {
     /// Switching off is never refused.
     pub fn enable_refusal(&self) -> Option<RouteReason> {
         self.blocking_reasons().into_iter().next()
-    }
-
-    /// Q35 (setting on): whether switching this route on needs a `route_enable` step-up.
-    pub fn enable_needs_step_up(&self) -> bool {
-        self.source_automated && !self.automation.accepted_with_step_up()
     }
 
     /// Whether the account's routes from this source must be switched off now
@@ -508,18 +497,5 @@ mod tests {
         f.source_automated = false;
         f.automation = OptIn::NotAccepted(NotAccepted::Declined);
         assert!(f.blocking_reasons().is_empty());
-        assert!(!f.enable_needs_step_up());
-    }
-
-    #[test]
-    fn step_up_is_needed_unless_automation_was_accepted_with_one() {
-        let mut f = eligible();
-        assert!(!f.enable_needs_step_up());
-        f.automation = OptIn::Accepted {
-            with_step_up: false,
-        };
-        assert!(f.enable_needs_step_up());
-        f.automation = OptIn::NotRequired;
-        assert!(f.enable_needs_step_up());
     }
 }

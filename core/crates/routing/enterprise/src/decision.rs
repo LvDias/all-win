@@ -20,6 +20,22 @@ impl Side {
             Self::Short => -1,
         }
     }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Long => "long",
+            Self::Short => "short",
+        }
+    }
+
+    /// `long` / `short` / `flat` of a signed position (audit `position_side`).
+    pub const fn of_position(position: i64) -> &'static str {
+        match position.signum() {
+            1 => "long",
+            -1 => "short",
+            _ => "flat",
+        }
+    }
 }
 
 /// The instruction's action for one account.
@@ -42,10 +58,43 @@ impl Action {
     pub const fn increases_position(self) -> bool {
         !matches!(self, Self::Close)
     }
+
+    /// The V1 action of a stored instruction (instruction v1: `action`, `position_effect`,
+    /// `side`, `quantity`). `None` for what this engine does not route (`reduce`, `modify`,
+    /// `cancel`) or for an instruction that breaks the schema's conditionals.
+    pub fn from_instruction(
+        action: &str,
+        position_effect: Option<&str>,
+        side: Option<&str>,
+        quantity: Option<i32>,
+    ) -> Option<Self> {
+        let quantity = quantity
+            .and_then(|q| u32::try_from(q).ok())
+            .filter(|q| *q > 0);
+        match (action, position_effect, side) {
+            ("buy", None | Some("open"), None) => Some(Self::Open {
+                side: Side::Long,
+                quantity: quantity?,
+            }),
+            ("sell", None | Some("open"), None) => Some(Self::Open {
+                side: Side::Short,
+                quantity: quantity?,
+            }),
+            ("close", None, None) => Some(Self::Close),
+            ("reverse", None, Some(side)) => Some(Self::Reverse {
+                side: match side {
+                    "long" => Side::Long,
+                    "short" => Side::Short,
+                    _ => return None,
+                },
+                quantity: quantity?,
+            }),
+            _ => None,
+        }
+    }
 }
 
-/// Facts for one account at the decision. A gate whose owning slice is not wired yet is `None`
-/// and does not apply.
+/// Facts for one account at the decision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecisionFacts {
     pub account_active: bool,
@@ -54,14 +103,16 @@ pub struct DecisionFacts {
     /// Automated source and the account's automation opt-in is not accepted.
     pub automation_not_accepted: bool,
     pub signal_types: SignalTypes,
-    pub out_of_sync: Option<bool>,
-    pub risk_blocked: Option<bool>,
+    /// Entry gates 6–9 always come from a real answer: there is no "not wired" value, and a
+    /// port that cannot answer stops the whole decision (fail closed; Architect, 2026-10-23).
+    pub out_of_sync: bool,
+    pub risk_blocked: bool,
     /// The command could not be delivered before its TTL (ADR-0004).
     pub expired: bool,
-    /// ADR-0006 §3.3; `None` until the gate ships with the risk consumer (S13).
-    pub limits_pending: Option<bool>,
-    /// The account has a stop/target profile for the instrument (S6, Q43); `None` until wired.
-    pub has_bracket_profile: Option<bool>,
+    /// ADR-0006 §3.3.
+    pub limits_pending: bool,
+    /// The account has a stop/target profile for the instrument (S6, Q43).
+    pub has_bracket_profile: bool,
     pub multiplier: u32,
     pub max_position: u32,
     /// Signed current position in the contract (the Core's expected state).
@@ -73,7 +124,9 @@ pub enum Outcome {
     Routed,
     Capped,
     Skipped,
-    Rejected,
+    /// Not sent by a protective gate (HTTP 5.1.1 `AuditOutcome`: out of sync, risk block,
+    /// position conflict).
+    Refused,
     Expired,
 }
 
@@ -83,7 +136,7 @@ impl Outcome {
             Self::Routed => "routed",
             Self::Capped => "capped",
             Self::Skipped => "skipped",
-            Self::Rejected => "rejected",
+            Self::Refused => "refused",
             Self::Expired => "expired",
         }
     }
@@ -156,9 +209,8 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
         }
         Action::Close => None,
     };
-    let skip = |code| Decision::not_executed(Outcome::Skipped, code, requested);
-    let conflict =
-        || Decision::not_executed(Outcome::Rejected, "routing.position_conflict", requested);
+    let skip = |code| Decision::not_executed(not_sent(code), code, requested);
+    let conflict = || skip("routing.position_conflict");
 
     // Gates for every action.
     if !f.account_active {
@@ -237,19 +289,30 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
     }
 }
 
-/// The first failing entry-only gate before the action rules. Unwired gates (`None`) do not
-/// apply.
+/// The first failing entry-only gate before the action rules.
 fn entry_gate(f: &DecisionFacts) -> Option<&'static str> {
-    if f.out_of_sync == Some(true) {
+    if f.out_of_sync {
         Some("routing.out_of_sync")
-    } else if f.risk_blocked == Some(true) {
+    } else if f.risk_blocked {
         Some("routing.risk_blocked")
-    } else if f.limits_pending == Some(true) {
+    } else if f.limits_pending {
         Some("routing.limits_pending")
-    } else if f.has_bracket_profile == Some(false) {
+    } else if !f.has_bracket_profile {
         Some("routing.no_bracket_profile")
     } else {
         None
+    }
+}
+
+/// The outcome of an instruction not sent to the account (HTTP 5.1.1 `AuditOutcome`): a
+/// protective gate refuses, an expired entry expires, every configuration rule skips.
+fn not_sent(code: &'static str) -> Outcome {
+    match code {
+        "routing.out_of_sync" | "routing.risk_blocked" | "routing.position_conflict" => {
+            Outcome::Refused
+        }
+        "routing.expired" => Outcome::Expired,
+        _ => Outcome::Skipped,
     }
 }
 
@@ -257,12 +320,7 @@ fn entry_gate(f: &DecisionFacts) -> Option<&'static str> {
 /// position is opposite (decision `capped`, audit `partial`), and is skipped when flat.
 fn close_only(f: &DecisionFacts, code: &'static str, requested: Option<u32>) -> Decision {
     if f.position == 0 {
-        let outcome = if code == "routing.expired" {
-            Outcome::Expired
-        } else {
-            Outcome::Skipped
-        };
-        return Decision::not_executed(outcome, code, requested);
+        return Decision::not_executed(not_sent(code), code, requested);
     }
     Decision {
         outcome: Outcome::Capped,
@@ -304,11 +362,11 @@ mod tests {
             platform_bound: true,
             automation_not_accepted: false,
             signal_types: SignalTypes::new([RouteSignalType::Trigger]).unwrap(),
-            out_of_sync: Some(false),
-            risk_blocked: Some(false),
+            out_of_sync: false,
+            risk_blocked: false,
             expired: false,
-            limits_pending: Some(false),
-            has_bracket_profile: Some(true),
+            limits_pending: false,
+            has_bracket_profile: true,
             multiplier: 2,
             max_position: 5,
             position: 0,
@@ -320,6 +378,46 @@ mod tests {
         quantity: 2,
     };
     const T: RouteSignalType = RouteSignalType::Trigger;
+
+    #[test]
+    fn instructions_map_to_v1_actions() {
+        let f = Action::from_instruction;
+        assert_eq!(f("buy", None, None, Some(2)), Some(BUY_2));
+        assert_eq!(
+            f("sell", Some("open"), None, Some(1)),
+            Some(Action::Open {
+                side: Side::Short,
+                quantity: 1
+            })
+        );
+        assert_eq!(f("close", None, None, Some(3)), Some(Action::Close));
+        assert_eq!(
+            f("reverse", None, Some("short"), Some(1)),
+            Some(Action::Reverse {
+                side: Side::Short,
+                quantity: 1
+            })
+        );
+        for (a, e, s, q) in [
+            ("buy", Some("reduce"), None, Some(1)),
+            ("buy", None, None, None),
+            ("buy", None, None, Some(0)),
+            ("reverse", None, None, Some(1)),
+            ("reverse", None, Some("flat"), Some(1)),
+            ("modify", None, None, None),
+            ("cancel", None, None, None),
+        ] {
+            assert_eq!(f(a, e, s, q), None, "{a} {e:?} {s:?} {q:?}");
+        }
+        assert_eq!(
+            [
+                Side::of_position(3),
+                Side::of_position(-1),
+                Side::of_position(0)
+            ],
+            ["long", "short", "flat"]
+        );
+    }
 
     #[test]
     fn quantity_is_multiplied() {
@@ -356,7 +454,7 @@ mod tests {
         let mut f = facts();
         f.position = -1;
         let d = decide(T, BUY_2, &f);
-        assert_eq!(d.outcome, Outcome::Rejected);
+        assert_eq!(d.outcome, Outcome::Refused);
         assert_eq!(d.reason_code, Some("routing.position_conflict"));
     }
 
@@ -370,10 +468,10 @@ mod tests {
     fn entry_gates_never_block_a_close() {
         let mut f = facts();
         f.position = 3;
-        f.out_of_sync = Some(true);
-        f.risk_blocked = Some(true);
-        f.limits_pending = Some(true);
-        f.has_bracket_profile = Some(false);
+        f.out_of_sync = true;
+        f.risk_blocked = true;
+        f.limits_pending = true;
+        f.has_bracket_profile = false;
         let d = decide(T, Action::Close, &f);
         assert_eq!(d.outcome, Outcome::Routed);
         assert_eq!(d.steps, [Step::Flatten]);
@@ -385,10 +483,10 @@ mod tests {
         ] {
             let mut g = facts();
             match gate {
-                0 => g.out_of_sync = Some(true),
-                1 => g.risk_blocked = Some(true),
-                2 => g.limits_pending = Some(true),
-                _ => g.has_bracket_profile = Some(false),
+                0 => g.out_of_sync = true,
+                1 => g.risk_blocked = true,
+                2 => g.limits_pending = true,
+                _ => g.has_bracket_profile = false,
             }
             assert_eq!(decide(T, BUY_2, &g).reason_code, Some(code));
         }
@@ -417,10 +515,10 @@ mod tests {
         f.account_active = false;
         f.platform_bound = false;
         f.automation_not_accepted = true;
-        f.out_of_sync = Some(true);
-        f.risk_blocked = Some(true);
-        f.limits_pending = Some(true);
-        f.has_bracket_profile = Some(false);
+        f.out_of_sync = true;
+        f.risk_blocked = true;
+        f.limits_pending = true;
+        f.has_bracket_profile = false;
         f.expired = true;
         let order = [
             "routing.account_inactive",
@@ -435,14 +533,24 @@ mod tests {
         for code in order {
             let d = decide(T, BUY_2, &f);
             assert_eq!(d.reason_code, Some(code));
+            assert_eq!(d.outcome, not_sent(code), "{code}");
+            assert_eq!(
+                d.outcome,
+                match code {
+                    "routing.out_of_sync" | "routing.risk_blocked" => Outcome::Refused,
+                    "routing.expired" => Outcome::Expired,
+                    _ => Outcome::Skipped,
+                },
+                "{code}"
+            );
             match code {
                 "routing.account_inactive" => f.account_active = true,
                 "routing.platform_unbound" => f.platform_bound = true,
                 "routing.automation_not_accepted" => f.automation_not_accepted = false,
-                "routing.out_of_sync" => f.out_of_sync = Some(false),
-                "routing.risk_blocked" => f.risk_blocked = Some(false),
-                "routing.limits_pending" => f.limits_pending = Some(false),
-                "routing.no_bracket_profile" => f.has_bracket_profile = Some(true),
+                "routing.out_of_sync" => f.out_of_sync = false,
+                "routing.risk_blocked" => f.risk_blocked = false,
+                "routing.limits_pending" => f.limits_pending = false,
+                "routing.no_bracket_profile" => f.has_bracket_profile = true,
                 _ => assert_eq!(d.outcome, Outcome::Expired),
             }
         }
@@ -491,11 +599,11 @@ mod tests {
         };
         type Bar = fn(&mut DecisionFacts);
         let bars: [(&str, Bar); 6] = [
-            ("routing.out_of_sync", |f| f.out_of_sync = Some(true)),
-            ("routing.risk_blocked", |f| f.risk_blocked = Some(true)),
-            ("routing.limits_pending", |f| f.limits_pending = Some(true)),
+            ("routing.out_of_sync", |f| f.out_of_sync = true),
+            ("routing.risk_blocked", |f| f.risk_blocked = true),
+            ("routing.limits_pending", |f| f.limits_pending = true),
             ("routing.no_bracket_profile", |f| {
-                f.has_bracket_profile = Some(false)
+                f.has_bracket_profile = false
             }),
             ("routing.max_position_reached", |f| f.max_position = 0),
             ("routing.expired", |f| f.expired = true),
@@ -519,10 +627,11 @@ mod tests {
                 Some("routing.reverse_close_only"),
                 "{code}"
             );
-            // Flat: nothing to close, skipped with the code.
+            // Flat: nothing to close, not sent with the code.
             f.position = 0;
             let d = decide(T, rev, &f);
             assert_eq!(d.reason_code, Some(code), "{code}");
+            assert_eq!(d.outcome, not_sent(code), "{code}");
             assert!(d.steps.is_empty(), "{code}");
             assert_eq!(d.reverse_closed_qty, None, "{code}");
             assert_eq!(d.notification_code(), None, "{code}");
@@ -531,7 +640,7 @@ mod tests {
             let d = decide(T, rev, &f);
             assert_eq!(
                 (d.outcome, d.reason_code),
-                (Outcome::Rejected, Some("routing.position_conflict")),
+                (Outcome::Refused, Some("routing.position_conflict")),
                 "{code}"
             );
             assert!(d.steps.is_empty(), "{code}");
@@ -543,19 +652,9 @@ mod tests {
         let mut f = facts();
         f.expired = true;
         f.position = 2;
-        f.out_of_sync = Some(true);
+        f.out_of_sync = true;
         let d = decide(T, Action::Close, &f);
         assert_eq!((d.outcome, d.steps), (Outcome::Routed, vec![Step::Flatten]));
-    }
-
-    #[test]
-    fn unwired_gates_do_not_apply() {
-        let mut f = facts();
-        f.out_of_sync = None;
-        f.risk_blocked = None;
-        f.limits_pending = None;
-        f.has_bracket_profile = None;
-        assert_eq!(decide(T, BUY_2, &f).outcome, Outcome::Routed);
     }
 
     #[test]

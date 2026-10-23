@@ -84,6 +84,22 @@ impl Outcome {
             Self::Info => "info",
         }
     }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "received" => Self::Received,
+            "routed" => Self::Routed,
+            "executed" => Self::Executed,
+            "partial" => Self::Partial,
+            "skipped" => Self::Skipped,
+            "refused" => Self::Refused,
+            "rejected" => Self::Rejected,
+            "expired" => Self::Expired,
+            "unknown" => Self::Unknown,
+            "info" => Self::Info,
+            _ => return None,
+        })
+    }
 }
 
 /// Who caused the entry (s10 §5): `user` when a person's request caused it, `system` for
