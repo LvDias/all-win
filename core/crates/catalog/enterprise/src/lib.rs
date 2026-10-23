@@ -1,6 +1,7 @@
 //! `catalog` module — enterprise layer: platform-neutral instrument reference data.
 
 pub mod instrument;
+pub mod release;
 
 /// Neutral root symbol, e.g. `MNQ` (`^[A-Z0-9]{1,10}$`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
