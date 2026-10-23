@@ -88,11 +88,18 @@ namespace AllWin.Adapter.Sim
             lock (_gate) Account(account).Visible = visible;
         }
 
-        public DateTime GetPlatformTime(string account)
+        /// <summary>Playback accounts report no replay time (NT8 might not expose it).</summary>
+        public bool PlaybackTimeUnavailable { get; set; }
+
+        /// <summary>Execution times are reported with this DateTimeKind (a host that forgot to convert to UTC).</summary>
+        public DateTimeKind ExecutionTimeKind { get; set; } = DateTimeKind.Utc;
+
+        public DateTime? GetPlatformTime(string account)
         {
             lock (_gate)
             {
-                Visible(account);
+                var a = Visible(account);
+                if (PlaybackTimeUnavailable && a.Info.Kind == AccountKind.Playback) return null;
                 return _clock.UtcNow;
             }
         }
@@ -452,7 +459,7 @@ namespace AllWin.Adapter.Sim
                 Quantity = quantity,
                 Price = price,
                 Commission = 0.37m * quantity,
-                Time = _clock.UtcNow - ExecutionDelay,
+                Time = DateTime.SpecifyKind(_clock.UtcNow - ExecutionDelay, ExecutionTimeKind),
             };
             a.Executions.Add(execution);
             ApplyToPosition(a, order.Instrument, order.Side, quantity, price);

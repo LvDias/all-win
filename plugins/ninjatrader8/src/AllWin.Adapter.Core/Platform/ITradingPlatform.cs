@@ -15,10 +15,12 @@ namespace AllWin.Adapter.Core.Platform
         IReadOnlyList<PlatformAccountInfo> GetAccounts();
 
         /// <summary>
-        /// The platform's own clock for the account's connection (Playback: the simulated time). Execution
-        /// times are compared with it to tell a live fill from a late one (R1).
+        /// The clock execution times are compared with to tell a live fill from a late one (ADR-0004 §5, R1),
+        /// in UTC (<see cref="DateTimeKind.Utc"/>). Live and Sim connections: the local PC clock, i.e. the same
+        /// clock as receipt. Playback: the connection's replay time, or null if NT8 does not expose it (the
+        /// time bound is then skipped for Playback only).
         /// </summary>
-        DateTime GetPlatformTime(string account);
+        DateTime? GetPlatformTime(string account);
 
         /// <summary>Tick size of the contract, or null when the platform does not know it.</summary>
         decimal? GetTickSize(Instrument instrument);
@@ -138,6 +140,11 @@ namespace AllWin.Adapter.Core.Platform
         public decimal Price { get; set; }
         public decimal? Commission { get; set; }
         public FillOperation Operation { get; set; } = FillOperation.Add;
+
+        /// <summary>
+        /// Execution time in UTC (<see cref="DateTimeKind.Utc"/>). The host converts NT8's time zone
+        /// explicitly; any other kind is treated as unknown (not observed live).
+        /// </summary>
         public DateTime Time { get; set; }
         public DateTime? PlatformTime { get; set; }
 

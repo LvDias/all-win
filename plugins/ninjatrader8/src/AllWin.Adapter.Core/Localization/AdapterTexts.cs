@@ -32,6 +32,11 @@ namespace AllWin.Adapter.Core.Localization
                 "The plugin was interrupted while saving and discarded its last unsaved step. Check your accounts in All Win.",
                 "O plugin foi interrompido ao gravar e descartou o último passo não salvo. Confira suas contas no All Win.",
             },
+            ["notice.clock_skew"] = new[]
+            {
+                "This computer's clock differs from All Win's by more than 10 seconds. Synchronize the Windows clock.",
+                "O relógio deste computador difere do All Win em mais de 10 segundos. Sincronize o relógio do Windows.",
+            },
             ["account.not_simulation"] = new[] { "Not a simulation account: this plugin build does not trade it.", "Não é uma conta de simulação: esta versão do plugin não opera nela." },
             ["account.out_of_sync"] = new[] { "Out of sync: no new entries until you resolve it in All Win.", "Fora de sincronia: nenhuma nova entrada até você resolver no All Win." },
 

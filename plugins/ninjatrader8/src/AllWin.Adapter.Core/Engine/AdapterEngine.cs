@@ -99,6 +99,12 @@ namespace AllWin.Adapter.Core.Engine
         public int PendingOutbound => _outbox.Count;
         public int HeartbeatIntervalMs => _heartbeatMs;
 
+        /// <summary>
+        /// PC and Core clocks differ by more than MaxBracketDelay (measured at welcome and on every Core
+        /// heartbeat): the plugin shows a clock warning (ADR-0004 §5).
+        /// </summary>
+        public bool ClockSkewWarning { get; private set; }
+
         /// <summary>The store dropped an unconfirmed last write on open (Architect L3): shown as a notice.</summary>
         public bool StoreRecoveredTornWrite { get; private set; }
 
@@ -242,6 +248,7 @@ namespace AllWin.Adapter.Core.Engine
                     HandleAck(envelope.PayloadAs<AckPayload>());
                     break;
                 case MessageTypes.Heartbeat:
+                    UpdateClockWarning(envelope.SentAt - _clock.UtcNow);
                     break;
                 case MessageTypes.AccountState:
                     HandleAccountState(envelope);
@@ -278,6 +285,7 @@ namespace AllWin.Adapter.Core.Engine
 
             var now = _clock.UtcNow;
             _skew = envelope.SentAt - now;
+            UpdateClockWarning(_skew);
             _sessionVersion = welcome.ProtocolVersion;
             _heartbeatMs = welcome.HeartbeatIntervalMs;
             _ackTimeoutMs = welcome.AckTimeoutMs;
@@ -301,6 +309,15 @@ namespace AllWin.Adapter.Core.Engine
             EnqueueSnapshot(SnapshotTrigger.Reconnect, null);
             Flush();
             PumpAll();
+            RaiseChanged();
+        }
+
+        private void UpdateClockWarning(TimeSpan skew)
+        {
+            var warn = skew.Duration() > _options.MaxBracketDelay;
+            if (warn == ClockSkewWarning) return;
+            ClockSkewWarning = warn;
+            _log.Write(warn ? LogLevel.Warning : LogLevel.Info, "clock.skew", ((long)skew.TotalMilliseconds).ToString(CultureInfo.InvariantCulture) + " ms");
             RaiseChanged();
         }
 

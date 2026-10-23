@@ -709,14 +709,25 @@ namespace AllWin.Adapter.Core.Engine
         /// </summary>
         private bool IsLiveFill(string account, PlatformExecution execution, CommandRecord? entry)
         {
-            if (SafeAccounts().FirstOrDefault(a => a.Name == account)?.Connected != true) return false;
-            if (entry != null && entry.SubmitEpoch != ConnectionEpoch(account)) return false;
-            var fillTime = execution.PlatformTime ?? execution.Time;
-            if (fillTime == default) return false;
-            DateTime platformNow;
+            var info = SafeAccounts().FirstOrDefault(a => a.Name == account);
+            if (info?.Connected != true) return false;                                         // (a)
+            if (entry != null && entry.SubmitEpoch != ConnectionEpoch(account)) return false;  // (b)
+
+            DateTime? platformNow;
             try { platformNow = _platform.GetPlatformTime(account); }
             catch (PlatformException) { return false; }
-            return platformNow - fillTime <= _options.MaxBracketDelay;
+            if (platformNow == null)
+                return info.Kind == AccountKind.Playback; // no replay time: (c) skipped for Playback only
+
+            var fillTime = execution.Time;                                                     // (c)
+            if (fillTime == default || fillTime.Kind != DateTimeKind.Utc || platformNow.Value.Kind != DateTimeKind.Utc)
+            {
+                _log.Write(LogLevel.Warning, "fill.time_not_utc", execution.ExecutionId);
+                return false;
+            }
+            var delay = platformNow.Value - fillTime;
+            // A fill "from the future" beyond 1 s means the clocks disagree: not observed live (fail-safe).
+            return delay >= -TimeSpan.FromSeconds(1) && delay <= _options.MaxBracketDelay;
         }
 
         private long ConnectionEpoch(string account) => _connectionEpochs.TryGetValue(account, out var epoch) ? epoch : 0;

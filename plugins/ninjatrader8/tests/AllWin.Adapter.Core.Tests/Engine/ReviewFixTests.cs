@@ -560,6 +560,50 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
+        public void R1_c_fill_from_the_future_beyond_one_second_is_not_live()
+        {
+            using var h = Ready(price: 21000m);
+            h.Platform.ExecutionDelay = TimeSpan.FromSeconds(-2);
+            h.Deliver(Place(C1, Side.Buy, 1, protection: Individual(40, 80)));
+            Assert.Null(h.Platform.OrderByName(Sim101, "aw:" + C1 + ":s"));
+            Assert.Contains(h.Reports(C1), r => r.ReasonCode == ReasonCodes.OrderProtectionNotSubmitted);
+        }
+
+        [Fact]
+        public void R1_c_execution_time_that_is_not_utc_is_not_live()
+        {
+            using var h = Ready(price: 21000m);
+            h.Platform.ExecutionTimeKind = DateTimeKind.Unspecified;
+            h.Deliver(Place(C1, Side.Buy, 1, protection: Individual(40, 80)));
+            Assert.Null(h.Platform.OrderByName(Sim101, "aw:" + C1 + ":s"));
+            Assert.Contains(h.Log, l => l.Contains("fill.time_not_utc"));
+        }
+
+        [Fact]
+        public void R1_c_is_skipped_for_playback_without_replay_time_but_a_and_b_still_apply()
+        {
+            var welcome = DefaultWelcome();
+            welcome.Accounts[0].PlatformAccount = "Playback101";
+            using var h = Ready(price: 21000m, setup: p => p.AddAccount("Playback101", AccountKind.Playback, OcoLocation.Local, "Playback Connection"), welcome: welcome);
+            h.Platform.PlaybackTimeUnavailable = true;
+            h.Platform.ExecutionDelay = TimeSpan.FromMinutes(30); // replay time far from the PC clock
+            var command = Place(C1, Side.Buy, 1, protection: Individual(40, 80));
+            command.PlatformAccount = "Playback101";
+            h.Deliver(command);
+            Assert.NotNull(h.Platform.OrderByName("Playback101", "aw:" + C1 + ":s"));
+        }
+
+        [Fact]
+        public void Clock_warning_when_pc_and_core_clocks_differ_by_more_than_max_bracket_delay()
+        {
+            using var h = new EngineHarness();
+            h.Connect(coreClockAhead: TimeSpan.FromSeconds(11));
+            Assert.True(h.Engine.ClockSkewWarning);
+            h.Deliver(new HeartbeatPayload(), sentAt: h.Clock.UtcNow.AddSeconds(2)); // the clocks were synchronized
+            Assert.False(h.Engine.ClockSkewWarning);
+        }
+
+        [Fact]
         public void R1_existing_bracket_is_not_extended_by_a_late_fill_but_still_shrinks()
         {
             using var h = Ready(price: 20000m);
