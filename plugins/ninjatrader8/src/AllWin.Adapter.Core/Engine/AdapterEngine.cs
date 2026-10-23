@@ -45,6 +45,8 @@ namespace AllWin.Adapter.Core.Engine
         private readonly Dictionary<string, CommandRecord> _commands = new Dictionary<string, CommandRecord>(StringComparer.Ordinal);
         private readonly Dictionary<string, List<string>> _queues = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         private readonly HashSet<string> _pumping = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, long> _connectionEpochs = new Dictionary<string, long>(StringComparer.Ordinal);
+        private readonly HashSet<string> _deferredFlattens = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, FillRecord> _fills = new Dictionary<string, FillRecord>(StringComparer.Ordinal);
         private readonly Dictionary<string, AccountLimits> _limits = new Dictionary<string, AccountLimits>(StringComparer.Ordinal);
         private readonly Dictionary<string, string> _owners = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -96,6 +98,9 @@ namespace AllWin.Adapter.Core.Engine
         public Locale? CoreLocale => _welcome?.Locale;
         public int PendingOutbound => _outbox.Count;
         public int HeartbeatIntervalMs => _heartbeatMs;
+
+        /// <summary>The store dropped an unconfirmed last write on open (Architect L3): shown as a notice.</summary>
+        public bool StoreRecoveredTornWrite { get; private set; }
 
         /// <summary>True while the transport supervisor should keep reconnecting (ADR-0004 §4).</summary>
         public bool ShouldReconnect => _started && !_faulted && Session != SessionState.Stopped;
@@ -304,7 +309,9 @@ namespace AllWin.Adapter.Core.Engine
         {
             if (Session != SessionState.Ready || _sessionVersion == "1.0")
             {
+                // A type the negotiated version does not have (e.g. after a Core rollback to 1.0): refused, not applied.
                 _log.Write(LogLevel.Warning, "protocol.unexpected_account_state", _sessionVersion);
+                SendNow(new ErrorPayload { Code = ReasonCodes.ProtocolUnsupportedValue, RefMsgId = envelope.MsgId, Detail = "account_state needs protocol 1.1" });
                 return;
             }
             var state = envelope.PayloadAs<AccountStatePayload>();
@@ -546,6 +553,10 @@ namespace AllWin.Adapter.Core.Engine
 
         private void LoadState()
         {
+            StoreRecoveredTornWrite = _store.RecoveredFromTornWrite;
+            if (StoreRecoveredTornWrite) _log.Write(LogLevel.Warning, "store.torn_tail_dropped", "an unconfirmed last write was discarded");
+            if (_store.Get(Collections.Meta, "connection_epochs") is string epochs)
+                foreach (var pair in StoreJson.Read<Dictionary<string, long>>(epochs)) _connectionEpochs[pair.Key] = pair.Value;
             _instanceId = _store.Get(Collections.Meta, "instance_id") is string id ? StoreJson.Read<string>(id) : "";
             if (_instanceId.Length == 0)
             {
@@ -599,12 +610,18 @@ namespace AllWin.Adapter.Core.Engine
                 _commands.Remove(record.CommandId);
                 _pending.Add(new StoreOp(Collections.Commands, record.CommandId, null));
             }
-            // A fill record is kept while the platform still holds that execution, so a replay is never reported again.
+            // A fill record is kept while the platform still holds that execution, so a replay is never reported
+            // again. Fills of an account we cannot observe right now are kept too (unknown = keep).
             var heldByPlatform = new HashSet<string>(StringComparer.Ordinal);
+            var observedPrefixes = new List<string>();
             foreach (var mapping in _welcome?.Accounts ?? new List<WelcomeAccount>())
-                if (SafeAccounts().Any(a => a.Name == mapping.PlatformAccount))
-                    foreach (var execution in SafeExecutions(mapping.PlatformAccount)) heldByPlatform.Add(mapping.PlatformAccount + "|" + execution.ExecutionId);
-            foreach (var pair in _fills.Where(p => p.Value.RecordedAt < cutoff && !heldByPlatform.Contains(p.Key)).ToList())
+            {
+                if (!IsObservable(mapping.PlatformAccount)) continue;
+                observedPrefixes.Add(mapping.PlatformAccount + "|");
+                foreach (var execution in SafeExecutions(mapping.PlatformAccount)) heldByPlatform.Add(mapping.PlatformAccount + "|" + execution.ExecutionId);
+            }
+            foreach (var pair in _fills.Where(p => p.Value.RecordedAt < cutoff && !heldByPlatform.Contains(p.Key)
+                && observedPrefixes.Any(prefix => p.Key.StartsWith(prefix, StringComparison.Ordinal))).ToList())
             {
                 _fills.Remove(pair.Key);
                 _pending.Add(new StoreOp(Collections.Fills, pair.Key, null));
@@ -620,11 +637,17 @@ namespace AllWin.Adapter.Core.Engine
         private bool StillProtecting(CommandRecord record)
         {
             if (record.Command.Kind != CommandKind.Place || record.Command.Place?.Protection == null) return false;
+            // Fail-safe (Code Review 6 re-check H3): while the account is absent or disconnected, e.g. NT8 started
+            // before its connection, we cannot know whether the bracket still protects anything, so keep it.
+            if (!IsObservable(record.PlatformAccount)) return true;
             if (_orders.Values.Any(o => o.CommandId == record.CommandId && o.Account == record.PlatformAccount && !o.Order.IsTerminal)) return true;
             if (_owners.ContainsValue(record.CommandId)) return true;
             var open = record.EntryFilled - LegFilled(record.PlatformAccount, record.CommandId, 's') - LegFilled(record.PlatformAccount, record.CommandId, 't');
-            return open > 0 && SafeAccounts().Any(a => a.Name == record.PlatformAccount) && PositionQuantity(record.PlatformAccount, record.Command.Instrument) != 0;
+            return open > 0 && PositionQuantity(record.PlatformAccount, record.Command.Instrument) != 0;
         }
+
+        /// <summary>The account is visible on the platform and its connection is up.</summary>
+        private bool IsObservable(string platformAccount) => SafeAccounts().Any(a => a.Name == platformAccount && a.Connected);
 
         private IReadOnlyList<PlatformAccountInfo> SafeAccounts()
         {

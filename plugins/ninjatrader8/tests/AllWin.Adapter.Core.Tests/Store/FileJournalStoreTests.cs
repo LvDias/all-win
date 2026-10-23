@@ -63,7 +63,7 @@ namespace AllWin.Adapter.Core.Tests.Store
         }
 
         [Fact]
-        public void Complete_last_line_with_a_bad_crc_is_damage_not_a_torn_write()
+        public void Complete_last_line_with_a_bad_crc_is_a_torn_write_and_is_dropped()
         {
             using (var s = new FileJournalStore(_dir))
             {
@@ -73,9 +73,20 @@ namespace AllWin.Adapter.Core.Tests.Store
             var journal = Path.Combine(_dir, FileJournalStore.JournalFile);
             var bytes = File.ReadAllBytes(journal);
             var i = Encoding.UTF8.GetString(bytes).LastIndexOf("two", StringComparison.Ordinal);
-            bytes[i] = (byte)'X'; // bit rot in a fsynced commit
+            bytes[i] = (byte)'X'; // sectors of an unconfirmed write landed out of order
             File.WriteAllBytes(journal, bytes);
-            Assert.Throws<StoreCorruptException>(() => new FileJournalStore(_dir));
+            using (var s = new FileJournalStore(_dir))
+            {
+                Assert.True(s.DroppedTornTail);
+                Assert.Equal("one", s.Get("a", "1"));
+                Assert.Null(s.Get("a", "2"));
+                s.Commit(new[] { new StoreOp("a", "3", "three") });
+            }
+            using (var s = new FileJournalStore(_dir))
+            {
+                Assert.False(s.DroppedTornTail);
+                Assert.Equal("three", s.Get("a", "3"));
+            }
         }
 
         [Fact]

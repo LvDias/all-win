@@ -14,7 +14,8 @@ namespace AllWin.Adapter.Core.Store
     /// <para>
     /// Every <see cref="Commit"/> is one CRC-protected journal line flushed to disk before it returns,
     /// so a batch is all-or-nothing across crashes. A torn last line (crash mid-write) is dropped on
-    /// open (no trailing newline); any complete line that fails its CRC is reported as <see cref="StoreCorruptException"/> and the adapter
+    /// open (no trailing newline, or a bad CRC on the last line; see <see cref="DroppedTornTail"/>); damage before
+    /// the last line is reported as <see cref="StoreCorruptException"/> and the adapter
     /// fails closed. The directory is locked so two processes cannot share one store.
     /// </para>
     /// </summary>
@@ -60,6 +61,11 @@ namespace AllWin.Adapter.Core.Store
                 throw;
             }
         }
+
+        /// <summary>The last journal line was an unconfirmed (torn) write and was dropped on open.</summary>
+        public bool DroppedTornTail { get; private set; }
+
+        public bool RecoveredFromTornWrite => DroppedTornTail;
 
         public IReadOnlyDictionary<string, string> Collection(string name) =>
             _data.TryGetValue(name, out var c) ? c : (IReadOnlyDictionary<string, string>)EmptyCollection;
@@ -129,12 +135,24 @@ namespace AllWin.Adapter.Core.Store
             while (offset < bytes.Length)
             {
                 var newline = Array.IndexOf(bytes, (byte)'\n', (int)offset);
-                // Torn tail: a commit is one write ending with its newline, so only a line without one is
-                // an interrupted write. A complete line that fails its CRC is damage, even the last one.
-                if (newline < 0) break;
+                // Torn tail (Architect, L3 option 2): the LAST line is an unconfirmed write if it has no newline
+                // or fails its CRC (after a power loss its sectors may land out of order). It is dropped and
+                // reported; nothing was acted on, because the store is write-ahead. Damage elsewhere is fatal.
+                if (newline < 0)
+                {
+                    DroppedTornTail = true;
+                    break;
+                }
                 var line = Encoding.UTF8.GetString(bytes, (int)offset, (int)(newline - offset));
                 if (!TryDecodeLine(line, out var seq, out var ops))
-                    throw new StoreCorruptException("Journal is damaged: " + path);
+                {
+                    if (newline == bytes.Length - 1)
+                    {
+                        DroppedTornTail = true;
+                        break;
+                    }
+                    throw new StoreCorruptException("Journal is damaged before its last line: " + path);
+                }
                 if (seq > _seq)
                 {
                     if (seq != _seq + 1) throw new StoreCorruptException("Journal sequence gap in " + path);

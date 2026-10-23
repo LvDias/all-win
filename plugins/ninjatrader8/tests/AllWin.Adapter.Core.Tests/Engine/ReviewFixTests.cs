@@ -305,6 +305,31 @@ namespace AllWin.Adapter.Core.Tests.Engine
             Assert.Equal(1, Leg(h, C1, 's').Quantity);
         }
 
+        [Theory]
+        [InlineData(false)] // account not visible yet (NT8 started before the connection)
+        [InlineData(true)]  // account visible but its connection is down
+        public void CR6_recheck_H3_startup_prune_keeps_brackets_of_accounts_it_cannot_observe(bool visibleButDisconnected)
+        {
+            using var h = Ready();
+            h.Deliver(Place(C1, Side.Buy, 2, protection: Individual(40, 80)));
+            h.AckAll();
+            h.Clock.Advance(TimeSpan.FromDays(8));
+            h.Restart();
+            if (visibleButDisconnected) h.Platform.SetConnected(Sim101, false);
+            else h.Platform.SetVisible(Sim101, false);
+            h.LoseEvents();
+            h.Restart(renewHandles: false); // Start prunes while the account cannot be observed
+            h.Platform.SetVisible(Sim101, true);
+            h.Platform.SetConnected(Sim101, true);
+            h.Settle();
+            h.Connect();
+            h.Platform.ExternalFill(Sim101, Mnq, Side.Sell, 1, 21034.50m); // manual partial close
+            h.Settle();
+            Assert.Equal(1, Leg(h, C1, 's').Quantity); // invariant B still holds: the record survived
+            Assert.Equal(1, Leg(h, C1, 't').Quantity);
+            Assert.DoesNotContain(h.Reports(C1), r => r.Fill != null && r.ChildRole == ChildRole.Entry); // fill records kept: no replay
+        }
+
         [Fact]
         public void Fill_records_are_kept_while_the_platform_still_holds_the_execution()
         {
@@ -490,6 +515,127 @@ namespace AllWin.Adapter.Core.Tests.Engine
             Assert.DoesNotContain(h.Reports(C1), r => r.Status == ReportStatus.Rejected);
             h.Deliver(DefaultWelcome());
             Assert.Contains(h.Reports(C1), r => r.Status == ReportStatus.Filled);
+        }
+
+        // ------------------------------------------------------------------ QA R1 / Architect R1: only live fills get a bracket
+
+        [Fact]
+        public void R1_b_entry_filled_after_a_broker_reconnect_gets_no_bracket()
+        {
+            using var h = Ready(price: 21034.50m);
+            h.Deliver(Place(C1, Side.Buy, 1, protection: Individual(40, 80), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 21000m }));
+            h.Platform.SetConnected(Sim101, false);
+            h.Platform.SetConnected(Sim101, true);
+            h.Settle();
+            h.Platform.SetPrice("MNQ", 20990m); // the execution reaches us after the reconnect
+            h.Settle();
+            Assert.DoesNotContain(h.Platform.CallLog, c => c.StartsWith("submit aw:" + C1 + ":s", StringComparison.Ordinal));
+            var withheld = h.Reports(C1).Where(r => r.ReasonCode == ReasonCodes.OrderProtectionNotSubmitted).Select(r => r.ChildRole).ToList();
+            Assert.Equal(new ChildRole?[] { ChildRole.Stop, ChildRole.Target }, withheld);
+        }
+
+        [Fact]
+        public void R1_a_fill_received_while_the_connection_is_down_gets_no_bracket()
+        {
+            using var h = Ready(price: 21000m);
+            h.Deliver(Place(C1, Side.Buy, 1, protection: Individual(40, 80), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20000m }));
+            h.Platform.SetConnected(Sim101, false);
+            h.Settle();
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + C1 + ":e")!.Handle, 1, 20000m);
+            h.Settle();
+            Assert.Contains(h.Reports(C1), r => r.ReasonCode == ReasonCodes.OrderProtectionNotSubmitted);
+            Assert.Null(h.Platform.OrderByName(Sim101, "aw:" + C1 + ":s"));
+        }
+
+        [Theory]
+        [InlineData(5, true)]
+        [InlineData(11, false)]
+        public void R1_c_fill_older_than_max_bracket_delay_gets_no_bracket(int ageSeconds, bool bracketPlaced)
+        {
+            using var h = Ready(price: 21000m);
+            h.Platform.ExecutionDelay = TimeSpan.FromSeconds(ageSeconds);
+            h.Deliver(Place(C1, Side.Buy, 1, protection: Individual(40, 80)));
+            Assert.Equal(bracketPlaced, h.Platform.OrderByName(Sim101, "aw:" + C1 + ":s") != null);
+            Assert.Equal(!bracketPlaced, h.Reports(C1).Any(r => r.ReasonCode == ReasonCodes.OrderProtectionNotSubmitted));
+        }
+
+        [Fact]
+        public void R1_existing_bracket_is_not_extended_by_a_late_fill_but_still_shrinks()
+        {
+            using var h = Ready(price: 20000m);
+            h.Deliver(Place(C1, Side.Buy, 2, protection: Individual(40, 80), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 19990m }));
+            var entry = h.Platform.OrderByName(Sim101, "aw:" + C1 + ":e")!;
+            h.Platform.FillOrder(Sim101, entry.Handle, 1, 19990m);
+            h.Settle();
+            Assert.Equal(1, Leg(h, C1, 's').Quantity);
+            h.Platform.ExecutionDelay = TimeSpan.FromSeconds(30);
+            h.Platform.FillOrder(Sim101, entry.Handle, 1, 19990m); // second part delivered late
+            h.Settle();
+            Assert.Equal(1, Leg(h, C1, 's').Quantity); // not extended
+            Assert.Contains(ReasonCodes.SyncBracketIncomplete, h.Engine.GetAccountViews().Single(v => v.PlatformAccount == Sim101).LocalSyncReasons);
+            h.Platform.ExecutionDelay = TimeSpan.Zero;
+            h.Platform.ExternalFill(Sim101, Mnq, Side.Sell, 1, 20000m); // a live partial close still shrinks protection
+            h.Settle();
+            Assert.Equal(1, Leg(h, C1, 's').Quantity);
+        }
+
+        // ------------------------------------------------------------------ L3 option 2, rollback, L4, deferred flatten
+
+        [Fact]
+        public void L3_unconfirmed_last_write_is_dropped_and_shown()
+        {
+            using var h = Ready();
+            h.Deliver(Place(C1, Side.Buy, 1));
+            h.CorruptLastJournalLineOnNextRestart();
+            h.Restart();
+            Assert.True(h.Engine.StoreRecoveredTornWrite);
+            Assert.Contains(h.Log, l => l.Contains("store.torn_tail_dropped"));
+            Assert.Equal(SessionState.Offline, h.Engine.Session); // still runs
+        }
+
+        [Fact]
+        public void Rollback_account_state_on_a_1_0_session_is_refused_with_unsupported_value()
+        {
+            using var h = Ready();
+            var msgId = Ids.New();
+            var state = new AccountStatePayload { AccountId = AccountId, PlatformAccount = Sim101, SyncState = SyncState.OutOfSync, SyncReasons = { "sync.x_y" }, ChangedAt = h.Clock.UtcNow };
+            h.DeliverRaw(ProtocolCodec.Encode(state, msgId, h.Clock.UtcNow, "1.1"));
+            var error = h.Sent(MessageTypes.Error).Single().PayloadAs<ErrorPayload>();
+            Assert.Equal(ReasonCodes.ProtocolUnsupportedValue, error.Code);
+            Assert.Equal(msgId, error.RefMsgId);
+            Assert.Equal(SyncState.InSync, h.Engine.GetAccountViews().Single(v => v.PlatformAccount == Sim101).CoreSyncState);
+        }
+
+        [Fact]
+        public void L4_a_failed_order_lookup_never_lets_a_submission_through()
+        {
+            using var h = Ready(price: 21000m);
+            h.Platform.FailNextGetOrders = true;
+            h.Deliver(Place(C1, Side.Buy, 1));
+            Assert.DoesNotContain(h.Platform.CallLog, c => c.StartsWith("submit", StringComparison.Ordinal));
+            var report = h.Reports(C1).Last();
+            Assert.Equal(ReportStatus.Rejected, report.Status);
+            Assert.Equal(ReasonCodes.CommandPlatformDisconnected, report.ReasonCode);
+        }
+
+        [Fact]
+        public void Flatten_recovery_waits_for_the_account_to_be_observable()
+        {
+            using var h = Ready(price: 21000m);
+            h.Deliver(Place(C1, Side.Buy, 1));
+            h.Platform.ClearPrice("MNQ");
+            h.Deliver(Flatten(C2));
+            h.Platform.ForgetOrder(Sim101, "aw:" + C2 + ":x");
+            h.LoseEvents();
+            h.Restart();
+            h.Platform.SetVisible(Sim101, false);
+            h.Restart(renewHandles: false);
+            Assert.NotEqual(SessionState.Stopped, h.Engine.Session); // no fault on an absent account
+            h.Platform.SetVisible(Sim101, true);
+            h.Platform.SetConnected(Sim101, true);
+            h.Settle();
+            h.Connect();
+            Assert.Equal(ReportStatus.Unknown, h.Reports(C2).Last().Status);
         }
 
         // ------------------------------------------------------------------ missing tests listed by QA

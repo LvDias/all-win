@@ -261,7 +261,7 @@ namespace AllWin.Adapter.Core.Engine
             Emit(record, report);
 
             // Every fill can change what the brackets must cover: entries, protective legs, exits, external fills.
-            ReconcileProtection(account, execution.Instrument, position, letter == 'e' ? record : null);
+            ReconcileProtection(account, execution.Instrument, position, letter == 'e' ? record : null, IsLiveFill(account, execution, letter == 'e' ? record : null));
             var flatten = ActiveFlatten(account, execution.Instrument);
             if (flatten != null) AdvanceFlatten(flatten);
         }
@@ -284,8 +284,9 @@ namespace AllWin.Adapter.Core.Engine
         /// after a flip, are cancelled with order.orphan_cancelled. <paramref name="position"/> must be the
         /// position right after the fill being processed (execution PositionAfter), not a later one.
         /// </summary>
-        private void ReconcileProtection(string account, Instrument instrument, PlatformPosition? position, CommandRecord? filledEntry)
+        private void ReconcileProtection(string account, Instrument instrument, PlatformPosition? position, CommandRecord? filledEntry, bool live)
         {
+            var restricted = _catchUp || !live;
             var quantity = position?.Quantity ?? 0;
             if (quantity == 0) return; // flat: the orphan rule (HandlePosition) cancels every leg
 
@@ -303,14 +304,14 @@ namespace AllWin.Adapter.Core.Engine
                 var ownerSide = owner.Command.Place!.Side;
                 var covered = (ownerSide == Side.Buy) == (quantity > 0) ? Math.Abs(quantity) : 0;
                 var basePrice = position!.AveragePrice ?? TickMath.Vwap(owner.EntryNotional, Math.Max(owner.EntryFilled, 1));
-                ApplyBracket(owner, ownerSide, basePrice, covered);
+                ApplyBracket(owner, ownerSide, basePrice, covered, restricted);
             }
 
             foreach (var allocation in IndividualAllocations(account, instrument, quantity))
             {
                 var record = allocation.Key;
                 // Answer 7: prices from the VWAP of this entry order.
-                ApplyBracket(record, record.Command.Place!.Side, TickMath.Vwap(record.EntryNotional, record.EntryFilled), allocation.Value);
+                ApplyBracket(record, record.Command.Place!.Side, TickMath.Vwap(record.EntryNotional, record.EntryFilled), allocation.Value, restricted);
             }
         }
 
@@ -357,7 +358,7 @@ namespace AllWin.Adapter.Core.Engine
         /// catch-up (answer A) nothing is submitted late and legs are only resized down: anything else is left
         /// to the user as sync.bracket_incomplete (alert and wait).
         /// </summary>
-        private void ApplyBracket(CommandRecord owner, Side entrySide, decimal basePrice, int covered)
+        private void ApplyBracket(CommandRecord owner, Side entrySide, decimal basePrice, int covered, bool restricted)
         {
             var account = owner.PlatformAccount;
             var instrument = owner.Command.Instrument;
@@ -381,10 +382,11 @@ namespace AllWin.Adapter.Core.Engine
                     requests.Add(ProtectiveRequest(owner.CommandId, ChildRole.Stop, instrument, exitSide, OrderType.Stop, covered, null, stopPrice, oco));
                 if (targetPrice.HasValue)
                     requests.Add(ProtectiveRequest(owner.CommandId, ChildRole.Target, instrument, exitSide, OrderType.Limit, covered, targetPrice, null, oco));
-                if (_catchUp)
+                if (restricted)
                 {
-                    // Answer A: no late bracket after a catch-up fill. Each withheld leg is reported; the Core
-                    // raises sync.bracket_incomplete (sync.* codes are Core-only; the local hint is display only).
+                    // Answers A and R1: no late bracket for a fill we did not observe live (restart catch-up, broker
+                    // outage, or delayed delivery). Each withheld leg is reported; the Core raises
+                    // sync.bracket_incomplete (sync.* codes are Core-only; the local hint is display only).
                     _log.Write(LogLevel.Warning, "bracket.not_submitted_late", owner.CommandId);
                     owner.ProtectionWithheld = true;
                     Save(owner);
@@ -404,6 +406,7 @@ namespace AllWin.Adapter.Core.Engine
                     {
                         case Adoption.None: toSubmit.Add(request); break;
                         case Adoption.Ambiguous: ReportLeg(owner, request, ReasonCodes.OrderAmbiguousReference); break;
+                        case Adoption.LookupFailed: ReportLeg(owner, request, ReasonCodes.OrderProtectionFailed); break;
                     }
                 }
                 if (toSubmit.Count == 0) return;
@@ -440,7 +443,7 @@ namespace AllWin.Adapter.Core.Engine
                 var current = letter == 's' ? leg.Order.StopPrice : leg.Order.LimitPrice;
                 int? newQuantity = desired != leg.Order.Quantity ? desired : (int?)null;
                 decimal? newPrice = price.HasValue && price != current ? price : null;
-                if (_catchUp)
+                if (restricted)
                 {
                     if (newQuantity > leg.Order.Quantity)
                     {
@@ -479,7 +482,7 @@ namespace AllWin.Adapter.Core.Engine
             Emit(owner, report);
         }
 
-        private enum Adoption { None, Adopted, Ambiguous }
+        private enum Adoption { None, Adopted, Ambiguous, LookupFailed }
 
         /// <summary>
         /// Adopts the platform order carrying the exact reference <paramref name="name"/> (command_id + role) as
@@ -491,7 +494,14 @@ namespace AllWin.Adapter.Core.Engine
         /// </summary>
         private Adoption AdoptExisting(string account, string name, bool liveOnly = false)
         {
-            var matches = SafeOrders(account).Where(o => o.Name == name && (!liveOnly || !o.IsTerminal)).ToList();
+            IReadOnlyList<PlatformOrder> orders;
+            try { orders = _platform.GetOrders(account); }
+            catch (Exception e)
+            {
+                _log.Write(LogLevel.Error, "order.lookup_failed", name + " " + e.GetType().Name);
+                return Adoption.LookupFailed; // never "no match": that would allow a second submission (QA L4)
+            }
+            var matches = orders.Where(o => o.Name == name && (!liveOnly || !o.IsTerminal)).ToList();
             if (matches.Count == 0) return Adoption.None;
             if (matches.Count > 1)
             {
@@ -597,6 +607,12 @@ namespace AllWin.Adapter.Core.Engine
 
         private void HandleConnection(AccountConnectionEvent connection)
         {
+            if (!connection.Connected)
+            {
+                // R1 (b): fills of entries submitted before a connection loss are never treated as live.
+                _connectionEpochs[connection.Account] = ConnectionEpoch(connection.Account) + 1;
+                Put(Collections.Meta, "connection_epochs", _connectionEpochs);
+            }
             var mapped = MappingOf(connection.Account) != null;
             if (mapped)
             {
@@ -606,6 +622,7 @@ namespace AllWin.Adapter.Core.Engine
                 {
                     RefreshTrackedOrders(connection.Account);
                     EvaluateIntegrity(connection.Account);
+                    RecoverDeferredFlattens(connection.Account);
                 }
             }
             RaiseChanged();
@@ -684,6 +701,25 @@ namespace AllWin.Adapter.Core.Engine
             catch (PlatformException) { throw; }
             catch (Exception e) { throw new PlatformException("cancel failed: " + e.GetType().Name, e); }
         }
+
+        /// <summary>
+        /// Architect R1: a fill is "live" only if (a) the account's connection is up when we receive it, (b) the
+        /// connection was not lost between the entry's submission and now, and (c) it is at most
+        /// MaxBracketDelay old on the platform clock. Only a live fill may place or extend protection.
+        /// </summary>
+        private bool IsLiveFill(string account, PlatformExecution execution, CommandRecord? entry)
+        {
+            if (SafeAccounts().FirstOrDefault(a => a.Name == account)?.Connected != true) return false;
+            if (entry != null && entry.SubmitEpoch != ConnectionEpoch(account)) return false;
+            var fillTime = execution.PlatformTime ?? execution.Time;
+            if (fillTime == default) return false;
+            DateTime platformNow;
+            try { platformNow = _platform.GetPlatformTime(account); }
+            catch (PlatformException) { return false; }
+            return platformNow - fillTime <= _options.MaxBracketDelay;
+        }
+
+        private long ConnectionEpoch(string account) => _connectionEpochs.TryGetValue(account, out var epoch) ? epoch : 0;
 
         // ------------------------------------------------------------------ lookups
 

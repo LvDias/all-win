@@ -9,6 +9,9 @@ namespace AllWin.Adapter.Core.Store
         IReadOnlyDictionary<string, string> Collection(string name);
         string? Get(string collection, string key);
         void Commit(IReadOnlyList<StoreOp> ops);
+
+        /// <summary>An unconfirmed last write was dropped when the store was opened (shown in the plugin).</summary>
+        bool RecoveredFromTornWrite { get; }
     }
 
     /// <summary>Upsert (<see cref="Value"/> not null) or delete (null) of one key.</summary>
@@ -32,6 +35,8 @@ namespace AllWin.Adapter.Core.Store
         private readonly Dictionary<string, Dictionary<string, string>> _data = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
 
         public int Commits { get; private set; }
+
+        public bool RecoveredFromTornWrite => false;
 
         public IReadOnlyDictionary<string, string> Collection(string name) =>
             _data.TryGetValue(name, out var c) ? c : new Dictionary<string, string>();

@@ -14,6 +14,12 @@ namespace AllWin.Adapter.Core.Platform
     {
         IReadOnlyList<PlatformAccountInfo> GetAccounts();
 
+        /// <summary>
+        /// The platform's own clock for the account's connection (Playback: the simulated time). Execution
+        /// times are compared with it to tell a live fill from a late one (R1).
+        /// </summary>
+        DateTime GetPlatformTime(string account);
+
         /// <summary>Tick size of the contract, or null when the platform does not know it.</summary>
         decimal? GetTickSize(Instrument instrument);
 

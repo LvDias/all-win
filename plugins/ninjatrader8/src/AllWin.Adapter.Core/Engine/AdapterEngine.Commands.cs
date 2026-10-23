@@ -233,6 +233,7 @@ namespace AllWin.Adapter.Core.Engine
                 TimeInForce = place.Order.TimeInForce ?? TimeInForce.Day,
             };
             record.EntryQuantity = quantity;
+            record.SubmitEpoch = ConnectionEpoch(record.PlatformAccount);
             SubmitFor(record, request, capReason);
         }
 
@@ -256,6 +257,10 @@ namespace AllWin.Adapter.Core.Engine
                 case Adoption.Ambiguous:
                     Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderAmbiguousReference, role);
                     return;
+                case Adoption.LookupFailed:
+                    // QA L4: without the lookup we cannot rule out an earlier submission, so nothing is sent.
+                    Finish(record, false, ReportStatus.Rejected, ReasonCodes.CommandPlatformDisconnected, role);
+                    return;
             }
             try
             {
@@ -267,7 +272,8 @@ namespace AllWin.Adapter.Core.Engine
                 _log.Write(LogLevel.Error, "platform.submit_unknown", record.CommandId + ": " + e.InnerException?.GetType().Name);
                 switch (AdoptExisting(record.PlatformAccount, request.Name, liveOnly))
                 {
-                    case Adoption.None: Finish(record, false, ReportStatus.Unknown, null, role); break;
+                    case Adoption.None:
+                    case Adoption.LookupFailed: Finish(record, false, ReportStatus.Unknown, null, role); break;
                     case Adoption.Ambiguous: Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderAmbiguousReference, role); break;
                 }
             }

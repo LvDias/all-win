@@ -79,27 +79,56 @@ namespace AllWin.Adapter.Sim
 
         public IReadOnlyList<PlatformAccountInfo> GetAccounts()
         {
-            lock (_gate) return _accounts.Values.Select(a => Copy(a.Info)).ToList();
+            lock (_gate) return _accounts.Values.Where(a => a.Visible).Select(a => Copy(a.Info)).ToList();
         }
+
+        /// <summary>Hides an account from GetAccounts, like NT8 starting before the account's connection is up.</summary>
+        public void SetVisible(string account, bool visible)
+        {
+            lock (_gate) Account(account).Visible = visible;
+        }
+
+        public DateTime GetPlatformTime(string account)
+        {
+            lock (_gate)
+            {
+                Visible(account);
+                return _clock.UtcNow;
+            }
+        }
+
+        /// <summary>Executions are stamped this much in the past (a fill delivered late by the platform).</summary>
+        public TimeSpan ExecutionDelay { get; set; }
 
         public decimal? GetTickSize(Instrument instrument)
         {
             lock (_gate) return _tickSizes.TryGetValue(instrument.Symbol, out var t) ? t : (decimal?)null;
         }
 
+        /// <summary>The next GetOrders call fails (the platform cannot answer the lookup).</summary>
+        public bool FailNextGetOrders { get; set; }
+
         public IReadOnlyList<PlatformOrder> GetOrders(string account)
         {
-            lock (_gate) return Account(account).Orders.Values.Select(o => o.Clone()).ToList();
+            lock (_gate)
+            {
+                if (FailNextGetOrders)
+                {
+                    FailNextGetOrders = false;
+                    throw new PlatformException("simulated lookup failure");
+                }
+                return Visible(account).Orders.Values.Select(o => o.Clone()).ToList();
+            }
         }
 
         public IReadOnlyList<PlatformPosition> GetPositions(string account)
         {
-            lock (_gate) return Account(account).Positions.Values.Where(p => p.Quantity != 0).Select(Copy).ToList();
+            lock (_gate) return Visible(account).Positions.Values.Where(p => p.Quantity != 0).Select(Copy).ToList();
         }
 
         public IReadOnlyList<PlatformExecution> GetExecutions(string account)
         {
-            lock (_gate) return Account(account).Executions.Select(Copy).ToList();
+            lock (_gate) return Visible(account).Executions.Select(Copy).ToList();
         }
 
         public IReadOnlyList<string> Submit(string account, IReadOnlyList<OrderRequest> orders)
@@ -107,7 +136,7 @@ namespace AllWin.Adapter.Sim
             lock (_gate)
             {
                 CallLog.Add("submit " + string.Join(",", orders.Select(o => o.Name)));
-                var a = Account(account);
+                var a = Visible(account);
                 if (!a.Info.Connected) throw new PlatformException("account not connected");
                 if (CrashNextSubmit)
                 {
@@ -423,7 +452,7 @@ namespace AllWin.Adapter.Sim
                 Quantity = quantity,
                 Price = price,
                 Commission = 0.37m * quantity,
-                Time = _clock.UtcNow,
+                Time = _clock.UtcNow - ExecutionDelay,
             };
             a.Executions.Add(execution);
             ApplyToPosition(a, order.Instrument, order.Side, quantity, price);
@@ -485,6 +514,14 @@ namespace AllWin.Adapter.Sim
             EventSink(new ExecutionUpdateEvent { Account = account, Execution = copy });
         }
 
+        /// <summary>Platform API access: a hidden account does not exist for the caller (NT8 Account.All).</summary>
+        private SimAccount Visible(string name)
+        {
+            var account = Account(name);
+            if (!account.Visible) throw new PlatformException("account not available " + name);
+            return account;
+        }
+
         private SimAccount Account(string name)
         {
             if (!_accounts.TryGetValue(name, out var account)) throw new PlatformException("unknown account " + name);
@@ -508,6 +545,7 @@ namespace AllWin.Adapter.Sim
         {
             public SimAccount(PlatformAccountInfo info) => Info = info;
             public PlatformAccountInfo Info { get; }
+            public bool Visible { get; set; } = true;
             public Dictionary<string, PlatformOrder> Orders { get; } = new Dictionary<string, PlatformOrder>(StringComparer.Ordinal);
             public Dictionary<string, string> Oco { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
             public Dictionary<string, PlatformPosition> Positions { get; } = new Dictionary<string, PlatformPosition>(StringComparer.Ordinal);

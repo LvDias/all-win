@@ -135,7 +135,11 @@ namespace AllWin.Adapter.Core.Engine
             finally { _catchUp = false; }
 
             foreach (var record in _commands.Values.Where(r => r.Phase == CommandPhase.Dispatched && r.Command.Kind == CommandKind.Flatten).OrderBy(r => r.Seq).ToList())
-                RecoverFlatten(record);
+            {
+                // An account we cannot observe yet is decided when its connection is up (never on guesses).
+                if (IsObservable(record.PlatformAccount)) RecoverFlatten(record);
+                else _deferredFlattens.Add(record.CommandId);
+            }
             RaiseChanged();
         }
 
@@ -144,6 +148,16 @@ namespace AllWin.Adapter.Core.Engine
         /// Closing never sends another close order after a restart: we cannot tell whether the last one reached
         /// the platform, so the outcome is decided from what the platform shows.
         /// </summary>
+        private void RecoverDeferredFlattens(string account)
+        {
+            foreach (var id in _deferredFlattens.ToList())
+            {
+                if (!_commands.TryGetValue(id, out var record) || record.PlatformAccount != account) continue;
+                _deferredFlattens.Remove(id);
+                if (record.Phase == CommandPhase.Dispatched) RecoverFlatten(record);
+            }
+        }
+
         private void RecoverFlatten(CommandRecord record)
         {
             if (record.FlattenStep != FlattenStep.Closing)

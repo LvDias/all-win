@@ -148,6 +148,14 @@ namespace AllWin.Adapter.Core.Tests.Engine
             _file.Dispose();
             if (renewHandles) Platform.RenewHandles();
             _events.Clear(); // events of the dead process are lost
+            if (_corruptOnRestart)
+            {
+                _corruptOnRestart = false;
+                var journal = Path.Combine(_dir, FileJournalStore.JournalFile);
+                var bytes = File.ReadAllBytes(journal);
+                bytes[bytes.Length - 5] ^= 0x20;
+                File.WriteAllBytes(journal, bytes);
+            }
             _file = new FileJournalStore(_dir);
             _store = new FaultInjectingStore(_file);
             Engine = NewEngine();
@@ -243,6 +251,11 @@ namespace AllWin.Adapter.Core.Tests.Engine
             Cancel = new CancelSpec { Targets = { new OrderTarget { CommandId = target, ChildRole = role } } },
         };
 
+        /// <summary>Damages the last journal line, as a power loss during an unconfirmed write can (store closed first).</summary>
+        public void CorruptLastJournalLineOnNextRestart() => _corruptOnRestart = true;
+
+        private bool _corruptOnRestart;
+
         /// <summary>Drops platform events that are queued but not yet delivered (the process died first).</summary>
         public void LoseEvents() => _events.Clear();
 
@@ -251,6 +264,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             private readonly IDurableStore _inner;
             public FaultInjectingStore(IDurableStore inner) => _inner = inner;
             public bool FailNext { get; set; }
+            public bool RecoveredFromTornWrite => _inner.RecoveredFromTornWrite;
             public IReadOnlyDictionary<string, string> Collection(string name) => _inner.Collection(name);
             public string? Get(string collection, string key) => _inner.Get(collection, key);
 

@@ -34,6 +34,12 @@ namespace AllWin.Adapter.Core.Engine
         /// <summary>Bounded re-tries when the position changed while a flatten was closing it.</summary>
         public int FlattenMaxAttempts { get; set; } = 3;
 
+        /// <summary>
+        /// A fill older than this on the platform clock when we receive it is not "live": no bracket is placed
+        /// for it (Architect R1 (c); tuned by spike E4).
+        /// </summary>
+        public TimeSpan MaxBracketDelay { get; set; } = TimeSpan.FromSeconds(10);
+
         public TimeSpan PruneInterval { get; set; } = TimeSpan.FromHours(1);
 
         /// <summary>Defaults used before the first welcome (ADR-0004 §4).</summary>

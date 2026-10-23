@@ -67,6 +67,9 @@ namespace AllWin.Adapter.Core.Engine
         /// <summary>The bracket was deliberately not submitted after a catch-up fill (answer A): never later.</summary>
         public bool ProtectionWithheld { get; set; }
 
+        /// <summary>Connection-loss epoch of the account when the entry was submitted (R1 (b)).</summary>
+        public long SubmitEpoch { get; set; }
+
         // flatten
         public FlattenStep FlattenStep { get; set; }
         public int FlattenAttempts { get; set; }
