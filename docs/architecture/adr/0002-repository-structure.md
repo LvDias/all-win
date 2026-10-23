@@ -140,6 +140,7 @@ flowchart LR
 - **Versioning.**
   - Additive changes bump the minor version (`schema_version` "1.x", `protocol_version` "1.x", optional fields only).
   - Breaking changes create `v2/` beside `v1/`, and the Core supports both for a documented transition period.
+  - **Before the first production deploy** (no deployed version, no external client), a breaking change bumps only the contract's **document** major version and does not create `v2/` paths or a transition period. Example: HTTP contract 2.0.0 (passwordless sign-in, 2026-10-23) keeps `/api/v1`. After the first production deploy, the rule above applies (Maestro/Architect decision, 2026-10-23).
   - Every change is recorded as a versioned delta in the contract's `CHANGELOG.md`, and the Maestro notifies the affected owners.
 
 ## 5. Branches, worktrees and commits

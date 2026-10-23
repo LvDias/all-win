@@ -36,7 +36,7 @@
   - Generated with the OS CSPRNG by rejection-free index sampling over the 32 symbols.
   - Shown as `XXXX-XXXX`.
   - Input is checked and normalized before comparison:
-    - at most 32 characters (contract `maxLength`), printable ASCII only; anything else counts as a wrong attempt with the generic error;
+    - more than 32 characters is rejected by the contract schema (400 `common.invalid_request`, no attempt counted, nothing revealed); within 32, anything that is not printable ASCII counts as a wrong attempt with the generic error;
     - trim, remove spaces and `-`, uppercase, then map `O→0`, `I→1`, `L→1` (Crockford decoding), so the "ambiguous" characters never cause a wrong attempt;
     - the result must be exactly 8 characters of the alphabet, otherwise it is a wrong attempt.
 - **Normalization is format-specific.** The rules above (case folding, `-` and space removal, `O/I/L` mapping) apply only to format 1, which is then exactly 8 characters. Format 2 would be case-sensitive and may contain `-`, so it would only trim surrounding spaces. The contract carries `code` as a plain string (max 32 characters) and the Core normalizes it per the chosen format, so the schema and the contract do not change with U16. Tests must not depend on the format until U16 closes.
@@ -80,7 +80,7 @@
 
 - **Login request** (`identifier` + chosen channel) **always** answers `202` with a fresh `challenge_id`, whether or not the account exists or has that channel. Nothing is sent when it does not.
   - The visible response and timing are identical: delivery is detached (§2.3), and an unknown identifier still runs the same database statements up to the commit.
-- **Unknown identifiers carry the same challenge state** (R10). The `challenge_id` returned to the client is a **sealed token**: `uuid ‖ identifier HMAC ‖ device class ‖ issued_at`, authenticated with an HKDF-derived key `k_challenge` (info `allwin/challenge/v1`). A registered identifier also has a code row under that `uuid`; an unknown one has none. Every resend and verification first opens the token, so the per-identifier cooldown and counters (§4) apply to resends of unknown identifiers exactly as to registered ones. A forged or altered token gets the same answer as any other failure. With no row, a resend to an unknown identifier is counted and then sends nothing.
+- **Unknown identifiers carry the same challenge state** (R10). The `challenge_id` returned to the client is a **sealed token**: `uuid ‖ identifier HMAC ‖ device class ‖ issued_at`, authenticated with an HKDF-derived key `k_challenge` (info `allwin/challenge/v1`). A registered identifier also has a code row under that `uuid`; an unknown one has none. Every resend and verification first opens the token, so the per-identifier cooldown and counters (§4) apply to resends of unknown identifiers exactly as to registered ones. A forged or altered token gets the same answer as any other failure. With no row, a resend to an unknown identifier is counted and then sends nothing. **A resend's response and counting depend only on the token and the counters, never on the code row** (M1): a closed challenge (expired, used, 5 wrong attempts) and an unknown one both count, start the cooldown and get the same body (`expires_at` = now + 10 min, `resend_after_s` = 60).
 - **Verification** of a code that is wrong, expired, already used, invalidated by attempts, bound to another session, or whose challenge never had an account returns **one** error: `auth.code_invalid`. The UI always says "Código inválido ou expirado. Confira ou peça um novo." Telling "attempts exhausted" apart from "wrong" would let an attacker probe whether an account exists (an unknown challenge never reaches 5).
   - The UI tracks the attempts it made itself to suggest a resend after the 5th failure.
 - **Send limits are keyed by HMAC(k_ident, normalized identifier) (§2.3) for every identifier**, existing or not (U10's mechanism). A limit therefore triggers on an unregistered e-mail exactly as on a registered one. Counting only the rows of existing users would reveal who is registered: they would hit `429` and unknown addresses never would.
@@ -130,6 +130,7 @@
   - It is renewed on use.
   - Max-Age is 400 days (the browser cap). The row is deleted when unseen for 13 months (Lastro's proposal, accepted).
 - **The device cookie is set when sign-up completes** (the sign-up creates the first session and its device) and at every sign-in from a browser without one.
+- **Shared browser** (C4): only an unknown or revoked cookie value is replaced. A value valid for **another** user is kept, and this user gets their own `known_device` row with the same value, so each user of a shared browser keeps it as a known device.
 - **A new device** is a successful sign-in whose request carries no valid device cookie **of that user**. Only the sign-up session itself sends no notice (AC-9); any later sign-in from another browser, including the first one after sign-up, is a new device.
 - **"Forget this device"** (user action in Sessions/Devices) revokes the device and ends the sessions bound to it (`end_reason = device_revoked`).
 - **A revoked device's cookie counts as no cookie** (R11). The next sign-in from that browser is a new device: it gets a **new** random device value and a new `known_device` row; the revoked row is never reactivated. The same applies after "sign out everywhere". The response clears or replaces the stale cookie.
@@ -167,6 +168,8 @@
 | **Admin** actions: issue an invitation, recovery for a lost channel (§9) | **must** | An admin session controls other users' accounts |
 | Turn enforcement **off** on an account; raise maximum position size | recommended, not a must | Increases loss exposure but grants no persistent access. Q35 (a) leaves them without step-up. I recommend including them (both are rare), but the user decides |
 | Decline an opt-in; revoke a source token; sign out (everywhere) | no | Reduce access only |
+
+**Pending Q35, the three musts are enforced by a Core setting** (`step_up.q35_persistence_actions`, default on; contract `x-step-up: conditional`); the contract's action list is a superset, so the user's answer changes the setting, not the contract. The setting is **server configuration only** (environment or config file), never an admin, UI or database toggle; missing or invalid means **on** (fail-closed); its value is logged at startup.
 
 The three musts are what separates "someone used my open browser for a while" from "someone keeps access to my trading after I sign out". Without them, step-up on the three user actions can be bypassed in practice.
 
@@ -231,9 +234,11 @@ The three musts are what separates "someone used my open browser for a while" fr
   - a resend invalidates only its own challenge;
   - step-up code bound to session + action + target;
   - a code sent to a replaced destination is dead;
-  - normalization (`o`→`0`, `l`→`1`, spaces, hyphen); non-ASCII input, more than 32 characters and fewer than 8 after normalization are wrong attempts.
+  - normalization (`o`→`0`, `l`→`1`, spaces, hyphen); more than 32 characters is 400 with no attempt counted; non-ASCII and fewer than 8 after normalization are wrong attempts.
 - **Enumeration tests:**
   - a resend within 60 s gets the same answer (`429` + `Retry-After`) for a registered and an unregistered identifier, and so do the per-identifier counters (R10);
+  - 5 wrong attempts then a resend, and an expired challenge then a resend, give identical responses and counting for a registered and an unregistered identifier (M1);
+  - `requestStepUp` on another user's target gets 404 and sends nothing;
   - a forged or altered `challenge_id` gets the generic failure;
   - a channel change (or WhatsApp add) to a value owned by another account and one to a free value show the same delivery state (`sent`) and the same responses until the final confirmation;
   - identical status, body shape and timing (statistical tolerance) for login requests on registered and unregistered identifiers;
