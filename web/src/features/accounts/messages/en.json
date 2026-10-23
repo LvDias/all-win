@@ -1,9 +1,0 @@
-{
-  "accounts": {
-    "form": {
-      "steps": { "firm": "Firm and plan", "optIn": "Automated orders" },
-      "stepUpDescription": "accept automated orders on account “{name}”",
-      "stepUpDescriptionEdit": "accept automated orders on this account"
-    }
-  }
-}
