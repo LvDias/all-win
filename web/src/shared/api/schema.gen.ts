@@ -1622,7 +1622,7 @@ export interface operations {
                     "application/json": {
                         /** @description otpauth://totp/All%20Win:<email>?secret=…&issuer=All%20Win */
                         otpauth_uri: string;
-                        /** @description Base32 */
+                        /** @description Base32, for manual entry. */
                         secret: string;
                         expires_at: components["schemas"]["Timestamp"];
                     };
@@ -1772,7 +1772,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Changed; current session rotated */
+            /** @description Changed; current session rotated, other sessions ended. */
             204: {
                 headers: {
                     [name: string]: unknown;
