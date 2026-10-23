@@ -54,6 +54,17 @@ Routing screen behavior for accounts that do not accept automation is specified 
 
 ---
 
+### 1.1 What the web ships with S5 now, and what waits for S13 / S16 (PO scope cut, 2026-10-23)
+
+**S5 now:** AC-1 with the **free-text path** (AC-15, Q40 a: firm, plan and phase typed; the stance is `unknown`, so the explicit opt-in of AC-7 / AC-10 is required with the generic warning), AC-2, AC-3 (maximum position typed, mandatory), AC-4 … AC-14. AC-9b (copy opt-in) belongs to S19.
+
+**Not now. The client must not send these fields** (all optional or nullable in contract 5.0.0+):
+- preset selection and `rule_values` — S16 (AC-1, AC-2 fill-from-preset, AC-5, AC-6 not confirmed, AC-7 manual-only). S5 AC-16 (review pending) fires when S16 later attaches a preset. Free editing of the copied risk rules is S13 AC-1 / AC-7; until S13 ships, S16 only fills, restores and edits the maximum position (S16 AC-2 sequencing note).
+- `commission_per_contract_side` — S13 AC-11 (prefill from the preset is S16 AC-12; used by S21 AC-7 / Q71).
+- `evaluation_start` / `evaluation_earned_before` — S13b AC-4; they enter the create form only when S13b ships (both optional, S13 spec §12.6 Q-S13b-1, accepted by the PO).
+
+The sections below that draw the preset picker, preset-driven fields, evaluation fields or commission describe the **target** form for those later slices; the Frontend implements them with their slice, not with S5.
+
 ## 2. Global rules for this slice
 
 - **Isolation (X-2):** an account id that is not the user's yields the same `ErrorState` as a non-existent id (`common.not_found`). Never distinguish.
@@ -159,7 +170,7 @@ The form is long by the F§10.1 tests (up to 15 controls, 5 sections, and the ch
 
 Help under *Máximo de contratos*: "Limite de contratos que o All Win envia a esta conta. Instruções acima disso são cortadas e registradas." (vision §8). Under *Multiplicador*: "Quantidade executada = quantidade da instrução × multiplicador." (S7 AC-3).
 
-For a **real** account under "Tamanho", on an **exact tie** between two standard sizes (S6 **Q60**, provisional) the form shows a required `RadioGroup` "Copiar o perfil de stop/alvo de qual tamanho?" with the two candidates (from `getNearestProfileSize`; nothing preselected; sent as `profile_size`). Otherwise a read-only line: "Perfil de stop/alvo inicial: tamanho padrão mais próximo ({size})." (value from the Core; the profile itself is S6).
+For any account (**real or prop**) whose size is not a standard size, on an **exact tie** between two standard sizes (S6 **Q60 c / Q73 b**, decided; contract 5.1.1) the form shows a required `RadioGroup` "Copiar o perfil de stop/alvo de qual tamanho?" with the two candidates (from `getNearestProfileSize`; nothing preselected; sent as `profile_size`). Otherwise a read-only line: "Perfil de stop/alvo inicial: tamanho padrão mais próximo ({size})." (value from the Core; the profile itself is S6).
 
 ### 4.3 Step 4 "Conta na plataforma" (link, AC-1)
 
