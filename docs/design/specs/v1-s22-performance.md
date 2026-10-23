@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S22](../../product/release-1/slice-plan.md) AC-1, AC-2 (slice-plan rev. 7); vision §10. Consumes the data of S21; filters and formats are shared with it.
 > **Foundations and components:** [foundations.md](../foundations.md) (F§6 numbers and time, F§7 status, F§10 feedback, F§4 "charts get their palette in this slice"), [components.md](../components.md) (C§3 `EmptyState`, C§4 `DataTable`). **Related:** [S21](v1-s21-trades.md) (trade list, filters, `—` for missing MAE/MFE), [S10](v1-s10-audit-log.md).
-> **Contract:** no HTTP contract for metrics yet. §8 lists what the screen needs. Operation names are **design proposals**; the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/performance.yaml` and the notes [s22-performance](../../architecture/contracts/s22-performance.md). Operation `getPerformance`. **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Every metric is computed by the Core from stored trades (the plugin computed MAE/MFE/P&L per trade, S21 AC-2). QA owns the checks.
 > **Scope note (slice plan):** the metric set is an *assumption refined with the Designer*; **changes beyond the list in AC-1 go to the user**. This spec stays inside AC-1. Extra metrics someone may want (profit factor, best/worst trade, average win and loss, per-day curve) are **not drawn** until the user decides **Q59**.
 

@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3, on the Aquarela spec rev. 2) · **Status:** proposed, pending PO review · **Revision:** 3 · **Date:** 2026-10-23
 > **Slice:** [V1-S5](../../product/release-1/slice-plan.md) AC-1 … AC-11 (slice-plan rev. 7), with touch points in S7 (routing), S10 (audit), S16 (presets) and S19 (followers).
 > **Foundations:** [foundations.md](../foundations.md). Section numbers like "F§7.2" point there.
-> **Contract:** [openapi.yaml](../../../contracts/http/openapi.yaml) 1.1.0 (`setAccountOptIn`, `OptInChoiceRequest`, `OptInChoices`, `OptInState`, `FirmStance`), [s5-design-deltas.md](../../architecture/contracts/s5-design-deltas.md) (D1–D16), [wave1-data-model.md §5.2–§5.3](../../architecture/data/wave1-data-model.md). **Where this spec and the contract differ, the contract wins.** The rest of the S5 HTTP contract (list/create/update/lifecycle/delete) does not exist yet: §14 lists what these screens need so the Architect can close it. Operation names in this spec for those are **design proposals**.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/accounts.yaml` and the notes [s5-accounts](../../architecture/contracts/s5-accounts.md). Operations `listAccounts`, `createAccount`, `getAccount`, `updateAccount`, `archiveAccount`, `getAccountArchiveImpact`, `setAccountLifecycle`, `setAccountOptIn`; also [s5-design-deltas.md](../../architecture/contracts/s5-design-deltas.md) (D1–D16). **Where this spec and the contract differ, the contract wins.**
 > **Rev. 3 (2026-10-23):**
 > - Deltas D1–D16 applied (names, atomic create-with-choice, five `FirmStance` values, conditional step-up, Q24/Q25/Q26 approved, provisional text-change trigger).
 > - Removed: the "saved without a choice" state, its alert and `Escolher agora`, and the Architect question about it.
@@ -406,14 +406,14 @@ D7: the two routing codes replace the former text-only skip reason. Entries are 
 |---|---|
 | `createAccount` (with `opt_ins`, idempotency key) | One save; `x-step-up: conditional` (D9). 422 pointers listed in §4.5 |
 | `updateAccount` (with `row_version`, `opt_ins`) | 409 `common.version_conflict`, 409 `accounts.rule_version_changed`, 422 `accounts.opt_in_required` |
-| `setAccountOptIn` | In the contract (1.1.0) |
+| `setAccountOptIn` | In the contract (3.4.1) |
 | `setAccountLifecycle` (`pause` / `resume` / `disable` / `enable`) | audited with previous state |
 | `archiveAccount` | refuses with `accounts.delete_open_position` |
-| `bindPlatformAccount` / unbind | may be part of update; clash → `accounts.platform_account_taken` (without revealing the other user's data) |
+| Platform-account binding | not a separate operation: the `/binding` field of `createAccount` / `updateAccount` (natural key connection + platform account). Errors: 409 `accounts.platform_account_taken`, 409 `accounts.binding_open_position` (Q38, provisional), 422 `accounts.platform_account_unknown`, 422 `accounts.platform_account_kind_not_allowed` |
 
 **Events (SSE):** account `lifecycle_state`, opt-in `state`, connection status and out-of-sync flag changes, so list and detail update without reload.
 
-**Error codes the UI maps** (proposed names where new): `accounts.name_taken`, `accounts.max_position_exceeds_preset`, `accounts.multiplier_invalid`, `accounts.platform_account_taken`, `accounts.delete_open_position`, `accounts.opt_in_required` (pointer), `accounts.opt_in_not_applicable`, `accounts.rule_version_changed` (+ `current_rule_version_id`), `common.version_conflict`, `common.not_found`, `auth.code_invalid`.
+**Error codes the UI maps** (proposed names where new): `accounts.name_taken`, `accounts.max_position_exceeds_preset`, a fractional or zero multiplier is a schema error: 400 `common.invalid_request` with pointer `/multiplier`, `accounts.platform_account_taken`, `accounts.delete_open_position`, `accounts.opt_in_required` (pointer), `accounts.opt_in_not_applicable`, `accounts.rule_version_changed` (+ `current_rule_version_id`), `common.version_conflict`, `common.not_found`, `auth.code_invalid`.
 
 ---
 
@@ -460,4 +460,4 @@ D7: the two routing codes replace the former text-only skip reason. Entries are 
 | Q41 (was Q-S5-4) | `pending_review` when a preset is attached | Yes |
 | Q42 (was Q-S5-10) | "Material" text change (D14) | Flagged by the publisher of the version, with a reason shown to the user |
 
-**Still open (Architect):** Q-S5-12 the state name for a copy opt-in of a non-follower (no card in the UI either way); Q-S5-13 `accounts.platform_unbound` and the other proposed error codes (§14).
+**Still open (Architect):** Q-S5-12 the state name for a copy opt-in of a non-follower (no card in the UI either way); Q-S5-13 `routing.platform_unbound` and the other proposed error codes (§14).

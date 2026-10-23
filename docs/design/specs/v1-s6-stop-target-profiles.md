@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S6](../../product/release-1/slice-plan.md) AC-1 … AC-5 (slice-plan rev. 7); touch points: S5 (accounts, sizes), S8 (shared mode, executions), S10 (audit of the rounding).
 > **Foundations:** [foundations.md](../foundations.md) (F§6.2 distance units, F§6.3 number input) · **Related:** [S5 spec](v1-s5-automation-opt-in.md) (nav §0, account detail tabs, account form).
-> **Contract:** no HTTP contract for profiles yet; §9 lists what the screens need. Tables: `accounts.default_bracket_profile`, `accounts.account_bracket_profile` ([data model §5.4](../../architecture/data/wave1-data-model.md)). Normalization to whole ticks: ADR-0004 §5. Operation names here are **design proposals**; the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/profiles.yaml` and the notes [s6-profiles](../../architecture/contracts/s6-profiles.md). Operations `listInstruments`, `listDefaultProfiles`, `putDefaultProfile`, `listAccountProfiles`, `putAccountProfile`, `restoreAccountProfile`, `getNearestProfileSize`, `previewProfile`; normalization to whole ticks: ADR-0004 §5. **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Tick conversion, rounding and audit are the Core's (Backend). QA owns the checks.
 
 ---

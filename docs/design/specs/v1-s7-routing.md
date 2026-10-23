@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S7](../../product/release-1/slice-plan.md) AC-1 … AC-8 (slice-plan rev. 7); touch points: S5 (opt-ins), S3 (sources), S10 (audit), S11/S14 (gates), S16 (stances, manual-only firms), S19 (followers, V1.1).
 > **Foundations:** [foundations.md](../foundations.md) · **Related specs:** [S5](v1-s5-automation-opt-in.md) (account states, `OptInSection`, nav tree §0), [S3](v1-s3-access-sources-pairing.md) (sources).
-> **Contract:** `listSources` / `Source.is_automated` in [openapi.yaml](../../../contracts/http/openapi.yaml); `routing.subscription` in [wave1-data-model.md §5.5](../../architecture/data/wave1-data-model.md); gate codes in [ADR-0003 §4.1](../../architecture/adr/0003-instruction-contract-v1.md). The routing HTTP contract does not exist yet; §10 lists what the screens need, and operation names here are **design proposals**. Where this spec and the contract differ, the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/routing.yaml` and the notes [s7-routing](../../architecture/contracts/s7-routing.md). Operations `listRoutes`, `createRoute`, `updateRoute`, `deleteRoute`, `listRouteCandidates`; `listSources` / `Source.is_automated` in the main file; `routing.subscription` in [wave1-data-model.md §5.5](../../architecture/data/wave1-data-model.md). **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Gate logic and audit are the Core's (Backend). QA owns the checks.
 
 ---
@@ -119,7 +119,7 @@ For an **automated** source (`is_automated`), an account whose `automation` opt-
 |---|---|---|
 | `routing.automation_not_accepted` + `declined` | "Esta conta não aceita ordens automatizadas." / "This account doesn't accept automated orders." | `Alterar na conta` → account detail, Automação card |
 | `routing.automation_not_accepted` + `pending_review` | "Escolha de automação pendente nesta conta." / "Automation choice pending on this account." | `Revisar` → opens the S5 review dialog |
-| `accounts.platform_unbound` (proposed) | "Esta conta não está vinculada a uma conta do NinjaTrader." | `Vincular` → account edit |
+| `routing.platform_unbound` (proposed) | "Esta conta não está vinculada a uma conta do NinjaTrader." | `Vincular` → account edit |
 | `accounts.archived` | not listed | — |
 
 The control is **disabled but focusable** (`aria-disabled="true"`), with `Lock`; the reason is inline on touch layouts and a `Tooltip` on pointer layouts (also on focus and tap, F§9), and is the control's `aria-describedby`.
@@ -145,7 +145,7 @@ Compliance rule (S7 AC-6, S5 AC-11): nothing restarts by itself when an account 
 | `routing.risk_blocked` | "Limite de risco atingido: novas entradas bloqueadas." | Exits still go through. Shown when S14 ships |
 | `routing.automation_not_accepted` | as §5.1 | |
 | `routing.copy_not_accepted` | follower routes only (S19) | |
-| `accounts.platform_unbound` | "Sem conta do NinjaTrader vinculada." | |
+| `routing.platform_unbound` | "Sem conta do NinjaTrader vinculada." | |
 | connection disconnected | "NinjaTrader desconectado." | live state from S3/S11 |
 
 The status is live (SSE). When the stream is not fresh the cell shows `Sem dados recentes` (F§7.2), never a stale `Recebe`.
@@ -209,7 +209,7 @@ Read-only reverse view: one row per source that has a route for this account: so
 
 | Action | Notes |
 |---|---|
-| `createRoute` (source, account, signal types, enabled) | 422 `routing.signal_types_required` (pointer `/signal_types`); `routing.route_exists`; `routing.automation_not_accepted` / `routing.platform_unbound` when not eligible (race) |
+| `createRoute` (source, account, signal types, enabled) | 422 400 `common.invalid_request` with pointer `/signal_types` (pointer `/signal_types`); `routing.route_exists`; `routing.automation_not_accepted` / `routing.platform_unbound` when not eligible (race) |
 | `updateRoute` (types, enabled, `row_version`) | `common.version_conflict` |
 | `deleteRoute` | |
 | `copy` opt-in with `createRoute` for followers | S5 spec §5.6 / S19 |

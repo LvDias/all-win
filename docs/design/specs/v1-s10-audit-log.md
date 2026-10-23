@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S10](../../product/release-1/slice-plan.md) AC-1 … AC-4 (slice-plan rev. 7); cross-cutting X-2, X-4, X-5, X-6, X-8. Entry points from S3 (AC-16 events), S5, S6, S7, S11, S14, S15, S18.
 > **Foundations:** [foundations.md](../foundations.md) (F§6.4 time, F§7 status, F§10 feedback) · **Related:** [S5](v1-s5-automation-opt-in.md) §13, [S6](v1-s6-stop-target-profiles.md) §8, [S7](v1-s7-routing.md) §9 (events they emit).
-> **Contract:** no HTTP contract yet for reading the audit. Storage: `audit.audit_entry` ([data model §6.4](../../architecture/data/wave1-data-model.md)); codes are contract-owned, clients translate them (ADR-0001 §9). Reason codes: [ADR-0003 §4](../../architecture/adr/0003-instruction-contract-v1.md); ingest codes: [s1-webhook-ingest.md](../../architecture/contracts/s1-webhook-ingest.md). §9 lists what the screens need. Operation names are **design proposals**; the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/audit.yaml` and the notes [s10-audit](../../architecture/contracts/s10-audit.md). Operations `listActivity`, `getActivityFilterOptions`, `getActivityEntry`, `getInstructionTimeline`; storage `audit.audit_entry` ([data model §6.4](../../architecture/data/wave1-data-model.md)). **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Writing entries, redaction and retention are the Core's (Backend). QA owns the checks.
 
 ---
@@ -204,7 +204,7 @@ Texts use `{placeholders}` filled from `details`. Codes marked *(proposal)* are 
 | risk | `risk.warning` / `risk.limit_reached` *(S13/S14)* | {account}: alerta de 80 % de {limit} / limite {limit} atingido | … | limit, value, percent |
 | risk | `risk.flatten` / `risk.blocked` *(S15)* | {account}: posições fechadas e conta bloqueada até {time} | … | limit, value, reset time |
 | risk | `risk.unblocked` *(S15, PO)* | {account} liberada no reset | {account} released at the reset | reset time, clock (real or simulated) |
-| sync | `sync.disconnected_by_user` | {account}: plugin desconectado por você{ com posição aberta; o All Win não está acompanhando esta conta} | {account}: plugin disconnected by you{ with an open position; All Win is not tracking this account} | had open position / command in flight (yes/no), time; audited in both cases |
+| sync | `sync.disconnected_by_user` **[Proposal: not yet in the contract; added with the 1.3 / S11 delta]** | {account}: plugin desconectado por você{ com posição aberta; o All Win não está acompanhando esta conta} | {account}: plugin disconnected by you{ with an open position; All Win is not tracking this account} | had open position / command in flight (yes/no), time; audited in both cases |
 | connection | `connection.status_changed` | Conexão {name}: {status} | Connection {name}: {status} | previous status |
 | connection | `sync.*` (`sync.bracket_incomplete`, `sync.disconnected_in_trade`, …) | per S11 spec | | |
 | security | `security.signed_in` | Entrada na conta ({channel}){; novo dispositivo} | Signed in ({channel}){; new device} | channel, `new_device`, device label (coarse browser/OS family, never a full user agent) |
@@ -250,7 +250,7 @@ Rules for the catalog: skip/refusal texts always name the account; texts for exi
 - **Open codes:** `code` is a pattern, not an enum, so a new slice's code never breaks an older client: it renders "Evento {code}" (§2). `KnownAuditCode` is the list the i18n parity check (QA) iterates over; `sync.*` (S11), `risk.*` (S13–S15) and `notifications.*` (S18) join with their own contracts.
 - **SSE** `audit.entry_recorded` carries no details (`entry_id`, `category`, `outcome`, `account_id`, `instruction_id`); the client refetches. It drives the "novas entradas" banner and the live timeline.
 - Isolation: unknown, foreign and purged ids give the same 404; foreign ids in filters match nothing.
-- CSV export is not in V1 (Q44).
+- CSV export is not in V1 (**Q44, provisional**: the user decides).
 
 ## 10. Decisions and open questions
 

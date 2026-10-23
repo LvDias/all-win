@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S21](../../product/release-1/slice-plan.md) AC-1 … AC-4 (slice-plan rev. 7); vision §10; consumer: S22 (metrics). Touch points: S2/S5 (accounts, capture by the plugin), S7 (source and signal type), S10 (audit).
 > **Foundations and components:** [foundations.md](../foundations.md) (F§6 numbers and time, F§7 status, F§10 feedback), [components.md](../components.md) (C§3 `EmptyState`, C§4 `DataTable`). **Related:** [S10](v1-s10-audit-log.md) (filters and time rules), [S6](v1-s6-stop-target-profiles.md) (price/tick input rules), [S18](v1-s18-notifications.md).
-> **Contract:** no HTTP contract for trades yet and no trade message in ADR-0004. §9 lists what the screens need. Operation names are **design proposals**; the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/trades.yaml` and the notes [s21-trades](../../architecture/contracts/s21-trades.md). Operations `listTrades`, `getTrade`, `getTradesSummary`, `createManualTrade`, `updateManualTrade`, `deleteManualTrade`, `previewManualTrade`. **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Capture and metric computation are the plugin's (AC-2); storing, filtering and totals are the Core's. QA owns the checks.
 
 ---

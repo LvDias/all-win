@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S15](../../product/release-1/slice-plan.md) AC-1 … AC-7 (slice-plan rev. 7); vision §9 "Automatic enforcement". Web part only: the plugin panel (what the user sees in NinjaTrader, AC-6) is the Plugin Engineer's; this spec lists the data it shows (§9).
 > **Foundations and components:** [foundations.md](../foundations.md) (F§7.1 risk states, F§7.2 account states, F§6.4 time), [components.md](../components.md) (C§5 `RiskBanner`, C§6–C§8 notifications). **Related:** [S13](v1-s13-risk.md) (Risk tab, meters, rules; this spec adds the enforcement card and the blocked state), [S10](v1-s10-audit-log.md), [S18](v1-s18-notifications.md), [S5](v1-s5-automation-opt-in.md) §12 (step-up mechanics).
-> **Contract:** no HTTP contract for enforcement yet. ADR-0004 carries the versioned `limits` and the enforcement `execution_report`s (`origin: local_enforcement`) and `risk_event`. §9 lists what the screens need. Operation names are **design proposals**; the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/risk.yaml` states that the enforcement controls are S15's; the enforcement operations are **not yet in the contract** (§9 lists what the screens need; names are **design proposals**). ADR-0004 carries the versioned `limits` and the enforcement `execution_report`s (`origin: local_enforcement`) and `risk_event`. **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend) and plugin (Plugin Engineer). The Core decides the state; the plugin enforces. QA owns the checks.
 > **Simulation only (X-7):** all verification uses Sim/Playback accounts.
 
@@ -61,7 +61,7 @@
 |---|---|---|
 | Account not bound to a NinjaTrader account | "Vincule a conta do NinjaTrader para ligar a aplicação automática." + link | S15 AC-2: the plugin enforces, so a binding is required **[provisional until Q37]** |
 | Manual-only firm (S16 AC-7) | "Esta firma é só de acompanhamento manual: o All Win não envia nem fecha ordens nesta conta." | PO decided |
-| No applicable limit (no daily loss limit and no drawdown set) | "Defina um limite de perda diária ou de drawdown para ligar a aplicação automática." + link `Definir regras` (S13) | **[Provisional, Q64 rec. (a)]**; turning on requires at least one applicable limit |
+| No applicable limit (no daily loss limit and no drawdown set) | "Defina um limite de perda diária ou de drawdown para ligar a aplicação automática." + link `Definir regras` (S13) | **[Provisional, Q64 rec. (b)]**; turning on requires at least one applicable limit |
 | Account currently **blocked** (turn-off only) | "Conta bloqueada até {time}: só dá para desligar depois do reset. O All Win continua recusando novas entradas." | PO decided (S15 AC-3, S14 AC-1) |
 | Data stale / error | switch disabled, `Sem dados recentes` | never toggle blind |
 

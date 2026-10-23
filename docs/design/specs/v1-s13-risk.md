@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S13](../../product/release-1/slice-plan.md) AC-1 … AC-6 (slice-plan rev. 7); touch points: S5 (account tabs, list), S16 (preset values, provenance), S14 (Core gate), S15 (enforcement, blocks), S18 (notifications), S10 (audit), S11 (data freshness).
 > **Foundations:** [foundations.md](../foundations.md): F§6 numbers and time, **F§7.1 risk states**, **F§7.3 `RiskMeter`**, F§7.4 provenance, F§10 feedback · **Related:** [S5](v1-s5-automation-opt-in.md) (§0 tabs, §8 detail), [S16](v1-s16-presets.md) (§8.1 edited values, §5 not-confirmed).
-> **Contract:** no HTTP contract for risk rules/state yet. Data model preview: `risk.account_limits` ([data model §5.6](../../architecture/data/wave1-data-model.md)); limits shape: ADR-0004 `limits`. §9 lists what the screens need. Operation names are **design proposals**; the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/risk.yaml` and the notes [s13-risk](../../architecture/contracts/s13-risk.md). Typed state, rules, preview (`previewAccountRiskRules`), `previewable` limits; ADR-0004 `limits`/`risk_state` for the plugin. **Where this spec and the contract differ, the contract wins.** Operation names below that differ are from the draft: `getAccountRisk`, `listRiskSummaries`, `getAccountRiskRules`, `putAccountRiskRules`, `previewAccountRiskRules`.
 > **Surfaces:** Web (Frontend). The plugin's own warnings and panels (S13 AC-3, S15) are the Plugin Engineer's. State computation, resets and warnings are the Core's (Backend). QA owns the checks.
 > **Not in this spec:** the enforcement switch and the flatten/block behavior (S15), and the Core refusal gate (S14): they appear here only as read-only status and explanations.
 
@@ -105,7 +105,7 @@
 | Ao atingir / When reached | `RadioGroup` of two cards, **"Só avisar" preselected** | `profit_target_on_reach`: `notify` (default, Q3 decided) / `flatten_and_block` |
 
 - "Só avisar": "Você recebe um aviso uma vez quando a meta for atingida. A conta continua operando."
-- "Fechar posições e bloquear até o reset": "Ao atingir a meta, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset, como em um limite de perda." **[Provisional, Q49 rec. (a)]** The option is **unavailable while enforcement is off** on this account: `aria-disabled` (focusable, not removed) with the reason inline and in `aria-describedby`: "Disponível quando a aplicação automática estiver ligada nesta conta." / "Available when automatic enforcement is on for this account." + link `Ligar aplicação automática` (S15 control). If enforcement is later turned off while this option is saved, the target falls back to "só avisar" (S15 §4.2, Q63 provisional; closes Q-S13-8).
+- "Fechar posições e bloquear até o reset": "Ao atingir a meta, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset, como em um limite de perda." **[Provisional, Q49 rec. (b)]** The option is **unavailable while enforcement is off** on this account: `aria-disabled` (focusable, not removed) with the reason inline and in `aria-describedby`: "Disponível quando a aplicação automática estiver ligada nesta conta." / "Available when automatic enforcement is on for this account." + link `Ligar aplicação automática` (S15 control). If enforcement is later turned off while this option is saved, the target falls back to "só avisar" (S15 §4.2, Q63 provisional; closes Q-S13-8).
 - The radio group is the one place in this spec where a default is preselected, because Q3 decided a default; the opt-ins of S5 are different (no default).
 
 ### 4.3 Section "Regra de consistência" (prop accounts only)
@@ -129,7 +129,7 @@ Read-only block: "Reset do dia: {time} ({zone})" with source. Prop: from the pre
 | Client-side invalid | Inline errors, focus first invalid, summary at ≥ 3 |
 | Server 422 with `pointer` | Map to the field (`/daily_loss_limit`, `/drawdown_type`, `/profit_target_on_reach`, …) and focus it |
 | Unresolved not-confirmed required value | "Resolva este valor para salvar." on the field |
-| Tightening (a stricter value) | **Applies at once** **[Provisional, Q48 rec. (a)]**. The form says so under the field: "Um limite mais apertado vale na hora." |
+| Tightening (a stricter value) | **Applies at once** **[Provisional, Q48 rec. (b)]**. The form says so under the field: "Um limite mais apertado vale na hora." |
 | Loosening (a looser value) | **Applies only from the next trading day.** Under the field: "Um limite mais folgado vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the current limit and a line "Novo limite {value} a partir de {date-time zone}" (`pending_changes` from the Core) |
 | New value already exceeded today (the Core returns `would_be_reached`) | `AlertDialog` before saving: "Com este limite a conta já passou do limite hoje. O All Win vai parar de aceitar novas entradas agora{; com a aplicação automática ligada, o plugin fecha as posições e bloqueia a conta até o reset}. Saídas continuam permitidas." Buttons `Voltar` (focused) / `Salvar e aplicar agora`. The dialog is shown only when the Core says the change would be effective now (tightening) |
 | Conflict (`common.version_conflict`) | "Estas regras mudaram em outro lugar." + `Recarregar` |
@@ -212,7 +212,7 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 
 **Events (SSE):** risk state changes per account (state, percent, stale), block/unblock, trading-day reset. Mobile background tabs refetch on return (F§9).
 
-**Codes the UI maps:** `risk.rules_invalid` (pointer), `risk.drawdown_incomplete` (type and amount must go together), `risk.required_value_unresolved` (pointer), `common.version_conflict` (names proposed).
+**Codes the UI maps (contract 3.4.1):** 422 `risk.daily_loss_required` (pointer `/rules/daily_loss_limit`), `risk.amount_invalid` (the field), `risk.required_value_unresolved` (pointer), `risk.flatten_requires_enforcement` (pointer `/rules/profit_target_on_reach`), `risk.reset_not_editable`; a half-filled drawdown is a schema error (400 `common.invalid_request` with the pointer, since type and amount are one object); `common.version_conflict`.
 
 ---
 

@@ -3,7 +3,8 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S16](../../product/release-1/slice-plan.md) AC-1 … AC-9 (slice-plan rev. 7); touch points: S5 (account form, opt-ins, Q40–Q42), S7 (stance in routing, manual-only), S13 (rules editing), S18 (notification).
 > **Foundations:** [foundations.md](../foundations.md) (F§7.4 provenance, `FirmRuleQuote`, `ConflictPicker`; F§5 terms) · **Related:** [S5 spec](v1-s5-automation-opt-in.md) §5, §6, §9; [S7 spec](v1-s7-routing.md) §6, §7.
-> **Data source:** [preset-research-format.md](../../product/presets/preset-research-format.md) (fields and YAML), research files in `docs/product/presets/research/`, conflicts in [r1](../../product/presets/r1-conflicts-for-user.md) / [r2](../../product/presets/r2-conflicts-for-user.md). No HTTP contract for presets exists yet; §9 lists what the screens need. Operation names are **design proposals**; the contract wins.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/presets.yaml` and the notes [s16-presets.md](../../architecture/contracts/s16-presets.md): `listFirms`, `getFirm`, `listFirmReleases`, `getPresetVersion`, `getOptInRules`, `getRuleVersion`, `getAccountPreset`, `getAccountPresetDiff`, `applyPresetVersion`, `restorePresetValue`. **Where this spec and the contract differ, the contract wins.**
+> **Data source:** [preset-research-format.md](../../product/presets/preset-research-format.md) (fields and YAML), research files in `docs/product/presets/research/`, conflicts in [r1](../../product/presets/r1-conflicts-for-user.md) / [r2](../../product/presets/r2-conflicts-for-user.md). 
 > **Surfaces:** Web (Frontend). Preset data, versioning and diffs are the Core's (Backend). QA owns the checks.
 > **Not legal advice.** All Win shows the firm's own text with source and date; summaries are labeled as All Win's reading (vision §12). Presets are never invented (vision §9).
 
@@ -186,7 +187,7 @@ On any screen that shows an account rule copied from a preset (S13 risk tab, acc
 
 **Events (SSE):** new preset version available for the user's accounts (to refresh the notice).
 
-**Codes the UI maps:** `presets.version_stale` (or reuse `accounts.rule_version_changed`), `presets.required_field_unresolved` (pointer to the field), `accounts.max_position_exceeds_preset`, `common.version_conflict`, `common.not_found` (names proposed).
+**Codes the UI maps:** `presets.version_superseded` (409 on apply when a newer version appeared) and `presets.version_not_newer` (422); `accounts.rule_version_changed` for the opt-in rule version, `presets.required_field_unresolved` (pointer to the field), `accounts.max_position_exceeds_preset`, `common.version_conflict`, `common.not_found` (names proposed).
 
 ---
 
