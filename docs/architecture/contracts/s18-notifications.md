@@ -21,7 +21,11 @@ SSE: `notification.created` and `notification.updated` (full item + `unread`), a
 ## 2. Decisions
 
 1. **One state, two channels.** The field names are the adapter protocol 1.3 ones (Esquadro): `notification_id`, `revision` (monotonic, upsert by higher revision), `code`, `category`, `severity`, `account_id`, `params`, `count`, `source_event_ids`, `created_at` / `updated_at` / `read_at`, `target`. The Web adds only `account_name` (snapshot) and `audit_entry_id`.
-2. **Severity:** `info`, `success`, `warning`, `danger`, `critical`, on both channels, agreed with Esquadro. `critical` is the ADRs' top severity and drives the `CriticalBanner` (Q51: it stays until read). **In V1 so far no registry code is `critical`:** the banner gets its producers with S11 (`sync.disconnected_in_trade`, `sync.bracket_double_fill`) and S15 (Crivo N1). The plugin may map `success` → `info` and `danger` → `warning` in its own UI; the protocol carries the five values.
+2. **Severity:** `info`, `success`, `warning`, `danger`, `critical`, on both channels, agreed with Esquadro. `critical` is the ADRs' top severity and drives the `CriticalBanner` (Q51: it stays until read). **In V1 so far no registry code is `critical`.** The banner gets exactly these producers (U19 and Q27; PO and Code Review, 2026-10-23):
+   - Q27: `sync.bracket_double_fill` (S11). Both legs filled, and the position created by the orphan leg was flattened.
+   - U19: a flatten that failed after cancelling protection, so that an open position lost all or part of it. Any origin counts: close or reverse (including Q75), the Q27 orphan-leg flatten, or local enforcement (S15). Its code comes with S15.
+
+   A failed flatten whose protection stays intact is `danger`. `sync.disconnected_in_trade` is `danger`. The unprotected-bracket and reactive-block producers are `critical` only in the U19 case. In every case the account is out of sync. The plugin may map `success` → `info` and `danger` → `warning` in its own UI; the protocol carries the five values.
 3. **The registry is the single code list** (owner: Compasso; 1.3 references it).
    - Each code has `category`, `severity` (or `severity_by_params` for `connection.status_changed`: `disconnected` → danger, `outdated` → warning, other statuses not notified), `grouping`, `target` and `params`.
    - `params` are the audit `details` schemas where the code is an audit code (`DetailsRoutingDecision`, `DetailsRiskState`, `DetailsConnectionStatus`), so the Web and the plugin render the same fields as S10. They are their own schemas for the two per-firm aggregates (`accounts.opt_in_suspended`, `presets.new_version`).
@@ -47,7 +51,13 @@ SSE: `notification.created` and `notification.updated` (full item + `unread`), a
 - Index hints (Crivo N3):
   - the unread counter is a partial index `(user_id, severity) WHERE read_at IS NULL`;
   - `group_key` is defined by the Core from the registry grouping: `code|account_id|trading_day` for `account_trading_day`, `code|firm_id|release` for `firm_release`, and none for `none`.
-- The producer is the audit consumer (outbox), which applies the registry's grouping and `reopen_on_occurrence`. The 1.3 snapshot and the HTTP list come from the same table.
+- **Producer pattern (5.2.0, Esquadro, confirmed by Compasso):** every module that emits a notifiable fact writes one outbox event, in the SAME transaction as the audit event it puts in the outbox.
+  - The event type is the registry code (e.g. `routing.reverse_close_only`).
+  - The payload carries `user_id`, `account_id` when the code has one, `target {kind, id}`, `occurred_at`, `audit_event_id`, and `params`, valid against the code's `params` schema (`params.schema.json`).
+  - `audit_event_id` is the event id of the audit event emitted in that same transaction. The producer does not know the `audit_entry_id`: the audit consumer writes that row later. S18 links the notification to its audit row through `audit.audit_entry.source_event_id` when needed.
+  - The gateway, routing, risk, accounts and presets all follow it. Where the notification's params differ from the audit details (`reverse_close_only`, `out_of_sync_flatten`), only the event carries them.
+- The consumer is S18 (`notifications`). It applies the registry's grouping (`group_key`) and `reopen_on_occurrence`, and it is idempotent by event id. Until S18 lands, the event types stay in the outbox allowlist with `StartPolicy::FromNow` and consumer slice S18. S18 starts from now and sends only new notices; notifications from before S18 are never sent afterwards. The history is the audit: its event leaves in the same transaction, so nothing is lost for the user. A producer never writes only the audit.
+- The 1.3 snapshot and the HTTP list come from the same table.
 
 ## 4. 5.0.0: `routing.reverse_close_only` (Q74; registry 1.1.0)
 

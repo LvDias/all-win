@@ -63,6 +63,7 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
 
 - **Esquadro (S3), done:** the 14 `security.*` codes and their `details` (`DetailsSecurity*`) are in `KnownAuditCode` / `AuditDetailsByCode`. Masked values always contain `*`; no code, challenge, token, cookie, or unmasked e-mail or number.
 - **S11 / S13–S15 / S18 contracts:** `sync.*`, `risk.*`, `notifications.*`, same procedure.
+- **5.2.0 (S7):** `execution.command_requested` (outcome `info`; routing commits an exit command the gateway has not sent yet), `routing.out_of_sync_flatten` / `routing.nothing_to_reduce` notifications, and `routing.instrument_unavailable` (outcome `skipped`).
 
 ## 5. 4.3.0 additions (Esquadro, from the S3 implementation)
 

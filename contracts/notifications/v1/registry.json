@@ -1,6 +1,6 @@
 {
   "$comment": "Notification registry v1 (V1-S18). Single source of codes for the Web (HTTP modules/notifications.yaml) and the plugin (adapter protocol 1.3). Owner: Software Architect (Compasso). params names a $defs entry of params.schema.json, which check_openapi.py generates from the HTTP bundle (NotificationParamsByCode). Texts live in each client's pt-BR/en catalog; drift test: every code has a key in both languages in both clients. Receivers never refuse an unknown code or params that fail their copy: they render a generic text with code and severity, keep the item, its count and read state, and ack the frame (ADR-0004 §9, note 1.3.2). A new severity, target.kind or category is still a protocol change.",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "params_schema": "params.schema.json",
   "severities": [
     "info",
@@ -71,13 +71,39 @@
       "params": "DetailsRoutingDecision",
       "reopen_on_occurrence": false
     },
+    "routing.instrument_unavailable": {
+      "category": "routing",
+      "severity": "warning",
+      "grouping": "account_trading_day",
+      "target": "instruction",
+      "params": "DetailsRoutingDecision",
+      "reopen_on_occurrence": false,
+      "rule": "5.2.0 (Esquadro): the instrument is in the catalog but has no active contract at the decision; params carry instrument_symbol"
+    },
+    "routing.nothing_to_reduce": {
+      "category": "routing",
+      "severity": "warning",
+      "grouping": "account_trading_day",
+      "target": "instruction",
+      "params": "DetailsRoutingDecision",
+      "reopen_on_occurrence": false,
+      "rule": "Q76: notified when the account is out of sync, read when the notification is produced; if the sync state is unavailable at that moment, it IS notified (more transparency, never less; ADR-0003 r4 §4.1). On an in-sync account it stays audit only (a benign race with a stop/target fill). A reduce is never sent as a flatten"
+    },
     "routing.reverse_close_only": {
       "category": "routing",
       "severity": "danger",
       "grouping": "none",
       "target": "instruction",
       "params": "ParamsReverseCloseOnly",
-      "rule": "Q74: always sent, one per occurrence, for every gate including routing.limits_pending; for an open leg that expired at routing (routing.expired, 5.1.0); and for an open leg that expired in the gateway queue under the ADR-0004 §5 reverse exception (routing.expired, 5.1.1). Replaces the gate's grouped notification for that occurrence"
+      "rule": "Q74: always sent, one per occurrence, for every gate including routing.limits_pending; for an open leg that expired at routing (routing.expired, 5.1.0); and for an open leg that expired in the gateway queue under the ADR-0004 §5 reverse exception (routing.expired, 5.1.1). Replaces the gate's grouped notification for that occurrence. Q75 (expected_flat, out of sync): not sent at the decision; when the flatten is terminal, sent with reason_code routing.out_of_sync and closed_qty/closed_side from its fills if it filled; on command.already_flat routing.out_of_sync_flatten is sent instead"
+    },
+    "routing.out_of_sync_flatten": {
+      "category": "routing",
+      "severity": "danger",
+      "grouping": "none",
+      "target": "instruction",
+      "params": "ParamsOutOfSyncFlatten",
+      "rule": "Q75: once per flatten sent on an out-of-sync account with a flat expected position that ends in a terminal success (filled or command.already_flat), except a reverse that filled (routing.reverse_close_only). The text says that any working orders on the contract were cancelled, manual ones included"
     },
     "risk.warning": {
       "category": "risk",

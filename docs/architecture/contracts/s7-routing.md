@@ -16,7 +16,7 @@
 
 SSE: `route.changed` (create, update, delete). Status changes caused by the account, the opt-in, sync, risk or the connection arrive as `account.changed` / `connection.status_changed`; the client then refetches `listRoutes`.
 
-Step-up (3.0.0, QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on, server configuration only, missing/invalid = on): `createRoute` / `updateRoute` need `step_up` (action `route_enable`, target = the account) when a route from an automated source is switched on for an account whose automation was not accepted with a step-up (a real account, or an opt-in that is `not_required`). Otherwise a stolen session could start automated trading without a fresh code. Follower routes with the copy choice (`account_opt_in_accept`, target = the follower) come with S19 (V1.1).
+Step-up (3.0.0, QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on, server configuration only, missing/invalid = on): `createRoute` / `updateRoute` need `step_up` (action `route_enable`, target = the account) whenever a route is switched on, whatever the source and the opt-in. A stolen session cannot start trading without a fresh code. 5.2.0 removes the QA Security M1 narrowing (automated sources only, and none after an opt-in accepted with a code). The user decided Q87 (a), 2026-10-24: there is no narrowing, so every switch-on asks. Follower routes with the copy choice (`account_opt_in_accept`, target = the follower) come with S19 (V1.1).
 
 ## 2. Decisions
 
@@ -97,10 +97,22 @@ Step-up (3.0.0, QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_per
 ## 9. 5.1.0
 
 - An open leg of a `reverse` with an opposite position that expires **at routing** (the decision sees the TTL exceeded, e.g. a late webhook) closes only: the close leg runs (exits never expire), and the open is skipped with `routing.expired`. Outcome `capped` (audit `partial`), `reverse_closed_qty`, notification `routing.reverse_close_only` with `reason_code: routing.expired`. Flat → outcome `expired`. Already on the reverse side → `routing.position_conflict`, since the position check comes first. ADR-0003 gets the same sentence in Esquadro's next delta.
-- An open leg that expires **later, in the gateway queue** (connection down, close executed on reconnect) is not a routing decision. The decision stays `routed`, and ADR-0004 §5 applies, including "Exception: the opening leg of a reverse" (5.1.1, ADR-0004 r3). The open is held until the flatten in its `depends_on` is terminal. If it then expires, it becomes `expired` and is audited as `execution.expired`. It does **not** flag the account out of sync only when all of these hold:
+- An open leg that expires **later, in the gateway queue** (connection down, close executed on reconnect) is not a routing decision. The decision stays `routed`, and ADR-0004 §5 applies, including "Exception: the opening leg of a reverse" (5.1.1, ADR-0004 r3). An open leg found expired before it was sent is held until the flatten in its `depends_on` is terminal. It then becomes `expired` and is audited as `execution.expired`. It does **not** flag the account out of sync only when all of these hold:
   - it never left the Core (`pending`, never sent);
-  - the flatten succeeded with a proven flat position: `already_flat`, or for `filled` the latest report with `position_after` shows 0 and no later report exists;
+  - the flatten succeeded with a proven flat position: `already_flat` with no later report for that account and contract, or for `filled` the latest report with `position_after` shows 0 and no later report exists;
   - the account has no other sync reason.
 
   Then the user gets `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
 - `reverse_closed_qty` / `closed_qty` = abs(position) read at the decision: the quantity the close leg is sent to flatten. The executed result is in the execution entries.
+
+## 10. 5.2.0
+
+- **Q75 (b):** on an out-of-sync account a flat expected position is not trusted for exits (ADR-0003 r4 §4.1/§4.2):
+  - `close`, expected flat → flatten sent, decision `routed`, `expected_flat: true`; never `routing.nothing_to_close`;
+  - barred `reverse` with gate `routing.out_of_sync`, expected flat → close leg sent as a flatten, the open never created; decision `capped` (audit `partial`), `executed_qty` 0, `expected_flat: true`, no `reverse_closed_qty`;
+  - other bars, expected flat → skipped with the gate code (the account is in sync); already on the reverse side → `routing.position_conflict`, also out of sync.
+- **Notification (4b A):** none at the decision. When the flatten is terminal: filled → `routing.reverse_close_only` (`reason_code: routing.out_of_sync`, `closed_qty` / `closed_side` from the fills); `command.already_flat` → `routing.out_of_sync_flatten` (`action: reverse`, `result: already_flat`), and the grouped `routing.out_of_sync` notification covers the skipped open. A `close` (filled or `already_flat`) → `routing.out_of_sync_flatten`. One notification per Q75 flatten with a terminal success; its text says that any working orders on the contract were cancelled, manual ones included (ADR-0004 §4 r4; that `already_flat` does not clear out of sync is §6). A real position on the reverse side that the Core believed flat is closed (`closed_side` = that side). Rejected, `unknown` or no terminal report → ADR-0004 (already out of sync).
+- `command.already_flat` neither clears `out_of_sync` nor adds a sync reason; fills of such a flatten update the expected position as usual (ADR-0004 r4 §5).
+- **Close and gate 6 (r4 final, Esmeril M1):** a `close` against a flat expected position waits for gate 6 and never expires: out of sync gives a flatten (Q75), in sync gives `nothing_to_close`, and with no answer it stays undecided while the consumer retries. Never a flatten without the sync state. A `close` against a non-flat position is always a flatten, with no gates. Test: close, flat expected, sync port down → no decision and nothing sent; when the port returns, the outcome follows the sync state.
+- **Q76 (a):** `reduce` with a flat expected position → `routing.nothing_to_reduce`, also out of sync, never a flatten. Notified (registry 1.3.0) when the account is out of sync at the time of the notification; when the sync state is unavailable it is notified anyway (ADR-0003 r4 §4.1).
+- Tests (S7): the Q75 close and reverse cases (filled → `reverse_close_only` with the filled quantity; `already_flat` → `out_of_sync_flatten`, no `reverse_close_only`; a close → `out_of_sync_flatten` with either result), Q76 notified only out of sync.

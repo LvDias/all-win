@@ -42,14 +42,15 @@ paths:
         be routable for that source (`listRouteCandidates`); a race is answered with the same code the
         picker showed. Audited as `routing.subscription_changed` (`created`).
         Copy routes of a follower (S19, V1.1) are not created here.
-        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
-        server configuration only, missing/invalid = on): when the source is automated, the route is
-        enabled by this request, and the account's automation was not accepted with a step-up (a real
-        account, or an opt-in that is `not_required`), the body must carry `step_up` for action
-        `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
-        `auth.code_invalid` (`StepUpFailed`).
+        Step-up (Q35 decided 2026-10-23, S3 AC-10; setting `step_up.q35_persistence_actions` on, server
+        configuration only, missing/invalid = on): when the route is enabled by this request
+        (`is_enabled` true), whatever the source and the account's opt-in, the body must carry `step_up`
+        for action `route_enable` (target = the account). The code is fresh, with no reuse window. Missing
+        → 403 `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). (5.2.0: the
+        earlier QA Security M1 narrowing, automated sources only and not after an opt-in accepted with a
+        code, is removed; the user confirmed in Q87 (a), 2026-10-24, that every switch-on asks.)
       x-step-up: conditional
-      x-step-up-when: source is automated and is_enabled and the account's automation was not accepted with step-up (Q35 decided, setting on)
+      x-step-up-when: is_enabled is true (Q35 decided, setting on)
       requestBody:
         required: true
         content:
@@ -95,14 +96,14 @@ paths:
         authentication, Origin and schema: 404 → 409 `routing.source_revoked` → 409
         `common.version_conflict` → 422. Audited as `routing.subscription_changed` (`updated`, `enabled`
         or `disabled`, with previous and new values).
-        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
-        server configuration only, missing/invalid = on): when the source is automated, the route goes
-        from off to on by this request, and the account's automation was not accepted with a step-up (a real
-        account, or an opt-in that is `not_required`), the body must carry `step_up` for action
-        `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
-        `auth.code_invalid` (`StepUpFailed`).
+        Step-up (Q35 decided 2026-10-23, S3 AC-10; setting `step_up.q35_persistence_actions` on, server
+        configuration only, missing/invalid = on): when the route goes from off to on by this request,
+        whatever the source and the account's opt-in, the body must carry `step_up` for action
+        `route_enable` (target = the account). The code is fresh, with no reuse window. Missing → 403
+        `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). Other edits, and
+        switching off, need none. (5.2.0: the M1 narrowing is removed; see `createRoute`.)
       x-step-up: conditional
-      x-step-up-when: source is automated and is_enabled changes false → true and the account's automation was not accepted with step-up (Q35 decided, setting on)
+      x-step-up-when: is_enabled changes false → true (Q35 decided, setting on)
       parameters:
         - { $ref: '#/components/parameters/RouteId' }
       requestBody:

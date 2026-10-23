@@ -158,17 +158,18 @@ components:
         - `received` — instruction accepted at ingress;
         - `routed` — routing decision to send to an account (full quantity);
         - `executed` — an order filled;
-        - `partial` — quantity capped at the maximum position, or a partial fill;
+        - `partial` — quantity capped at the maximum position; a `reverse` that runs only its close leg
+          because a gate skipped the open (Q74/Q75, the entry carries the gate code); or a partial fill;
         - `skipped` — not sent by a configuration rule (duplicate, signal type not selected, opt-in not
           accepted, account inactive, no stop/target profile, limits not yet derived, maximum already
-          reached, nothing to close);
+          reached, nothing to close, nothing to reduce, no active contract for the instrument);
         - `refused` — not sent by a protective gate (out of sync, risk block, position conflict);
         - `rejected` — refused by validation (ingress) or by the platform;
         - `expired` — command TTL exceeded, not executed;
         - `unknown` — the order's state could not be determined after a recovery (the account is
           flagged out of sync);
         - `info` — everything else (configuration, connection, security, order received/working/cancelled,
-          bracket calculation, command sent). No badge in the UI.
+          bracket calculation, command requested, command sent). No badge in the UI.
     AuditSignalType:
       type: string
       enum: [trigger, trade_plan, nq_trigger, master_account]
@@ -203,7 +204,9 @@ components:
         - routing.nothing_to_close
         - routing.nothing_to_reduce
         - routing.no_correlated_order
+        - routing.instrument_unavailable
         - routing.expired
+        - execution.command_requested
         - execution.command_sent
         - execution.bracket_calculated
         - execution.order_received
@@ -493,17 +496,48 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Every `routing.*` decision code (routed, capped, skipped, refused, expired). Q74: for a `reverse`
-        the position check (ADR-0003 §4.2) runs before the entry gates. On an account barred for entries
-        (`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`), or with no room
-        (`max_position_reached`, derived M = 0): position opposite → only the close leg runs, and the
+        `routing.instrument_unavailable` (5.2.0, Esquadro): the instrument is in the catalog but has no active
+        contract at the decision instant. Outcome `skipped` (a configuration rule), with `instrument_symbol`.
+        It applies only at the decision; an instrument outside the catalog stays `ingress.unsupported_instrument`.
+        Every `routing.*` decision code. A routing decision is `routed` (sent in full), `capped` (sent with
+        less than requested: a capped quantity, or a reverse's close leg only; audited with outcome
+        `partial`), `skipped`, `refused` or `expired` (AuditOutcome). One routing decision entry per
+        (instruction, account). **Close and gate 6** (ADR-0003 §4.1 r4 final, Crivo C1; Esmeril M1):
+        - a `close` against a NON-flat expected position is always a flatten, with no gates 6–9;
+        - a `close` against a FLAT expected position waits for gate 6. Out of sync gives the Q75 flatten;
+          in sync gives `routing.nothing_to_close`. Without an answer from gate 6, the instruction stays
+          undecided and the consumer retries. As an exit it NEVER expires. It is never sent as a flatten
+          without knowing the sync state, which would cancel manual orders on an in-sync account (Q75-1
+          was accepted only for out-of-sync accounts).
+        **Two-step reverse** (ADR-0003 §4.1 r4; its close leg never waits for gates 6–9; a reverse against a FLAT expected position waits for gate 6, like the close):
+        with the expected position opposite, the close leg is committed at once. The same commit writes
+        `execution.command_requested` (kind `flatten`, step of the reverse's close leg, same
+        `instruction_id`, `is_exit` true, actor system, outcome `info`, `safe_to_display` true), so the
+        automatic flatten is visible immediately, even while the gateway or the connection is down. The
+        gateway's `execution.command_sent` follows on the real send. The opening is decided
+        in a second, idempotent step when the gates answer, or as `routing.expired` when the TTL runs out,
+        so it is bounded by the TTL. Only then is the single routing entry written, with the final outcome:
+        `routed`, or close-only `partial` with the gate code. There is no separate routing entry for the
+        close leg (5.2.0, Ferro / Lastro). Q74: for a `reverse`
+        the position check (ADR-0003 §4.2) runs before the entry gates. Q74 has four bars (`out_of_sync`,
+        `risk_blocked`, `limits_pending`, `no_bracket_profile`). Two more cases give the same close-only
+        outcome by rules that already existed, and they are not Q74 bars: no room, `max_position_reached`
+        (ADR-0003 §4.2, open `min(Q, M)` with derived M = 0); and the open leg expired at routing,
+        `routing.expired` (T1, below). On a barred account: position opposite → only the close leg runs, and the
         entry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0
         for the open, and `reverse_closed_qty`; flat → skipped with the gate code, no
-        `reverse_closed_qty`; already on the reverse side → `routing.position_conflict` (rejected and
-        notified, never a flatten). The same holds when the open leg of a reverse with an opposite
+        `reverse_closed_qty`, except for `routing.out_of_sync` (Q75, 5.2.0): the flat position is not
+        trusted, so the close leg is sent as a flatten and the open is never created; decision `capped`,
+        the entry carries `routing.out_of_sync`, outcome `partial`, `executed_qty` = 0, `expected_flat`
+        true and no `reverse_closed_qty` (the closed quantity is unknown at the decision); already on the
+        reverse side → `routing.position_conflict` (rejected and notified, never a flatten, also when out
+        of sync). Q75 also applies to a `close`: on an out-of-sync account with a flat expected position it
+        is sent as a flatten (decision `routed`, `expected_flat` true), and `routing.nothing_to_close`
+        never applies to an out-of-sync account. A `reduce` is never turned into a flatten (Q76):
+        `routing.nothing_to_reduce`, also when out of sync. The same holds when the open leg of a reverse with an opposite
         position expires at routing (gate `expired`, TTL; 5.1.0): the close leg runs (no expiry; audited as
         late if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty` = 0 for
-        the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening leg of a reverse", 5.1.1): the open is held until the flatten it depends on is terminal; if it then expires it is `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left the Core, (2) the flatten succeeded with a proven flat position (`already_flat`, or for `filled` the latest report with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
+        the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening leg of a reverse", 5.1.1): an open leg found expired before it was sent is held until the flatten it depends on is terminal; it is then `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left the Core, (2) the flatten succeeded with a proven flat position (`already_flat` with no later report for that account and contract, or for `filled` the latest report with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
       properties:
         sizing: { $ref: '#/components/schemas/DetailsSizing' }
         lifecycle_state: { type: string, enum: [paused, disabled] }
@@ -520,9 +554,30 @@ components:
           items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         limits_version: { type: integer, minimum: 1, description: With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006). }
         reverse_closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'Q74: abs(position) read at the decision, i.e. the quantity the close leg of a reverse is sent to flatten when its open leg is skipped with this code. The executed result is in the execution entries.' }
+        expected_flat: { type: boolean, description: 'Q75 (5.2.0): true when a flatten was sent while the expected position was flat, because the account is out of sync (a `close`, decision `routed`, or the close leg of a reverse, `routing.out_of_sync` capped). The adapter cancels every working order on the contract (manual ones included) and checks the real position; the result is in the execution entries (`execution.cancelled` + `command.already_flat`, or fills) and is notified once (`routing.out_of_sync_flatten`, or `routing.reverse_close_only` for a reverse that filled). Absent otherwise.' }
         ttl_ms: { type: integer, minimum: 1 }
         expiry_base: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$', description: 'The instruction''s instrument (required with `routing.instrument_unavailable`).' }
+        gates_unknown:
+          type: boolean
+          description: |
+            5.2.0 (Esquadro, S7 N1). True when the TTL ran out before the account gates 6–9 (out of sync,
+            risk, limits, bracket profile) answered. It applies only to entries, since only entries have a
+            TTL. The decision then uses only what is known: the action rules that do not depend on those
+            gates (`routing.position_conflict`, `routing.nothing_to_reduce`), or else `routing.expired`. It
+            never names a gate that did not answer; the S10 text says "os gates de conta não responderam a
+            tempo". `routing.nothing_to_close` is never decided with `gates_unknown` (see the close rule).
+            Absent otherwise.
+        contract_month:
+          type: string
+          pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+          description: |
+            5.2.0 (Esquadro, S7 D2): the contract month the decision resolved (YYYY-MM). The instruction's
+            month wins when present; otherwise it is the rollover catalog's active contract at the decision
+            instant (P5). The resolved (symbol, month) is used for the position, the gates, the brackets and
+            the commands.
     DetailsCommandSent:
+      description: '`execution.command_sent` (the gateway; committed before the socket write) and `execution.command_requested` (5.2.0, Esquadro: routing committed an EXIT command that the gateway has not sent yet, so it is visible while it waits, even with the gateway or the connection down. Every exit command routing commits gets one: `close`, `reduce`, `cancel`, protective `modify`, and the close leg of a reverse. Audit only, actor system, outcome `info`, `is_exit` true; the gateway''s `execution.command_sent` follows on the real send; `expires_at` absent, since exits carry none).'
       type: object
       additionalProperties: false
       required: [step, kind]
@@ -927,7 +982,9 @@ components:
         routing.nothing_to_close: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.nothing_to_reduce: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.no_correlated_order: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.instrument_unavailable: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.expired: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        execution.command_requested: { $ref: '#/components/schemas/DetailsCommandSent' }
         execution.command_sent: { $ref: '#/components/schemas/DetailsCommandSent' }
         execution.bracket_calculated: { $ref: '#/components/schemas/DetailsBracketCalculated' }
         execution.order_received: { $ref: '#/components/schemas/DetailsExecution' }
