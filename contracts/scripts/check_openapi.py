@@ -18,7 +18,8 @@
 # - every example validates against its schema (operations and components/responses);
 # - contract conventions: root session security, 401 on session operations, 500 everywhere,
 #   400 where there is input, 403 on state-changing /api/v1 operations and on x-step-up operations,
-#   x-step-up values, ingress has no 400/401/403; no null values in the bundle either.
+#   x-step-up values and its body proof (optional step_up: StepUpProof, POST/PUT only), ingress has no
+#   400/401/403; no null values in the bundle either.
 # Usage: python3 contracts/scripts/check_openapi.py contracts/http/openapi.yaml [--write]
 import os
 import sys
@@ -308,6 +309,14 @@ def main(p, write=False):
                 errs.append(f'{where}: x-step-up-when is required exactly when x-step-up is conditional')
             if '403' not in codes:
                 errs.append(f'{where}: x-step-up operation without 403')
+            if m not in ('post', 'put'):
+                errs.append(f'{where}: x-step-up operation must be POST or PUT (the proof travels in the body)')
+            body = resolve(doc, ((op.get('requestBody') or {}).get('content') or {}).get('application/json', {}).get('schema') or {})
+            props = body.get('properties') or {}
+            if (props.get('step_up') or {}).get('$ref') != '#/components/schemas/StepUpProof':
+                errs.append(f'{where}: x-step-up operation body needs a step_up property ($ref StepUpProof)')
+            if 'step_up' in (body.get('required') or []):
+                errs.append(f'{where}: step_up must stay optional in the schema (missing proof is 403, not 400)')
 
     print(f'operations: {len(ops)}, schemas checked: {len(schemas)}, examples checked: {len(examples)}')
     print('\n'.join(errs) if errs else 'OPENAPI CHECK OK')
