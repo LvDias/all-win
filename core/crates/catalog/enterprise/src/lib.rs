@@ -1,0 +1,1 @@
+//! `catalog` module — enterprise layer.
