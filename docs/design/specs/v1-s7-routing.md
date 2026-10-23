@@ -209,7 +209,7 @@ Read-only reverse view: one row per source that has a route for this account: so
 
 | Action | Notes |
 |---|---|
-| `createRoute` (source, account, signal types, enabled) | 422 400 `common.invalid_request` with pointer `/signal_types` (pointer `/signal_types`); `routing.route_exists`; `routing.automation_not_accepted` / `routing.platform_unbound` when not eligible (race) |
+| `createRoute` (source, account, signal types, enabled) | 400 `common.invalid_request` with pointer `/signal_types` (empty list); 409 `routing.route_exists`; 422 `routing.automation_not_accepted` / `routing.platform_unbound` when not eligible (race) |
 | `updateRoute` (types, enabled, `row_version`) | `common.version_conflict` |
 | `deleteRoute` | |
 | `copy` opt-in with `createRoute` for followers | S5 spec §5.6 / S19 |
