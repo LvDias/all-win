@@ -1,6 +1,13 @@
 # ADR-0003 — Standard instruction contract v1 and correlation identifiers
 
-- **Status:** Accepted (2026-10-23) — accepted by the user with answers P1–P5 (§10). Acceptance deltas: §4.1 automation and copy opt-in gates (option A, Q24–Q26) and per-(source, account) signal filter; §7 token format; §5 command step codes
+- **Status:** Accepted (2026-10-23) — accepted by the user with answers P1–P5 (§10). Delta 2026-10-23 (S7):
+  - §4.1 gate order;
+  - `routing.platform_unbound` ([ADR-0008](0008-account-platform-binding.md));
+  - `routing.no_bracket_profile` (Q43);
+  - Q74, a reverse on an account barred for entries (user decision);
+  - §4.2, a reverse when the maximum position is 0.
+
+  Acceptance deltas: §4.1 automation and copy opt-in gates (option A, Q24–Q26) and per-(source, account) signal filter; §7 token format; §5 command step codes
 - **Owner:** Software Architect
 - **Answers:** product-vision.md §6 (draft fields) and §13 open question #2 (identifiers for modify/cancel and master replication).
 - **Implements user decisions:** A3 (secret in the URL, masked in every log), Q1 (conflict semantics), Q5 (followers' stop/target from their own profile), Q14 (out-of-sync gate), Q16 (command TTL; protocol details in ADR-0004).
@@ -63,17 +70,36 @@ For each target account selected by routing, the Core runs the steps below in or
 
 ### 4.1 Account gates
 
-| Gate | Applies to | Code |
-|---|---|---|
-| Account disabled or paused | all actions | `routing.account_inactive` |
-| Automated source (`tradingview`, `signal_engine`) and the account's **automation** opt-in is required but not `chosen`/`accepted` (option A; required when the firm's automation stance is forbidden, conditional, unknown or not confirmed, Q25; `pending_review` after a stance/text change, Q26) | all actions from automated sources | `routing.automation_not_accepted` |
-| Master-account source and the follower's **copy** opt-in is required but not `chosen`/`accepted` (Q24, same applicability and Q26 rule) | all actions from that master | `routing.copy_not_accepted` |
-| Signal type not selected for this (source, account) subscription (Q-A4, stored as `routing.subscription`) | all actions | `routing.signal_type_not_selected` |
-| Account flagged out of sync (Q14: stops until the user clears it) | position-increasing actions (`buy`/`sell` with `open`, `reverse`, `modify` of an entry) | `routing.out_of_sync` |
-| Risk block (account reached a limit; also with enforcement off, Q2) | position-increasing actions | `routing.risk_blocked` |
-| Command TTL would be exceeded before delivery | all actions | `routing.expired` (see ADR-0004) |
+Gates are evaluated **in the order of this table**. The first gate that fails gives the audited code. The gates for all actions come first, then the entry gates, then the action rules (§4.2), and the TTL check of entries comes last. For a `reverse`, the position check of §4.2 runs before the entry gates (Q74 below).
+
+| # | Gate | Applies to | Code |
+|---|---|---|---|
+| 1 | Account disabled or paused | all actions | `routing.account_inactive` |
+| 2 | Account has no platform binding, or its bound venue account no longer exists ([ADR-0008](0008-account-platform-binding.md) §3.5): nothing can be delivered | all actions | `routing.platform_unbound` |
+| 3 | Automated source (`tradingview`, `signal_engine`) and the account's **automation** opt-in is required but not `chosen`/`accepted` (option A; required when the firm's automation stance is forbidden, conditional, unknown or not confirmed, Q25; `pending_review` after a stance/text change, Q26) | all actions from automated sources | `routing.automation_not_accepted` |
+| 4 | Master-account source and the follower's **copy** opt-in is required but not `chosen`/`accepted` (Q24, same applicability and Q26 rule) | all actions from that master | `routing.copy_not_accepted` |
+| 5 | Signal type not selected for this (source, account) subscription (Q-A4, stored as `routing.subscription`) | all actions | `routing.signal_type_not_selected` |
+| 6 | Account flagged out of sync (Q14: stops until the user clears it) | position-increasing actions (`buy`/`sell` with `open`, the opening leg of `reverse`, `modify` of an entry) | `routing.out_of_sync` |
+| 7 | Risk block (account reached a limit; also with enforcement off, Q2) | position-increasing actions | `routing.risk_blocked` |
+| 8 | Account limits not yet derived for the current input version (no limits row, or `derived_from_version` < `limits_version`; ADR-0006 §3.3) | position-increasing actions | `routing.limits_pending` (audited, no alert) |
+| 9 | No stop/target profile for this account and instrument (S6, Q43) | position-increasing actions | `routing.no_bracket_profile` |
+| — | Action rules | per action | §4.2 |
+| 10 | Command TTL would be exceeded before delivery | position-increasing actions only (entries, the opening leg of a `reverse`, `modify` of an entry) | `routing.expired` (see ADR-0004) |
+
+- An action that cannot be clearly classified as entry or exit counts as position-increasing (fail closed).
+- **Exits never expire at routing** (ADR-0004 T1): `close`, `reduce`, `cancel`, a protective `modify` and the closing leg of a `reverse` carry no `expires_at`. They wait for the connection and are audited as late when they execute late.
+- A disconnected connection is not a gate. The command is created and waits. An entry expires by gate 10 if the connection does not come back in time (never execute late); an exit waits and executes when it does.
+- `routing.platform_unbound` and `routing.no_bracket_profile` are emitted only after the HTTP audit contract lists them (`KnownAuditCode`, `AuditDetailsByCode`).
+- `source_revoked` and `route_disabled` are not instruction gates. A revoked source is refused at ingress, and a disabled route produces no target account. They exist only as route status reasons (HTTP `RouteReasonCode`), whose display order (most severe first) is a UI order and does not change this evaluation order.
 
 > **Decided (P1):** risk and out-of-sync gates do **not** block exits (`close`, `reduce`, `cancel`, `modify` of a protective order). Refusing an exit while at a limit or out of sync would increase exposure, and a flatten is safe regardless of the Core's view of the position. Paused/disabled accounts block everything, because that is an explicit user choice.
+
+> **Decided (Q74 b, 2026-10-23; extends P1):** a `reverse` to side X never opens on an account barred by an entry gate (6–9). Its §4.2 position check runs first, and the result depends on the current position P:
+> - **P opposite to X:** the closing leg executes (flatten and cancel the protections), and the opening leg is skipped with the gate's code. The outcome is `capped` (open quantity 0). It is audited and **notified**, even for `routing.limits_pending`, whose plain skips are not alerted, because a position was closed.
+> - **P flat:** there is nothing to close, so the reverse is skipped with the gate's code, like any barred entry.
+> - **P already X:** rejected and notified with `routing.position_conflict`, exactly as on an account without a bar. It is never flattened.
+>
+> Tests cover the three cases for each of the four entry gates. They also check that a late `close` and a late Q74 closing leg still execute and are audited as late.
 
 ### 4.2 Actions
 
@@ -85,9 +111,11 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 | `buy`/`sell`, `open` | opposite direction | **Rejected and notified:** `routing.position_conflict` (Q1-a). The source must send `close` or `reverse` explicitly |
 | `buy`/`sell`, `reduce` | opposite direction | Reduce by `min(Q, abs(P))`. **Never flips.** Protective orders are resized to the remaining position, oldest entries first in individual mode (P2, FIFO); at flat, orphan-order protection cancels the rest |
 | `buy`/`sell`, `reduce` | flat or same direction | Skipped: `routing.nothing_to_reduce` |
+| `buy`/`sell`, `reduce` | opposite direction, but the Core holds no All Win identity for the position (opened externally, or identity lost) | Skipped: `routing.position_unknown`, audited. The reduce carries `refs.position_ref`; the adapter executes it only against that position (ADR-0004 §5 position-identity guard, U13) |
+| `buy`/`sell`, `reduce` | account's connection negotiated adapter protocol < 1.2 | Skipped: `routing.adapter_protocol_outdated`, audited, alert (a reduce never runs without the guard; ADR-0004 §9) |
 | `close` | any non-flat | **Flatten the whole position** in that contract and cancel all its stops/targets (Q1). `quantity`, if present, is ignored and the audit records `quantity_ignored`. A misconfigured close template must never leave a position open |
 | `close` | flat | No-op, audited: `routing.nothing_to_close` |
-| `reverse`, `side` = X | opposite to X | Flatten, cancel protections, then open X with `min(Q, M)` and profile stop/target |
+| `reverse`, `side` = X | opposite to X | Flatten, cancel protections, then open X with `min(Q, M)` and profile stop/target. If `M` = 0, the flatten executes and the opening is skipped with `routing.max_position_reached` (outcome `capped`). On an account barred for entries, only the flatten executes (Q74, §4.1) |
 | `reverse`, `side` = X | flat | **Opens X** with `min(Q, M)` (Q1) |
 | `reverse`, `side` = X | already X | **Rejected and notified:** `routing.position_conflict` |
 | `modify` | — | Applies `changes` to every child order correlated to `refs.order_ref` on this account (§5). If there is none, `routing.no_correlated_order` (skipped, audited) |
@@ -190,6 +218,7 @@ These are inputs for `docs/architecture/data/` (owner: Database Architect):
 | P3 | Master cancels a protective order | **Replicated**, with a warning notification on each affected follower |
 | P4 | Expiry base | **`min(sent_at, received_at)`** |
 | P5 | Active contract month / rollover | **Global rollover catalog maintained by the admin**, with advance warning to users. The Core switches the active contract on the configured date |
+| Q74 | A reverse on an account barred for entries (out of sync, risk blocked, limits pending, no bracket profile) | **(b)**: only the closing leg executes (flatten + cancel protections); the opening is skipped, audited and notified. Extends P1. (a), skip the whole reverse, rejected |
 
 Related decisions used by this ADR: Q-A1 (one maximum position per account in V1), Q-A2 (stop/target profiles keyed by instrument), Q-A4 (signal filter per (source, account)), Q-N1 (dollar distances rounded toward the entry, see ADR-0004 §5), Q17 (several named TradingView sources per user, each with its own token), and the per-account opt-ins for automation and copying (§4.1; option A, Q24, Q25, Q26; HTTP contract `setAccountOptIn`).
 

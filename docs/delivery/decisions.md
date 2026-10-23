@@ -86,3 +86,69 @@
 - **Open (user):** code alphabet — 8 uppercase alphanumerics without ambiguous characters, or mixed case + digits + specials (U16). WhatsApp provider choice (cost; options with cost and lead time to be brought by the team) (U17).
 - **Superseded:** Q21/Q22 password + TOTP model; U10 (password-login lockout) and U12 (TOTP recovery code) approvals no longer apply as written; the Architect maps their intent (anti-enumeration, per-identifier throttling) to code delivery and verification.
 - **Canonical docs:** slice-plan.md / S3 spec (PO); security/auth-and-session-policy.md, HTTP contract, data model (Architect, Database Architect).
+
+## 2026-10-23 — User decisions on all open recommendations (U16–U19, M2/M3, Q28–Q68, migration, VPS, GitHub, WhatsApp)
+- **Accepted as recommended:** U16 (8-char Crockford code, `XXXX-XXXX`); M2 (72 h hold for a channel change requested from a new device); M3 (on a new device, persistence actions need the e-mail code); Q28–Q36 as recommended, including the Q35 step-up set (the user's 3 actions + source create/rotate, connection create, pairing code, admin invitation, route_enable, account_binding_change; server setting on) and proposals (i) two-channel change needs the other channel's code and (ii) 24 h freeze; U18 (pre-deploy versioning: breaking → document major, `/api/v1` kept); U19 (a) + U19.1 (b), and the user ACCEPTS the residual risk (a flatten that fails after cancelling legs → top-severity alert + out_of_sync); Q37–Q45, Q47–Q53, Q55–Q68 as recommended.
+- **Migration:** the user AUTHORIZES the destructive forward migration #2b (drop password/TOTP/reset tables and columns, delete dev sessions) on the development environment only (no production exists).
+- **Exceptions:**
+  - Commissions (recorded by the user as "Q55"; it is the commissions question, Q54): **net P&L (with commissions) is the main value, gross shown beside it**, because firms measure drawdown and limits on net. Impact on S13/S15 risk to be analysed by the Architect.
+  - Q46: **include in V1 the evaluation profit target (how much is left to pass)**; minimum days and payout later. The team reports the cost if it is complex.
+- **VPS:** the user contracts Contabo Cloud VPS 8 in St. Louis with Windows Server 2025 (2022 if unavailable) and will hand over access; the team says if Windows tests are needed earlier.
+- **GitHub:** private repository under account `LvDias`; the user registers the deploy key (standing push authorization from earlier today applies only to that private repository).
+- **WhatsApp (U17):** the user starts the Meta business verification (Meta Cloud API direct, as recommended).
+- **Canonical docs:** slice-plan / product-vision (PO); auth-and-session-policy, ADR-0004/0005, contracts (Architect); data model (Database Architect).
+
+## 2026-10-23 — Net P&L, evaluation target, commission floor (U20), GitHub remote
+- **Approved:** net P&L as the main value (gross beside it) and the V1 evaluation profit target (how much is left to pass), cost ≈ 4–6 dev-days, with **risk computed on net** (daily loss, drawdown, target, S15 enforcement).
+- **U20:** option (a) — per-account `commission_per_contract_side` (prefilled by the S16 preset when the firm publishes it, editable); effective commission per fill = max(platform-reported, configured × qty); warning when neither exists. Option (b) platform-only rejected.
+- **Evaluation target (Q46 details):** start = date given by the user, default = the account's registration date; reaching the target = notice + notification only, no automatic action. Minimum days and payout later.
+- **GitHub:** the private repository is `git@github.com:LvDias/all-win.git` with the deploy key registered; the user asks to configure the remote, test the connection and push `main` and the branches (standing authorization: push only to this private repository; never public, no deploy, no production access).
+- **Canonical docs:** slice-plan (PO); ADR-0004/0005 + protocol 1.3, auth policy (Architect); HTTP contract (Compasso); data model (Database Architect).
+
+## 2026-10-23 — First push done; routine pushes
+- **Fact:** the user ran the initial push; `main` (188ed53) and the `s/*` / `d/*` branches are on the private repository `git@github.com:LvDias/all-win.git`, using dev2's deploy key.
+- **Decision:** from now on the team pushes to that private repository under the standing authorization (main after each local integration, and the slice/docs branches). If the Claude Code filter blocks a push, the Maestro gives the user the ready command. Still forbidden: making the repository public, force pushes, deploy, production access.
+- **Canonical doc:** this log.
+
+## 2026-10-23 — Q71 manual-trade commission
+- **Decision:** when a manual trade's commission is left blank, it is filled automatically from the account's configured `commission_per_contract_side` (U20); if the account has no configured commission, the recommended option applies (zero, net = gross, labelled "comissões não informadas"). Manual trades still never feed risk.
+- **Note:** the amount is computed by the Core (the browser does no money arithmetic); the UI shows the Core's value/preview and the user may override it.
+- **Canonical docs:** slice-plan S21 AC-7 (PO); HTTP contract trades module (Compasso).
+
+## 2026-10-23 — UX rule: long forms become step-by-step
+- **Decision (user):** when a form gets long, use a step-by-step (stepper) flow, so the user adding something is not tired by seeing many fields at once. The user likes the current visual design.
+- **Application:** the Product Designer (design-system owner) defines the threshold and the stepper pattern in the foundations; specs and web forms follow it (first case: S5 "Nova conta": type → account data → platform → automation).
+- **Canonical docs:** docs/design/foundations.md (Aquarela); product-vision (PO).
+
+## 2026-10-23 — U21 force push on slice branches; ADR-0007/0008 accepted
+- **Decision (U21):** `git push --force-with-lease` is allowed only on slice working branches (`s/*`), and every use is recorded. Forbidden on `main` and `d/*`. A force push without `--with-lease` stays forbidden on every branch. Option (b) (never force; rebased branches under new names) rejected.
+- **Cleanup:** branches pushed under a new name because of the incident may be deleted from GitHub after confirming their content is on the original branch.
+- **Architecture:** the user approves the two ADRs proposed by the Architect: ADR-0007 (neutral session/step-up port, crate `core/crates/access`, code consumed atomically in authorize before the action) and ADR-0008 (account ↔ platform binding owned by accounts; gateway owns platform facts and exposes query ports; `account.binding_changed` via outbox). Both still go through Code Review and QA Security.
+- **Canonical docs:** this log; ADR-0007/0008 (Architect).
+
+## 2026-10-23 — Q74 reverse on an account barred for entries; Q73 non-standard prop size
+- **Decision (Q74): (b).** When a reverse reaches an account barred for entries (out of sync, risk blocked, limits pending, no bracket profile), All Win executes only the closing part (flatten and cancel the protections) and skips the opening; the reason is audited and notified. Extends P1 (exits are never blocked). Option (a), skip the whole reverse (previous ADR-0003 text), rejected.
+- **Decision (Q73): (b), with a restriction.** For a prop account with a non-standard size, the nearest standard size (tie → the user chooses) is used **only to choose the stop/target (bracket) profile**. Balance and limits always use the account's real values.
+- **Canonical docs:** ADR-0003 §4.1 delta (Architect); slice-plan S6/S7 (PO); HTTP contract 4.4.0 queue (Compasso).
+
+## 2026-10-23 — Correction: Q73/Q74 canonical contract version
+- **Correction (not a new decision):** the Q73/Q74 entry above lists "HTTP contract 4.4.0 queue" as a canonical document. The change shipped as HTTP contract **5.0.0** (major, ba676fd), extended by 5.1.0 (66f77f0). Q73 applies to any prop account outside the standard size list, manual or preset (slice-plan S6 AC-8, d/product c94caa8).
+
+## 2026-10-23 — Q75 close on an out-of-sync account that All Win believes is flat
+- **Decision (Q75): (b).** A close (including the closing leg of a barred reverse, Q74) on an out-of-sync account is always sent to the platform as a flatten, even when All Win believes the account is flat; the plugin checks the real position and reports `already_flat`. Extends P1 (exits are never blocked). Option (a), trust All Win's position and send nothing, rejected.
+- **Canonical docs:** ADR-0003 / ADR-0004 and adapter protocol (Architect); slice-plan S7 (PO); HTTP contract if exposed (Compasso).
+
+## 2026-10-23 — VPS Phase 2 progress (user report)
+- **Fact:** RDP reachable only over the tailnet (rules restricted to 100.64.0.0/10, public IP refuses); `allwin-agent` created (Remote Desktop Users, not admin); NinjaTrader 8 installed, not logged in; OpenSSH Server present, stopped, manual start. Not yet done: Tailscale policy/tag, Tailnet Lock, Forja's scripts.
+- **Decision:** migration 061300 is brought to the user when it is due.
+
+## 2026-10-23 — Q76 reduce on an out-of-sync account that All Win believes is flat (split from Q75)
+- **Decision (Q76): (a).** A reduce (partial exit) reaching an out-of-sync account where All Win believes the position is flat is NOT sent to the platform; it is recorded as `routing.nothing_to_reduce`, audited, and the user is notified. A reduce never becomes a flatten, and the U13 guard needs a `position_ref` that a flat position does not have. Option (b), send a flatten anyway, rejected.
+- **Scope note:** Q75 (b) covers only a close / the closing leg of a reverse (always sent as a flatten). Q76 is a separate decision; the user asked for distinct numbers.
+- **Canonical docs:** ADR-0003 r4 (Architect); slice-plan S7 (PO); HTTP contract 5.2.0 (Compasso).
+
+## 2026-10-23 — Merge gate for the audit-codes delta (196a30a) and QA test database
+- **Decision:** 196a30a merges only after (1) the S1 p95 latency increase (≈11 ms → 130 ms in the QA run) is explained and, if the delta causes it, fixed; and (2) QA runs the Core PostgreSQL integration tests on an isolated test database in Docker.
+- **Decision:** DevOps provides an isolated Docker PostgreSQL test environment for QA, reused by every slice.
+- **Decision:** agents not reconnected within 10 minutes are replaced with a state handoff; if Esquadro does not return, ADR-0003/0004 r4 goes to Compasso.
+- **Canonical doc:** this log.

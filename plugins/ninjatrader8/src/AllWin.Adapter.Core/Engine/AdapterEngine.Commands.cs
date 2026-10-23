@@ -10,7 +10,7 @@ namespace AllWin.Adapter.Core.Engine
     public sealed partial class AdapterEngine
     {
         /// <summary>Records the command durably (before the ack) and queues it. Returns the account to pump.</summary>
-        private string? IntakeCommand(CommandPayload command, DateTime sentAt)
+        private string? IntakeCommand(CommandPayload command, DateTime sentAt, string envelopeVersion)
         {
             if (_commands.TryGetValue(command.CommandId, out var known))
             {
@@ -28,6 +28,7 @@ namespace AllWin.Adapter.Core.Engine
                 PlatformAccount = command.PlatformAccount,
                 ReceivedAt = _clock.UtcNow,
                 SentAt = sentAt,
+                EnvelopeVersion = envelopeVersion,
                 Command = command,
                 Phase = CommandPhase.Queued,
             };
@@ -42,7 +43,7 @@ namespace AllWin.Adapter.Core.Engine
             }
             // Before this session's welcome the mapping is not known yet: such a command is queued, never
             // rejected (ADR-0004 §3 step 3); the queue re-checks the account at dispatch.
-            var refusal = Session == SessionState.Ready ? CheckAccount(command) : null;
+            var refusal = Session == SessionState.Ready ? CheckAccount(command, record.ReceivedAt) : null;
             if (refusal != null)
             {
                 Finish(record, false, ReportStatus.Rejected, refusal);
@@ -62,28 +63,28 @@ namespace AllWin.Adapter.Core.Engine
 
         private bool IsStale(DateTime sentAt) => CoreNow - sentAt > _options.StalenessLimit;
 
-        /// <summary>Mapping, destination role and simulation guard (S2 AC-5, ADR-0005 N4).</summary>
-        private string? CheckAccount(CommandPayload command)
+        /// <summary>Mapping, destination role, simulation guard and live-account table (S2 AC-5, ADR-0005 N4, N11).</summary>
+        private string? CheckAccount(CommandPayload command, DateTime receivedAt)
         {
             var mapping = _welcome?.Accounts.FirstOrDefault(a => a.AccountId == command.AccountId);
             if (mapping == null || mapping.PlatformAccount != command.PlatformAccount) return ReasonCodes.CommandAccountNotMapped;
             if (!mapping.Roles.Contains(AccountRole.Destination)) return ReasonCodes.CommandAccountNotDestination;
             var info = SafeAccounts().FirstOrDefault(a => a.Name == command.PlatformAccount);
             if (info == null) return ReasonCodes.CommandPlatformDisconnected;
-            if (!IsExecutionAllowed(info)) return ReasonCodes.CommandAccountNotSimulation;
+            if (!CommandAllowedOnAccount(info, command, receivedAt)) return ReasonCodes.CommandAccountNotSimulation;
             return null;
         }
 
         /// <summary>
-        /// Development builds: simulation/playback only, always. Release builds: simulation/playback when the
-        /// Core says <c>simulation_only</c>; never an account whose kind is unknown (fail closed).
+        /// Normal execution is allowed (shown in the window). Development builds: simulation/playback only, always.
+        /// Release builds: simulation/playback, or a live account in state B of ADR-0005 §N11 (confirmed in the local
+        /// opt-in and welcome.simulation_only false). Never an account whose kind is unknown (fail closed).
         /// </summary>
         private bool IsExecutionAllowed(PlatformAccountInfo info)
         {
-            var simulated = info.Kind == AccountKind.Simulation || info.Kind == AccountKind.Playback;
-            if (_options.Build == AdapterBuild.Development) return simulated;
-            if (_welcome == null || _welcome.SimulationOnly) return simulated;
-            return info.Kind != AccountKind.Unknown;
+            if (IsSimulated(info)) return true;
+            if (_options.Build == AdapterBuild.Development) return false;
+            return IsStateB(info, null);
         }
 
         private bool IsExpired(CommandPayload command) => command.ExpiresAt.HasValue && CoreNow > command.ExpiresAt.Value;
@@ -162,7 +163,7 @@ namespace AllWin.Adapter.Core.Engine
                     continue;
                 }
                 // The mapping and role come from the current session's welcome (S2 AC-5): re-checked here.
-                var refusal = CheckAccount(command);
+                var refusal = CheckAccount(command, record.ReceivedAt);
                 if (refusal == null && SafeAccounts().FirstOrDefault(a => a.Name == platformAccount)?.Connected != true)
                     refusal = ReasonCodes.CommandPlatformDisconnected;
                 if (refusal != null)
@@ -202,17 +203,36 @@ namespace AllWin.Adapter.Core.Engine
 
             var quantity = place.Quantity;
             string? capReason = null;
+            var role = place.PositionEffect == PositionEffect.Open ? ChildRole.Entry : ChildRole.Exit;
             if (place.PositionEffect == PositionEffect.Reduce)
             {
-                // A reduce never opens or flips a position, even after a race with a protective fill.
+                // ADR-0004 §5, reduce steps in order. 0: the crash-window lookup comes first, so a re-delivery after a
+                // lost journal reports what already happened instead of "nothing to reduce" or "position changed".
+                switch (AdoptExisting(record.PlatformAccount, OrderName.Format(record.CommandId, role), beforeAdopt: () => MarkSubmitted(record)))
+                {
+                    case Adoption.Adopted: return;
+                    case Adoption.Ambiguous:
+                        Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderAmbiguousReference, role);
+                        return;
+                    case Adoption.LookupFailed:
+                        Finish(record, false, ReportStatus.Rejected, ReasonCodes.CommandPlatformDisconnected, role);
+                        return;
+                }
+                // 1: flat is the benign race (the bracket closed it).
                 var position = PositionQuantity(record.PlatformAccount, command.Instrument);
-                var reducesLong = place.Side == Side.Sell && position > 0;
-                var reducesShort = place.Side == Side.Buy && position < 0;
-                if (!reducesLong && !reducesShort)
+                if (position == 0)
                 {
                     Finish(record, false, ReportStatus.Cancelled, ReasonCodes.CommandNothingToReduce);
                     return;
                 }
+                // 2: the position-identity guard (U13); it also refuses an order that would not reduce (never open or flip).
+                var changed = CheckPositionIdentity(record, position);
+                if (changed != null)
+                {
+                    Finish(record, false, ReportStatus.Rejected, changed);
+                    return;
+                }
+                // 3: submit, capped to the position.
                 if (quantity > Math.Abs(position))
                 {
                     quantity = Math.Abs(position);
@@ -220,7 +240,6 @@ namespace AllWin.Adapter.Core.Engine
                 }
             }
 
-            var role = place.PositionEffect == PositionEffect.Open ? ChildRole.Entry : ChildRole.Exit;
             var request = new OrderRequest
             {
                 Name = OrderName.Format(record.CommandId, role),
@@ -234,7 +253,21 @@ namespace AllWin.Adapter.Core.Engine
             };
             record.EntryQuantity = quantity;
             record.SubmitEpoch = ConnectionEpoch(record.PlatformAccount);
-            SubmitFor(record, request, capReason);
+            if (role == ChildRole.Entry)
+            {
+                // Row 6 of ADR-0005 §N11: only an entry submitted in state B may still be protected after "off".
+                var info = SafeAccounts().FirstOrDefault(a => a.Name == record.PlatformAccount);
+                record.ConsentedLive = info != null && !IsSimulated(info) && IsStateB(info, record.ReceivedAt);
+            }
+            SubmitFor(record, request, capReason, role == ChildRole.Entry ? LiveRow.Entry : LiveRow.Reduce);
+        }
+
+        private void MarkSubmitted(CommandRecord record)
+        {
+            record.Phase = CommandPhase.Dispatched;
+            record.SubmitAttempted = true;
+            Save(record);
+            Flush();
         }
 
         /// <summary>
@@ -243,12 +276,9 @@ namespace AllWin.Adapter.Core.Engine
         /// terminal, except flatten closes); two or more are ambiguous and nothing is submitted. When the call dies without a platform verdict, the
         /// platform is asked again; if it does not hold the order the outcome is unknown, never a resubmission.
         /// </summary>
-        private void SubmitFor(CommandRecord record, OrderRequest request, string? workingReason)
+        private void SubmitFor(CommandRecord record, OrderRequest request, string? workingReason, LiveRow row)
         {
-            record.Phase = CommandPhase.Dispatched;
-            record.SubmitAttempted = true;
-            Save(record);
-            Flush();
+            MarkSubmitted(record);
             var role = OrderName.TryParse(request.Name, out _, out var letter) ? OrderName.RoleOf(letter, record.Command.Kind == CommandKind.Flatten) : ChildRole.Entry;
             var liveOnly = record.Command.Kind == CommandKind.Flatten; // flatten re-tries re-use the close reference
             switch (AdoptExisting(record.PlatformAccount, request.Name, liveOnly))
@@ -264,7 +294,7 @@ namespace AllWin.Adapter.Core.Engine
             }
             try
             {
-                var handles = GuardedSubmit(record.PlatformAccount, new[] { request });
+                var handles = GuardedSubmit(record.PlatformAccount, request.Instrument, new[] { request }, row, record.ReceivedAt);
                 if (handles.Count > 0) TrackSubmitted(record.PlatformAccount, handles[0], request, workingReason);
             }
             catch (PlatformOutcomeUnknownException e)
@@ -331,6 +361,12 @@ namespace AllWin.Adapter.Core.Engine
                 }
                 targetRecord.LimitPrice = limit;
                 targetRecord.StopPrice = stop;
+                if (!WriteAllowed(record.PlatformAccount, record.Command.Instrument, record.ReceivedAt, ModifyRows(order, targetRecord), out _, byCore: true))
+                {
+                    // ADR-0005 §N11: refused by consent or by the table (rows 1, 7, 8 outside state B).
+                    FailTarget(record, targetRecord, order.Order.PlatformOrderId, ReasonCodes.CommandAccountNotSimulation);
+                    continue;
+                }
             }
 
             record.Phase = CommandPhase.Dispatched;
@@ -343,7 +379,8 @@ namespace AllWin.Adapter.Core.Engine
                 order.ChangeSeen = false;
                 try
                 {
-                    GuardedChange(record.PlatformAccount, target.Handle!, target.Quantity, target.LimitPrice, target.StopPrice);
+                    GuardedChange(record.PlatformAccount, record.Command.Instrument, target.Handle!, target.Quantity, target.LimitPrice, target.StopPrice,
+                        ModifyRows(order, target), record.ReceivedAt);
                 }
                 catch (PlatformException e)
                 {
@@ -352,6 +389,17 @@ namespace AllWin.Adapter.Core.Engine
                 }
             }
             CompleteTargetsIfDone(record);
+        }
+
+        /// <summary>Table rows of one modify target: a change of a working entry/exit counts as row 1 (it could add exposure).</summary>
+        private static LiveRow[] ModifyRows(TrackedOrder order, TargetRecord target)
+        {
+            if (!order.IsProtective) return new[] { LiveRow.Entry };
+            var rows = new List<LiveRow>();
+            if (target.Quantity.HasValue && target.Quantity.Value > order.Order.Quantity) rows.Add(LiveRow.UpsizeLeg);
+            if (target.Quantity.HasValue && target.Quantity.Value < order.Order.Quantity) rows.Add(LiveRow.ShrinkLeg);
+            if (target.LimitPrice.HasValue || target.StopPrice.HasValue) rows.Add(LiveRow.RepriceLeg);
+            return rows.ToArray();
         }
 
         private void DispatchCancel(CommandRecord record)
@@ -363,6 +411,8 @@ namespace AllWin.Adapter.Core.Engine
                 record.Targets.Add(targetRecord);
                 var order = FindLiveOrder(record.PlatformAccount, target.CommandId, target.ChildRole);
                 if (order == null) FailTarget(record, targetRecord, target.PlatformOrderId, ReasonCodes.CommandTargetNotFound);
+                else if (!WriteAllowed(record.PlatformAccount, order.Order.Instrument, record.ReceivedAt, new[] { CancelRowOf(order) }, out _, byCore: true))
+                    FailTarget(record, targetRecord, order.Order.PlatformOrderId, ReasonCodes.CommandAccountNotSimulation); // §N11 rows 3, 5, 11
                 else targetRecord.Handle = order.Handle;
             }
 
@@ -376,7 +426,8 @@ namespace AllWin.Adapter.Core.Engine
                 foreach (var target in pending) _orders[target.Handle!].CancelRequested = true;
                 try
                 {
-                    GuardedCancel(record.PlatformAccount, pending.Select(t => t.Handle!).ToList());
+                    GuardedCancel(record.PlatformAccount, record.Command.Instrument, pending.Select(t => t.Handle!).ToList(),
+                        pending.Select(t => CancelRowOf(_orders[t.Handle!])).Distinct().ToArray(), record.ReceivedAt);
                 }
                 catch (PlatformException e)
                 {
@@ -497,7 +548,7 @@ namespace AllWin.Adapter.Core.Engine
                 if (toCancel.Count > 0)
                 {
                     foreach (var o in toCancel) o.CancelRequested = true;
-                    try { GuardedCancel(account, toCancel.Select(o => o.Handle).ToList()); }
+                    try { GuardedCancel(account, instrument, toCancel.Select(o => o.Handle).ToList(), new[] { LiveRow.Flatten }, record.ReceivedAt); }
                     catch (PlatformException e)
                     {
                         _log.Write(LogLevel.Warning, "platform.cancel_failed", record.CommandId + ": " + e.Message);
@@ -519,6 +570,7 @@ namespace AllWin.Adapter.Core.Engine
                 }
                 if (record.FlattenAttempts >= _options.FlattenMaxAttempts)
                 {
+                    AlertUnprotected(record);
                     Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderPlatformRejected, ChildRole.Flatten);
                     Pump(account);
                     return;
@@ -537,7 +589,8 @@ namespace AllWin.Adapter.Core.Engine
                     TimeInForce = TimeInForce.Day,
                 };
                 // A re-try re-uses the name: the previous close order is terminal by then.
-                SubmitFor(record, request, null);
+                SubmitFor(record, request, null, LiveRow.Flatten);
+                if (record.Phase == CommandPhase.Done && !record.Succeeded) AlertUnprotected(record);
                 if (record.Phase == CommandPhase.Done) Pump(account);
                 return;
             }
@@ -557,7 +610,7 @@ namespace AllWin.Adapter.Core.Engine
                 {
                     // Flat already (e.g. a protective fill raced us): withdraw the close order.
                     closeOrder.CancelRequested = true;
-                    try { GuardedCancel(account, new[] { closeOrder.Handle }); }
+                    try { GuardedCancel(account, instrument, new[] { closeOrder.Handle }, new[] { LiveRow.Flatten }, record.ReceivedAt); }
                     catch (PlatformException e) { _log.Write(LogLevel.Warning, "platform.cancel_failed", record.CommandId + ": " + e.Message); }
                 }
                 return;
@@ -570,6 +623,7 @@ namespace AllWin.Adapter.Core.Engine
             }
             if (closeOrder.Order.State == PlatformOrderState.Rejected)
             {
+                AlertUnprotected(record);
                 Finish(record, false, null, null, ChildRole.Flatten); // the lifecycle report carried the rejection
                 Pump(account);
                 return;
@@ -580,6 +634,18 @@ namespace AllWin.Adapter.Core.Engine
             record.StepStartedAt = _clock.UtcNow;
             Save(record);
             AdvanceFlatten(record);
+        }
+
+        /// <summary>
+        /// The one known I2 gap (ADR-0005 §N11, Pêndulo L5): a flatten whose close failed after its cancelling step leaves
+        /// a live position open without protection. Top-severity alert in the window and the log; the Core sets out_of_sync.
+        /// </summary>
+        private void AlertUnprotected(CommandRecord record)
+        {
+            var info = SafeAccounts().FirstOrDefault(a => a.Name == record.PlatformAccount);
+            if (info == null || IsSimulated(info) || PositionQuantity(record.PlatformAccount, record.Command.Instrument) == 0) return;
+            _log.Write(LogLevel.Error, "live.unprotected_position", record.PlatformAccount + " " + record.CommandId);
+            AddLiveNotice(record.PlatformAccount, NoticeUnprotectedPosition);
         }
 
         /// <summary>A close order the platform does not know: decided from the position, never re-sent.</summary>

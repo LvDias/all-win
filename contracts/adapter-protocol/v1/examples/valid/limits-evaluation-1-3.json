@@ -1,0 +1,41 @@
+{
+  "protocol_version": "1.3",
+  "msg_id": "0192b3c4-0000-7000-8000-000000001307",
+  "type": "limits",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "accounts": [
+      {
+        "account_id": "0192b3c4-0000-7000-8000-000000000001",
+        "platform_account": "Sim101",
+        "version": 3,
+        "enforcement_enabled": true,
+        "max_position": 5,
+        "daily_loss_limit": "1000.00",
+        "daily_profit_target": {
+          "amount": "1500.00",
+          "on_reach": "notify"
+        },
+        "drawdown": {
+          "type": "trailing_intraday",
+          "amount": "2500.00",
+          "floor_balance": "47500.00",
+          "high_water_balance": "50000.00",
+          "balance_adjustment": "37.20"
+        },
+        "trading_day": {
+          "reset_local_time": "17:00",
+          "time_zone": "America/Chicago"
+        },
+        "warning_threshold_pct": 80,
+        "commission_per_contract_side": "0.62",
+        "evaluation": {
+          "profit_target": "3000",
+          "baseline_net_pnl": "1250.50",
+          "start_date": "2026-10-01",
+          "as_of_trading_day": "2026-10-23"
+        }
+      }
+    ]
+  }
+}

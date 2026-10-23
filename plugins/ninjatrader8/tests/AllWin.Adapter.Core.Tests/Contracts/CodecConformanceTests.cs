@@ -37,7 +37,7 @@ namespace AllWin.Adapter.Core.Tests.Contracts
         public void Newer_minor_with_unknown_type_is_unsupported_value()
         {
             var frame = ProtocolJson.ParseObject(File.ReadAllText(Path.Combine(RepoPaths.AdapterExamples, "valid", "heartbeat.json")));
-            frame["protocol_version"] = "1.2";
+            frame["protocol_version"] = "1.3";
             frame["type"] = "account_limits_v2";
             var result = ProtocolCodec.Decode(ProtocolJson.Serialize(frame));
             Assert.Equal(ReasonCodes.ProtocolUnsupportedValue, result.ErrorCode);

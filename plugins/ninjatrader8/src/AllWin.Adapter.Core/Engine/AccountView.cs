@@ -22,6 +22,15 @@ namespace AllWin.Adapter.Core.Engine
         /// <summary>Allowed by the simulation guard (ADR-0005 N4).</summary>
         public bool ExecutionAllowed { get; set; }
 
+        /// <summary>
+        /// Release builds, non-simulation accounts: the ADR-0005 §N11 state (B, A, or C0/C1/C2 for the worst contract).
+        /// Null for simulation accounts and in development builds.
+        /// </summary>
+        public LiveState? LiveState { get; set; }
+
+        /// <summary>Plugin alerts for this account (AdapterTexts keys), e.g. live.unconsented_actions.</summary>
+        public IReadOnlyList<string> Notices { get; set; } = new string[0];
+
         public SyncState? CoreSyncState { get; set; }
         public IReadOnlyList<string> CoreSyncReasons { get; set; } = new string[0];
         public IReadOnlyList<string> LocalSyncReasons { get; set; } = new string[0];

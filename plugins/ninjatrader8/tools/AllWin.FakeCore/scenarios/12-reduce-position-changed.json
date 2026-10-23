@@ -1,0 +1,23 @@
+{
+  "name": "reduce-position-changed",
+  "description": "Protocol 1.2 position-identity guard (U13): a late reduce meant for a position that was closed and reopened by another entry is rejected command.position_changed and nothing is submitted; a reduce naming the current opening command executes. NT8-compatible.",
+  "requires_sim": false,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21034.50" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "command", "id": "E1", "kind": "place", "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "filled" } },
+    { "do": "command", "id": "X1", "kind": "flatten", "flatten": { "reason": "close" } },
+    { "do": "expect_report", "command": "X1", "match": { "status": "filled", "position_after": { "quantity": 0 } } },
+    { "do": "command", "id": "E2", "kind": "place", "place": { "side": "buy", "quantity": 2, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "E2", "match": { "status": "filled", "position_after": { "quantity": 2 } } },
+    { "do": "command", "id": "R1", "kind": "place", "position_ref": "E1", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "reduce" } },
+    { "do": "expect_report", "command": "R1", "match": { "status": "rejected", "reason_code": "command.position_changed", "child_role": "exit" } },
+    { "do": "expect_no_report", "command": "R1", "match": { "status": "filled" }, "within_ms": 500 },
+    { "do": "command", "id": "R2", "kind": "place", "position_ref": "E2", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "reduce" } },
+    { "do": "expect_report", "command": "R2", "match": { "status": "filled", "child_role": "exit", "position_after": { "quantity": 1 } } },
+    { "do": "command", "id": "X2", "kind": "flatten", "flatten": { "reason": "close" } },
+    { "do": "expect_report", "command": "X2", "match": { "status": "filled", "position_after": { "quantity": 0 } } }
+  ]
+}

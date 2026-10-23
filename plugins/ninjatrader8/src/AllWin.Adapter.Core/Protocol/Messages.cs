@@ -175,6 +175,10 @@ namespace AllWin.Adapter.Core.Protocol
         public CommandKind Kind { get; set; }
         public DateTime? ExpiresAt { get; set; }
         public string? DependsOn { get; set; }
+
+        /// <summary>Protocol 1.2+: references checked before executing (reduce only, ADR-0004 §5 position-identity guard).</summary>
+        public CommandRefs? Refs { get; set; }
+
         public PlaceSpec? Place { get; set; }
         public ModifySpec? Modify { get; set; }
         public CancelSpec? Cancel { get; set; }
@@ -184,6 +188,12 @@ namespace AllWin.Adapter.Core.Protocol
         /// <summary>Only position-increasing commands expire (ADR-0004 §5, T1).</summary>
         [JsonIgnore]
         public bool IsEntry => Kind == CommandKind.Place && Place != null && Place.PositionEffect == PositionEffect.Open;
+    }
+
+    public sealed class CommandRefs
+    {
+        /// <summary>command_id of the All Win open command whose fill took the position from flat to non-flat.</summary>
+        public string PositionRef { get; set; } = "";
     }
 
     public sealed class PlaceSpec

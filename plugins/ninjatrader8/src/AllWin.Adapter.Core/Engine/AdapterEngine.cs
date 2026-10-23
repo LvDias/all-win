@@ -35,6 +35,7 @@ namespace AllWin.Adapter.Core.Engine
         private readonly IDurableStore _store;
         private readonly IClock _clock;
         private readonly IAdapterLog _log;
+        private readonly ILiveAccountConsent _consent;
 
         private readonly List<StoreOp> _pending = new List<StoreOp>();
         private readonly List<Action> _afterCommit = new List<Action>();
@@ -75,8 +76,13 @@ namespace AllWin.Adapter.Core.Engine
         /// <summary>True while executions that happened during a restart are being caught up (answer A).</summary>
         private bool _catchUp;
 
-        public AdapterEngine(EngineOptions options, ITradingPlatform platform, IDurableStore store, IClock? clock = null, IAdapterLog? log = null)
+        /// <param name="liveConsent">
+        /// The local "Allow live accounts" opt-in (ADR-0005 N11); null means off with nothing confirmed. Release builds only.
+        /// </param>
+        public AdapterEngine(EngineOptions options, ITradingPlatform platform, IDurableStore store, IClock? clock = null, IAdapterLog? log = null,
+            ILiveAccountConsent? liveConsent = null)
         {
+            _consent = liveConsent ?? LiveConsentState.Off();
             _options = options;
             _platform = platform;
             _store = store;
@@ -124,6 +130,7 @@ namespace AllWin.Adapter.Core.Engine
                 LoadState();
                 _started = true;
                 Recover();
+                EnforceLiveTable();
                 Prune();
             });
         }
@@ -217,6 +224,7 @@ namespace AllWin.Adapter.Core.Engine
                 }
 
                 CheckFlattenTimeouts(now);
+                CheckUnknownKinds(now);
                 if (now - _lastPruneAt >= _options.PruneInterval) Prune();
             });
         }
@@ -297,6 +305,7 @@ namespace AllWin.Adapter.Core.Engine
             _stickyLocalReasons.Clear();
             SaveStickyReasons();
             RefreshTrackedOrders();
+            EnforceLiveTable(); // simulation_only may have changed (ADR-0005 §N11: the same table applies)
             Flush();
 
             Session = SessionState.Ready;
@@ -367,7 +376,7 @@ namespace AllWin.Adapter.Core.Engine
             switch (envelope.Type)
             {
                 case MessageTypes.Command:
-                    pumpAccount = IntakeCommand(envelope.PayloadAs<CommandPayload>(), envelope.SentAt);
+                    pumpAccount = IntakeCommand(envelope.PayloadAs<CommandPayload>(), envelope.SentAt, envelope.ProtocolVersion);
                     break;
                 case MessageTypes.Limits:
                     ApplyLimits(envelope.PayloadAs<LimitsPayload>());
@@ -572,6 +581,8 @@ namespace AllWin.Adapter.Core.Engine
         {
             StoreRecoveredTornWrite = _store.RecoveredFromTornWrite;
             if (StoreRecoveredTornWrite) _log.Write(LogLevel.Warning, "store.torn_tail_dropped", "an unconfirmed last write was discarded");
+            if (_store.Get(Collections.Meta, "position_seqs") is string seqs)
+                foreach (var pair in StoreJson.Read<Dictionary<string, long>>(seqs)) _positionSeqs[pair.Key] = pair.Value;
             if (_store.Get(Collections.Meta, "connection_epochs") is string epochs)
                 foreach (var pair in StoreJson.Read<Dictionary<string, long>>(epochs)) _connectionEpochs[pair.Key] = pair.Value;
             _instanceId = _store.Get(Collections.Meta, "instance_id") is string id ? StoreJson.Read<string>(id) : "";
@@ -606,6 +617,7 @@ namespace AllWin.Adapter.Core.Engine
             foreach (var pair in _store.Collection(Collections.Fills)) _fills[pair.Key] = StoreJson.Read<FillRecord>(pair.Value);
             foreach (var pair in _store.Collection(Collections.Limits)) _limits[pair.Key] = StoreJson.Read<AccountLimits>(pair.Value);
             foreach (var pair in _store.Collection(Collections.Owners)) _owners[pair.Key] = StoreJson.Read<string>(pair.Value);
+            foreach (var pair in _store.Collection(Collections.Identities)) _identities[pair.Key] = StoreJson.Read<PositionIdentityRecord>(pair.Value);
             if (_welcome != null)
                 foreach (var account in _welcome.Accounts)
                     ApplyCoreAccountState(account.PlatformAccount, account.SyncState, account.SyncReasons ?? new List<string>());
@@ -638,13 +650,23 @@ namespace AllWin.Adapter.Core.Engine
                 foreach (var execution in SafeExecutions(mapping.PlatformAccount)) heldByPlatform.Add(mapping.PlatformAccount + "|" + execution.ExecutionId);
             }
             foreach (var pair in _fills.Where(p => p.Value.RecordedAt < cutoff && !heldByPlatform.Contains(p.Key)
-                && observedPrefixes.Any(prefix => p.Key.StartsWith(prefix, StringComparison.Ordinal))).ToList())
+                && observedPrefixes.Any(prefix => p.Key.StartsWith(prefix, StringComparison.Ordinal) && !InOpenPosition(prefix.Substring(0, prefix.Length - 1), p.Value))).ToList())
             {
                 _fills.Remove(pair.Key);
                 _pending.Add(new StoreOp(Collections.Fills, pair.Key, null));
             }
             // Keep the outbox sequence monotonic even after the outbox drains.
             Put(Collections.Meta, "next_outbox_seq", _nextOutboxSeq);
+        }
+
+        /// <summary>
+        /// The fill belongs to a position that is still open (its number is the current one and the position is not flat):
+        /// kept past retention, because the row 6 cap of ADR-0005 §N11 sums those fills (Code Review low).
+        /// </summary>
+        private bool InOpenPosition(string account, FillRecord fill)
+        {
+            if (fill.Instrument == null || fill.PositionSeq == 0) return false;
+            return fill.PositionSeq == CurrentPositionSeq(account, fill.Instrument) && PositionQuantity(account, fill.Instrument) != 0;
         }
 
         /// <summary>

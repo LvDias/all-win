@@ -6,7 +6,7 @@
 | **Official domains** | `tradeify.co` (main site; plain curl works, but the plan cards are filled in by JavaScript, so they were read through a browser portal) · `help.tradeify.co` (official help center, Intercom, linked from the main site's "Help Center" menu as `https://help.tradeify.co/en/`; blocks curl with Cloudflare 403, so it was read through the portal) · `app-f.tradeify.co` (dashboard login, not used). Sister brands `tradeify247.co` (crypto) and `tradeifyfx.co` (forex) are separate and out of scope ("completely separate from Tradeify Futures", Common FAQs) |
 | **Research date** | 2026-10-23 (all URLs below accessed 2026-10-23) |
 | **Researcher** | Lupa (Prop Firm Rules Researcher) |
-| **File status** | `partial`. The main fields are verified for every current plan and size. Still open: the conflicts and gaps in §9 (Select 25K evaluation max contracts, DLL kind on the 300K V2, Elite Live micro limits and platforms, copying to/from other firms, personal-device rule) |
+| **File status** | `partial`. The main fields are verified for every current plan and size. Still open: the conflicts and gaps in §9 (Select 25K evaluation max contracts, DLL kind on the 300K V2, Elite Live micro limits and platforms, copying to/from other firms; personal-device rule closed in R4 as `no`, with the bot caveat in §9 #5) |
 | **Instruments covered** | MNQ, NQ. Both are supported products: "E-Mini NASDAQ (NQ) on CME … Micro E-Mini NASDAQ (MNQ) on CME" (https://help.tradeify.co/en/articles/10468222-rules-supported-trading-products-assets) |
 
 Evidence (raw text of every cited page, URL on line 1): `/tmp/claude-1003/-srv-www-allwin--maestri-roles-6bf77a80-a1ed-43dc-bc00-08a480f178a5/33652d13-4dae-46b6-ae06-44a72b375517/scratchpad/r2/tradeify/`. This is temporary scratch storage, so the evidence must be captured again at re-verification.
@@ -296,7 +296,11 @@ The same conditions appear in the Funded Trader Agreement §6.6 "Automated Bots"
 
 **Classification:** `vps_allowed: conditional`. A VPS for trading is allowed "at your own risk" after a normal (non-VPN/VPS) login. A VPS that hides the device or identity is forbidden.
 
-**Personal device:** `personal_device_required: unknown`. No rule says that manual orders must come from the trader's personal device. For bots only, the Guidelines say: "We will also require a live video of you enabling the code on your own PC." It is not stated whether a bot running on a VPS meets "your own PC" (§9 #5). This matters for NinjaTrader 8 + All Win on a VPS.
+**Personal device: `no`** (R4, 2026-10-23). No rule says that orders must come from the trader's personal device, and VPS trading is explicitly allowed after a normal login:
+> "Can I use a VPN or VPS? You cannot log in with VPN/VPS. After logging in normally, you may use VPS for trading at your own risk." (Common FAQs, https://help.tradeify.co/en/articles/12268494-common-faqs)
+> "A shared network or ordinary device change is not, alone, a violation. Shared households, networks, workplaces, or devices do not, by themselves, establish a violation." (Risk & Compliance FAQ, https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq)
+
+Limits that still apply: the Terms of Use forbid a VPS or "remote computing environment" only "where such technology obscures, alters, masks, or prevents Tradeify from reliably verifying the user's device, network, location, identity, or account activity" (https://tradeify.co/terms-of-use). The Risk & Compliance FAQ says review may follow for "prohibited virtualization, remote-access, anonymization, or circumvention technologies" that conceal ownership or bypass controls. **Caveat for bots:** "We will also require a live video of you enabling the code on your own PC." (Guidelines for Traders, https://help.tradeify.co/en/articles/10468318-guidelines-for-traders). It is not stated whether a VPS counts as "your own PC" (§9 #5). Searched: help-center search for VPS, device, own PC, computer, remote, IP address, virtual machine, shared network, cloud, same IP, third party, household; Terms of Use and Funded Trader Agreement (device, remote, VPS, network).
 
 ## 7. Other rules that affect routing or risk
 
@@ -360,7 +364,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "No consistency rule on the evaluation. Weekly inactivity rule: at least one trade per week (Mon-Fri). Legacy max position (bought before Sep 12, 2025 8:00 AM ET): 50K 5/50, 100K 10/100, 150K 15/150."
 status: verified
 not_confirmed_fields: []
@@ -384,6 +388,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Growth — evaluation — 50K
@@ -412,7 +419,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "No consistency rule on the evaluation. Weekly inactivity rule: at least one trade per week (Mon-Fri). Legacy max position (bought before Sep 12, 2025 8:00 AM ET): 50K 5/50, 100K 10/100, 150K 15/150."
 status: verified
 not_confirmed_fields: []
@@ -436,6 +443,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Growth — evaluation — 100K
@@ -464,7 +474,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "No consistency rule on the evaluation. Weekly inactivity rule: at least one trade per week (Mon-Fri). Legacy max position (bought before Sep 12, 2025 8:00 AM ET): 50K 5/50, 100K 10/100, 150K 15/150."
 status: verified
 not_confirmed_fields: []
@@ -488,6 +498,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Growth — evaluation — 150K
@@ -516,7 +529,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "No consistency rule on the evaluation. Weekly inactivity rule: at least one trade per week (Mon-Fri). Legacy max position (bought before Sep 12, 2025 8:00 AM ET): 50K 5/50, 100K 10/100, 150K 15/150."
 status: verified
 not_confirmed_fields: []
@@ -540,6 +553,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Growth — funded — 25K
@@ -568,7 +584,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout min balance $26,500; 10-second rule on funded accounts (over 50% of trades and over 50% of profit from trades held > 10 s) gates payouts only. Drawdown amount from the homepage Growth funded card ('Max Drawdown (EOD)') and the drawdown lock table. Legacy accounts (before Sep 12, 2025): DLL removed at 6% profit."
 status: verified
 not_confirmed_fields: []
@@ -594,6 +610,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Growth — funded — 50K
@@ -622,7 +641,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout min balance $53,000; 10-second rule on funded accounts (over 50% of trades and over 50% of profit from trades held > 10 s) gates payouts only. Drawdown amount from the homepage Growth funded card ('Max Drawdown (EOD)') and the drawdown lock table. Legacy accounts (before Sep 12, 2025): DLL removed at 6% profit."
 status: verified
 not_confirmed_fields: []
@@ -648,6 +667,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Growth — funded — 100K
@@ -676,7 +698,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout min balance $104,500; 10-second rule on funded accounts (over 50% of trades and over 50% of profit from trades held > 10 s) gates payouts only. Drawdown amount from the homepage Growth funded card ('Max Drawdown (EOD)') and the drawdown lock table. Legacy accounts (before Sep 12, 2025): DLL removed at 6% profit."
 status: verified
 not_confirmed_fields: []
@@ -702,6 +724,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Growth — funded — 150K
@@ -730,7 +755,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout min balance $156,500; 10-second rule on funded accounts (over 50% of trades and over 50% of profit from trades held > 10 s) gates payouts only. Drawdown amount from the homepage Growth funded card ('Max Drawdown (EOD)') and the drawdown lock table. Legacy accounts (before Sep 12, 2025): DLL removed at 6% profit."
 status: verified
 not_confirmed_fields: []
@@ -756,6 +781,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select — evaluation — 25K
@@ -784,7 +812,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "CONFLICT max_position: Select Evaluation article and homepage card say '1 mini / 10 micro'; Select payout policy article says 'During evaluation, you have access to the full contract limits (2/20, 4/40, 8/80, or 12/120 depending on account size)'. Optional 50% Consistency Add-on at purchase (min. 2 days). Select 50K bought before the new dashboard launch keeps a $2,500 profit target. 'Tier 1 News Trading' allowed."
 status: conflict
 not_confirmed_fields: [max_position]
@@ -808,6 +836,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select — evaluation — 50K
@@ -836,7 +867,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Optional 50% Consistency Add-on at purchase (min. 2 days). Select 50K bought before the new dashboard launch keeps a $2,500 profit target. 'Tier 1 News Trading' allowed."
 status: verified
 not_confirmed_fields: []
@@ -860,6 +891,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select — evaluation — 100K
@@ -888,7 +922,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Optional 50% Consistency Add-on at purchase (min. 2 days). Select 50K bought before the new dashboard launch keeps a $2,500 profit target. 'Tier 1 News Trading' allowed."
 status: verified
 not_confirmed_fields: []
@@ -912,6 +946,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select — evaluation — 150K
@@ -940,7 +977,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Optional 50% Consistency Add-on at purchase (min. 2 days). Select 50K bought before the new dashboard launch keeps a $2,500 profit target. 'Tier 1 News Trading' allowed."
 status: verified
 not_confirmed_fields: []
@@ -964,6 +1001,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select — evaluation — 300K
@@ -992,7 +1032,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "V2 = purchases on or after Aug 27, 2026. V1 (legacy): $6,000 EOD max loss, no DLL. No resets, KYC before purchase, max 3 lifetime purchases, 50% add-on not available."
 status: partial
 not_confirmed_fields: [daily_loss_limit.kind]
@@ -1013,6 +1053,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Flex — funded — 25K
@@ -1041,7 +1084,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "max_position shows the scaled maximum; the starting limit is lower (see scaling). No consistency rule on funded. 10-second rule gates payouts."
 status: verified
 not_confirmed_fields: []
@@ -1064,6 +1107,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Flex — funded — 50K
@@ -1092,7 +1138,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "max_position shows the scaled maximum; the starting limit is lower (see scaling). No consistency rule on funded. 10-second rule gates payouts."
 status: verified
 not_confirmed_fields: []
@@ -1115,6 +1161,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Flex — funded — 100K
@@ -1143,7 +1192,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "max_position shows the scaled maximum; the starting limit is lower (see scaling). No consistency rule on funded. 10-second rule gates payouts."
 status: verified
 not_confirmed_fields: []
@@ -1166,6 +1215,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Flex — funded — 150K
@@ -1194,7 +1246,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "max_position shows the scaled maximum; the starting limit is lower (see scaling). No consistency rule on funded. 10-second rule gates payouts."
 status: verified
 not_confirmed_fields: []
@@ -1217,6 +1269,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Flex — funded — 300K
@@ -1245,7 +1300,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "V1 legacy Flex: $6,000 drawdown, no DLL, lock at $306,100. V2 300K funded accounts sit on top of the 5-account limit (up to 8)."
 status: partial
 not_confirmed_fields: [daily_loss_limit.kind]
@@ -1264,6 +1319,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Daily — funded — 25K
@@ -1292,7 +1350,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout buffer $1,100 (cannot withdraw below it). max_position shows the scaled maximum. Essential Rules overview lists Select Daily DLL only for 50K/100K/150K; the 25K $500 is from the DLL and payout-policy articles and the homepage."
 status: verified
 not_confirmed_fields: []
@@ -1314,6 +1372,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Daily — funded — 50K
@@ -1342,7 +1403,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout buffer $2,100 (cannot withdraw below it). max_position shows the scaled maximum. Essential Rules overview lists Select Daily DLL only for 50K/100K/150K; the 25K $500 is from the DLL and payout-policy articles and the homepage."
 status: verified
 not_confirmed_fields: []
@@ -1364,6 +1425,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Daily — funded — 100K
@@ -1392,7 +1456,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout buffer $2,600 (cannot withdraw below it). max_position shows the scaled maximum. Essential Rules overview lists Select Daily DLL only for 50K/100K/150K; the 25K $500 is from the DLL and payout-policy articles and the homepage."
 status: verified
 not_confirmed_fields: []
@@ -1414,6 +1478,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Daily — funded — 150K
@@ -1442,7 +1509,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Payout buffer $3,600 (cannot withdraw below it). max_position shows the scaled maximum. Essential Rules overview lists Select Daily DLL only for 50K/100K/150K; the 25K $500 is from the DLL and payout-policy articles and the homepage."
 status: verified
 not_confirmed_fields: []
@@ -1464,6 +1531,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Select Daily — funded — 300K
@@ -1492,7 +1562,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Buffer $6,100 (balance $306,100); max $4,000/day; 50% of each payout must be new profit. V1 legacy Daily: $5,000 drawdown, $2,500 DLL, buffer $5,100."
 status: verified
 not_confirmed_fields: []
@@ -1512,6 +1582,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Lightning — funded — 25K
@@ -1540,7 +1613,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Straight to sim funded, no evaluation. Payout profit goal (Payout 1 / Payout 2+): $1,500 / $1,000; no minimum trading days. 10-second rule gates payouts."
 status: verified
 not_confirmed_fields: []
@@ -1566,6 +1639,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Lightning — funded — 50K
@@ -1594,7 +1670,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Straight to sim funded, no evaluation. Payout profit goal (Payout 1 / Payout 2+): $3,000 / $2,000; no minimum trading days. 10-second rule gates payouts."
 status: verified
 not_confirmed_fields: []
@@ -1620,6 +1696,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Lightning — funded — 100K
@@ -1648,7 +1727,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Straight to sim funded, no evaluation. Payout profit goal (Payout 1 / Payout 2+): $6,000 / $3,500; no minimum trading days. 10-second rule gates payouts."
 status: verified
 not_confirmed_fields: []
@@ -1674,6 +1753,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Lightning — funded — 150K
@@ -1702,7 +1784,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Straight to sim funded, no evaluation. Payout profit goal (Payout 1 / Payout 2+): $9,000 / $4,500; no minimum trading days. 10-second rule gates payouts. 150K bought before March 31: DLL $3,750; 150K bought before the new dashboard launch: DLL $3,750 and drawdown $6,000."
 status: verified
 not_confirmed_fields: []
@@ -1728,6 +1810,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Tradeify Elite — live — 25K
@@ -1756,7 +1841,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Invitation only (3 payouts on one account or 10 total payouts are minimum thresholds for consideration). Size label = the sim size that transitioned. 80/20 split; daily payouts. Accounts purchased before Dec 3, 2025 may instead be on the Legacy Live program."
 status: partial
 not_confirmed_fields: [platforms]
@@ -1776,6 +1861,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Tradeify Elite — live — 50K
@@ -1804,7 +1892,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Invitation only (3 payouts on one account or 10 total payouts are minimum thresholds for consideration). Size label = the sim size that transitioned. 80/20 split; daily payouts. Accounts purchased before Dec 3, 2025 may instead be on the Legacy Live program."
 status: partial
 not_confirmed_fields: [platforms]
@@ -1824,6 +1912,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Tradeify Elite — live — 100K
@@ -1852,7 +1943,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "Invitation only (3 payouts on one account or 10 total payouts are minimum thresholds for consideration). Size label = the sim size that transitioned. 80/20 split; daily payouts. Accounts purchased before Dec 3, 2025 may instead be on the Legacy Live program."
 status: partial
 not_confirmed_fields: [platforms]
@@ -1872,6 +1963,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Tradeify Elite — live — 150K
@@ -1900,7 +1994,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "The starting tier '$0 -> DD: 6 mini / 40 micro (as published)' does not follow the 10:1 mini:micro ratio the firm uses elsewhere; recorded as published, needs confirmation. Invitation only (3 payouts on one account or 10 total payouts are minimum thresholds for consideration). Size label = the sim size that transitioned. 80/20 split; daily payouts. Accounts purchased before Dec 3, 2025 may instead be on the Legacy Live program."
 status: partial
 not_confirmed_fields: [max_position.starting_tier_micros, platforms]
@@ -1920,6 +2014,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 
 #### Tradeify Elite — live — 300K
@@ -1948,7 +2045,7 @@ automation_rule_text: |
   No High-Frequency Trading (HFT) Bots: Personal bots are allowed as long as they are not high-frequency trading (HFT) bots. Tradeify has specific risk measures in place to detect and monitor such activities.
   Compliance and Verification: Tradeify reserves the right to request information or documentation if our risk measures flag your account for potential violations of these guidelines.
 vps_allowed: conditional   # FAQ: no VPN/VPS for login; VPS for trading 'at your own risk' after a normal login; Terms forbid VPS that obscures device/identity verification
-personal_device_required: unknown   # not stated for manual orders; for bots the firm may 'require a live video of you enabling the code on your own PC'
+personal_device_required: "no"   # VPS trading permitted after a normal login (Common FAQs); caveat: for bots the firm may 'require a live video of you enabling the code on your own PC' (see §6)
 notes: "The starting tier '$0 -> DD: 8 mini / 60 micro (as published)' does not follow the 10:1 mini:micro ratio the firm uses elsewhere; recorded as published, needs confirmation. Invitation only (3 payouts on one account or 10 total payouts are minimum thresholds for consideration). Size label = the sim size that transitioned. 80/20 split; daily payouts. Accounts purchased before Dec 3, 2025 may instead be on the Legacy Live program."
 status: partial
 not_confirmed_fields: [max_position.starting_tier_micros, platforms]
@@ -1968,6 +2065,9 @@ sources:
   - { field: automated_trading_allowed, url: "https://tradeify.co/funded-trader-agreement", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://tradeify.co/terms-of-use", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/12268494-common-faqs", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/17069653-risk-compliance-guidelines-faq", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.tradeify.co/en/articles/10468318-guidelines-for-traders", accessed: "2026-10-23" }
 ```
 ## 9. Unverified / gaps / conflicts (for the user report)
 
@@ -1977,7 +2077,7 @@ sources:
 | 2 | Select 300K V2 evaluation and Flex DLL ($4,000) `daily_loss_limit.kind` | not confirmed | The amount is stated, but no official text says whether this DLL is a soft or hard breach. The DLL article's "Applies to" lists only Growth, Lightning and Select Daily funded accounts | 300k-select-account; rules-daily-loss-limit |
 | 3 | Tradeify Elite 150K / 300K starting contracts | not confirmed | Published as "6 mini / 40 micro" (150K) and "8 mini / 60 micro" (300K). These do not match the firm's stated 10:1 ratio. The 300K "above DD" tier (10/100) is also below the 150K tier. Recorded as published | tradeify-elite-program |
 | 4 | Copying to/from accounts at other firms | unverified (not stated) | Same-person copying is allowed and copying with other people is forbidden. No text says whether same-direction copying to or from another prop firm is allowed. Only bots ("using it across multiple firms is against Tradeify's policy") and opposing positions vs External Accounts (FTA §6.7(c)/(i)) are addressed | copier articles (Tradovate, WealthCharts, Tradesea), hedging, Risk & Compliance FAQ, FTA, Terms |
-| 5 | `personal_device_required` | unknown | Not stated for manual orders. For bots: "a live video of you enabling the code on your own PC". It is not stated whether a bot on a VPS qualifies. VPS trading is allowed "at your own risk" after a normal login (Common FAQs), but the Terms forbid a VPS that prevents device or identity verification | common-faqs; terms-of-use; guidelines-for-traders; risk-compliance FAQ |
+| 5 | `personal_device_required` | CLOSED in R4: `no` (caveat open) | VPS trading is allowed "at your own risk" after a normal login (Common FAQs) and shared or changed devices are not a violation by themselves (Risk & Compliance FAQ). Open caveat: for bots, "a live video of you enabling the code on your own PC"; it is not stated whether a VPS qualifies. The Terms forbid a VPS only where it prevents device or identity verification | common-faqs; terms-of-use; risk-compliance FAQ; guidelines-for-traders; help-center search |
 | 6 | Microscalping / 10-second payout rule | conflict (wording) | Help center: both "Over 50% of your trades are longer than 10 seconds" AND "Over 50% of your profit…". FTA §6.8: only "50% or more of the Trader’s account profit must come from trades held longer than ten (10) seconds". This is a payout gate, not a preset field | guidelines-for-traders; what-is-a-trading-day; funded-trader-agreement |
 | 7 | DCA / size consistency | conflict | Guidelines: "DCA is allowed, but it should always be part of a structured strategy". FTA §6.5: "avoiding dollar-cost averaging and high-frequency trading" and "avoiding maximum or larger contract sizes on single trades". This may affect copy-sizing presets | guidelines-for-traders; funded-trader-agreement |
 | 8 | Elite Live `platforms` | not stated | The Elite page does not name platforms or connections for live accounts | tradeify-elite-program; legacy-live guide |
@@ -1991,3 +2091,4 @@ Pages not reached: none. All cited pages were read on 2026-10-23. The help cente
 ## 10. Changelog
 
 - 2026-10-23 — initial research (Lupa). Format rev. 2 + PO additions (automation detail) + rev. 3 (VPS / personal device).
+- 2026-10-23 — rev bump R4: `personal_device_required` set to `no` in all 32 blocks (VPS trading allowed after normal login; shared or changed devices not a violation by themselves). Caveat stays open: the bot "own PC" video requirement (§9 #5) (Lupa).

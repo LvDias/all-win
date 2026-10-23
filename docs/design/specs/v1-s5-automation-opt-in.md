@@ -1,225 +1,497 @@
-# V1-S5 — Per-account automation opt-in and preset provenance — Screen spec
+# V1-S5 — Account registration, lifecycle and per-account opt-ins — Screen spec
 
-> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 2 · **Date:** 2026-10-23
-> **Slices:** [V1-S5](../../product/release-1/slice-plan.md) (account registration and lifecycle), with touch points in S7 (routing), S10 (audit) and S16 (presets). The PO is adding the opt-in rules to S5/S7/S16 in the slice plan.
-> **Foundations:** [foundations.md](../foundations.md): F§7.2 states, F§7.4 provenance and `FirmRuleQuote`, F§8.2 step-up.
-> **Contract:** `setAccountAutomationChoice` (`PUT /api/v1/accounts/{account_id}/automation`) in [openapi.yaml](../../../contracts/http/openapi.yaml); [S3 contract notes §2](../../architecture/contracts/s3-access-sources-pairing.md). Where they differ, the contract wins.
-> **Rev. 2 (2026-10-23):** aligned with the contract. The choice is saved by its own operation, and step-up applies only to `accepted` (now in the auth policy). Mapped the 409/422 responses. Added the create-flow sequencing.
-> **Basis:**
-> - User decision of 2026-10-23, option A ([decisions.md](../../delivery/decisions.md)): for a firm that forbids automation, the user must explicitly choose, per account, whether the account accepts automated sources. There is **no default**. The choice is made after a warning that shows the firm's rule text and the risk of losing the account, and it is audited with date and user. Items that conflict across official pages ship as "not confirmed" without blocking the rest. Presets store the platform.
-> - PO answers of 2026-10-23 (Bússola): O2, O4, O6, O7, O8 and O9 confirmed. O1 is the PO's interpretation, to be confirmed by the user.
+> **Owner:** Product Designer (Aquarela; Traço @ Dev3 wrote rev. 3 and was released, the specs are now Aquarela's) · **Status:** proposed, pending PO review · **Revision:** 4 · **Date:** 2026-10-23
+> **Slice:** [V1-S5](../../product/release-1/slice-plan.md) AC-1 … AC-11 (slice-plan rev. 7), with touch points in S7 (routing), S10 (audit), S16 (presets) and S19 (followers).
+> **Foundations:** [foundations.md](../foundations.md). Section numbers like "F§7.2" point there.
+> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/accounts.yaml` and the notes [s5-accounts](../../architecture/contracts/s5-accounts.md). Operations `listAccounts`, `createAccount`, `getAccount`, `updateAccount`, `archiveAccount`, `getAccountArchiveImpact`, `setAccountLifecycle`, `setAccountOptIn`; also [s5-design-deltas.md](../../architecture/contracts/s5-design-deltas.md) (D1–D16). **Where this spec and the contract differ, the contract wins.**
+> **Rev. 4 (2026-10-23, user UX rule in decisions.md, F§10.1):** the create form is now a **step-by-step flow** (§4.0: Tipo → Firma e plano → Dados da conta → Conta na plataforma → Ordens automatizadas → Revisar); edit stays one page with sections (§4.6) and opens a short stepper only when a rule change reopens the choice. Sections 4.1–4.5 keep their fields and rules; they now describe steps. Added the review step, the server-error mapping to a step and the tests.
+> **Rev. 3 (2026-10-23):**
+> - Deltas D1–D16 applied (names, atomic create-with-choice, five `FirmStance` values, conditional step-up, Q24/Q25/Q26 approved, provisional text-change trigger).
+> - Removed: the "saved without a choice" state, its alert and `Escolher agora`, and the Architect question about it.
+> - Added: account list, create/edit form for prop and real accounts, platform-account binding, lifecycle (pause/disable), delete, account detail, `copy` variant of the section, data/action list for the contract.
+> - Step-up wording no longer says "password" (S3 is passwordless since slice-plan rev. 7); F§8.2 rev. 3 matches.
+> - Rev. 3b: PO answers applied (Q-S5-3/5/8/9/11 closed; Q37–Q42 drawn as provisional recommendations); Aquarela confirmed §0 with adjustments.
 >
-> **Open, user decisions (PO list):**
-> - **O1 [Assumption]:** "automated source" = TradingView webhook + the future signal engine. Master replication follows the copy stance instead.
-> - **Q24:** the same opt-in for firms that forbid or condition **copying**.
-> - **Q25:** which stance values trigger the choice.
-> - **Q26:** what happens to the choice when a new preset version changes the rule.
->
-> The spec draws the PO recommendation for each and marks where an answer changes it.
-> **Not legal advice.** All Win shows the firm's own text. Summaries are labeled as All Win's reading (vision §12).
-> **Surfaces:** Web (Frontend). Core rules (routing skip, audit) are Backend's. QA owns the checks.
+> **Basis:** user decisions of 2026-10-23 in [decisions.md](../../delivery/decisions.md): option A, Q24, Q25, Q26, Q12, Q-A1. Business rules come only from the slice plan; gaps are in §17.
+> **Not legal advice.** All Win shows the firm's own text; summaries are labeled as All Win's reading (vision §12).
+> **Surfaces:** Web (Frontend). Core rules (routing skip, audit, step-up) are Backend's. QA owns the checks.
+
+---
+
+## 0. Information architecture added by wave 2 (all wave-2 specs use it)
+
+**Confirmed by Aquarela (design system owner)** with the adjustments below; the S3 tree stays valid.
+
+```
+App sidebar (additions in bold)
+  Início · Contas · Roteamento · Atividade · Perfis de stop e alvo · Presets · Conexões ·
+  Configurações · Administração (admin only)          (order confirmed by Aquarela)
+  Contas / Accounts                       /[locale]/accounts                 (S5)
+  Roteamento / Routing                    /[locale]/routing                  (S7)
+  Atividade / Activity                    /[locale]/activity                 (S10)  audit log
+  Perfis de stop e alvo / Stop and target profiles   /[locale]/profiles    (S6)
+  Presets                                 /[locale]/presets                  (S16, top-level until S16 is drawn)
+```
+
+Account-scoped tabs are **paths**, not query strings (deep link, Back button): `/accounts/[id]` (Resumo), `/accounts/[id]/risk` (S13), `/accounts/[id]/profile` (S6), `/accounts/[id]/routes` (S7).
 
 ---
 
 ## 1. What this spec covers
 
-| # | Element | Where |
+| # | Screen / element | Route |
 |---|---|---|
-| 1 | Automation section inside the account form (create and edit) | `/[locale]/accounts/new`, `/[locale]/accounts/[id]/edit` (full S5 form spec follows separately) |
-| 2 | Automation card on the account detail page, including "change choice" | `/[locale]/accounts/[id]` |
-| 3 | Suspended / pending state after a rule change (Q26) | account list, account detail, notification |
-| 4 | Routing: automated source × account not accepting automation | S7 routing screen |
-| 5 | Audit entries for the choice and for skipped instructions | S10 audit view |
-| 6 | Firm platform selection (O9) and "not confirmed" preset values (O7, O8) in the account form | account form |
+| S5-01 | Account list | `/[locale]/accounts` |
+| S5-02 | Create / edit form (prop and real) | `/[locale]/accounts/new`, `/[locale]/accounts/[id]/edit` |
+| S5-03 | Section "Ordens automatizadas" (`automation`) and its `copy` variant | inside S5-02, S5-04, S7 add-follower flow |
+| S5-04 | Account detail (summary tab) incl. opt-in cards | `/[locale]/accounts/[id]` |
+| S5-05 | Change / review an opt-in (dialog) | from S5-04, S5-01 |
+| S5-06 | Pause / resume / disable / enable | from S5-01, S5-04 |
+| S5-07 | Delete account | from S5-01, S5-04 |
+| S5-08 | Preset-dependent fields in the form (firm platform, "not confirmed") | inside S5-02 (picker itself: S16 spec) |
 
-## 2. When the automation choice is required
+Routing screen behavior for accounts that do not accept automation is specified in the **S7 spec**; audit rendering in the **S10 spec**. This spec defines the events S5 emits (§13).
 
-Inputs come from the preset version selected for the account (S16): `automated_trading_allowed` ∈ `yes | no | conditional | unknown`, its provenance (verified / not confirmed), the official quote(s), and the preset version.
+---
 
-| Account | Firm stance on automation | UI in the account form |
+## 2. Global rules for this slice
+
+- **Isolation (X-2):** an account id that is not the user's yields the same `ErrorState` as a non-existent id (`common.not_found`). Never distinguish.
+- **Money and numbers (X-3):** size is a decimal string; max position and multiplier are integers. Input per F§6.3. The browser does no arithmetic.
+- **Duplicate submit:** F§10 "Submitting" on every form and dialog. Create is sent with a client-generated idempotency key (§14), so a double click never creates two accounts.
+- **Optimistic concurrency:** edits send the account `row_version`. On conflict (`common.version_conflict`, proposed) show `Alert`: "Esta conta foi alterada em outro lugar. Recarregue para ver os valores atuais." + `Recarregar`. Typed values are kept until the user reloads.
+- **Simulation only (X-7):** outside production the Core refuses to bind `live` or `unknown` platform accounts (data model §5.3). The picker shows them disabled with the reason (§4.3).
+- **Time:** all timestamps with zone (F§6.4).
+- **Standard states** used by every screen below unless a section says otherwise:
+
+| State | UI |
+|---|---|
+| Loading | `Skeleton` in the final layout (F§10) |
+| Request error (page) | `ErrorState` + `Tentar novamente` + code in small mono text |
+| Not found / not yours | `ErrorState` "Conta não encontrada." / "Account not found." (`common.not_found`) with link to the list |
+| Session ended | redirect to login with `reason=session_expired` (F§10) |
+| Step-up required | `StepUpDialog` (F§8.2) asks for the code; the original request goes out once with `challenge_id` + `code`; cancel saves nothing (§12) |
+
+---
+
+## 3. S5-01 Account list — `/[locale]/accounts`
+
+**Purpose:** see every account at a glance and reach its actions (AC-1, AC-4).
+**Permissions:** any signed-in user, own accounts only. Archived ("deleted") accounts are not listed.
+**Layout:** `PageHeader` (title `Contas` / `Accounts`, primary action `Nova conta` / `New account`) · filter bar · `Table` (≥ `md`) or `Card` list (< `md`, F§9).
+
+**Filters** (client-side on the loaded list; list is small): free-text search on name; `Tipo` (Todas · Prop · Real); `Estado` (Todas · Ativa · Pausada · Desativada · Escolha pendente). The `Escolha pendente` option is the target of the S18 notification link (`?state=choice_pending`). Filter values live in the URL query.
+
+**Columns** (table) / fields (card):
+
+| Column | Content | Notes |
 |---|---|---|
-| Real brokerage account | — | No section. No question |
-| Prop | `yes` (verified) | Compact info line: "A {firm} permite negociação automatizada." + `FirmRuleQuote` collapsed behind `Ver regra oficial`. No question |
-| Prop | `no` | **Required choice** (§3), decided |
-| Prop | `conditional`, `unknown`, or the stance is **not confirmed** | **Required choice** (§3), per **Q25 recommendation**. If the user decides otherwise, these show the info line instead, with the stance badge (`Condicional` / `Desconhecida` / `Não confirmado`) |
-| Prop without a preset (accounts created before S16) | treated as `unknown` | Choice required when S16 lands: the account shows `Escolha pendente` (§5). Sim-only today, so no real account is affected **[PO to confirm the migration behavior]** |
+| Nome / Name | `display_name` (link to S5-04) | Primary field of the card |
+| Tipo / Type | `Prop` or `Real` | |
+| Firma · plano · fase · tamanho | `Apex · 50K Rithmic · Avaliação · US$ 50.000,00`; real: `US$ 25.000,00` | Prop only for firm/plan/phase |
+| Conta na plataforma | `{platform_account} · {connection name}` + kind badge (`Simulação`, `Playback`, `Live`, `Desconhecida`); `Sem vínculo` if unbound | |
+| Mult. | `2×` | F§6.2 |
+| Máx. posição | `3 contratos` | |
+| Estado | `StatusBadge` per F§7.2 priority; top one plus `+N` popover | Shows: out of sync, disconnected, blocked, risk warning (when S11/S13 deliver them), `Escolha pendente`, `Pausada`/`Desativada`. `Ativa` shows no badge; the row reads "Ativa" as text |
+| Risco hoje | worst current risk state + limit name and percent (added by the S13 spec §5); `—` without rules | Hidden until S13 ships |
+| Ações | kebab `DropdownMenu` | `Ver`, `Editar`, `Pausar`/`Retomar`, `Desativar`/`Ativar`, `Excluir` (destructive, last, separated) |
 
-The section appears only after firm, plan, phase, size and (when relevant) firm platform are selected, because the preset version (and so the rule text) depends on them. If any of these change after the user chose, **the choice is cleared** and asked again when the rule text or stance differs. A message explains it: "A regra mudou com a sua seleção. Escolha de novo."
+Default sort: name A→Z. No pagination in V1 (a user has tens of accounts); virtualize only if QA measures a problem.
 
-## 3. Account form: "Ordens automatizadas" section (create and edit)
+**States**
 
-**Structure** (DOM order = reading order; the warning comes **before** the choice):
+| State | UI |
+|---|---|
+| Empty (no accounts) | `EmptyState` icon `Landmark`: "Você ainda não cadastrou contas." / "Contas recebem as ordens roteadas. Cadastre ao menos uma para começar." + `Nova conta`. If the user has no paired connection yet, a second line "Pareie o NinjaTrader para vincular contas." + link to `/connections/ninjatrader` |
+| Empty after filter | "Nenhuma conta com esses filtros." + `Limpar filtros` |
+| Row action in progress | row menu disabled, badge `Salvando…`; no layout shift |
+| Row action failed | toast (destructive) with translated code; row returns to the previous state |
+
+---
+
+## 4. S5-02 Create / edit form — `/[locale]/accounts/new`, `/[locale]/accounts/[id]/edit`
+
+**Purpose:** register an account with what the platform needs to route safely (AC-1 … AC-7, AC-9b, AC-10).
+**Entry:** `Nova conta` (list header, empty state, Getting-started card); `Editar` (list, detail).
+**Layout:** create = step-by-step flow (§4.0, F§10.1). Edit = one page with `Card` sections in the same order (§4.6). Both: max 720 px, sticky footer that never covers the focused field (F§9, 2.4.11); focus the first invalid field; error summary `Alert` when ≥ 3 errors (F§10).
+
+### 4.0 Create flow (stepper, F§10.1, C§2.1)
+
+The form is long by the F§10.1 tests (up to 15 controls, 5 sections, and the choice depends on the preset and must be read first), so create uses `FormStepper`. Steps that do not apply are left out of the list.
+
+| # | Step (pt-BR / en) | Prop | Real | Controls | Section |
+|---|---|---|---|---|---|
+| 1 | Tipo / Type | yes | yes | type | §4.1 |
+| 2 | Firma e plano / Firm and plan | yes | – | firm, plan, phase, size, firm platform (when relevant) + the S16-03 rules preview | §4.2a, S16-03 |
+| 3 | Dados da conta / Account details | yes | yes | name, maximum position, multiplier; real also size (+ tie-break `RadioGroup` when needed) | §4.2b |
+| 4 | Conta na plataforma / Platform account | yes | yes (optional) | platform account | §4.3 |
+| 5 | Ordens automatizadas / Automated orders | yes, when §5.1 requires a choice or shows the info line | – | the choice + acknowledgment | §5 |
+| 6 | Revisar / Review | yes | yes | – | §4.5 |
+
+- Prop: 6 steps. Real: 4 steps (1, 3, 4, 6), the count reads "Etapa 2 de 4". If the preset says automation is allowed (`allowed`), step 5 stays as a short step with the info line and `Ver regra oficial` and nothing to choose, so the user still sees the rule once; it has no required control.
+- Step 1 is the only step that decides which others exist. Changing the type after going forward clears prop-only values (a notice on the next step, F§10.1).
+- **Gates:** step 2 values (firm, plan, phase, size, firm platform) gate step 5. When the user returns to step 2 and changes one, and the Core returns a different `current_rule_version_id`, step 5 loses its choice and shows the §5.2 notice. The stepper marks step 5 as not done again.
+- Step 5 must load `OptInState` for the displayed selection when entered; `Skeleton` while loading, `ErrorState` with retry on failure; `Voltar` always works. The prop account cannot be created until it loads (§9).
+- `Continuar` on step 5 requires the choice and, for `accepted`, the acknowledgment (§5.4 messages). A prop account with the preset-less path (Q40) uses free-text fields in step 2.
+- **Review (step 6):** groups Tipo · Firma e plano · Dados da conta · Conta na plataforma · Ordens automatizadas, each with `Editar`. The automation group shows the choice in words and the version of the rule ("Aceita ordens automatizadas, ciente do risco · regra da {firm} versão {n}"), and when `accepted` the risk `Alert` stays visible above the button. An unbound platform account shows "Sem vínculo". Final button `Criar conta` / `Create account`.
+- The idempotency key (§14) is generated when the flow opens and sent with the single create on the review. Step-up (when a choice is `accepted`, §12) is asked at `Criar conta`; cancelling returns to the review with everything kept.
+- Server errors (contract 4.3.0, `accounts.yaml`): 422 `pointer` → step: `/display_name` (also 409 `accounts.name_taken`), `/max_position_qty` (`accounts.max_position_exceeds_preset`), `/multiplier`, `/size_amount`, `/profile_size` (`accounts.profile_size_required` / `_invalid`, the tie-break) → step 3; `/firm_name`, `/firm_id`, `/plan_name`, `/phase`, `/firm_platform` (`accounts.firm_platform_required` / `_unknown`), `/preset_version_id` (`accounts.preset_version_unknown`, `presets.use_apply_version`), `/rule_values/<field>` (`presets.required_field_unresolved`, shown on the not-confirmed field of the rules preview), `/rule_values` → step 2 (`/max_position_qty` with `presets.required_field_unresolved` → step 3); `/binding` → step 4 (409 `accounts.platform_account_taken`, `accounts.binding_open_position`; 422 `accounts.platform_account_unknown`, `accounts.platform_account_kind_not_allowed`); `/opt_ins/automation` and `/opt_ins/copy` (`accounts.opt_in_required`, `accounts.opt_in_not_applicable`) → step 5. 409 `accounts.rule_version_changed` (`error.current_rule_version_id`) → step 5 with the §5.4 alert and the choice cleared. 409 `accounts.idempotency_key_reused` → review with the code.
+- Entry: `Nova conta` opens step 1. After success: toast "Conta criada." → account detail.
+
+### 4.1 Step 1 "Tipo" (create only)
+
+`RadioGroup` (cards ≥ 44 px): `Conta de prop firm` / `Prop firm account` · `Conta real em corretora` / `Real brokerage account`. Nothing preselected; choosing reveals the rest of the form. **[Proposal]** The type is **not editable** after creation (the data model ties prop-only columns to `kind`); the edit form shows it as read-only text. To change type the user creates a new account.
+
+### 4.2 Steps 2 and 3 "Firma e plano" and "Dados da conta" (edit page: one section "Dados da conta")
+
+**Step 2 (prop) holds:** Firma, Plano, Fase, Tamanho, Plataforma da conta na firma. **Step 3 holds:** Nome, Máximo de contratos, Multiplicador (real: also Tamanho and the tie-break). The table below lists all fields.
+
+| Field | Component | Validation | API / data |
+|---|---|---|---|
+| Nome / Name | `Input`, `maxLength` 80 **[proposal]** | required; unique per user, case-insensitive → `accounts.name_taken` inline "Já existe uma conta com este nome." | `display_name` |
+| **Prop only** — Firma / Firm | `Select` (searchable `Command` in `Popover` for 18+ options), options from the catalog (S16) | required | `firm_id` |
+| Plano / Plan | `Select`, options depend on firm | required | `plan_name` |
+| Fase / Phase | `Select` (Avaliação · Financiada · Live — as the preset publishes) | required | `phase` |
+| Tamanho / Size | prop: `Select` of the plan's sizes; real: money `Input` (USD, ≤ 2 decimals, > 0, F§6.3) | required; AC-2 | `size_amount` |
+| Plataforma da conta na firma / Firm account platform | `Select`, only when the preset has platform-specific rules (§9.1) | required when shown | `firm_platform` (reserved, data model §5.2) |
+| Máximo de contratos / Maximum position | `Input inputMode=numeric` | required (AC-3); integer ≥ 1; **prop:** prefilled with the preset maximum, cannot exceed it → "O máximo desta conta na {firm} é {n} contratos." **real:** user sets it, no prefill | `max_position_qty` |
+| Multiplicador / Multiplier | `Input inputMode=numeric`, default `1` | integer ≥ 1; fraction or zero refused (AC-5) → "Use um número inteiro maior ou igual a 1." | `multiplier` |
+
+Help under *Máximo de contratos*: "Limite de contratos que o All Win envia a esta conta. Instruções acima disso são cortadas e registradas." (vision §8). Under *Multiplicador*: "Quantidade executada = quantidade da instrução × multiplicador." (S7 AC-3).
+
+For a **real** account under "Tamanho", on an **exact tie** between two standard sizes (S6 **Q60**, provisional) the form shows a required `RadioGroup` "Copiar o perfil de stop/alvo de qual tamanho?" with the two candidates (from `getNearestProfileSize`; nothing preselected; sent as `profile_size`). Otherwise a read-only line: "Perfil de stop/alvo inicial: tamanho padrão mais próximo ({size})." (value from the Core; the profile itself is S6).
+
+### 4.3 Step 4 "Conta na plataforma" (link, AC-1)
+
+- `Select` "Conta no NinjaTrader" grouped by connection (`Connection.name`, with its status badge F§7.2). Options come from `visible_accounts` of the user's paired connections, label `{platform_account}` + kind badge.
+- Options already bound to another All Win account: disabled, "Já vinculada a {account name}." (one platform account ↔ at most one account).
+- `live` / `unknown` kinds outside production: disabled, "Contas live não são permitidas neste ambiente." / "Live accounts are not allowed in this environment."
+- Read-only line after choice: "Conexão de ordens: {local | servidor | desconhecida}" with the S9 limit text (S9 AC-4) when `oco_location` is `local` or `unknown`: "Os stops e alvos desta conta dependem do NinjaTrader aberto." / "This account's stops and targets depend on NinjaTrader staying open."
+- **The binding is optional at creation [provisional, Q37 rec. (a); user decides].** Unbound accounts save, appear as `Sem vínculo`, and cannot receive routed instructions; S7 shows them unavailable with the reason.
+- No paired connection: the select is replaced by an info `Alert` "Nenhuma conexão pareada. Você pode salvar a conta agora e vincular depois." + link to pairing.
+- Disconnected connection: its accounts remain selectable (last known list) with the note "Conexão desconectada: dados da última vez."
+
+### 4.4 Step 5 "Ordens automatizadas" (opt-in)
+
+Specified in **§5**. Prop accounts only. In the stepper it is reached after step 2, so the rule version is known when the step opens (§5.1). On the edit page it is a `Card` shown after firm, plan, phase, size and (when relevant) firm platform are selected.
+
+### 4.5 Review, save, validation and result (create: step 6; edit: sticky footer)
+
+| Situation | UI |
+|---|---|
+| Client-side invalid | **Create:** `Continuar` validates the current step; inline errors; focus first invalid; summary `Alert` ≥ 3 errors. **Edit:** all sections on `Salvar` |
+| Server 422 with `pointer` | Map the JSON pointer to the field (`/display_name`, `/max_position_qty`, `/opt_ins/automation`, `/opt_ins/copy`, …) and focus it. `/opt_ins/*` focuses the radio group of that kind (D10) |
+| Step-up required (a choice is `accepted` and changes the stored state, D9) | `StepUpDialog` **before** the single save, at `Criar conta` / `Salvar conta`. Cancel: nothing saved, all form values and choices kept (create: back on the review) |
+| 409 `accounts.rule_version_changed` | §5.4 (D4, D11) |
+| 409 `common.version_conflict` (edit) | §2 |
+| Network or 5xx | destructive `Alert` above the footer with the code; values kept; button re-enabled |
+| Success (create) | Toast "Conta criada." → account detail. If a platform account was bound, detail shows it |
+| Success (edit) | Toast "Conta salva." → account detail |
+| Cancel / browser back with unsaved changes | `AlertDialog` "Descartar alterações?" (`Continuar editando` focused / `Descartar`). No draft is stored in V1 (F§10.1) |
+
+### 4.6 Edit page (sections, not steps)
+
+One page, `Card` sections in the order of §4.0 (without Tipo, which is read-only text), one `Salvar conta`, `Cancelar` with the unsaved guard, and on ≥ `lg` the "Nesta página" anchors (F§10.1). **When a change reopens the automation choice** (firm, plan, phase, size or firm platform gave a different `current_rule_version_id`, §5.2, §6) the page does not turn into a stepper: `Salvar conta` opens a short `ResponsiveDialog` flow with `Stepper` (compact): 1 *Nova regra* (new quote, summary, old text in a `Collapsible`) → 2 *Sua escolha* (§5.3, nothing preselected) → 3 *Revisar*; cancelling returns to the page with the edited values kept. The dialog sends the single `updateAccount` with the choice.
+
+**Edit rules**
+
+- Fields editable: name, multiplier, max position, platform-account binding, and (prop) firm/plan/phase/size/firm platform.
+- Changing firm, plan, phase, size or firm platform may select a different rule version. The form then clears the affected choices (§5.2, D16) and asks again; the update carries new `opt_ins` for the affected kinds or the Core answers 422 `accounts.opt_in_required`.
+- Changing the bound platform account of an account **with an open position** is **blocked in the UI** with "Há posição aberta. Feche a posição para trocar a conta vinculada." **[provisional, Q38 rec. (a); user decides]**.
+- A shrinking *Máximo de contratos* below the current open position is allowed; the note "Posições abertas não são alteradas." appears under the field.
+
+---
+
+## 5. S5-03 Section "Ordens automatizadas" (`automation`) and its `copy` variant
+
+One reusable component `OptInSection` with `kind: "automation" | "copy"`. It renders from the `OptInState` the Core returns for the selected preset version (`firm_stance`, `state`, `current_rule_version_id`, previous `choice` when `pending_review`).
+
+### 5.1 When it appears (D12, AC-10)
+
+| Account / `firm_stance` for the kind | UI |
+|---|---|
+| Real account | No section. No question |
+| Prop, `allowed` | Compact info line + `FirmRuleQuote` collapsed behind `Ver regra oficial`. No question. automation: "A {firm} permite negociação automatizada." · copy: "A {firm} permite a replicação de operações entre contas." |
+| Prop, `forbidden` · `conditional` · `unknown` · `not_confirmed` | **Required choice** (§5.3), nothing preselected |
+| Prop without a preset (before S16) | **[Provisional, Q40 rec. (a)]** Firm, plan and phase are free text and the maximum position is typed. The stance is treated as `unknown`, so the choice is **required** with the generic warning of the `unknown` summary and no quote ("Não encontramos uma regra oficial da {firm} sobre automação."). Attaching a preset later gives `pending_review` (§7) |
+
+The section appears only after firm, plan, phase, size and firm platform (when relevant) are selected, because the rule version depends on them. The `automation` section is part of the S5 form. The **`copy` section is not part of the S5 create/edit form**: it appears when the account is added as a follower (§5.6, D13).
+
+### 5.2 Rule selection changes (D16)
+
+If the user changes firm, plan, phase, size or firm platform after choosing, and the Core returns a different `current_rule_version_id`, the choices of the affected kinds are **cleared** and an info `Alert` explains: "A regra mudou com a sua seleção. Escolha de novo." The Core is asked for the new `OptInState` on each such change (so the quote and `firm_stance` are always for the displayed selection). In the create flow (§4.0) this happens when the user goes back to step 2 and changes a value: step 5 loses its choice, shows this notice and the stepper marks it not done.
+
+### 5.3 Structure (DOM order = reading order; warning before choice)
 
 ```
 ┌ fieldset ──────────────────────────────────────────────────────────────┐
 │ legend: Ordens automatizadas nesta conta                                │
+│ help:   Fontes automatizadas: alertas do TradingView (webhook) e, no    │
+│         futuro, o motor de sinais do All Win. A replicação da conta     │
+│         master tem uma escolha própria.                                 │
 │                                                                         │
 │ Resumo do All Win (não é aconselhamento jurídico):                      │
 │ A Apex Trader Funding proíbe negociação automatizada nas regras         │
 │ oficiais. Alertas do TradingView executados automaticamente podem ser   │
 │ considerados automação.                                                 │
-│                                                                         │
-│ ┃ "No Automation or Algorithm Usage allowed: Rewards are intended to … │  ← FirmRuleQuote (lang=en)
+│ ┃ "No Automation or Algorithm Usage allowed: …"                        │ ← FirmRuleQuote (lang=en)
 │ ┃  Apex Trader Funding · Prohibited Activities · acessado em 23/10/2026│
 │ ┃  [Ver página oficial ↗]   [Mostrar texto completo]                   │
-│                                                                         │
-│ ⚠ Risco: se a firma considerar isso uma violação, você pode perder     │  ← Alert (danger)
+│ ⚠ Risco: se a firma considerar isso uma violação, você pode perder     │ ← Alert (danger)
 │   esta conta. A decisão é sua; o All Win não decide isso por você.     │
-│                                                                         │
-│ ( ) Não aceitar ordens automatizadas                                    │  ← RadioGroup, required,
-│     Alertas do TradingView nunca serão enviados para esta conta.        │     nothing preselected
+│ ( ) Não aceitar ordens automatizadas                                    │ ← RadioGroup, required
 │ ( ) Aceitar ordens automatizadas, ciente do risco                       │
-│     Alertas do TradingView poderão ser executados conforme suas rotas.  │
-│                                                                         │
-│   [ ] Li a regra oficial acima e entendo que posso perder esta conta.  │  ← only when "Aceitar"
+│ [ ] Li a regra oficial acima e entendo que posso perder esta conta.    │ ← only when "Aceitar"
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Content rules**
+**Summary line** — fixed, reviewed copy per `FirmStance` (D6); never free text. The second sentence of the automation summary is always "Alertas do TradingView executados automaticamente podem ser considerados automação."
 
-- **Summary line:** generated from the stance value with fixed, reviewed copy per value. It is never free text.
-  - `no`: "A {firm} proíbe negociação automatizada nas regras oficiais."
-  - `conditional`: "A {firm} só permite negociação automatizada sob condições. Leia a regra."
-  - `unknown`: "Não encontramos uma regra oficial da {firm} sobre automação."
-  - not confirmed: "As páginas oficiais da {firm} dizem coisas diferentes sobre automação."
-  - The second sentence is always "Alertas do TradingView executados automaticamente podem ser considerados automação."
-- **What counts as automated (O1):** a one-line help under the legend: "Fontes automatizadas: alertas do TradingView (webhook) e, no futuro, o motor de sinais do All Win. Esta escolha não afeta a replicação da conta master." **[O1 assumption pending user confirmation; if Q24 adds a copy opt-in, the last sentence becomes "A replicação da conta master tem uma escolha própria, abaixo."]**
-- **Quotes:** one `FirmRuleQuote` (F§7.4) per official quote the preset version holds, in the firm's language, never translated. When the stance is **not confirmed**, all conflicting quotes are shown, each with its own source and date, under the heading "As páginas oficiais divergem:".
-  - `unknown`: no quote. Text instead: "Pesquisamos as páginas oficiais em {date} e não encontramos uma regra sobre automação." with the research sources listed.
-- **Risk warning:** `Alert` variant destructive, `TriangleAlert` icon. Copy is fixed: "Risco: se a firma considerar isso uma violação, você pode perder esta conta. A decisão é sua; o All Win não decide isso por você." / "Risk: if the firm considers this a violation, you may lose this account. The decision is yours; All Win doesn't make it for you."
-- **Choice:** shadcn `RadioGroup`, required, **no option preselected** (decision: no default), including on edit after a reset (§5). Options are full-width cards (`label` wrapping the radio), ≥ 44 px tall.
-  - `declined`: "Não aceitar ordens automatizadas" / "Don't accept automated orders". Description: "Alertas do TradingView nunca serão enviados para esta conta. Se algum chegar, ele é ignorado e registrado na auditoria." (O2)
-  - `accepted`: "Aceitar ordens automatizadas, ciente do risco" / "Accept automated orders, aware of the risk". Description: "Alertas do TradingView poderão ser executados nesta conta conforme suas rotas."
-  - Acknowledgement `Checkbox` (only after `accepted` is selected, required): "Li a regra oficial acima e entendo que posso perder esta conta." / "I read the official rule above and understand I may lose this account."
-
-**Validation and save**
-
-| Situation | UI |
-|---|---|
-| Save with no choice | Inline error under the legend: "Escolha se esta conta aceita ordens automatizadas." Focus moves to the radio group. Included in the form's error summary |
-| `accepted` without the checkbox | Inline error on the checkbox: "Confirme que leu a regra para aceitar." |
-| Save with `accepted` | Step-up (F§8.2) if the last authentication is older than 15 min (O4; the operation has `x-step-up` when `automation_choice = accepted`). Then save |
-| Save with `declined` | No step-up, no extra dialog |
-| The preset version changed between loading and saving (409 `accounts.rule_version_changed`, body carries the current `automation_rule_version_id`) | The section reloads with the new quote, the choice is cleared, and an `Alert` explains it: "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha." Other form fields keep their values |
-| Success | Toast "Conta salva." The audit entry is written by the Core (§7) |
-
-**Contract:** `setAccountAutomationChoice` sends `automation_choice: "accepted" | "declined"` **and** `automation_rule_version_id`, the preset version whose text the user saw. The Core rejects a stale version with 409 and saves nothing, so the audit always records exactly what was displayed (O6). The response `AutomationState` has `automation_state: "chosen" | "pending_review" | "not_required"`, `automation_choice`, `automation_chosen_at` and `automation_rule_version_id`. Routing treats `pending_review` as not accepted.
-
-- **422 `accounts.automation_choice_not_applicable`** (the firm does not forbid automation): the section disappears after a refetch, with no error shown to the user. This only happens with stale data.
-- **Create flow sequencing:** the choice is a separate operation from creating the account. The form submits in this order:
-  1. Create the account.
-  2. Run the step-up if needed (only for `accepted`).
-  3. Call `setAccountAutomationChoice`.
-
-  If step 2 is cancelled or step 3 fails, the account **is saved without a choice**. The user then lands on the account detail page with the warning `Alert` "Conta salva, mas a escolha de automação não foi registrada. Ordens automatizadas não serão enviadas até você escolher." + `Escolher agora` (opens §4). Routing treats the account as not accepting. **[Architect: confirm the state of a prop account that never had a choice: `pending_review`, or a distinct value; the UI shows `Escolha pendente` either way.]**
-- The contract currently applies the choice when the firm **forbids** automation (`no`). The Q25 cases (`conditional`, `unknown`, not confirmed) need a contract change if the user approves them.
-
-## 4. Account detail: "Automação" card and changing the choice (O4)
-
-**Card** (only for accounts where §2 requires a choice):
-- Badge per F§7.2: `Aceita automação` (info, `Bot`) / `Sem automação` (neutral, `BotOff`) / `Escolha pendente` (warning, `CircleHelp`).
-- "Escolhido por você em {date time zone} · regra da {firm} versão {n} (acessada em {date})" + link `Ver no registro de auditoria` (S10 filtered to this account and event type).
-- `Ver regra oficial` (collapsed `FirmRuleQuote` of the version the user accepted/declined).
-- Action `Alterar escolha` / `Change choice`.
-
-**Change to accepted** (from declined or pending): `ResponsiveDialog` with the full §3 section (current preset version, quote, warning, radio with nothing preselected, checkbox) → step-up if needed → save → toast "Esta conta agora aceita ordens automatizadas." Audited.
-**Change to declined:** the same dialog. Selecting `declined` shows no warning or checkbox (O4: no warning), only the note "Posições e ordens abertas não são alteradas." / "Open positions and orders are not changed." → save → toast "Esta conta não aceita mais ordens automatizadas." Audited.
-- Open positions and working orders are never touched by a change (O4); the note says so in both directions.
-- Cancel / close = nothing changes.
-
-## 5. Rule changed: suspended until reviewed (Q26)
-
-Drawn for **Q26 recommendation (b)**: when a new preset version changes the automation stance **or** its official text, automated sources are **suspended** for every account that uses that firm and needs a choice, until the user chooses again; the user is notified.
-
-- **Account list:** badge `Escolha pendente` (warning) in the account's state cell (F§7.2 priority: after risk warning, before paused/disabled).
-- **Account detail:** warning `Alert` at the top: "A regra da {firm} sobre automação mudou em {date} (versão {n}). Ordens automatizadas estão suspensas nesta conta até você revisar." + `Revisar agora`.
-- **Review dialog:** same as §4 "change", plus a `Collapsible` "Texto anterior (versão {m})" with the old quote, so the user can compare. **Nothing preselected**, including the previous choice (decision: no default).
-- **Notification (S18):** "Regra de automação da {firm} mudou: {k} contas com ordens automatizadas suspensas." → link to the account list filtered by `Escolha pendente`.
-- **Routing (S7):** cells for these accounts show the pending reason (§6).
-- *If Q26 = (a), keep the choice:* no suspension. The account shows an info `Alert` "A regra da {firm} mudou. Revise sua escolha." with `Revisar`, and the badge keeps the current choice plus a dot indicator.
-- **Interaction with S16 AC-3** (a new preset version is applied only if the user chooses): **[PO to confirm]** whether a stance/text change suspends automation even before the user applies the new version to the account. The design assumes **yes**, since the rule changed at the firm regardless of what the account applies.
-
-## 6. Routing (S7): unavailable combinations (O2)
-
-In the routing configuration (source × destination account), when the source is automated (S3-09 badge `Automatizada`) and the account is `declined` or `pending_review`:
-- The control (checkbox/switch in the routing matrix, or the account option in a source's destination list) is **disabled** (`aria-disabled`, still focusable so the reason can be read) with a `Lock` icon.
-- The reason is shown inline on touch layouts and in a tooltip on pointer layouts; it is also the control's `aria-describedby`:
-  - declined: "Esta conta não aceita ordens automatizadas." + link `Alterar na conta`.
-  - pending: "Escolha de automação pendente nesta conta." + link `Revisar`.
-- If a route existed before the account changed to declined or pending, the route stays visible but is shown inactive with the same reason. It is not silently deleted. **[PO/S7 to confirm: keep the route and skip at runtime, vs. remove it]**
-- S16 AC-4 also requires the firm's stance to be shown when the account is added to routing: a compact stance line with `Ver regra oficial` next to the account name in the destination picker.
-
-## 7. Audit entries (O6, X-5, S10)
-
-| Event | Entry (pt-BR / en) | Fields shown |
+| `FirmStance` | automation (pt-BR / en) | copy (pt-BR / en) |
 |---|---|---|
-| Choice made or changed | "Automação aceita na conta {account}" / "Automation accepted on account {account}" · "Automação recusada na conta {account}" | Date-time with zone · user (e-mail) · choice · previous choice · firm · preset version · source URL(s) and access date(s) of the displayed text · stance value and provenance (verified / not confirmed) |
-| Suspended after a rule change (Q26 b) | "Ordens automatizadas suspensas na conta {account}: a regra da {firm} mudou (versão {n})" | Old and new preset version, sources |
-| Instruction skipped (O2) | "Instrução ignorada para {account}: a conta não aceita fontes automatizadas" or "…: escolha de automação pendente" | Instruction id, source name (never its URL), time |
+| `forbidden` | "A {firm} proíbe negociação automatizada nas regras oficiais." / "{firm} prohibits automated trading in its official rules." | "A {firm} proíbe a replicação de operações entre contas nas regras oficiais." / "{firm} prohibits copying trades between accounts in its official rules." |
+| `conditional` | "A {firm} só permite negociação automatizada sob condições. Leia a regra." / "{firm} only allows automated trading under conditions. Read the rule." | "A {firm} só permite a replicação sob condições. Leia a regra." / "{firm} only allows copying under conditions. Read the rule." |
+| `unknown` | "Não encontramos uma regra oficial da {firm} sobre automação." / "We found no official {firm} rule about automation." | "Não encontramos uma regra oficial da {firm} sobre replicação." / "We found no official {firm} rule about copying." |
+| `not_confirmed` | "As páginas oficiais da {firm} dizem coisas diferentes sobre automação." / "{firm}'s official pages disagree about automation." | "As páginas oficiais da {firm} dizem coisas diferentes sobre replicação." / "{firm}'s official pages disagree about copying." |
 
-Audit entries are read-only (S10 AC-3). Source links in entries open the official page in a new tab.
+copy second sentence: "A replicação da conta master para esta conta pode ser considerada cópia de operações pela firma." / "Replicating the master account to this account may be considered trade copying by the firm."
 
-## 8. Preset values in the account form: platform and "not confirmed"
+**Quotes (O7):** one `FirmRuleQuote` (F§7.4) per official quote the rule version holds, in the firm's language, never translated. `not_confirmed`: all conflicting quotes under "As páginas oficiais divergem:", each with its own source and date. `unknown`: no quote; text "Pesquisamos as páginas oficiais em {date} e não encontramos uma regra sobre automação." + the research sources listed. Quote data for the copy kind comes from the same rule version.
 
-### 8.1 Firm platform (O9)
-- When the selected preset has rules that differ by platform, the form shows a required `Select` "Plataforma da conta na firma" / "Firm account platform" (options from the preset, e.g. `Rithmic`, `Tradovate`), right after the plan/size.
-  - Help text: "A firma tem regras diferentes por plataforma. Escolha a plataforma em que esta conta foi aberta." / "The firm has different rules per platform. Choose the platform this account was opened on."
-- Until chosen, the platform-dependent fields show a placeholder "Escolha a plataforma" and are not editable.
-- Changing the platform re-fills platform-dependent fields from the preset. Fields the user had edited ask first: "Trocar a plataforma substitui {n} valores que você editou. Continuar?". Then the automation choice (§2) may be cleared.
-- The platform is stored on the account and shown on the detail page ("Plataforma na firma: Rithmic").
-- Not to be confused with the **execution platform** (NinjaTrader, chosen in S5 AC-1). Glossary entry added in F§5 terms: "Plataforma da conta na firma" / "Firm account platform".
+**Risk warning (fixed copy):** `Alert` destructive, `TriangleAlert`: "Risco: se a firma considerar isso uma violação, você pode perder esta conta. A decisão é sua; o All Win não decide isso por você." / "Risk: if the firm considers this a violation, you may lose this account. The decision is yours; All Win doesn't make it for you."
 
-### 8.2 "Not confirmed" values (O7, O8)
-- Preset picker: presets with not-confirmed items stay selectable (O8). Each option shows "{n} itens não confirmados" in `--status-warning` text, and a firm with no verified data is not listed (S16 AC-5 as amended by the PO).
-- Each not-confirmed field uses the F§7.4 treatment: `Não confirmado` badge, warning border, **no prefilled value**, and the `ConflictPicker` listing each published value with its source and date, plus "Outro valor" (an input with the field's normal validation, F§6.3). Nothing is chosen for the user (no "most conservative" default).
-- Required fields (e.g. max position, drawdown, daily loss limit) block save until resolved; the form error summary lists them: "Resolva os valores não confirmados: Drawdown, Regra de consistência."
-- Optional or informational fields (e.g. consistency rule text, which only tracks and warns per Q4) can be saved unresolved; they show `Não confirmado` on the detail page and are not used for warnings until resolved **[PO to confirm: an unresolved consistency rule produces no warnings]**.
-- A resolved value is stored as the user's own value with provenance "chosen among conflicting values" (F§7.4) and audited like any account edit.
-- Below the form, a summary `Alert` (info) when the preset has any not-confirmed items: "{n} regras desta firma não estão confirmadas porque as páginas oficiais divergem. Os valores abaixo marcados como “Não confirmado” precisam da sua escolha."
+**Choice:** shadcn `RadioGroup`, required, **no option preselected** (no default), including after a reset and in `pending_review`. Options are full-width cards, ≥ 44 px, `aria-describedby` → the risk warning.
 
-## 9. States summary
+| Option | `choice` | automation label / description | copy label / description |
+|---|---|---|---|
+| decline | `declined` | "Não aceitar ordens automatizadas" / "Don't accept automated orders" — "Alertas do TradingView nunca serão enviados para esta conta. Se algum chegar, ele é ignorado e registrado na auditoria." | "Não aceitar replicação da conta master" / "Don't accept master replication" — "Esta conta não poderá ser seguidora de uma conta master." |
+| accept | `accepted` | "Aceitar ordens automatizadas, ciente do risco" / "Accept automated orders, aware of the risk" — "Alertas do TradingView poderão ser executados nesta conta conforme suas rotas." | "Aceitar replicação, ciente do risco" / "Accept replication, aware of the risk" — "Operações da conta master poderão ser replicadas nesta conta." |
+
+Acknowledgement `Checkbox` (only after `accepted`, required): "Li a regra oficial acima e entendo que posso perder esta conta." / "I read the official rule above and understand I may lose this account." Sent value: only `choice` and `rule_version_id`; the checkbox is a client-side gate.
+
+### 5.4 Validation, save, stale rule (D4, D9, D10, D11)
 
 | Situation | UI |
 |---|---|
-| Preset data loading | Skeleton for the rules and automation sections |
-| Preset service error | `ErrorState` inside the rules area, with retry. The form cannot be saved for a prop account until it loads (the rules and the choice depend on it). Real accounts are unaffected |
-| Firm stance not in the preset at all (data gap) | Treated as `unknown` (§2) |
-| Quote URL unreachable | The link still opens; the text shown is the stored quote, which is the evidence |
-| Step-up cancelled | Nothing saved; the form keeps all values and the choice |
-| Save failed | Destructive `Alert` with the code; values kept |
+| Save with no choice | Inline error under the legend: "Escolha se esta conta aceita ordens automatizadas." Focus to the radio group; included in the error summary. Server 422 `accounts.opt_in_required` with pointer `/opt_ins/automation` or `/opt_ins/copy` maps to the group of that kind and focuses it |
+| `accepted` without the checkbox | Inline error on the checkbox: "Confirme que leu a regra para aceitar." |
+| Save with `accepted` that changes stored state | Step-up before the single save (D9, both kinds). `declined`: no step-up, no extra dialog |
+| 409 `accounts.rule_version_changed` (create, update or `setAccountOptIn`) | Body has `error.current_rule_version_id`. The section reloads the quote for that version, **clears the choice**, shows an `Alert`: "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha." Other fields keep their values; nothing was saved |
+| 422 `accounts.opt_in_not_applicable` (D5) | Refetch; the section disappears; **no error shown** (only happens with stale data) |
+| Success | Toast "Conta salva." (create-with-choice is one save; there is no partial state) |
 
-## 10. Accessibility
+The request carries `opt_ins.automation = { choice, rule_version_id }` where `rule_version_id` is the version whose text was displayed (O6).
 
-- The section is a `fieldset` with `legend`. The summary, quote and warning come before the radio group in DOM order. The radio group has `aria-describedby` pointing to the warning, so screen-reader users hear the risk before choosing.
-- `FirmRuleQuote` uses `lang` of the source text. Links say where they go ("Ver página oficial da Apex Trader Funding (abre em nova aba)").
-- Disabled routing controls stay focusable with `aria-disabled="true"`, and the reason is linked with `aria-describedby`.
-- Error messages follow F§10/F§11. Nothing relies on color: badges carry text, and the warning has an icon and the word "Risco".
+### 5.5 Account detail cards (O4) and states
 
-## 11. AC / decision traceability
+On S5-04, one card per kind where `state ≠ not_required`: **Automação** (`automation`) and **Replicação** (`copy`, only when the account has or had a copy choice or is a follower).
+
+| `state` / `choice` | Badge (F§7.2) | Card content |
+|---|---|---|
+| `chosen` + `accepted` | `Aceita automação` (info, `Bot`) / copy: `Aceita replicação` | "Escolhido por você em {date-time zone} · regra da {firm} versão {n} (acessada em {date})" · `Ver regra oficial` (collapsed quote of the version chosen) · link `Ver no registro de auditoria` (S10, filtered to this account and event) · `Alterar escolha` |
+| `chosen` + `declined` | `Sem automação` (neutral, `BotOff`) / `Sem replicação` | same |
+| `pending_review` | `Escolha pendente` (warning, `CircleHelp`) | warning `Alert`, see §6 · `Revisar agora` |
+| `not_required` + `firm_stance = allowed` | no badge | info line from §5.1 |
+
+New terms to add to F§5: `Aceita replicação` / `Accepts replication`, `Sem replicação` / `No replication` (request to Aquarela, §17 Q-S5-11, closed).
+
+### 5.6 `copy` variant at the follower moment (D13, Q24)
+
+- **Where:** when an account is added as a follower of a master (S7 follower picker / S19). It is the same `OptInSection` with `kind = "copy"`, inside a `ResponsiveDialog` titled "Adicionar {account} como seguidora" / "Add {account} as a follower", shown only if the follower's copy `state ≠ not_required` and no valid choice exists.
+- **Atomic:** the dialog's `Salvar` sends the copy choice together with the subscription in **one request** (S7/S19 contract); step-up if `accepted`; cancel adds nothing.
+- **Declined:** the account cannot be subscribed as a follower (S5 AC-9b). The dialog closes with the subscription not created and the toast "Esta conta não aceita replicação e não foi adicionada." The S7 spec shows the combination unavailable with the reason.
+- Same states, same quote/risk/step-up/409 handling as §5.3–§5.4, with copy wording.
+
+---
+
+## 6. Rule changed: suspended until reviewed (Q26) — S5-05
+
+Drawn for Q26 option (b), **approved for a stance change**. A material change of the official **text** with the **same stance** also gives `pending_review`: **provisional Architect decision, awaiting user confirmation (D14)**. The UI treats both causes the same way and labels the cause.
+
+- **Account list:** badge `Escolha pendente` (warning), F§7.2 priority after risk warning.
+- **Account detail:** warning `Alert` at the top: automation: "A regra da {firm} sobre automação mudou em {date} (versão {n}). Ordens automatizadas estão suspensas nesta conta até você revisar." · copy: "…sobre replicação mudou… A replicação para esta conta está suspensa até você revisar." + `Revisar agora`.
+  - Cause line under the text: stance change → "O que mudou: a posição da firma passou de {old} para {new}." · text change → "O que mudou: o texto da regra oficial foi alterado. Motivo informado: {reason}." / "What changed: the official rule text was edited. Reason given: {reason}." *(Provisional, Q42 rec. (a): a material change is flagged by whoever publishes the version, with a reason; user decides.)*
+- **Review dialog (`ResponsiveDialog`)**: the §5.3 section for the new version, plus a `Collapsible` "Texto anterior (versão {m})" with the old quote for comparison, and a line "Sua escolha anterior: {Aceitar | Não aceitar}" (from `choice` of the `pending_review` state; shown as text, **never preselected**). `Salvar` calls `setAccountOptIn` (`PUT …/opt-ins/{kind}`).
+- **No previous choice:** a `pending_review` state with no previous choice (D15) shows no "Sua escolha anterior" line.
+- **Notification (S18):** "Regra de automação da {firm} mudou: {k} contas com ordens automatizadas suspensas." → `/accounts?state=choice_pending`. The Core supplies the text and count; the web only links.
+- **Routing:** these accounts show the pending reason (S7 spec).
+- **Interaction with S16 AC-3** (a new preset version is applied only if the user chooses): the design assumes the stance/text change suspends **even before** the user applies the new version to the account **[confirmed by PO: S5 AC-11, Q26b]**.
+
+## 7. Prop accounts created before S16, or when a preset is attached (D15, Q41 provisional)
+
+When S16 lands (or the user attaches a preset to a prop account), existing prop accounts whose stance needs a choice show `state = pending_review` with no previous choice: badge `Escolha pendente`, same detail alert (copy: "Esta conta ainda não tem escolha sobre ordens automatizadas. Elas ficam suspensas até você escolher.") and `Revisar agora`. Sim-only today, so no real account is affected. **[provisional, Q41 rec. (a): attaching a preset gives `pending_review`; user decides]**
+
+---
+
+## 8. S5-04 Account detail — `/[locale]/accounts/[id]`
+
+**Purpose:** the account's state, configuration and actions in one place.
+**Layout:** `PageHeader` (name, type/firm line, state badges, actions: `Editar`, lifecycle button, kebab with `Excluir`). Tabs: `Resumo` (this slice) · `Risco` (S13) · `Perfil` (S6) · `Rotas` (S7); a tab with no data yet is hidden until its slice ships. On mobile the tabs become a horizontally scrollable `TabsList` (≥ 44 px).
+
+**Resumo cards** (order):
+
+1. **Alerts**: out of sync, pending choice (§6), paused/disabled explanation (§10). Most severe first (F§7.2).
+2. **Dados:** type, firm · plan · phase · size · firm platform ("Plataforma na firma: Rithmic"), max position, multiplier, created at.
+3. **Conta na plataforma:** platform account, connection name + status, kind badge, OCO location and its limit text (S9 AC-4), `Alterar vínculo` (edit form anchor).
+4. **Automação** and **Replicação** cards (§5.5).
+5. **Posição aberta:** read-only indicator "Posição aberta: sim/não" from the gateway (needed for lifecycle and delete messages).
+
+**States:** loading skeleton of the five cards; error/not found per §2; unbound account shows card 3 as `Sem vínculo` with `Vincular conta`.
+
+---
+
+## 9. S5-08 Preset-dependent fields in the form
+
+The preset picker, versioning and `FirmRuleQuote` data are defined in the S16 spec. This section fixes what the S5 form does with them.
+
+### 9.1 Firm platform (O9, S5 AC-1)
+- When the selected preset has rules that differ by platform, the form shows a required `Select` "Plataforma da conta na firma" / "Firm account platform" (options from the preset, e.g. `Rithmic`, `Tradovate`), right after plan/size. Help: "A firma tem regras diferentes por plataforma. Escolha a plataforma em que esta conta foi aberta." / "The firm has different rules per platform. Choose the platform this account was opened on."
+- Until chosen, platform-dependent fields show "Escolha a plataforma" and are not editable.
+- Changing the platform re-fills platform-dependent fields. Fields the user edited ask first: "Trocar a plataforma substitui {n} valores que você editou. Continuar?" (`AlertDialog`, `Cancelar` focused). Then §5.2 may clear the choices.
+- Stored on the account and shown on the detail ("Plataforma na firma: Rithmic"). Not the **execution platform** (NinjaTrader, F§5).
+
+### 9.2 "Not confirmed" values (O7, O8)
+- Preset options with not-confirmed items stay selectable; each shows "{n} itens não confirmados" in warning text. A firm with no verified data is not listed.
+- Each not-confirmed field uses F§7.4: `Não confirmado` badge, warning border, **no prefilled value**, `ConflictPicker` with each published value (source, date) plus "Outro valor" (input with the field's normal validation). Nothing chosen for the user.
+- Required fields (max position, drawdown, daily loss limit, reset time) block save; the error summary lists them: "Resolva os valores não confirmados: Drawdown, Regra de consistência."
+- Optional or informational fields (e.g. consistency rule) can be saved unresolved; the detail shows `Não confirmado`, and they are not used for warnings until resolved **[confirmed by PO, Q-S5-5]**; the detail shows "Regra de consistência não confirmada — não acompanhada" / "Consistency rule not confirmed — not tracked".
+- A resolved value is stored as the user's own value with provenance "chosen among conflicting values" and audited like any account edit.
+- Summary `Alert` (info) below the form when the preset has any: "{n} regras desta firma não estão confirmadas porque as páginas oficiais divergem. Os valores marcados como “Não confirmado” precisam da sua escolha."
+- Note: the max position is **required** in S5 AC-3, so a `not_confirmed` max position must be resolved before saving.
+
+---
+
+## 10. S5-06 Lifecycle: pause, resume, disable, enable (AC-4)
+
+**States** (F§7.2): `Ativa` (no badge), `Pausada` (`Pause`, neutral), `Desativada` (`CircleOff`, neutral). Definitions shown in help text, never invented: **Pausar** = parada temporária que mantém toda a configuração; **Desativar** = conta desligada até ser reativada.
+
+| Action | From | Confirmation | Result toast |
+|---|---|---|---|
+| `Pausar` / Pause | Ativa | `AlertDialog` | "Conta pausada." |
+| `Retomar` / Resume | Pausada | none (one click) | "Conta retomada." |
+| `Desativar` / Disable | Ativa or Pausada | `AlertDialog` | "Conta desativada." |
+| `Ativar` / Enable | Desativada | none | "Conta ativada." |
+
+**Pause / disable dialog** (destructive-weight, confirm button repeats the verb: `Pausar conta` / `Desativar conta`; cancel focused):
+- Body: "Enquanto estiver {pausada | desativada}, esta conta não recebe nenhuma instrução nova, **nem de saída (fechar)**. Posições e ordens abertas não são alteradas." / "While {paused | disabled}, this account receives no instruction, **including exits (close)**. Open positions and orders are not changed." (S7 AC-8, ADR-0003 §4.1: paused/disabled block every action.)
+- If the account has an open position: extra warning `Alert`: "Esta conta tem posição aberta. Ela continuará aberta e sem o All Win para fechá-la." / "This account has an open position. It stays open and All Win won't close it."
+- Each skip while paused/disabled is audited with reason (X-5; `routing.account_inactive`).
+
+**States:** submitting (button `Salvando…`, dialog stays open); failure (destructive `Alert` in the dialog, state unchanged); concurrent change (`common.version_conflict`) → toast "A conta mudou em outro lugar." + refetch.
+
+---
+
+## 11. S5-07 Delete account (AC-6)
+
+- Entry: kebab `Excluir` in list/detail.
+- **With an open position:** the action opens an info `AlertDialog` instead of the confirmation, **no confirm button**: "Não é possível excluir {account}: há posição aberta. Feche a posição no NinjaTrader e tente de novo." / "Can't delete {account}: it has an open position. Close it in NinjaTrader and try again." Button `Entendi`. The server also refuses with a stable code (`accounts.delete_open_position`, proposed); if it arrives anyway, the same text is shown.
+- **Without open position:** `AlertDialog` (cancel focused): title "Excluir conta {name}?"; body: "A conta deixa de aparecer e não recebe mais instruções. O registro de auditoria e o histórico permanecem. Esta ação não pode ser desfeita." / confirm `Excluir conta` (destructive). The body adds, when they exist, a list: "Serão removidos: {n} rotas ({source → …}) e {m} relações de replicação ({master → …})." / "Will be removed: …"; if none, the line is omitted. **[Provisional, Q39 rec. (a): archive; routes and master/follower relations are removed after a confirmation that lists them; history kept (S10 AC-3). The dialog lists them, see below.]**
+- After success: toast "Conta excluída." and return to the list. Deleting "archives" the account (`archived_at`); history keeps the id and name snapshot.
+- A deleted account's name becomes available again (unique index is on live accounts).
+
+---
+
+## 12. Step-up (D9) — what the UI does
+
+- Operations that may need it: create/update with an `accepted` choice that changes the stored state; `setAccountOptIn` with `accepted`. `declined` never does.
+- The Core decides which operations need it. The web asks the Core for a challenge, opens the `StepUpDialog` (F§8.2: channel, action, target), keeps the form values in memory, and sends the **original request once** with `challenge_id` + `code`, verified in the same transaction as the save. There is no "open dialog, then retry" loop.
+- The dialog is F§8.2 (new code to the verified channel, `CodeChallenge`). Single error `auth.code_invalid`: "Código inválido ou expirado. Confira ou peça um novo." / "Invalid or expired code. Check it or request a new one." (form values and choices are kept). Cancel runs nothing. The window length (Q30) does not change the UI.
+- Cancel = nothing saved, form keeps all values, choices and the acknowledgement.
+
+---
+
+## 13. Audit events emitted by S5 (render in S10)
+
+Codes are **proposals** for the Architect; clients translate them (ADR-0001 §9). Fields shown in S10 are in the "Details" column. Category is `config` unless noted.
+
+| Event (code, proposed) | Entry text (pt-BR / en) | Details |
+|---|---|---|
+| `accounts.created` / `.updated` / `.archived` | "Conta {account} criada" / "…editada" / "…excluída" | changed fields (names and new values; money as strings), user |
+| `accounts.lifecycle_changed` | "Conta {account} pausada" · "desativada" · "retomada" · "ativada" | previous and new state, had open position (yes/no) |
+| `accounts.opt_in_chosen` | "Automação aceita na conta {account}" / "Automation accepted on account {account}" · "Automação recusada…" · copy: "Replicação aceita/recusada…" | date-time with zone · user (e-mail) · kind · choice · previous choice · firm · rule version · source URL(s) and access date(s) of the displayed text · `firm_stance` (five values) |
+| `accounts.opt_in_suspended` | "Ordens automatizadas suspensas na conta {account}: a regra da {firm} mudou (versão {n})" | cause (`stance_changed` / `text_changed`), old and new rule version, sources |
+| `routing.automation_not_accepted` (category `routing`) | "Instrução ignorada para {account}: a conta não aceita fontes automatizadas" or "…: escolha de automação pendente" | instruction id, source name (never its URL), time |
+| `routing.copy_not_accepted` (category `routing`) | "Replicação ignorada para {account}: a conta não aceita replicação" or "…: escolha de replicação pendente" | same |
+
+D7: the two routing codes replace the former text-only skip reason. Entries are read-only (S10 AC-3). Source links open the official page in a new tab.
+
+---
+
+## 14. Data and actions this slice needs (for the Architect to close the contract)
+
+**Reads**
+
+| Need | Used by | Notes |
+|---|---|---|
+| Account list: id, name, kind, firm/plan/phase names, size (string), firm platform, multiplier, max position, `lifecycle_state`, bound platform account (name, connection id/name, kind, `oco_location`), `automation` and `copy` `OptInState`, `row_version`, `has_open_position`, state flags from gateway (out-of-sync, connection status) | S5-01 | One call; no N+1 |
+| Account detail: all of the above + `created_at`, `copied_from_size` (profile provenance), preset version id/number | S5-04 | |
+| Catalog for the form: firms, plans, phases, sizes per plan, platforms per plan, preset max position per size, per-field provenance (verified / not confirmed with published values, sources, dates) | S5-02, §9 | From S16 |
+| `OptInState` + rule content for a selection (firm, plan, phase, size, platform) **before** the account exists: `firm_stance`, `current_rule_version_id`, quotes (text, language, page title, URL, access date), research sources for `unknown` | §5 | The form needs a "preview" query because there is no account id yet |
+| Previous rule version quote for comparison | §6 | |
+| Platform accounts of paired connections, with bound/unbound flag and the name of the account they are bound to (own user only) | §4.3 | `VisibleAccount` today has `account_id` only |
+
+**Writes**
+
+| Action | Notes |
+|---|---|
+| `createAccount` (with `opt_ins`, idempotency key) | One save; `x-step-up: conditional` (D9). 422 pointers listed in §4.5 |
+| `updateAccount` (with `row_version`, `opt_ins`) | 409 `common.version_conflict`, 409 `accounts.rule_version_changed`, 422 `accounts.opt_in_required` |
+| `setAccountOptIn` | In the contract (3.4.1) |
+| `setAccountLifecycle` (`pause` / `resume` / `disable` / `enable`) | audited with previous state |
+| `archiveAccount` | refuses with `accounts.delete_open_position` |
+| Platform-account binding | not a separate operation: the `/binding` field of `createAccount` / `updateAccount` (natural key connection + platform account). Errors: 409 `accounts.platform_account_taken`, 409 `accounts.binding_open_position` (Q38, provisional), 422 `accounts.platform_account_unknown`, 422 `accounts.platform_account_kind_not_allowed` |
+
+**Events (SSE):** account `lifecycle_state`, opt-in `state`, connection status and out-of-sync flag changes, so list and detail update without reload.
+
+**Error codes the UI maps** (proposed names where new): `accounts.name_taken`, `accounts.max_position_exceeds_preset`, a fractional or zero multiplier is a schema error: 400 `common.invalid_request` with pointer `/multiplier`, `accounts.platform_account_taken`, `accounts.delete_open_position`, `accounts.opt_in_required` (pointer), `accounts.opt_in_not_applicable`, `accounts.rule_version_changed` (+ `current_rule_version_id`), `common.version_conflict`, `common.not_found`, `auth.code_invalid`.
+
+---
+
+## 15. Accessibility
+
+- Opt-in section: `fieldset`/`legend`; summary, quote and warning precede the radio group in the DOM; the group has `aria-describedby` → warning. `FirmRuleQuote` uses `lang` of the source text. Links say where they go ("Ver página oficial da Apex Trader Funding (abre em nova aba)").
+- Create flow: `Stepper` and focus/live-region rules of C§2 and C§2.1; the step title is the focused `h2`; the review is a `dl` per group with `Editar {group}` buttons that name the group; `Voltar`/`Continuar` keep the same position on every step; the sticky footer does not hide the focused field; nothing typed is asked twice (3.3.7); at 320 px the footer buttons stack.
+- Form: visible labels, errors linked with `aria-describedby`/`aria-invalid`, focus to first invalid field (F§11). The sticky footer must not hide the focused field (2.4.11).
+- Selects with search use the `Combobox` pattern (shadcn `Command` in `Popover`): type-ahead, `aria-expanded`, Escape closes and returns focus.
+- Lifecycle and delete dialogs: `AlertDialog`, cancel focused, focus returns to the kebab/trigger on close. Result toasts are polite.
+- Badges carry text and icon; nothing depends on color. Account list badge `+N` popover is keyboard-reachable.
+- Tabs follow the WAI-ARIA tabs pattern (arrow keys).
+- Disabled platform-account options stay focusable with `aria-disabled` and the reason in `aria-describedby`.
+
+## 16. AC / decision traceability
 
 | Requirement | Where |
 |---|---|
-| Decision 2026-10-23: explicit per-account choice, no default, after warning with rule text + account-loss risk | §2, §3 |
-| Choice audited with date and user (O6: plus preset version, source URL, access date) | §3 contract, §7 |
-| O2 declined = never receives automated instructions; S7 combination unavailable with reason; skipped + audited | §6, §7 |
-| O4 change anytime; accept = warning + step-up + audit; decline = no warning + audit; positions untouched | §4 |
-| O7 not-confirmed values not prefilled, user picks or enters, required ones block save | §8.2, F§7.4 |
-| O8 presets with not-confirmed items selectable | §8.2 |
-| O9 firm platform chosen at registration, defines rules, stored on the account | §8.1 |
-| S16 AC-4 stance shown at registration and when adding to routing | §2, §3, §6 |
-| X-5 transparency, X-6 bilingual (quotes stay in the source language by design) | §7, §3 |
+| S5 AC-1 prop/real account, firm platform, link to platform account | §4.2, §4.3, §9.1 |
+| AC-2 sizes; real any size | §4.2 |
+| AC-3 max position mandatory, preset cap | §4.2, §9.2 |
+| AC-4 enable/disable/pause, skip audited, positions untouched | §10, §13 |
+| AC-5 multiplier whole ≥ 1 | §4.2 |
+| AC-6 delete refused with open position; isolation | §11, §2 |
+| AC-7/AC-8 option A, no default, audited, step-up to accept, change flow | §5, §5.5, §12 |
+| AC-9 automated sources vs copy | §5.3 help text, D13 |
+| AC-9b copy opt-in at follower add | §5.6 |
+| AC-10 choice for any stance ≠ allowed | §5.1 |
+| AC-11 suspension on stance (and provisionally text) change | §6 |
+| D1–D16 | §5 (D1–D6, D9–D13), §6 (D14), §7 (D15), §5.2 (D16), §13 (D7), §5.4 (D8: atomic) |
+| X-2, X-3, X-5, X-6 | §2, §13 |
+| User UX rule: long forms step by step (decisions.md 2026-10-23) | §4.0, §4.6, F§10.1, C§2.1 |
 
-## 12. Open questions (owner)
+## 17. Open questions
 
-| ID | Question | Owner | Spec default |
-|---|---|---|---|
-| O1 | "Automated source" = TradingView webhook + future signal engine; master replication follows the copy stance | User (via PO) | As stated |
-| Q24 | Same explicit opt-in for firms that forbid/condition copying (master replication) | User | Not drawn; the component is reusable (`kind: automation | copy`) |
-| Q25 | Choice for `conditional` / `unknown` / not confirmed stances too | User | Yes |
-| Q26 | Rule change: suspend until reviewed (b) vs keep the choice and notify (a) | User | (b) |
-| — | Does a stance change suspend before the account applies the new preset version (S16 AC-3)? | PO | Yes |
-| — | Prop accounts created before S16 become `Escolha pendente` | PO | Yes |
-| — | An unresolved not-confirmed consistency rule gives no warnings | PO | Yes |
-| — | Existing route to an account that becomes declined: kept inactive vs removed | PO (S7) | Kept inactive |
-| — | State of a prop account that never had a choice (`pending_review` vs. a new value), or an atomic create-with-choice | Architect | `Escolha pendente`, not accepted |
-| Q25 | If approved, extend `setAccountAutomationChoice` applicability beyond `no` | Architect (after user) | — |
+**Closed by the PO (Rumo, 2026-10-23):** Q-S5-3 yes (suspend even before applying the version); Q-S5-5 unresolved consistency rule gives no warning, detail says "não acompanhada"; Q-S5-8 copy choice exists only for a follower, a non-follower has no copy card (state name: Architect); Q-S5-9 no business rule (design/Architect); Q-S5-11 terms confirmed by Aquarela and PO (must not sound like legal advice).
+
+**Now user questions (slice-plan §7), drawn with the recommendation and labeled provisional:**
+
+| ID | Question | Spec default (provisional) |
+|---|---|---|
+| Q37 (was Q-S5-1) | Platform-account binding optional | Optional; an unbound account never routes |
+| Q38 (was Q-S5-2) | Change binding with an open position | Blocked |
+| Q39 (was Q-S5-6) | Delete account | Archive; routes and master/follower relations removed after a confirmation that lists them; history kept |
+| Q40 (was Q-S5-7) | Before S16 | Free-text firm/plan/phase, typed max, stance `unknown` ⇒ choice required with generic warning |
+| Q41 (was Q-S5-4) | `pending_review` when a preset is attached | Yes |
+| Q42 (was Q-S5-10) | "Material" text change (D14) | Flagged by the publisher of the version, with a reason shown to the user |
+
+**Still open (Architect):** Q-S5-12 the state name for a copy opt-in of a non-follower (no card in the UI either way); Q-S5-13 `routing.platform_unbound` and the other proposed error codes (§14).
+
+**Step-by-step form (rev. 4), for the PO:** (1) the prop create flow has six steps; "Firma e plano" was split out of "Dados da conta" so no step passes 6 controls (F§10.1), a small change from the five steps the user listed. (2) When automation is `allowed`, step 5 stays as an info step so the rule is still shown once; the PO may prefer to drop it. (3) No draft is saved if the user leaves (V1). (4) Edit stays one page; only a rule change opens a short stepper.

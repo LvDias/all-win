@@ -65,7 +65,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             using var h = Ready();
             h.Deliver(Place(C1, Side.Buy, 2));
             h.Clock.Advance(TimeSpan.FromMinutes(10));
-            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce, expiresAt: h.Clock.UtcNow.AddMinutes(-5)));
+            h.Deliver(Place(C2, Side.Sell, 1, PositionEffect.Reduce, expiresAt: h.Clock.UtcNow.AddMinutes(-5), positionRef: C1));
             Assert.Contains(h.Reports(C2), r => r.Status == ReportStatus.Filled && r.ChildRole == ChildRole.Exit);
             Assert.Equal(1, h.Platform.Position(Sim101, "MNQ"));
         }
@@ -221,12 +221,14 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
-        public void Reduce_on_the_same_side_never_adds()
+        public void Reduce_on_the_same_side_is_position_changed_and_never_adds()
         {
+            // Protocol 1.2: a same-side position is a different position from the one the reduce was meant for.
             using var h = Ready();
             h.Deliver(Place(C1, Side.Buy, 1));
-            h.Deliver(Place(C2, Side.Buy, 1, PositionEffect.Reduce));
-            Assert.Equal(ReasonCodes.CommandNothingToReduce, h.Reports(C2).Last().ReasonCode);
+            h.Deliver(Place(C2, Side.Buy, 1, PositionEffect.Reduce, positionRef: C1));
+            Assert.Equal(ReportStatus.Rejected, h.Reports(C2).Last().Status);
+            Assert.Equal(ReasonCodes.CommandPositionChanged, h.Reports(C2).Last().ReasonCode);
             Assert.Equal(1, h.Platform.Position(Sim101, "MNQ"));
         }
 
@@ -235,7 +237,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         {
             using var h = Ready();
             h.Deliver(Place(C1, Side.Buy, 2));
-            h.Deliver(Place(C2, Side.Sell, 5, PositionEffect.Reduce));
+            h.Deliver(Place(C2, Side.Sell, 5, PositionEffect.Reduce, positionRef: C1));
             var working = h.Reports(C2).First(r => r.Status == ReportStatus.Working);
             Assert.Equal(2, working.Quantity);
             Assert.Equal(ReasonCodes.OrderQuantityCapped, working.ReasonCode);

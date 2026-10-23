@@ -22,19 +22,12 @@ namespace AllWin.Adapter.Core.Tests.Engine
         public List<Envelope> Frames { get; } = new List<Envelope>();
         public List<int> Closes { get; } = new List<int>();
 
-        private static readonly Lazy<Json.Schema.JsonSchema> Reference = new Lazy<Json.Schema.JsonSchema>(() =>
-        {
-            Json.Schema.SchemaRegistry.Global.Register(Json.Schema.JsonSchema.FromText(AllWin.Adapter.Core.Protocol.Schema.ContractSchemas.InstructionV1));
-            return Json.Schema.JsonSchema.FromText(AllWin.Adapter.Core.Protocol.Schema.ContractSchemas.AdapterProtocolV1);
-        });
-
         public void Send(string frame)
         {
             var decoded = ProtocolCodec.Decode(frame);
             if (!decoded.IsOk) throw new InvalidOperationException("Engine sent an invalid frame: " + decoded.Detail);
             // Second opinion from an independent JSON Schema implementation on every frame the engine sends.
-            var verdict = Reference.Value.Evaluate(System.Text.Json.Nodes.JsonNode.Parse(frame), new Json.Schema.EvaluationOptions { OutputFormat = Json.Schema.OutputFormat.Flag });
-            if (!verdict.IsValid) throw new InvalidOperationException("Reference validator rejects an engine frame: " + frame);
+            if (!Contracts.ReferenceSchema.IsValidAdapterFrame(frame)) throw new InvalidOperationException("Reference validator rejects an engine frame: " + frame);
             Frames.Add(decoded.Envelope!);
         }
 
@@ -56,9 +49,10 @@ namespace AllWin.Adapter.Core.Tests.Engine
         private FileJournalStore _file;
         private FaultInjectingStore _store;
 
-        public EngineHarness(Action<SimulatedPlatform>? setup = null, EngineOptions? options = null)
+        public EngineHarness(Action<SimulatedPlatform>? setup = null, EngineOptions? options = null, LiveConsentState? consent = null)
         {
             Options = options ?? new EngineOptions();
+            Consent = consent ?? LiveConsentState.Off();
             Platform = new SimulatedPlatform(Clock) { EventSink = e => _events.Enqueue(e) };
             Platform.AddAccount(Sim101);
             Platform.SetTickSize("MNQ", 0.25m);
@@ -75,6 +69,9 @@ namespace AllWin.Adapter.Core.Tests.Engine
         public ManualClock Clock { get; } = new ManualClock();
         public SimulatedPlatform Platform { get; }
         public EngineOptions Options { get; }
+
+        /// <summary>The local live-account opt-in the engine reads (ADR-0005 N11).</summary>
+        public LiveConsentState Consent { get; }
         public AdapterEngine Engine { get; private set; }
         public RecordingSink Sink { get; private set; } = new RecordingSink();
         public List<string> Log { get; } = new List<string>();
@@ -85,7 +82,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             if (Directory.Exists(_dir)) Directory.Delete(_dir, true);
         }
 
-        private AdapterEngine NewEngine() => new AdapterEngine(Options, Platform, _store, Clock, new ListLog(Log));
+        private AdapterEngine NewEngine() => new AdapterEngine(Options, Platform, _store, Clock, new ListLog(Log), Consent);
 
         // ------------------------------------------------------------------ Core side
 
@@ -102,7 +99,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         {
             SessionId = Ids.New(),
             ConnectionId = "0192b3c4-0000-7000-8000-000000000003",
-            ProtocolVersion = "1.0",
+            ProtocolVersion = CoreVersion,
             HeartbeatIntervalMs = 10000,
             AckTimeoutMs = 5000,
             SimulationOnly = true,
@@ -113,11 +110,17 @@ namespace AllWin.Adapter.Core.Tests.Engine
             },
         };
 
+        /// <summary>Protocol version of the default welcome and of frames sent by <see cref="Deliver"/>.</summary>
+        public const string CoreVersion = "1.2";
+
+        /// <summary>A position_ref that names no position (for reduces that never get to the identity check).</summary>
+        public const string NoPosition = "0192b3c4-0000-7000-8000-0000000000ff";
+
         /// <summary>Sends a Core→adapter message; returns its msg_id.</summary>
-        public string Deliver(object payload, string? msgId = null, DateTime? sentAt = null)
+        public string Deliver(object payload, string? msgId = null, DateTime? sentAt = null, string version = CoreVersion)
         {
             var id = msgId ?? Ids.New();
-            Engine.OnFrame(ProtocolCodec.Encode(payload, id, sentAt ?? Clock.UtcNow));
+            Engine.OnFrame(ProtocolCodec.Encode(payload, id, sentAt ?? Clock.UtcNow, version));
             Settle();
             return id;
         }
@@ -148,6 +151,11 @@ namespace AllWin.Adapter.Core.Tests.Engine
             _file.Dispose();
             if (renewHandles) Platform.RenewHandles();
             _events.Clear(); // events of the dead process are lost
+            if (_wipeOnRestart)
+            {
+                _wipeOnRestart = false;
+                foreach (var file in Directory.GetFiles(_dir)) File.Delete(file);
+            }
             if (_corruptOnRestart)
             {
                 _corruptOnRestart = false;
@@ -163,6 +171,15 @@ namespace AllWin.Adapter.Core.Tests.Engine
             Sink = new RecordingSink();
             Settle();
         }
+
+        /// <summary>A restart whose journal was lost (deleted, or a new install): the platform keeps its state.</summary>
+        public void RestartWithLostJournal()
+        {
+            _wipeOnRestart = true;
+            Restart();
+        }
+
+        private bool _wipeOnRestart;
 
         public void Tick(TimeSpan? advance = null)
         {
@@ -199,7 +216,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         // ------------------------------------------------------------------ command builders
 
         public static CommandPayload Place(string commandId, Side side, int quantity, PositionEffect effect = PositionEffect.Open,
-            ProtectionSpec? protection = null, DateTime? expiresAt = null, string? dependsOn = null, OrderSpec? order = null)
+            ProtectionSpec? protection = null, DateTime? expiresAt = null, string? dependsOn = null, OrderSpec? order = null, string? positionRef = null)
         {
             return new CommandPayload
             {
@@ -211,6 +228,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
                 Kind = CommandKind.Place,
                 ExpiresAt = effect == PositionEffect.Open ? expiresAt ?? new DateTime(2026, 10, 22, 14, 31, 5, DateTimeKind.Utc) : expiresAt,
                 DependsOn = dependsOn,
+                Refs = effect == PositionEffect.Reduce ? new CommandRefs { PositionRef = positionRef ?? NoPosition } : null,
                 Place = new PlaceSpec { Side = side, Quantity = quantity, Order = order ?? new OrderSpec { Type = OrderType.Market }, PositionEffect = effect, Protection = protection },
             };
         }

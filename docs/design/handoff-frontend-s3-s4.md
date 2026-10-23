@@ -23,6 +23,21 @@
 - Message keys: `<feature>.<screen>.<element>`, ICU plurals. `errors.<code>` maps 1:1 to Core codes; an unknown code shows a generic message with the code.
 - Missing translation: a visible marker in dev/QA, and Playwright fails on it. Never show a key name to the user.
 
+## S3 rev. 4: passwordless (supersedes the rev. 3 items 1, 3 and 5 below where they mention passwords, reset or TOTP)
+
+Slice-plan rev. 7 removed passwords, reset, TOTP and recovery codes. The contract (HTTP 3.4.1, auth published at 2.0.0) already has the passwordless operations; the S3 spec §3 lists them by `operationId` with their error codes. Where the spec and the contract differ, the contract wins.
+
+1. **New shared components:** [components.md](components.md) C§1 `CodeInput` / `CodeChallenge` (one text input, uppercase alphanumeric, paste normalization, resend cooldown), C§2 `Stepper`, C§4 `DataTable`. `StepUpDialog` (F§8.2) now asks a code.
+2. **Code format is open (U16):** read `length` and `alphabet` from config; do not hard-code 8 or the alphabet in features.
+3. **Non-enumeration:** public pages show identical results for known and unknown e-mails (S3 §1). No inline existence check, no attempts counter.
+4. **Invitation link:** fragment handling is unchanged (`#t=`), but the token is now used for `startSignup` and `completeSignup` (`locale`, `time_zone` and `remember_me` travel with `completeSignup`); the account exists only after the code is confirmed.
+5. **Removed:** forgot/reset password routes, TOTP, recovery codes, admin Users page, password-related `session.ended` reasons.
+
+6. **Policy rev. 2 rules the UI follows** ([auth-and-session-policy.md](../architecture/security/auth-and-session-policy.md)): one error `auth.code_invalid` for every verification failure (the UI counts its own 5 attempts); the `challenge_id` lives in memory only; a resend keeps the same challenge, a closed challenge needs a **new** one; step-up sends the action **once with `challenge_id` + `code`** (no verify-then-retry); a channel change never reveals "address in use"; no link in the new-device e-mail; sign-in delivery failures are never shown on public pages.
+7. **Provisional (Q34/Q35, M2/M3):** `listDevices` and "Sair de todos os dispositivos", step-up on source URL / pairing code / invitation, 24 h freeze and 72 h hold on channel change. Build them behind the contract markers; they change when the user decides.
+
+Items 2, 4, 6 and 7 below remain valid. Item 3 (TOTP) and the password parts of items 1 and 5 are void.
+
 ## S3 rev. 3: changes from the contract
 
 1. **Invite and reset links use the URL fragment.**

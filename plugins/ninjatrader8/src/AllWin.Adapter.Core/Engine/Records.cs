@@ -13,6 +13,7 @@ namespace AllWin.Adapter.Core.Engine
         public const string Fills = "fill";
         public const string Limits = "lim";
         public const string Owners = "own";
+        public const string Identities = "pid";
         public const string Meta = "meta";
     }
 
@@ -45,6 +46,18 @@ namespace AllWin.Adapter.Core.Engine
 
         /// <summary>Envelope sent_at: the Core's creation time, identical on every retransmission.</summary>
         public DateTime SentAt { get; set; }
+
+        /// <summary>
+        /// Envelope protocol_version. A reduce from a 1.0/1.1 envelope cannot carry refs and is refused by the
+        /// position-identity guard; a record written before 1.2 has none, which counts as "1.0" (fail closed).
+        /// </summary>
+        public string? EnvelopeVersion { get; set; }
+
+        /// <summary>
+        /// The entry was submitted while its live account was in state B (ADR-0005 §N11 row 6): its own fills may
+        /// still be protected after "off".
+        /// </summary>
+        public bool ConsentedLive { get; set; }
 
         public DateTime? DoneAt { get; set; }
         public CommandPayload Command { get; set; } = new CommandPayload();
@@ -107,6 +120,33 @@ namespace AllWin.Adapter.Core.Engine
         public bool Capped { get; set; }
     }
 
+    /// <summary>
+    /// Identity of the position in one (account, instrument) (ADR-0004 §5 position-identity guard, U13). Written
+    /// in the same journal batch as the fill that changes it; removed when the position goes flat.
+    /// </summary>
+    public sealed class PositionIdentityRecord
+    {
+        public const string External = "external";
+        public const string Unknown = "unknown";
+
+        public string Account { get; set; } = "";
+        public Instrument Instrument { get; set; } = new Instrument();
+
+        /// <summary>The opening All Win place command_id, <see cref="External"/> or <see cref="Unknown"/>.</summary>
+        public string Identity { get; set; } = Unknown;
+
+        /// <summary>Signed quantity the record describes.</summary>
+        public int Quantity { get; set; }
+
+        public string? LastFillId { get; set; }
+
+        /// <summary>The fill that set the identity; a correction of it makes the identity unknown.</summary>
+        public string? OpeningFillId { get; set; }
+
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsAllWin => Identity != External && Identity != Unknown;
+    }
+
     public sealed class FillRecord
     {
         public string FillId { get; set; } = "";
@@ -116,6 +156,15 @@ namespace AllWin.Adapter.Core.Engine
         public string? CommandId { get; set; }
         public string? RoleLetter { get; set; }
         public DateTime RecordedAt { get; set; }
+
+        /// <summary>
+        /// Number of the position (per account and instrument) this fill applied to: a new number starts when a fill takes
+        /// the position from flat to non-flat or flips it. 0 for records written before it existed.
+        /// </summary>
+        public long PositionSeq { get; set; }
+
+        /// <summary>Instrument of the fill, so pruning can keep the fills of a position that is still open (null in old records).</summary>
+        public Instrument? Instrument { get; set; }
     }
 
     public sealed class OutboxEntry
