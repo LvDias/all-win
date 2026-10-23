@@ -92,6 +92,7 @@ Routing screen behavior for accounts that do not accept automation is specified 
 | Mult. | `2×` | F§6.2 |
 | Máx. posição | `3 contratos` | |
 | Estado | `StatusBadge` per F§7.2 priority; top one plus `+N` popover | Shows: out of sync, disconnected, blocked, risk warning (when S11/S13 deliver them), `Escolha pendente`, `Pausada`/`Desativada`. `Ativa` shows no badge; the row reads "Ativa" as text |
+| Risco hoje | worst current risk state + limit name and percent (added by the S13 spec §5); `—` without rules | Hidden until S13 ships |
 | Ações | kebab `DropdownMenu` | `Ver`, `Editar`, `Pausar`/`Retomar`, `Desativar`/`Ativar`, `Excluir` (destructive, last, separated) |
 
 Default sort: name A→Z. No pagination in V1 (a user has tens of accounts); virtualize only if QA measures a problem.

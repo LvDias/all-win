@@ -57,7 +57,7 @@ The conversion happens in the **Core**. The browser never converts or rounds mon
 |---|---|
 | Loading | Skeleton with 6 rows |
 | Error | `ErrorState` + retry + code |
-| A size has no profile | row shows `Não definido`; a banner (info `Alert`) above the table: "Contas de um tamanho sem perfil não têm stop e alvo definidos. Defina o perfil antes de rotear para essas contas." **[Provisional, Q-S6-2: the slice plan sets no initial values and no rule for accounts of a size without a profile]** |
+| A size has no profile | row shows `Não definido`; a banner (info `Alert`) above the table: "Contas de um tamanho sem perfil não têm stop e alvo definidos. Novas entradas nessas contas são ignoradas e registradas na auditoria (\"sem perfil de stop/alvo\"); saídas continuam. Defina o perfil." **[Provisional, Q43 rec. (a); user decides. No initial values are invented: the user defines the defaults (S6 AC-1).]** |
 | Saved | toast "Perfil de {size} salvo." |
 
 No pagination, no sorting controls: six fixed rows in size order.
@@ -68,7 +68,7 @@ No pagination, no sorting controls: six fixed rows in size order.
 
 `ResponsiveDialog` "Perfil de {size} · {instrument}" with `DistanceFields` (S6-04).
 
-- Note at the top: "Vale para contas novas deste tamanho. Contas existentes mantêm o próprio perfil." **[Matches the data model, where each account holds its own copy; PO to confirm, §10 Q-S6-3.]**
+- Note at the top: "Vale para contas novas deste tamanho. Contas existentes mantêm o próprio perfil." **[Confirmed by PO: only new accounts are affected; each account keeps its own copy (S6 AC-2).]**
 - Actions: `Salvar perfil` (primary), `Cancelar`. Submit: spinner + "Salvando…", disabled, duplicate-submit ignored (F§10). Unsaved changes + Cancel → `AlertDialog` "Descartar alterações?".
 - Errors: 422 with `pointer` mapped to `/stop_distance`, `/target_distance`, `/distance_unit`; other errors as a destructive `Alert` in the dialog; values kept.
 - Success: closes, focus returns to the row's button, toast, audited (§8).
@@ -107,18 +107,18 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 1. **Perfil de stop e alvo ({instrument})** card: unit, stop, target (formatted per F§6.2), the "Equivale a" values from the Core (ticks/points/dollars), and the origin line:
    - copied: "Copiado do perfil padrão de {size} em {date time zone}." / for a real account of another size: "Baseado no perfil padrão do tamanho mais próximo ({size}), copiado em {date}."
    - customized: badge `Personalizado` / `Customized` (`PencilLine`, as F§7.4 `Editado`) + "Padrão do tamanho {size} hoje: {values}" in a popover.
-   - Actions: `Personalizar` / `Editar` (opens the same `DistanceFields` dialog, S6-02 layout, title "Perfil da conta {name}"); `Restaurar padrão do tamanho` (`AlertDialog`: "Substituir o perfil desta conta pelo padrão atual de {size}?" confirm `Restaurar`) **[Proposal, not in the slice plan: Q-S6-4]**.
-2. **Modo de stop e alvo** card: "Individual (padrão)" with the AC-3 explanation: "Cada entrada tem o próprio stop e alvo, calculados a partir do preço em que ela foi preenchida. Uma segunda entrada não move as ordens da primeira." The shared-mode selector belongs to S8 and is **not drawn here** (**Q-S6-1**: confirm that S8 owns the control).
+   - Actions: `Personalizar` / `Editar` (opens the same `DistanceFields` dialog, S6-02 layout, title "Perfil da conta {name}"); `Restaurar padrão do tamanho` (`AlertDialog`: "Substituir o perfil desta conta pelo padrão atual de {size}?" confirm `Restaurar`) **[Confirmed by PO: copies the current default to the account, audited]**.
+2. **Modo de stop e alvo** card: "Individual (padrão)" with the AC-3 explanation: "Cada entrada tem o próprio stop e alvo, calculados a partir do preço em que ela foi preenchida. Uma segunda entrada não move as ordens da primeira." The shared-mode selector belongs to S8 and is **not drawn here** (confirmed by PO: per-account setting owned by S8 AC-5; S6 shows `Individual` read-only).
 3. A static note: "Valores de stop e alvo que chegam no sinal são ignorados."
 
-**Edit rules:** saving changes only this account (copy). Open positions and working orders are not modified; note in the dialog: "Vale para as próximas entradas. Posições e ordens abertas não são alteradas." **[assumption: the profile is read at the time of an entry; PO/Architect to confirm, Q-S6-5]**.
+**Edit rules:** saving changes only this account (copy). Open positions and working orders are not modified; note in the dialog: "Vale para as próximas entradas. Posições e ordens abertas não são alteradas." **[PO: edits apply to the next entries only, S6 AC-3]**.
 
 **States**
 
 | State | UI |
 |---|---|
 | Loading | Skeleton of both cards |
-| Account has no profile (its size had no default when created) | card with `EmptyState` "Esta conta ainda não tem perfil." + `Definir perfil` (same dialog, nothing preselected) **[Provisional, Q-S6-2]** |
+| Account has no profile (its size had no default when created) | card with `EmptyState` "Esta conta ainda não tem perfil. Novas entradas são ignoradas até você definir um." + `Definir perfil` (same dialog, nothing preselected) **[Provisional, Q43]** |
 | Error / not found | per S5 §2 |
 | Concurrent edit | 409 `common.version_conflict` → toast "O perfil mudou em outro lugar." + refetch |
 | Saved | toast "Perfil da conta salvo." |
@@ -145,6 +145,7 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 |---|---|---|
 | `profiles.default_changed` | "Perfil padrão de {size} alterado" | instrument, previous and new unit/stop/target (strings), user |
 | `profiles.account_changed` | "Perfil da conta {account} alterado" / "…restaurado do padrão" | same + `copied_from_size` |
+| `routing.no_bracket_profile` *(proposal, Q43 provisional)* | "Entrada ignorada para {account}: sem perfil de stop/alvo" | instruction id, account size |
 | Execution entries (S10 AC-1) | "Stop e alvo calculados" with unit, ticks used, **adjustment** (requested value → whole ticks → resulting price) | defined in the S10 spec; the Core supplies the fields |
 
 ---
@@ -167,23 +168,19 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 |---|---|
 | `putDefaultProfile` (instrument, size, unit, stop, target) | idempotent upsert; 422 pointers `/distance_unit`, `/stop_distance`, `/target_distance`; codes e.g. `profiles.not_whole_ticks`, `profiles.not_tick_multiple`, `profiles.not_positive` (names proposed) |
 | `putAccountProfile` (account, instrument, unit, stop, target, `row_version`) | `common.version_conflict` |
-| `restoreAccountProfile` (account, instrument) | only if Q-S6-4 is accepted |
+| `restoreAccountProfile` (account, instrument) | copies the current default of the account's size; audited (`profiles.account_changed`, "restaurado do padrão") |
 
 **Events (SSE):** none required; the tab refetches on focus.
 
 ---
 
-## 10. Open questions
+## 10. Decisions and open questions
 
-| ID | Question | Owner | Spec default |
-|---|---|---|---|
-| Q-S6-1 | Where is the individual/shared mode setting? | PO / S8 | Read-only "Individual" here; selector drawn in the S8 spec |
-| Q-S6-2 | Initial values: does the system ship any default profiles? What happens to accounts of a size with no profile (can they route)? | PO | No invented values; `Não definido`; banner asks the user to define it |
-| Q-S6-3 | Does editing a default change existing accounts? | PO | No (each account holds its own copy) |
-| Q-S6-4 | `Restaurar padrão do tamanho` action | PO | Proposed; remove if not wanted |
-| Q-S6-5 | An account profile edit applies to next entries only | Architect | Yes |
-| Q-S6-6 | Dollar input decimals (2 in the form, data model allows 4) | Architect | 2 |
-| Q-S6-7 | Which unit and values exist for "nearest standard size" when a real account size is exactly between two sizes | Architect | Core decides; UI shows the result |
+**Closed by the PO (Rumo, 2026-10-23):** Q-S6-1 the mode is per account (S8 AC-5), read-only `Individual` here; Q-S6-2 no invented values, `Não definido` + banner; Q-S6-3 editing a default affects only new accounts; Q-S6-4 `Restaurar padrão do tamanho` accepted (copies the current default, audited); Q-S6-5 edits apply to the next entries only.
+
+**Provisional until the user decides Q43:** an entry that reaches an account with no stop/target profile is **ignored and audited** with the reason "sem perfil de stop/alvo" (`routing.no_bracket_profile`, proposed code); exits continue (P1). The banner in §3 and the empty state in §6 say so.
+
+**Architect (Compasso):** Q-S6-6 dollar input decimals (form uses 2; data model allows 4); Q-S6-7 which size a real account between two sizes uses ("nearest"), computed by the Core; the new reason code and the preview endpoint (§9).
 
 ## 11. Accessibility
 
