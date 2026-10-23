@@ -2,6 +2,7 @@
 # Masking rule R2: Caddy never records the request URI.
 #  - access log: request>uri and request>headers>Referer are deleted for EVERY request
 #  - ingress-like requests (case-insensitive, decoded, repeated '/' collapsed, starting /ingress) are also log_skip'd (second layer); the Core logs them
+#  - resp_headers>Location is deleted too (a locale redirect would echo the pasted path)
 #  - error/debug/reverse_proxy logs: request>uri and request>headers are deleted for every path
 #  - log_credentials stays OFF (default): Authorization/Cookie are redacted on any line that still logs headers (/adapter carries Bearer awd_...)
 {
@@ -18,6 +19,7 @@
 			fields {
 				request>uri delete
 				request>headers delete
+				resp_headers>Location delete
 			}
 		}
 	}
@@ -39,6 +41,7 @@ https://localhost:{$CADDY_HTTPS_PORT:8443} {
 			fields {
 				request>uri delete
 				request>headers>Referer delete
+				resp_headers>Location delete
 			}
 		}
 	}
