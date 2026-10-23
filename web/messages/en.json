@@ -53,7 +53,21 @@
         "noResults": "No time zone found.",
         "browserNote": "Your browser is in {zone}. Use this time zone?",
         "invalid": "Invalid time zone. Choose another one.",
-        "saveFailed": "Could not save the time zone. Try again."
+        "saveFailed": "Could not save the time zone. Try again.",
+        "regions": {
+          "Africa": "Africa",
+          "America": "America",
+          "Antarctica": "Antarctica",
+          "Arctic": "Arctic",
+          "Asia": "Asia",
+          "Atlantic": "Atlantic",
+          "Australia": "Australia",
+          "Europe": "Europe",
+          "Indian": "Indian",
+          "Pacific": "Pacific",
+          "Etc": "Other",
+          "UTC": "UTC"
+        }
       }
     }
   },

@@ -19,6 +19,7 @@ type TimeZoneComboboxProps = {
 /** Searchable IANA time-zone picker (Popover + listbox, WAI-ARIA combobox pattern). */
 export function TimeZoneCombobox({ id, value, onChange, disabled, invalid, describedBy }: TimeZoneComboboxProps) {
   const t = useTranslations("settings.preferences.timeZone");
+  const regionLabel = (region: string) => (t.has(`regions.${region}`) ? t(`regions.${region}`) : region);
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -91,9 +92,9 @@ export function TimeZoneCombobox({ id, value, onChange, disabled, invalid, descr
         <div id={listId} role="listbox" aria-label={t("label")} className="max-h-72 overflow-y-auto p-1">
           {filtered.length === 0 ? <p className="px-3 py-4 text-sm text-muted-foreground">{t("noResults")}</p> : null}
           {groups.map((group) => (
-            <div key={group.region} role="group" aria-label={group.region}>
+            <div key={group.region} role="group" aria-label={regionLabel(group.region)}>
               <p aria-hidden="true" className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
-                {group.region}
+                {regionLabel(group.region)}
               </p>
               {group.options.map((option) => (
                 <div

@@ -53,7 +53,21 @@
         "noResults": "Nenhum fuso horário encontrado.",
         "browserNote": "Seu navegador está em {zone}. Usar este fuso?",
         "invalid": "Fuso horário inválido. Escolha outro.",
-        "saveFailed": "Não foi possível salvar o fuso horário. Tente de novo."
+        "saveFailed": "Não foi possível salvar o fuso horário. Tente de novo.",
+        "regions": {
+          "Africa": "África",
+          "America": "América",
+          "Antarctica": "Antártida",
+          "Arctic": "Ártico",
+          "Asia": "Ásia",
+          "Atlantic": "Atlântico",
+          "Australia": "Austrália",
+          "Europe": "Europa",
+          "Indian": "Índico",
+          "Pacific": "Pacífico",
+          "Etc": "Outros",
+          "UTC": "UTC"
+        }
       }
     }
   },
