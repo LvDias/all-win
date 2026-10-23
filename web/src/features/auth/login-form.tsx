@@ -19,6 +19,7 @@ import { Checkbox } from "@/shared/ui/checkbox";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Spinner } from "@/shared/ui/spinner";
+import { focusOnMount } from "@/shared/lib/focus";
 import { requestLoginCode } from "./api";
 import { AuthCard } from "./auth-card";
 import { readPendingLogin, startPendingLogin } from "./pending-login";
@@ -83,7 +84,7 @@ export function LoginForm() {
         <p className="text-sm text-muted-foreground">{t("auth.login.intro")}</p>
         {reason ? <Alert tone="info">{t(`auth.login.reason.${reason}`)}</Alert> : null}
         {failure ? (
-          <Alert tone="danger" tabIndex={-1} ref={(node) => node?.focus()}>
+          <Alert tone="danger" tabIndex={-1} ref={focusOnMount}>
             {failure}
           </Alert>
         ) : null}

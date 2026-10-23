@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Spinner } from "@/shared/ui/spinner";
+import { focusOnMount } from "@/shared/lib/focus";
 
 type Props = {
   title: string;
@@ -71,7 +72,7 @@ export function NameDialog({ title, description, label, placeholder, unknownOutc
               </div>
             </Alert>
           ) : null}
-          {error ? <Alert tone="danger" tabIndex={-1} ref={(node) => node?.focus()}>{error}</Alert> : null}
+          {error ? <Alert tone="danger" tabIndex={-1} ref={focusOnMount}>{error}</Alert> : null}
           <div className="grid gap-2">
             <Label htmlFor={id}>{label}</Label>
             <Input id={id} value={name} onChange={(event) => setName(event.target.value)} maxLength={60} placeholder={placeholder} autoComplete="off" autoFocus />
