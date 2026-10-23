@@ -2,7 +2,7 @@
 
 > **Canonical location:** `docs/product/product-vision.md`
 > **Owner:** the user (business decisions). The Product Owner maintains this document; every agent reads it before working on this project.
-> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 4 — V1 plan decisions recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
+> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 6 — opt-ins, preset rules, items 1–22, Q24–Q27 recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
 > Labels used below: **[Decision]** confirmed by the user · **[Proposal]** recommended, awaiting user confirmation · **[Open]** unresolved question.
 
 ---
@@ -151,7 +151,8 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
   - Multipliers are **whole numbers only** (1x, 2x, 3x, …); fractional multipliers are not allowed, so no rounding is ever needed. **[Decision]**
 - **Stop and target distances** come from each account's profile. **[Decision]**
 - **Defaults by account size:** the user defines default stop/target profiles for **25k, 50k, 100k, 150k, 200k, and 300k** accounts, even for sizes they don't currently have. A new account starts with its size's profile and can be customized. **[Decision]**
-- **Units:** points, ticks, or dollars, chosen by the user per profile. **[Decision]**
+- **Units:** points, ticks, or dollars, chosen by the user per profile. **[Decision]** Profiles are keyed by instrument; dollar distances that are not whole ticks are rounded toward the entry. **[Decision 2026-10-23]**
+- Release 1 has one maximum position size per account (MNQ). **[Decision 2026-10-23]**
 - **Stop/target mode when entries add to a position** — user setting per account: **[Decision]**
   - **Individual (default):** each entry has its own stop and target, calculated from its own entry price.
   - **Shared:** the whole position uses one stop and one target, recalculated from the average price.
@@ -171,7 +172,10 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - When a destination disconnects mid-trade and reconnects: **alert the user and wait** for their decision; never automatically reopen or resync positions. **[Decision]**
 - An account flagged out of sync receives no new instructions until the user clears the flag. **[Decision 2026-10-23]**
 - **Command expiry:** an instruction that cannot reach an account within its expiry time is never executed late; it is reported as missed. The expiry is editable per account, default short (a few seconds). **[Decision 2026-10-23]**
-- Log every instruction and every execution result for audit and support.
+- Log every instruction and every execution result for audit and support. The activity record is kept 24 months rolling (configurable); trades and configuration for the life of the account; all data erased 30 days after the user closes the account. **[Decision 2026-10-23]**
+- Exits are never blocked by risk or out-of-sync gates (only pause/disable block them); only entries expire (default 5 s, editable 1–60 s per account). **[Decision 2026-10-23]**
+- On NinjaTrader and Rithmic connections the stop/target pairing (OCO) lives on the user's PC, so orphan-order protection needs NinjaTrader running; the product shows this limit and checks brackets on reconnection. **[Decision 2026-10-23]**
+- If both bracket legs filled while NinjaTrader was down, leaving an unwanted opposite position, only the position created by the orphan leg is flattened automatically, with maximum alert and audit; nothing else is corrected automatically. **[Decision 2026-10-23]**
 
 ## 9. Account & risk management
 
@@ -186,7 +190,12 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
     - Apex Trader Funding, Phidias Propfirm (https://phidiaspropfirm.com/), Lucid Trading.
     - Topstep, Take Profit Trader, MyFundedFutures, Tradeify, Bulenox, TradeDay, Top One Futures, Alpha Futures.
     - Elite Trader Funding, Earn2Trade, Funded Futures Family, Phoenix Trader Funding, OneUp Trader, BluSky, Leeloo Trading.
-  - Each firm's rules — including its stance on trade copying and automated trading — must be verified on its official rules pages before its preset is published. Firms change rules often; rules are never guessed. If a firm's rules cannot be verified, the team reports it to the user, who decides whether to delay that preset or release without it.
+  - Each firm's rules — including its stance on trade copying and automated trading — must be verified on its official rules pages before its preset is published. Presets show each stance with its source and date, and store the firm's **platform/connection** (e.g., Rithmic, Tradovate) because some rules differ by platform. **[Decision 2026-10-23]**
+  - Items that conflict across a firm's official pages ship as **"not confirmed"** (not pre-filled; the user picks a published value or types one) and do not block the rest of the preset; the conflict list goes to the user for a later decision. **[Decision 2026-10-23]**
+  - **Firms that forbid automation (option A):** when registering or editing such an account, the user must explicitly choose whether it accepts automated sources — no default — after a warning with the firm's rule text and the risk of losing the account. The choice is recorded in the audit with date and user; the risk is accepted by the user per account. **[Decision 2026-10-23]**
+  - The same explicit choice is required for any automation stance other than "allowed" (conditional, unknown, not confirmed). Followers of firms whose copying stance is not "allowed" need a separate explicit **copy opt-in** for master replication. A new preset version that changes a stance suspends the affected automated sources or replication until the user confirms again. **[Decision 2026-10-23]**
+  - Apex Legacy and Phidias LIVE programs are not offered as presets in release 1 (registered manually). **[Decision 2026-10-23]**
+  - **Topstep** (TopstepX/ProjectX only; orders must originate from the trader's personal device, VPS forbidden) ships in release 1 as a **manual-tracking-only** preset, with no routing and the limit explained; an adapter on the user's device is only for later evaluation. Topstep Labs Challenges/Pro Account and Take Profit Trader PRO+/PRO+ Development are not offered as presets. Take Profit Trader's copying stance is conditional (approved copiers only; opt-in; the user asks the firm). Presets record each firm's VPS/server and personal-device rules. **[Decision 2026-10-23]** Firms change rules often; rules are never guessed. If a firm's rules cannot be verified, the team reports it to the user, who decides whether to delay that preset or release without it.
 
 ### Automatic enforcement (optional)
 - Off by default; the user enables it per account. **[Decision]**
@@ -258,3 +267,13 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - In-app notifications only; plugin follows web language; real accounts of any size; pause vs disable defined; firms forbidding copying still ship with stance shown.
 - The user shares the Pine indicator source; the team proposes the change.
 - Still open: audit retention (after Database Architect input), exact default expiry seconds, Windows + NinjaTrader machine setup (Architect options first), and design follow-ups Q17–Q23 in the slice plan.
+
+## 16. Decision log (2026-10-23, second batch)
+
+- Firms that forbid automation: explicit per-account opt-in, no default, warning with the firm's rule text, audited (option A). Master replication stays V1.1.
+- Presets: stance with source and date; conflicting items ship "not confirmed"; platform stored.
+- ADR-0003/0004 accepted (P1–P5, T1–T3); audit retention 24 months; one max position per account; profiles keyed by instrument; signal filter per (source, account); several named TradingView sources; invite/e-mail/session/TOTP/locale rules per slice-plan Q17–Q23.
+- User-owned pending: review NinjaTrader terms (ToS §5(a)(viii), EULA) before offering the product to other people.
+- Third batch: Q24–Q27 accepted (copy opt-in, opt-in for any non-"allowed" stance, suspension on stance change, auto-flatten only the orphan-leg position); R1 conflict recommendations accepted with Apex Legacy and Phidias LIVE excluded, the 31 conflicts reviewed later ("not confirmed" until then).
+- Fourth batch: Topstep manual-only preset; TPT conditional copying; Topstep Labs/Pro and TPT PRO+ excluded; VPS/personal-device rules recorded per firm.
+- Open: remaining R2 items ([presets/r2-conflicts-for-user.md](presets/r2-conflicts-for-user.md)).

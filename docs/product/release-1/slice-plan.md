@@ -1,6 +1,6 @@
 # Release 1 (V1) — Slice Plan — All Win
 
-> **Owner:** Product Owner (Bússola @ Dev2) · **Status:** approved by the user on 2026-10-23 ([decision log](../../delivery/decisions.md)) · **Revision:** 3 (Q1–Q16 and A2–A5 decisions recorded) · **Date:** 2026-10-23
+> **Owner:** Product Owner (Bússola @ Dev2) · **Status:** approved by the user on 2026-10-23 ([decision log](../../delivery/decisions.md)) · **Revision:** 6 (R2 scope decisions: manual-only firms, VPS rules; [Decision 2026-10-23b/c/d] = second/third/fourth batch of user decisions) · **Date:** 2026-10-23
 > **Baseline:** [product-vision.md](../product-vision.md) rev. 3 (user-approved). This plan does not change any decision there; gaps found are listed in §7 as questions.
 > Labels: **[Decision]** = from the vision · **[Proposal]** = recommendation still awaiting user approval (items approved on 2026-10-23 are now marked [Decision 2026-10-23]) · **[Assumption]** · **[Blocker]**.
 > Slice status vocabulary: `draft` (criteria incomplete or blocked by a question) · `blocked` (criteria complete, waiting on an external dependency) · `ready` (criteria complete, can start) · then specified → implemented → QA verified → deployed → business accepted (tracked by the Maestro on the board).
@@ -69,8 +69,8 @@ These are checked in QA for every slice that touches the relevant surface, inste
 | V1-R3 | Preset research — Elite Trader Funding, Earn2Trade, Funded Futures Family, Phoenix Trader Funding, OneUp Trader, BluSky, Leeloo Trading | research | R1 format | ready |
 | V1-S17 | TradingView alert message standard for all three signal types + daily routine guide | TradingView Input, docs | S1; Pine source shared by the user | ready |
 | V1-S18 | Notification center (in-app, Web + plugin) | Web, NT plugin, Core | S10 | ready |
-| V1-S19 | Master replication — entries and exits (same instance and cross-instance) | NT plugin, Core, Web | S8, S12, ADR-0003 + ADR-0004 accepted by user | blocked (criteria complete; waits for ADR-0003/0004 acceptance) |
-| V1-S20 | Master replication — all order types, stop/target moves, cancellations | NT plugin, Core | S19 | blocked (criteria complete; waits for ADR-0003/0004 acceptance) |
+| V1-S19 | Master replication — entries and exits (same instance and cross-instance) | NT plugin, Core, Web | S8, S12, ADR-0003 + ADR-0004 (accepted 2026-10-23), 2 Windows machines/VMs for cross-instance QA | ready (V1.1; cross-instance QA needs W1–W3) |
+| V1-S20 | Master replication — all order types, stop/target moves, cancellations | NT plugin, Core | S19 | ready (V1.1) |
 | V1-S21 | Trade capture and trade list (automatic + manual) | NT plugin, Core, Web | S2, S5 | ready |
 | V1-S22 | Performance metrics view | Web, Core | S21 | ready |
 
@@ -144,16 +144,16 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 **Goal / value:** each trader has a private space; only they can send instructions to their accounts.
 **Surfaces:** Web, Core, NT plugin.
 
-- **AC-1** Sign-up is **invite-only** in V1 (Q6 [Decision 2026-10-23]): only a person with a valid, unused, unexpired invitation can create an account; without one, sign-up is refused with a clear message. Invited users can sign in and out. Who issues invitations: [Assumption] an administrator (the product owner-user) — Designer/Architect to confirm the minimal admin path.
+- **AC-1** Sign-up is **invite-only** in V1 (Q6 [Decision 2026-10-23]): only a person with a valid, unused, unexpired invitation can create an account; without one, sign-up is refused with a clear message. Invited users can sign in and out. Invitations are issued **only by the admin**, single-use, bound to one e-mail, valid 7 days, delivered manually (Q19 [Decision 2026-10-23b]). Transactional e-mail is used only for invitations and password reset, with an admin-generated reset link as fallback (Q20). Sessions: 12 h idle / 24 h absolute, remember-me 7 d / 30 d, step-up after 15 min for sensitive actions (Q21). TOTP recovery: 10 single-use codes; password + code to enable/disable; admin-assisted reset (Q22).
 - **AC-1b** **Two-factor authentication (TOTP, authenticator app) is optional** and strongly suggested in the UI; once enabled, sign-in requires the code; the user can disable it only after re-authenticating (A5 [Decision 2026-10-23]).
 - **AC-2** Every Web view and Core request returns only the signed-in user's data; a two-user negative test exists for each data area (X-2).
 - **AC-3** The user can generate, view once, and revoke a per-source secret; after revocation, instructions with the old secret are rejected (S1 AC-2). Secrets are stored only in non-reversible or encrypted form (X-4).
-- **AC-4** The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others.
+- **AC-4** The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others. Unpairing an instance whose accounts are destinations is allowed after a confirmation listing them; those accounts become out of sync and nothing is closed (Q18 [Decision 2026-10-23b]).
 - **AC-5** Password reset and session expiry exist; failed sign-in attempts do not reveal whether an email is registered.
 
 ### V1-S4 — Bilingual foundation (ready)
 
-- **AC-1** The user can switch the Web interface between pt-BR and en; the choice persists across sessions.
+- **AC-1** The user can switch the Web interface between pt-BR and en; the choice persists across sessions. First visit: browser language (pt or en), else pt-BR; display time zone from the profile (default = browser), shown next to reset/session times; 24-hour clock in both languages (Q23 [Decision 2026-10-23b]).
 - **AC-2** Every Web text, error message, and email (if any) is shown in the chosen language; numbers, dates, and currency follow the chosen locale's formatting while stored values are unchanged (X-3).
 - **AC-3** The plugin's user-visible texts are available in pt-BR and en and **follow the user's Web language** (Q11 [Decision 2026-10-23]); a change in the Web applies to the plugin on its next connection or sooner.
 - **AC-4** A missing translation is detectable in QA (no silent fallback to the key name).
@@ -162,28 +162,38 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 
 **Goal / value:** the user registers every account they trade, with what the platform needs to route safely.
 
-- **AC-1** The user can register a **prop firm account** (firm, plan, size, phase) or a **real brokerage account**, on platform NinjaTrader, and link it to an account exposed by one of their paired instances. (§9)
+- **AC-1** The user can register a **prop firm account** (firm, plan, size, phase, and the firm's **platform/connection**, e.g. Rithmic or Tradovate, when the preset has platform-specific rules — the choice selects those rules and is stored on the account) or a **real brokerage account**, on platform NinjaTrader, and link it to an account exposed by one of their paired instances. (§9; [Decision 2026-10-23b])
 - **AC-2** Prop accounts use the firm's sizes. Default profiles exist for 25k, 50k, 100k, 150k, 200k, 300k (§8). **Real accounts may have any size** (positive amount); they start from the default profile of the nearest standard size and the user customizes it (Q12 [Decision 2026-10-23]).
-- **AC-3** **Maximum position size** is mandatory: registration cannot be saved without it. For prop accounts it defaults to the preset's maximum and cannot exceed it (validation message in pt-BR/en); for real accounts the user sets it. (§8)
+- **AC-3** **Maximum position size** is mandatory and is **one number per account** in V1 (MNQ; Q-A1 [Decision 2026-10-23b]): registration cannot be saved without it. For prop accounts it defaults to the preset's maximum and cannot exceed it (validation message in pt-BR/en); for real accounts the user sets it. (§8)
 - **AC-4** The user can **enable, disable, or pause** each account at any time; a disabled or paused account receives no new instructions and the skip is audited with reason (X-5). **Pause** = temporary stop that keeps all configuration and is resumed by the user; **disable** = account off until re-enabled (Q12 [Decision 2026-10-23]). Both keep open positions untouched.
 - **AC-5** Multiplier is a whole number ≥ 1; fractional or zero values are refused. (§8)
 - **AC-6** Editing or deleting an account never affects other users' data (X-2); deleting an account with an open position is refused with an explanation.
+- **AC-7** **Automation opt-in (option A, [Decision 2026-10-23b]):** when registering or editing an account of a firm whose preset says automation is forbidden, the user must explicitly choose "accepts automated sources" or "does not accept" — **no default**; the account cannot be saved without a choice. Before choosing, the user sees a warning with the firm's rule text (verbatim, with source URL and access date) and the risk of losing the account.
+- **AC-8** The choice is recorded in the audit with date, user, choice, and the version of the text shown (preset version, source URL, access date). It can be changed at any time: switching to "accepts" shows the warning again and requires recent re-authentication (step-up, auth policy); switching to "does not accept" needs no warning; both are audited; open positions are not touched.
+- **AC-9** "Automated sources" = the TradingView webhook and the future signal engine. Master replication is governed by the firm's **copying** stance, not by this opt-in (Q24 [Decision 2026-10-23c]).
+- **AC-9b** **Copy opt-in:** a follower account (S19) of a firm whose copying stance is forbidden, conditional, unknown, or not confirmed requires a separate explicit choice "accepts master replication" / "does not accept", with the same rules as AC-7/AC-8 (no default, verbatim rule text with source and date, audited, step-up to accept). A follower that does not accept cannot be subscribed to a master (Q24 [Decision 2026-10-23c]).
+- **AC-10** The explicit choice (AC-7, AC-9b) is required for any stance other than "allowed": forbidden, conditional, unknown, or not confirmed. For "allowed" and for real accounts no choice is asked (Q25 [Decision 2026-10-23c]).
+- **AC-11** If a new preset version changes the automation (or copying) stance or its text, the account's automated sources (or master replication) are **suspended** until the user confirms again, and the user is notified; open positions are not touched (Q26 [Decision 2026-10-23c]).
 
 ### V1-S6 — Stop/target profiles; individual mode (ready)
 
-- **AC-1** The user can define a default stop/target profile for each size 25k–300k, including sizes they do not hold, in points, ticks, or dollars per profile. (§8)
+- **AC-1** The user can define a default stop/target profile for each size 25k–300k, including sizes they do not hold, in points, ticks, or dollars per profile. Profiles are **keyed by instrument** (only MNQ in V1), so new futures need no rework (Q-A2 [Decision 2026-10-23b]; §4).
 - **AC-2** A new account starts with its size's profile; the user can customize it per account without changing the default.
 - **AC-3** **Individual mode (default):** each entry gets its own stop and target computed from its own fill price; a second entry does not move the first entry's orders.
-- **AC-4** Dollar-based distances are converted to price using the instrument's tick value exactly (X-3); the computed price is shown to the user in the audit entry.
+- **AC-4** Dollar-based distances are converted to whole ticks using the instrument's exact tick value (X-3). A distance that is not a whole number of ticks is **rounded toward the entry** for both stop and target (never more risk than configured); the adjustment and the resulting price are shown in the audit entry (Q-N1 [Decision 2026-10-23b]).
 - **AC-5** Stop/target values from the instruction, if any, are ignored; the profile always wins (§6).
 
 ### V1-S7 — Routing configuration (ready)
 
 - **AC-1** The user selects which of their accounts receive instructions from each source (e.g., their TradingView webhook).
-- **AC-2** Per account, the user selects which signal types become orders (trigger, trade_plan, nq_trigger); an instruction of an unselected type is skipped for that account and audited. (§7)
+- **AC-2** Per **(source, account)** pair, the user selects which signal types become orders (trigger, trade_plan, nq_trigger); an instruction of an unselected type is skipped for that account and audited. (§7; Q-A4 [Decision 2026-10-23b]) A user may have several named TradingView sources, each with its own secret URL (Q17 [Decision 2026-10-23b]).
 - **AC-3** Executed quantity = instruction quantity × account multiplier. (§8)
 - **AC-4** If the resulting position would exceed the account's maximum position size, only the quantity up to the maximum is executed; the excess is skipped, audited, and the user is notified. If the account is already at its maximum, nothing is executed for that account. (§8)
 - **AC-5** One account's skip, rejection, or disconnection does not delay or block routing to other accounts. No artificial delay or randomization is added. (§8)
+- **AC-6** An account that **does not accept automated sources** (S5 AC-7) cannot be subscribed to an automated source: the combination is shown as unavailable with the reason. If an instruction still reaches it, it is skipped and audited as "account does not accept automated sources" (option A [Decision 2026-10-23b]).
+- **AC-7** When adding to routing an account of a firm whose automation or copying stance is not "allowed", the stance and its source are shown again (§12).
+- **AC-7b** Accounts of a **manual-only** firm (S16 AC-7, e.g. Topstep) **do not appear** in routing or as master/follower choices at all; the routing screen explains why if the user looks for them [Decision 2026-10-23d].
+- **AC-8** Gate order and exits: paused/disabled accounts block every action; **risk and out-of-sync gates never block exits** (`close`, reduce, protective modify/cancel) (P1 [Decision 2026-10-23b]).
 
 ### V1-S8 — Full actions and shared mode (ready)
 
@@ -191,6 +201,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 - **AC-2** `close` flattens the account's position in the instrument and cancels its stops/targets. `close` always flattens the whole position; any quantity in the instruction is ignored (Q1 [Decision 2026-10-23]).
 - **AC-3** `reverse` closes the current position and opens the opposite one with the instruction quantity × multiplier (capped by AC-4 of S7); when flat, `reverse` simply opens the position in the instruction's direction (Q1 [Decision 2026-10-23]).
 - **AC-4** An entry instruction opposite to the current position (e.g., `buy` while short) is **rejected for that account and the user is notified**; nothing is executed — the source must send `close` or `reverse` explicitly (Q1 [Decision 2026-10-23]). Other accounts are unaffected.
+- **AC-4b** A partial exit in individual mode reduces protective orders **oldest entry first (FIFO)** (P2 [Decision 2026-10-23b]).
 - **AC-5** **Shared mode** (per-account setting): after each fill the position has exactly one stop and one target, recalculated from the average price using the profile distances.
 - **AC-6** `modify`/`cancel` from TradingView are **not supported in V1**: rejected with a clear reason; they are supported for master replication in S20 (Q1 [Decision 2026-10-23]).
 
@@ -199,12 +210,13 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 - **AC-1** Whenever a position becomes flat for any reason (stop or target hit, manual close in NinjaTrader, `close`/`reverse`, enforcement), all remaining stop and target orders of that position are cancelled immediately, in both individual and shared modes. (§8)
 - **AC-2** In individual mode, when one entry's stop or target fills while other entries stay open, only that entry's opposite order is cancelled.
 - **AC-3** Each cancellation is reported to the Core and audited; if a cancellation fails, the account is flagged out of sync (S11) and the user is alerted.
+- **AC-4** **Local OCO limit:** on connections where the stop/target pairing is simulated on the user's PC (NinjaTrader and Rithmic connections; "unknown" treated as local), orphan-order protection works only while NinjaTrader and the plugin are running. The account screen shows the connection's OCO location, and the Web (account registration/screen) and the plugin explain this limit in pt-BR/en. (Architect, ADR-0004 §6.1)
 
 ### V1-S10 — Audit log and activity view (ready)
 
 - **AC-1** Every instruction received, every routing decision per account (routed, skipped, partially skipped, refused) with reason, and every execution result is recorded with time, source, and account. (§8, X-5)
 - **AC-2** The user can list and filter their activity by date, account, source, signal type, and outcome, and follow one instruction from receipt to every account's result.
-- **AC-3** Entries cannot be edited or deleted by the user. Retention period: decided by the user after Database Architect input on cost/feasibility (Q13 [Decision 2026-10-23 on the process]); **pending before release, not blocking development** — the design must allow retention to be configured.
+- **AC-3** Entries cannot be edited or deleted by the user. Retention: the activity record is kept **24 months rolling** (configurable); trades and configuration are kept for the life of the user account; all data is erased **30 days after the user closes the account** (privacy policy) (Q13, Q13-b [Decision 2026-10-23b]).
 - **AC-4** No secrets appear in any entry (X-4).
 
 ### V1-S11 — Out-of-sync detection and disconnects (ready)
@@ -212,13 +224,22 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 - **AC-1** An account is flagged **out of sync** when an order it should have received is missed, rejected, or partially filled, or when its instance disconnects with an open position or working orders; the flag and reason are visible in the Web and in the plugin. (§8)
 - **AC-2** When a destination disconnects mid-trade and reconnects, the user is alerted and the platform **waits for the user's decision**; it never reopens or resyncs positions automatically. (§8 [Decision])
 - **AC-3** The user can acknowledge and clear the flag after resolving it; clearing is audited.
-- **AC-4** Accounts flagged out of sync keep receiving or stop receiving new instructions → decided: an out-of-sync account **receives no new instructions until the user clears the flag**; each skip is audited (Q14 [Decision 2026-10-23]).
+- **AC-4** Decided: an out-of-sync account **receives no new instructions until the user clears the flag**; each skip is audited (Q14 [Decision 2026-10-23]).
+
+- **AC-5** **Reconnect check (local OCO):** after a reconnection, before any new command is accepted, the plugin reports each mapped account's position and working orders. Then:
+  - (i) position flat with a stop or target still working (orphan leg) → those orders are **cancelled automatically** (orphan rule, vision §8) and the user is alerted with what was cancelled;
+  - (ii) position open without stop or target, or orders in an unknown state (e.g., a simulated trigger lost on restart) → flagged out of sync, alert, **wait for the user**; nothing is recreated;
+  - (iii) **both legs filled** while NinjaTrader was down (or the orphan leg filled during reconnection), leaving an unwanted, unprotected opposite position → **only the position created by the orphan leg is flattened automatically**, with a maximum-priority alert and audit; nothing else is changed (Q27 [Decision 2026-10-23c]);
+  - (iv) broker connection lost while NinjaTrader stays open → same treatment when it returns; while the account cannot be observed, the Web shows "bracket integrity unknown".
+  In every case the account stays out of sync until the user clears it (Q14), and everything is audited. (Architect, ADR-0004 §6.1)
+- **AC-6** A Sim account reset or a Playback rewind is a state discontinuity: the account is flagged out of sync and the change is **not** treated as executions or P&L.
+- **AC-7** An external order or fill on a destination account (placed outside All Win) flags **master-replication destinations** out of sync with an alert; for TradingView-only destinations it is audited only (T3 [Decision 2026-10-23b]).
 
 ### V1-S12 — End-to-end exactly-once (ready)
 
 - **AC-1** The same instruction is never executed twice on the same account, whether the duplicate comes from the source, from Core retries, from a plugin reconnection, or from a Web reload. (§8)
 - **AC-2** After a plugin reconnection, instructions routed while it was disconnected are not executed automatically; they are reported as missed (S11 AC-2). [Decision 2026-10-23, plan approval; consistent with "alert and wait"]
-- **AC-2b** **Command expiry (TTL):** a command that does not reach its destination account within the account's TTL is never executed late; it is marked expired, audited, and the account is flagged out of sync. TTL is editable per account; the default is **short — a few seconds** (Q16 [Decision 2026-10-23]). The exact default number is a configuration value the Architect proposes within that range and the user confirms before release; not blocking development.
+- **AC-2b** **Command expiry (TTL):** a command that does not reach its destination account within the account's TTL is never executed late; it is marked expired, audited, and the account is flagged out of sync. Only **entries** expire; exits are never dropped for lateness, and late exits are audited as late (T1 [Decision 2026-10-23b]). TTL default **5 s**, editable per account between 1 and 60 s (Q16, T2 [Decision 2026-10-23b]). Expiry counts from the earlier of the source's send time and the Core's receipt time (P4 [Decision 2026-10-23b]).
 - **AC-3** QA evidence includes forced duplicate sends and forced disconnect/reconnect during an order.
 
 ### V1-S13 — Risk rules and live risk state (ready)
@@ -232,7 +253,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 
 ### V1-S14 — Core risk gate (ready)
 
-- **AC-1** The Core refuses to route a new instruction to an account that has reached a limit — **also when enforcement is off** for that account (refusing new entries never closes a trade); the refusal is audited and notified (§5; Q2 [Decision 2026-10-23]). Exits (`close`) are never refused by the gate. [Assumption — consistent with the intent; flag if the user disagrees]
+- **AC-1** The Core refuses to route a new instruction to an account that has reached a limit — **also when enforcement is off** for that account (refusing new entries never closes a trade); the refusal is audited and notified (§5; Q2 [Decision 2026-10-23]). Exits (`close`, reduce, protective modify/cancel) are never refused by the risk or out-of-sync gates (P1 [Decision 2026-10-23b]).
 - **AC-2** When a destination account hits its limit with enforcement on, it is removed from routing until the next trading day; other accounts continue. (§8)
 - **AC-3** When the **master** hits its limit, only the master is flattened and blocked; followers keep open positions and receive no new instructions from that master until the next trading day. (§8)
 
@@ -243,16 +264,20 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 - **AC-3** No early unlock: neither the Web nor the plugin offers a way to unblock before the reset. (§9)
 - **AC-4** Enforcement works while the Core is unreachable, using the last limits received (cached in the plugin) — second barrier, §5. (Feasible per Architect, 2026-10-23.)
 - **AC-6** **Block is reactive** (NinjaTrader offers no account lock): while an account is blocked, any order the user places manually on it is cancelled, and any resulting position is flattened, immediately after submission; each such action is audited and shown in the plugin. The user is told in the plugin that the account is blocked and why. Exact timing to be measured in the NT8 spike.
-- **AC-7** In Playback the trading-day reset and daily P&L use the connection's (simulated) clock, not the computer's clock.
+- **AC-7** In Playback the trading-day reset and daily P&L use the connection's (simulated) clock, not the computer's clock. A Sim reset or Playback rewind is handled per S11 AC-6 (not counted as P&L).
 - **AC-5** Every flatten/cancel/block is audited with the limit and value that triggered it (X-5).
 
 ### V1-S16 — Prop firm presets: model and UI (ready)
 
-- **AC-1** A preset records firm, plan, account size, phase, all rules from S13, maximum position size, trading-day reset time, the firm's stance on trade copying and automated trading, source URL(s), verification date, and version. (§9, §12)
+- **AC-1** A preset records firm, plan, account size, phase, **platform/connection** (e.g., Rithmic, Tradovate; rules that differ by platform are stored per platform), all rules from S13, maximum position size, trading-day reset time, the firm's stance on trade copying and automated trading (classification + verbatim text), source URL(s), verification/access date, and version. (§9, §12; [Decision 2026-10-23b])
 - **AC-2** Selecting a preset fills the account's rules and max position; the user can edit the copy on their account without changing the preset.
 - **AC-3** When a preset gets a new version, existing accounts are not changed silently; the user is told and chooses whether to apply. [Decision 2026-10-23, plan approval]
-- **AC-4** The firm's stance on copying/automation is shown when the user registers an account with that firm and when they add it to routing. (§12)
-- **AC-5** Only presets with status "verified" are selectable; unverified firms are not shown (or shown as unavailable) per the user's decision from the research report.
+- **AC-4** The firm's stance on copying/automation is shown **with its source and date** when the user registers an account with that firm and when they add it to routing (§12; [Decision 2026-10-23b]). For firms that forbid automation, S5 AC-7 applies.
+- **AC-5** A preset is selectable when its fields are verified **or** marked "not confirmed"; fields that conflict across the firm's official pages ship as **"not confirmed"** and do not block the rest of the preset ([Decision 2026-10-23b]). A firm with no verified data is not offered.
+- **AC-7** **Manual-only presets:** a firm whose platforms cannot be reached by any V1 output (e.g., **Topstep**: TopstepX/ProjectX only; orders must originate from the personal device) ships a preset for **manual tracking only** — risk rules, 80% warnings, manual trades and performance — with no routing; the limit and its reason are explained at registration and on the account screen (S-1 [Decision 2026-10-23d]). A future on-device ProjectX adapter is only for later evaluation.
+- **AC-8** The preset also records the firm's **VPS/server rule** (allowed / forbidden / conditional / unknown) and whether a **personal device** is required, with verbatim text, source and date, shown with the other stances (AC-4) [Decision 2026-10-23d].
+- **AC-9** Plans excluded from V1 presets (registered manually if the user has them): Apex Legacy, Phidias LIVE (2026-10-23c), Topstep Labs Challenges and Pro Account, Take Profit Trader PRO+ and PRO+ Development (S-3/S-4 [Decision 2026-10-23d]).
+- **AC-6** A "not confirmed" field is **not pre-filled**: the user sees each published value with its source and picks one or types their own; a required field (e.g., max position, drawdown, reset time) cannot be saved until resolved. The product never picks "the most conservative" value. Current list: [r1-conflicts-for-user.md](../presets/r1-conflicts-for-user.md).
 
 ### V1-R1 / R2 / R3 — Prop firm preset research (ready)
 
@@ -279,18 +304,20 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 - **AC-2** The user can mark notifications as read; unread count is visible.
 - **AC-3** V1 has **in-app notifications only** (Web + plugin); no email or messaging-app channels (Q8 [Decision 2026-10-23]). Account e-mails needed by S3 (invite, password reset) are not notifications.
 
-### V1-S19 — Master replication: entries and exits (blocked — waits for ADR-0003/0004 acceptance; V1.1)
+### V1-S19 — Master replication: entries and exits (ready — V1.1)
 
 - **AC-1** The user designates one NinjaTrader account as master and selects follower accounts (NinjaTrader, same or other instances of the same user). (§8)
 - **AC-2** Entries and exits on the master are replicated to each follower with its multiplier and maximum position cap; each follower's **initial stop and target come from the follower's own profile** (Q5 [Decision 2026-10-23]).
 - **AC-3** Works across instances through the Core; all involved instances must be connected, otherwise the follower is flagged out of sync (S11). In V1, replication **always relays through the Core**, also when master and followers share one instance; a local fast path is not built in V1 and may be revisited with measured latency (A4 [Decision 2026-10-23]).
 - **AC-4** No artificial delay; latency per follower is recorded in the audit trail.
+- **AC-5** QA of cross-instance replication needs **two Windows machines/VMs** (NinjaTrader runs one instance per computer). Access per W1 (reverse SSH tunnel from Windows, no inbound port) and W3 (user types the NT8 password on restarts) [Decision 2026-10-23c]; the machine type (W2: Contabo Windows VPS without GPU if feasible) is being confirmed by the team.
 
-### V1-S20 — Master replication: everything else (blocked — waits for ADR-0003/0004 acceptance; V1.1)
+### V1-S20 — Master replication: everything else (ready — V1.1)
 
 - **AC-1** All order types placed on the master, their modifications, and cancellations are replicated. (§8)
 - **AC-2** When the master's stop or target moves by X, each follower's moves by the same X. (§8)
-- **AC-3** A master cancellation cancels the linked follower orders; failures flag out of sync.
+- **AC-3** A master cancellation cancels the linked follower orders, **including protective orders**, with a warning notification on each affected follower (it may leave followers unprotected) (P3 [Decision 2026-10-23b]); failures flag out of sync.
+- **AC-4** The active contract month comes from a global rollover catalog maintained by the admin; users are warned in advance and the Core switches on the configured date (P5 [Decision 2026-10-23b]).
 
 ### V1-S21 — Trade capture and trade list (ready)
 
@@ -312,7 +339,8 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 |---|---|---|
 | NinjaTrader plugin stability (connection, order state, multi-instance) | Wrong or missing executions | Thinnest E2E first (M1); out-of-sync detection (S11) and exactly-once (S12) before any real use; sim-only development (X-7) |
 | TradingView webhook delivery is best-effort (no guaranteed retry) | Missed signals | Audit shows received signals; user can compare with TradingView alert log; documented in S17 guide |
-| Plugin verification needs Windows + NT8 | Critical-path bottleneck | Q15; adapter-sim lets Core proceed without it |
+| Local OCO on NinjaTrader/Rithmic connections: a stop fill does not cancel the target while NT8 is down | Unprotected or unwanted positions after an outage | S9 AC-4 user-facing limit; S11 AC-5 reconnect check; Q27 |
+| Plugin verification needs Windows + NT8 (two machines for S19 cross-instance) | Critical-path bottleneck | Q15; adapter-sim lets Core proceed without it |
 | Unique id generation inside Pine alerts | Duplicates or false "duplicate ignored" | Architect defines id rule in JSON contract v1; S17 AC-3 tests it |
 | Prop firm rule research volume (18 firms) and frequent rule changes | Release delay or wrong limits | Start R1 now; per-firm "verified" status; report-to-user rule; re-verification before release |
 | Firms that forbid copying or automation | User account violations | Stance shown at registration and routing (S16 AC-4); not legal advice (§12) |
@@ -345,9 +373,9 @@ Each has options and a recommendation. **All decided on 2026-10-23: the user acc
 | Q15 | Is there a Windows machine with NinjaTrader 8 (sim/playback) the team can use to verify the plugin? Who operates it? | (a) User provides a machine/VM with remote access for agents; (b) user runs the checks manually from a script the team provides | **(a)** — plugin verification is the critical path; (b) slows every plugin slice |
 | Q16 | Command expiry (TTL): if an instruction cannot reach an account within N seconds (e.g., disconnection), it is never executed late. What default N? | (a) Short (a few seconds), editable per account; (b) longer (e.g., 30–60 s), editable per account | User decides the value; PO recommends **(a)** for entries — a late entry at a different price is worse than a missed one (to be reported as missed, S11) |
 
-### Follow-up questions from design (S3/S4) — open, 2026-10-23
+### Follow-up questions from design (S3/S4) — decided 2026-10-23
 
-Raised by the Product Designer while specifying S3/S4. They do **not** block starting S3/S4 implementation (auth basics, i18n), but must be answered before the S3/S4 screen specs close.
+All accepted per recommendation [Decision 2026-10-23b]; Q21 = 12 h idle / 24 h absolute session, remember-me 7 d idle / 30 d absolute, step-up after 15 min (Architect [auth-and-session-policy.md](../../architecture/security/auth-and-session-policy.md)). S3/S4 criteria follow these answers.
 
 | # | Question | Options | Recommendation |
 |---|---|---|---|
@@ -359,6 +387,19 @@ Raised by the Product Designer while specifying S3/S4. They do **not** block sta
 | Q22 | Optional TOTP recovery | (a) 10 single-use recovery codes shown once at activation; enabling/disabling requires password + current code; lost device without codes → admin-assisted reset after identity check; (b) no recovery codes, admin reset only | **(a)** |
 | Q23 | Locale defaults: first-visit language, display time zone, time format | (a) Language from the browser (pt or en, else pt-BR); time zone from the profile (default = browser), always shown next to reset/session times; 24-hour clock in both languages; (b) always pt-BR, fixed America/Chicago | **(a)** |
 
+### Questions for the user — 2026-10-23 (rev. 4) — decided
+
+Q24–Q27 accepted as recommended [Decision 2026-10-23c]. R1 conflict list: recommendations accepted, **Apex Legacy and Phidias LIVE excluded** from V1 presets; the user reviews the 31 conflicts later and until then they ship as "not confirmed".
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q24 | Does the automation opt-in cover only automated sources (TradingView webhook, future signal engine), with master replication governed by the copying stance? And for firms that forbid or condition **copying**, should followers need the same explicit opt-in? | (a) Yes to both: automation opt-in for automated sources; a separate explicit copy opt-in for follower accounts of firms that forbid/condition copying; (b) one opt-in covering both | **(a)** — Apex forbids automation but allows same-person copiers, so the two stances must be separate |
+| Q25 | Ask the explicit choice also when the automation stance is conditional, unknown, or not confirmed? | (a) Yes, for any value other than "allowed"; (b) only for "forbidden" | **(a)** — protects the account when the rule is unclear |
+| Q26 | A new preset version changes the automation stance or text (e.g., allowed → forbidden) | (a) Keep the choice and notify; (b) suspend automated sources on that account until the user confirms again, and notify | **(b)** |
+| Q27 | Both bracket legs filled while NinjaTrader was down, leaving an unwanted unprotected opposite position (S11 AC-5 iii) | (a) Alert and wait for the user; (b) automatically flatten **only** the position created by the orphan leg, with maximum alert and audit | **(b)** (PO + Architect) — a position the user never chose, without a stop; (a) applies until decided |
+| — | Preset conflicts R1 (31 items) | See [r1-conflicts-for-user.md](../presets/r1-conflicts-for-user.md) | Recommendations accepted [Decision 2026-10-23c]; item-by-item review later |
+| — | R2 scope findings | See [r2-conflicts-for-user.md](../presets/r2-conflicts-for-user.md) | S-1..S-5 decided [Decision 2026-10-23d]; later R2 items open |
+
 ## 8. Architect inputs requested
 
 Pending answers from Prumo @ Dev3 are recorded in §9 when received.
@@ -369,6 +410,8 @@ Pending answers from Prumo @ Dev3 are recorded in §9 when received.
 4. Feasibility of S15 AC-4 (enforcement with last-known limits while disconnected).
 
 ## 9. Architect feedback log
+
+**2026-10-23 — Local OCO (F5), Prumo (rev. 4):** S9 AC-4 and S11 AC-5 agreed; plugin reports `oco_location` (local/server/unknown, unknown = local) in hello; reconnect snapshot carries order states and correlation via order name; cases (iii) double fill → Q27, (iv) broker disconnection; Sim reset/Playback rewind = discontinuity (S11 AC-6). S19 needs two Windows machines/VMs.
 
 **2026-10-23 — User decisions on architecture items (rev. 3):** A1 stack per ADR-0001; A2 production in the US central region (near Chicago) — no product AC impact; A3 secret in the URL, masked in every log (→ S1 AC-1, AC-6); A4 replication always via Core in V1 (→ S19 AC-3); A5 optional TOTP (→ S3 AC-1b); A6 private GitHub + CI (push only with authorization).
 

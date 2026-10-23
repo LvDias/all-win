@@ -23,7 +23,8 @@
 4. **Trading-day reset:** time and **time zone as published** (e.g., "5:00 PM ET"), plus any holiday/early-close rule.
 5. **Trade copying stance:** verbatim quote + URL — specifically whether copying across the **same person's** accounts is allowed, any account-count limits, and any rule about copying from or to accounts at other firms.
 6. **Automated trading stance:** verbatim quote + URL — bots/algos/automated order entry, and whether trade copiers or webhook automation are named. Classify as `allowed | forbidden | conditional | unknown`; the verbatim text is shown to the user in the opt-in warning for firms that forbid automation (decision 2026-10-23, option A).
-7. **Other rules that affect routing or risk:** e.g., news trading restrictions, mandatory stop loss, scaling plans (contracts allowed vs balance), max accounts per person, overnight/weekend holding, minimum/maximum trade duration, inactivity rules.
+7. **Device / hosting rules:** whether the firm allows trading from a VPS/server/VPN, and whether orders must originate from the trader's personal device — verbatim quote + URL (YAML `vps_allowed: yes|no|conditional|unknown`, `personal_device_required: yes|no|unknown`).
+7b. **Other rules that affect routing or risk:** e.g., news trading restrictions, mandatory stop loss, scaling plans (contracts allowed vs balance), max accounts per person, overnight/weekend holding, minimum/maximum trade duration, inactivity rules.
 8. **Machine-readable block:** one YAML block per plan/phase/size (§5).
 9. **Unverified / gaps / conflicts:** a list for the user report — field, what is missing, where it was searched.
 10. **Changelog:** dated entries for each change to the file.
@@ -65,6 +66,8 @@ trading_day_reset: { time: "17:00", tz_as_published: "ET" }
 copy_trading_allowed: unknown   # yes | no | conditional | unknown
 automated_trading_allowed: unknown   # yes | no | conditional | unknown
 automation_rule_text: null          # verbatim, shown in the opt-in warning
+vps_allowed: unknown                # yes | no | conditional | unknown
+personal_device_required: unknown   # yes | no | unknown
 status: unverified       # verified | partial | unverified | conflict (per field: not_confirmed)
 not_confirmed_fields: []
 sources:
