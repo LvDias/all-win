@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.15 (187f218); **rev. 16.16 proposed**: `gateway.intake_dead_letter` (#9c `…061620`, Bigorna; ADR-0004 r5 §4, Esquadro): the only copy of a frame, never purged before an operator decision, recovery by Core re-process (§6.3, §6.5, §8); 061300 and 061310 authorized by the user on 2026-10-24 (§8).
+- **Status:** Accepted (2026-10-24), rev. 16.16 (d7ae7cf); **rev. 16.17 proposed** (Esmeril L1–L3 on 16.16, Crivo via Esquadro): a dead-letter re-process keeps the original `received_at`; a discard needs a reason; decisions are final (trigger); "never purged" yields to Q13-b erasure (§6.3).
+- Rev. 16.16 (d7ae7cf): `gateway.intake_dead_letter` (#9c `…061620`, Bigorna; ADR-0004 r5 §4, Esquadro): the only copy of a frame, never purged before an operator decision, recovery by Core re-process (§6.3, §6.5, §8); 061300 and 061310 authorized by the user on 2026-10-24 (§8).
 - Rev. 16.15 (187f218) (Ferro; Esmeril nits on 16.14): the `instruction_purge_receipt_hash` statement trigger clears the receipt hash on every instruction delete (§6.1, §6.5, §8); a duplicated sentence removed.
 - Rev. 16.14 (3452f0f) (Esquadro FINAL, duplicate after the purge): `body_sha256` lives only as long as the content; the Q13-b purge clears it and stamps `content_purged_at` in the same batch; a re-send after the purge is `ingress.duplicate_ignored` with `content_not_retained: true`; no HMAC, no per-field hashes (§6.1, §8); the `presets.version_available` UUIDv5 namespace and test vector (§5.7).
 - Rev. 16.13 (590e5bb) (Esquadro; Esmeril L1/L2 on 16.12): the publish CLI refuses `not_material` releases until the re-point path exists, and the job never skips one silently; the UUIDv5 namespace and name bytes for `presets.version_available` (§5.7).
@@ -1579,24 +1580,36 @@ CREATE TABLE gateway.intake_dead_letter (
   CONSTRAINT intake_dead_letter_decision_check CHECK ((status = 'pending') = (decided_at IS NULL)
              AND (decided_at IS NULL) = (decided_by IS NULL)),
   CONSTRAINT intake_dead_letter_replay_check CHECK (status <> 'applied' OR NOT frame_redacted),
+  CONSTRAINT intake_dead_letter_discard_reason_check CHECK (status <> 'discarded' OR decision_reason IS NOT NULL),  -- rev. 16.17
   CONSTRAINT intake_dead_letter_no_token CHECK (frame !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
              AND last_error !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
              AND coalesce(decision_reason, '') !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
 );
 CREATE INDEX intake_dead_letter_pending_idx ON gateway.intake_dead_letter (dead_lettered_at) WHERE status = 'pending';
+-- rev. 16.17 (Esmeril L3): a decision is final; once status <> 'pending' the row never changes (DELETE by the
+-- 90-day purge or Q13-b erasure stays possible).
+CREATE FUNCTION gateway.intake_dead_letter_final() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog
+  AS $$ BEGIN
+    IF OLD.status <> 'pending' THEN
+      RAISE EXCEPTION 'intake_dead_letter % is already %', OLD.id, OLD.status USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END $$;
+CREATE TRIGGER intake_dead_letter_final BEFORE UPDATE ON gateway.intake_dead_letter
+  FOR EACH ROW EXECUTE FUNCTION gateway.intake_dead_letter_final();
 -- RLS owner policy. allwin_app: INSERT, SELECT, UPDATE (status, decided_at, decided_by, decision_reason), no DELETE;
 -- allwin_worker: SELECT (alert on pending rows); allwin_maint: SELECT, DELETE (decided rows only, see below).
 ```
 
 - **Intake dead letter (rev. 16.16, #9c `…061620`; ADR-0004 r5 §4, Esquadro):**
   - **It is the only copy.** After the ack, the adapter deletes the frame from its outbox and its journal marks the fill as reported, so no catch-up reports it again. So a `pending` row is **never purged** (no automatic purge, no retention job) until an operator decides: `applied` (re-processed after the cause is fixed) or `discarded` (with audit and a reason).
-  - **Recovery is a Core re-process of the stored `frame`** through the normal intake path, never a request to the plugin. The result must equal a normal intake. `execution_report.event_id` and the fill dedupe make a second application a no-op. Test: a frame goes to the dead letter, is acked, and its later re-process gives the same rows as a normal intake.
+  - **Recovery is a Core re-process of the stored `frame`** through the normal intake path, never a request to the plugin. The result must equal a normal intake. **It keeps the original timing** (rev. 16.17, Esmeril L1): the re-process uses the stored `dead_lettered_at` as `received_at`, never `now()`, so `expiry_base = min(sent_at, received_at)` holds, and any time-critical content (an `instruction`, a command result) expires by its TTL and is never acted on late. Test: a re-process after the TTL expires the content. `execution_report.event_id` and the fill dedupe make a second application a no-op. Test: a frame goes to the dead letter, is acked, and its later re-process gives the same rows as a normal intake.
   - The same transaction inserts the `inbound_receipt`, so a retransmission is a duplicate. It also flags the named account `out_of_sync` with `sync.command_unknown`, with the instrument in the details; a frame without `command_id` uses the same reason. A critical operator alert fires in every case.
   - The 3-failure count is kept in the gateway's memory per `(connection_id, msg_id)`. A gateway restart resets it, which only adds retries.
   - **A frame with a token shape** fails the no-token `CHECK`. It is then stored with the token masked and `frame_redacted = true`. It cannot be applied (`CHECK`); the operator discards it with audit. A secret is never stored.
-  - **Decisions** run as `allwin_app` with `app.user_id` = the row's user (operator command, as for admin recovery), and are audited.
-  - **Retention:** a decided row is purged 90 days after `decided_at` (`allwin_maint`); `pending` rows never are. Q13-b erasure deletes the user's rows, pending included, together with the account's other data.
-  - Tests: pending is never purged by the retention job; applied with a redacted frame fails; the decision fields come as a set; cross-user reads return 0 rows.
+  - **Decisions** run as `allwin_app` with `app.user_id` = the row's user (operator command, as for admin recovery), and are audited. A discard needs a reason (`CHECK`), and a decision is final: the `intake_dead_letter_final` trigger refuses any `UPDATE` once `status` is not `pending` (rev. 16.17, Esmeril L2/L3).
+  - **Retention:** a decided row is purged 90 days after `decided_at` (`allwin_maint`); `pending` rows are never purged by retention. "Never purged" does not override Q13-b erasure or the audit retention (Crivo): Q13-b erasure DELETES the user's dead-letter rows together with the account, pending ones included (the frame is the user's payload, so it is never anonymized in place; an `UPDATE` of a decided row is refused by the final trigger anyway).
+  - Tests: pending is never purged by the retention job; applied with a redacted frame fails; the decision fields come as a set; a discard without a reason fails; any update of a decided row fails; cross-user reads return 0 rows.
   - Tests: a retransmitted frame is a no-op (receipt and PK); the app cannot `UPDATE payload` or `DELETE`; cross-user reads return 0 rows; the worker reads pending rows and cannot write.
 
 - **Rev. 16.6 (migration #9 `…061600`, Bigorna; S11 storage, Compasso; Esquadro B4 = b):**
