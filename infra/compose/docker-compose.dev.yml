@@ -42,6 +42,8 @@ services:
       MIGRATION_DATABASE_URL: postgres://allwin_owner:${ALLWIN_OWNER_PASSWORD}@postgres:5432/allwin
       # Core is reachable only through Caddy and 127.0.0.1: the client IP is the last X-Forwarded-For.
       INGRESS_TRUST_FORWARDED_FOR: "true"
+      # Dev/E2E only: enables the seed and revoke-key commands. Never set outside dev.
+      ALLWIN_ENABLE_DEV_COMMANDS: "true"
       CORE_BIND: 0.0.0.0:${CORE_PORT:-8080}
       RUST_LOG: ${RUST_LOG:-info}
     # Reachable only through Caddy (and 127.0.0.1 for local debugging).
