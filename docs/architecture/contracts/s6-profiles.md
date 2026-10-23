@@ -29,13 +29,13 @@ No step-up (Q35 list). No SSE: the tab refetches on focus (spec §9).
    - `profiles.distance_too_large` applies above 10 000 ticks (the structural cap of command quantities and distances).
    - `profiles.default_missing` applies on restore when the size has no default.
 4. **Q-S6-6:** dollars accept at most **2 decimals** in the contract. The data model's 4 decimals stay as storage headroom.
-5. **Q-S6-7 → Q60 (nearest size), provisional option (c)** (3.0.0: `restoreAccountProfile` reuses `copied_from_size`, so the user's tie choice is kept; with no stored size and a tie it requires `profile_size`):
+5. **Q-S6-7 → Q60 (nearest size), option (c), decided** (3.0.0: `restoreAccountProfile` reuses `copied_from_size`, so the user's tie choice is kept; with no stored size and a tie it requires `profile_size`):
    - Distance is the absolute difference between the account size and each standard size. Below 25k the Core uses 25k; above 300k it uses 300k (PO premises).
    - `getNearestProfileSize` (`GET /api/v1/profile-sizes/nearest?size_amount=&instrument_id=`) returns 1 candidate, or 2 on an exact tie. Each candidate has `has_default`.
    - On a tie the user picks one, and `createAccount.profile_size` carries the choice. The Core never chooses.
    - If the user decides (a) "smaller" or (b) "larger", the list has one entry and nothing else changes.
    - The copy is reported as `origin: nearest_size_default` with `copied_from_size`.
-6. **Account without a profile (Q43, provisional):** an account created while its size had no default has no profile (`AccountProfileList` entry without `profile`). Its entries are skipped and audited with the new routing reason **`routing.no_bracket_profile`** (`blocks: entries_only`; exits continue, P1). The code is added to `RouteReasonCode`, so the S7 status cell shows it too. The user fixes it with `putAccountProfile` (no `row_version`, `origin: set_by_user`).
+6. **Account without a profile (Q43):** an account created while its size had no default has no profile (`AccountProfileList` entry without `profile`). Its entries are skipped and audited with the new routing reason **`routing.no_bracket_profile`** (`blocks: entries_only`; exits continue, P1). The code is added to `RouteReasonCode`, so the S7 status cell shows it too. The user fixes it with `putAccountProfile` (no `row_version`, `origin: set_by_user`).
 7. **Provenance** (`origin`, `copied_from_size`, `copied_at`, `customized`, `default_now`) covers the S5 detail need "profile provenance", which was deferred from the S5 contract.
 8. The **shared/individual mode** is not here: it is a per-account setting of S8 AC-5. S6 shows `Individual` read-only.
 
@@ -43,7 +43,7 @@ No step-up (Q35 list). No SSE: the tab refetches on focus (spec §9).
 
 - `profiles.default_changed`: instrument, size, and previous and new unit/stop/target, as strings.
 - `profiles.account_changed` with `action` ∈ `initial_copy` / `edited` / `restored`: the same fields plus `copied_from_size`.
-- `routing.no_bracket_profile` (skip; provisional, Q43).
+- `routing.no_bracket_profile` (skip; Q43).
 
 Rendering belongs to S10.
 

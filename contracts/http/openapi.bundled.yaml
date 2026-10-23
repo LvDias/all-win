@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 3.4.1
+  version: 3.5.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -1632,7 +1632,7 @@ paths:
 
         `accounts.profile_size_required`) and must be one of the candidates of `getNearestProfileSize`
 
-        (422 `accounts.profile_size_invalid`). Provisional (Q60): if the user later decides "smaller" or
+        (422 `accounts.profile_size_invalid`). Q60: if the user later decides "smaller" or
 
         "larger", the candidates list just has one entry and nothing else changes.
 
@@ -1644,7 +1644,7 @@ paths:
 
         automation stance of a prop account is `unknown`, so its choice is required against the generic
 
-        rule version (provisional, Q40). Real accounts never take `opt_ins`.
+        rule version (Q40). Real accounts never take `opt_ins`.
 
         Step-up: when any `opt_ins.*.choice` is `accepted` the body must carry `step_up` for action
 
@@ -1765,7 +1765,7 @@ paths:
 
         Changing or removing the binding while the account has an open position is refused with 409
 
-        `accounts.binding_open_position` (provisional, Q38). Lowering `max_position_qty` below an open
+        `accounts.binding_open_position` (Q38). Lowering `max_position_qty` below an open
 
         position is allowed; open positions are not changed.
 
@@ -1777,9 +1777,10 @@ paths:
 
         an enabled route from an automated source) needs `step_up` for action `account_binding_change`
 
-        (target = this account; QA Security L1; superset pending the user with Q35, Core setting, default
+        (target = this account; QA Security L1; Q35 decided 2026-10-23: setting
 
-        on). One proof covers the request; when both apply, `account_opt_in_accept` is used. Check order after
+        `step_up.q35_persistence_actions` on, server configuration only, missing/invalid = on). One proof covers the request;
+        when both apply, `account_opt_in_accept` is used. Check order after
 
         authentication, Origin and schema: 404 → step-up → 409 → 422. Audited as
 
@@ -1788,7 +1789,7 @@ paths:
         '
       x-step-up: conditional
       x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state, or the binding of an account that receives
-        automation changes (Q35 setting on)
+        automation changes (Q35 decided, setting on)
       parameters:
       - $ref: '#/components/parameters/AccountId'
       requestBody:
@@ -1827,7 +1828,7 @@ paths:
 
         last known state when the connection is down). Otherwise the account is archived: it leaves every
 
-        list, receives no instruction, and its name becomes free again. Provisional (Q39): its routes and
+        list, receives no instruction, and its name becomes free again. Q39: its routes and
 
         master/follower relations are removed in the same transaction (listed beforehand by
 
@@ -1938,6 +1939,74 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/evaluation/restart:
+    post:
+      tags:
+      - accounts
+      operationId: restartEvaluation
+      summary: Restart the evaluation count of a prop account (S13b; Q69 a)
+      description: 'Sets a new `evaluation_start` (and optionally `evaluation_earned_before`); the progress toward
+
+        `evaluation_profit_target` restarts from there. A Sim / Playback reset is a discontinuity (S11
+
+        AC-6) and never restarts the count by itself. `row_version` as in `updateAccount`. Bumps the
+
+        account''s limits version. Audited as `accounts.evaluation_restarted` (old and new start and
+
+        earned-before). An account without an evaluation target gets 422 `accounts.evaluation_not_applicable`.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - evaluation_start
+              - row_version
+              properties:
+                evaluation_start:
+                  type: string
+                  format: date
+                evaluation_earned_before:
+                  $ref: '#/components/schemas/MoneyAmount'
+                row_version:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Restarted and audited.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`common.version_conflict` — nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`accounts.evaluation_not_applicable` (no evaluation target) or `accounts.evaluation_start_invalid`
+            (`/evaluation_start` in the future); nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/accounts/{account_id}/opt-ins/{kind}:
     put:
       tags:
@@ -1952,7 +2021,7 @@ paths:
 
         stance moves the state to `pending_review` and suspends that kind until the user chooses again).
 
-        **Provisional (awaiting the user, Q42):** a change of the official rule text that the publisher of
+        **Q42 (a):** a change of the official rule text that the publisher of
 
         the preset version flags as material also triggers `pending_review`; unflagged edits never do.
 
@@ -2056,7 +2125,7 @@ paths:
 
         has platform-specific rules). Without it → the **generic** rule versions used by prop accounts
 
-        without a preset (stance `unknown`, no quotes; provisional, Q40). Global catalog data, the same
+        without a preset (stance `unknown`, no quotes; Q40). Global catalog data, the same
 
         for every user; any signed-in user may read it.
 
@@ -2185,9 +2254,9 @@ paths:
 
         Copy routes of a follower (S19, V1.1) are not created here.
 
-        Step-up (QA Security M1; superset pending the user with Q35, Core setting
+        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
 
-        `step_up.q35_persistence_actions`, default on): when the source is automated, the route is
+        server configuration only, missing/invalid = on): when the source is automated, the route is
 
         enabled by this request, and the account''s automation was not accepted with a step-up (a real
 
@@ -2199,8 +2268,8 @@ paths:
 
         '
       x-step-up: conditional
-      x-step-up-when: source is automated and is_enabled and the account's automation was not accepted with step-up (Q35 setting
-        on)
+      x-step-up-when: source is automated and is_enabled and the account's automation was not accepted with step-up (Q35 decided,
+        setting on)
       requestBody:
         required: true
         content:
@@ -2247,15 +2316,17 @@ paths:
       summary: Change a route's signal types or switch it on/off (optimistic concurrency)
       description: 'Full replacement of `signal_types` and `is_enabled`. Switching off is always accepted. Switching
 
-        on while the account is not eligible for the source is currently accepted: the route is saved and
+        on while the account is not eligible for the source is refused with 422 and the blocking reason
 
-        its status shows the reason, and nothing is routed (S7 AC-6). Provisional, Q67 (with the user):
+        code (same codes as `createRoute`, pointer `/is_enabled`; Q67 b, decided). When an account becomes
 
-        if option (b) is decided, switching on is refused with 422 and the blocking reason code (same
+        ineligible (automation `declined` / `pending_review`, or unbound), the Core switches its routes
 
-        codes as `createRoute`), and the Core switches a route off when its account becomes ineligible;
+        from that source off and audits `routing.subscription_changed` (`disabled`, cause
 
-        clients must already handle that 422. Routes of a revoked source are read-only. Check order after
+        `account_ineligible`); when it becomes eligible again the route stays off (`route_disabled`) until
+
+        the user switches it on. Routes of a revoked source are read-only. Check order after
 
         authentication, Origin and schema: 404 → 409 `routing.source_revoked` → 409
 
@@ -2263,9 +2334,9 @@ paths:
 
         or `disabled`, with previous and new values).
 
-        Step-up (QA Security M1; superset pending the user with Q35, Core setting
+        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
 
-        `step_up.q35_persistence_actions`, default on): when the source is automated, the route goes
+        server configuration only, missing/invalid = on): when the source is automated, the route goes
 
         from off to on by this request, and the account''s automation was not accepted with a step-up (a real
 
@@ -2278,7 +2349,7 @@ paths:
         '
       x-step-up: conditional
       x-step-up-when: source is automated and is_enabled changes false → true and the account's automation was not accepted
-        with step-up (Q35 setting on)
+        with step-up (Q35 decided, setting on)
       parameters:
       - $ref: '#/components/parameters/RouteId'
       requestBody:
@@ -2309,8 +2380,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '422':
-          description: 'Reserved for Q67 option (b): `routing.automation_not_accepted` / `routing.platform_unbound` (pointer
-            `/is_enabled`) when switching on an ineligible route. Not sent while Q67 is open.'
+          description: '`routing.automation_not_accepted` / `routing.platform_unbound` (pointer `/is_enabled`) — switching
+            on a route whose account is not eligible for the source (Q67 b).'
           content:
             application/json:
               schema:
@@ -2568,7 +2639,7 @@ paths:
 
         account''s size, or the nearest standard size for a real account; on an exact tie (Q60,
 
-        provisional) the body must name `profile_size` (one of `getNearestProfileSize`''s candidates),
+        decided) the body must name `profile_size` (one of `getNearestProfileSize`''s candidates),
 
         else 422 `profiles.profile_size_required` / `profiles.profile_size_invalid`. An account with no
 
@@ -2638,7 +2709,7 @@ paths:
 
         smallest standard size the smallest is used, above the largest the largest (PO, Q60). An exact
 
-        tie returns both sizes and the user chooses (`createAccount.profile_size`); provisional (Q60): the
+        tie returns both sizes and the user chooses (`createAccount.profile_size`); Q60 (option c): the
 
         Core does not choose. If the user later decides "always the smaller" or "always the larger",
 
@@ -3354,7 +3425,7 @@ paths:
       - risk
       operationId: putAccountRiskRules
       summary: Set the account's risk rules (full replacement; optimistic concurrency by the limits `version`)
-      description: 'An absent optional rule means "not set" (no warning, no refusal for it). Provisional (Q48):
+      description: 'An absent optional rule means "not set" (no warning, no refusal for it). Q48:
 
         a stricter value applies at once, a looser one from the next trading day (`AccountRisk.pending_changes`).
 
@@ -3587,7 +3658,7 @@ paths:
 
         of-sync flag stays visible in banners and badges). A later occurrence of a grouped item makes it
 
-        unread again only when its registry code has `reopen_on_occurrence: true` (provisional Q68 b: the
+        unread again only when its registry code has `reopen_on_occurrence: true` (Q68 b: the
 
         `danger` routing codes); otherwise only `count` and `updated_at` change. Emits `notification.read`.
 
@@ -3659,7 +3730,7 @@ paths:
       summary: The caller's completed trades, filtered and sorted, with a cursor
       description: 'Filters combine with AND, values in one array with OR (repeat the parameter). `from` / `to` filter
 
-        on the **exit time** (provisional, Q53); both are instants and optional (absent = unbounded);
+        on the **exit time** (Q53); both are instants and optional (absent = unbounded);
 
         `from` after `to` gets 400 (pointer `/query/from`). `origin` selects routed / master / manual /
 
@@ -3738,9 +3809,11 @@ paths:
 
         200 with the trade created first; different body or after 24 h → 409
 
-        `trades.idempotency_key_reused`; never a second trade). Duration and P&L are computed by the
+        `trades.idempotency_key_reused`; never a second trade). Duration, gross P&L, commission and net
 
-        Core (gross, no commissions; provisional Q54); MAE / MFE are optional (provisional Q55). The
+        P&L are computed by the Core (net is the main value; the commission is the typed one, else the
+
+        account floor); MAE / MFE are optional (Q55). The
 
         account may be active, paused or disabled, not archived. Audited as `trades.manual_created`.
 
@@ -3847,7 +3920,7 @@ paths:
       tags:
       - trades
       operationId: updateManualTrade
-      summary: Correct a manual trade (provisional, Q56); captured trades are never editable
+      summary: Correct a manual trade (Q56); captured trades are never editable
       description: 'Full replacement of the manual fields, with `row_version` (stale → 409 `common.version_conflict`).
 
         A captured trade (`origin` ≠ `manual`) gets 409 `trades.not_editable`. Audited as
@@ -3894,7 +3967,7 @@ paths:
       tags:
       - trades
       operationId: deleteManualTrade
-      summary: Delete a manual trade (provisional, Q56)
+      summary: Delete a manual trade (Q56)
       description: 'The trade leaves the list and the metrics; the audit entry `trades.manual_deleted` keeps its
 
         values. `row_version` is required (stale → 409 `common.version_conflict`); a captured trade gets
@@ -3979,6 +4052,11 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/Price'
+      - name: commission
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ExcursionInput'
       responses:
         '200':
           description: The computed values.
@@ -4218,7 +4296,7 @@ components:
       name: from
       in: query
       required: false
-      description: Exit time at or after this instant (Q53, provisional).
+      description: Exit time at or after this instant (Q53).
       schema:
         $ref: '#/components/schemas/Timestamp'
     TradeTo:
@@ -4390,8 +4468,8 @@ components:
         \ `row_version`, reload);\n- `accounts.name_taken` — `/display_name` (case-insensitive, among the caller's live accounts);\n\
         - `accounts.platform_account_taken` — `/binding` (already bound to another of the caller's\n  accounts; a platform\
         \ account of another user is never reported as taken, see 422);\n- `accounts.binding_open_position` — `/binding` (update;\
-        \ provisional, Q38);\n- `accounts.rule_version_changed` — `error.current_rule_version_id` (an `opt_ins` choice names\
-        \ a\n  rule version that is no longer the one in force for the selection).\n"
+        \ Q38);\n- `accounts.rule_version_changed` — `error.current_rule_version_id` (an `opt_ins` choice names a\n  rule\
+        \ version that is no longer the one in force for the selection).\n"
       content:
         application/json:
           schema:
@@ -4418,8 +4496,8 @@ components:
         \ the connection is unpaired; identical for another user's connection);\n- `accounts.platform_account_kind_not_allowed`\
         \ — `/binding` (`live` or `unknown` kind outside\n  production; ADR-0004 §8);\n- `accounts.profile_size_required`\
         \ / `accounts.profile_size_invalid` — `/profile_size` (create of\n  a real account whose size is a tie between two\
-        \ standard sizes; provisional, Q60);\n- `presets.required_field_unresolved` — `/rule_values/<field>` or `/max_position_qty`\
-        \ (a required\n  rule field of the preset is not confirmed and the body does not resolve it; S16 AC-6);\n- `presets.use_apply_version`\
+        \ standard sizes; Q60);\n- `presets.required_field_unresolved` — `/rule_values/<field>` or `/max_position_qty` (a\
+        \ required\n  rule field of the preset is not confirmed and the body does not resolve it; S16 AC-6);\n- `presets.use_apply_version`\
         \ — `/preset_version_id` (update to a newer version of the same\n  preset; use `applyPresetVersion`);\n- `accounts.rule_values_without_selection_change`\
         \ — `/rule_values` (update with the same preset\n  selection; edit rules with `putAccountRiskRules`).\n"
       content:
@@ -4450,9 +4528,9 @@ components:
     RiskRulesRejected:
       description: "Valid shape, refused by a rule; nothing saved. Codes and pointers (under `/rules/...`):\n- `risk.required_value_unresolved`\
         \ — the field (a required preset value is not confirmed and not resolved);\n- `risk.daily_loss_required` — `/rules/daily_loss_limit`\
-        \ (prop account whose preset does not say\n  \"none\"; provisional, Q47);\n- `risk.flatten_requires_enforcement` —\
-        \ `/rules/profit_target_on_reach` (`flatten_and_block` while\n  enforcement is off; provisional, Q49);\n- `risk.reset_not_editable`\
-        \ — `/rules/trading_day_reset` (real accounts use the CME session close);\n- `risk.consistency_not_applicable` — `/rules/consistency_threshold_pct`\
+        \ (prop account whose preset does not say\n  \"none\"; Q47);\n- `risk.flatten_requires_enforcement` — `/rules/profit_target_on_reach`\
+        \ (`flatten_and_block` while\n  enforcement is off; Q49);\n- `risk.reset_not_editable` — `/rules/trading_day_reset`\
+        \ (real accounts use the CME session close);\n- `risk.consistency_not_applicable` — `/rules/consistency_threshold_pct`\
         \ (real account, or the\n  preset has no consistency rule);\n- `risk.amount_invalid` — the field (zero where a positive\
         \ amount is required).\n"
       content:
@@ -4470,7 +4548,7 @@ components:
         \ (unknown or another user's; identical);\n- `routing.source_revoked` — `/source_id`;\n- `routing.account_unknown`\
         \ — `/account_id` (unknown, archived or another user's; identical);\n- `routing.account_manual_only` — `/account_id`\
         \ (S16 AC-7);\n- `routing.automation_not_accepted` — `/account_id` (automated source; the account's automation\n \
-        \ opt-in is `declined` or `pending_review`);\n- `routing.platform_unbound` — `/account_id` (provisional, Q37).\n"
+        \ opt-in is `declined` or `pending_review`);\n- `routing.platform_unbound` — `/account_id` (Q37).\n"
       content:
         application/json:
           schema:
@@ -5315,10 +5393,19 @@ components:
         lifecycle_state:
           $ref: '#/components/schemas/LifecycleState'
         binding:
-          description: Absent when the account is not bound; an unbound account is never routed (provisional, Q37).
+          description: Absent when the account is not bound; an unbound account is never routed (Q37).
           $ref: '#/components/schemas/AccountBinding'
         opt_ins:
           $ref: '#/components/schemas/AccountOptIns'
+        commission_per_contract_side:
+          description: The account's commission floor per contract and side (absent = none).
+          $ref: '#/components/schemas/MoneyAmount'
+        evaluation_start:
+          type: string
+          format: date
+          description: Prop accounts in an evaluation phase (S13b).
+        evaluation_earned_before:
+          $ref: '#/components/schemas/MoneyAmount'
         has_open_position:
           type: boolean
           description: Last known from the platform (gateway); false when unbound. Used for the lifecycle and delete messages.
@@ -5406,6 +5493,23 @@ components:
           $ref: '#/components/schemas/Multiplier'
         max_position_qty:
           $ref: '#/components/schemas/MaxPositionQty'
+        commission_per_contract_side:
+          description: 'USD per contract and side, ≥ 0 (U20 a): the floor of each fill''s commission (effective = max(platform,
+
+            this × quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);
+
+            absent = no floor. Any change bumps the account''s limits version (net P&L feeds risk).
+
+            '
+          $ref: '#/components/schemas/MoneyAmount'
+        evaluation_start:
+          type: string
+          format: date
+          description: Prop accounts in an evaluation phase (Q46, S13b; Q69 a) — the day the evaluation count starts; default
+            the registration date. Later changes only through `restartEvaluation`.
+        evaluation_earned_before:
+          description: Net profit already made in this evaluation before `evaluation_start` (optional; counts toward the target).
+          $ref: '#/components/schemas/MoneyAmount'
         binding:
           $ref: '#/components/schemas/PlatformAccountRef'
         rule_values:
@@ -5526,6 +5630,15 @@ components:
           $ref: '#/components/schemas/Multiplier'
         max_position_qty:
           $ref: '#/components/schemas/MaxPositionQty'
+        commission_per_contract_side:
+          description: 'USD per contract and side, ≥ 0 (U20 a): the floor of each fill''s commission (effective = max(platform,
+
+            this × quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);
+
+            absent = no floor (full replacement). Any change bumps the account''s limits version (net P&L feeds risk).
+
+            '
+          $ref: '#/components/schemas/MoneyAmount'
         binding:
           description: The platform account to bind; absent means unbound.
           $ref: '#/components/schemas/PlatformAccountRef'
@@ -5659,7 +5772,7 @@ components:
       - unknown
       - not_confirmed
       description: Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account
-        without a preset (generic rule, provisional Q40), is `unknown`.
+        without a preset (generic rule, Q40), is `unknown`.
     OptInChoiceRequest:
       type: object
       additionalProperties: false
@@ -5740,9 +5853,9 @@ components:
           - preset_attached
           description: 'With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is
 
-            flagged as a material text change (provisional, Q42; `RuleVersion.change` has the reason
+            flagged as a material text change (Q42; `RuleVersion.change` has the reason
 
-            text); `preset_attached` = reserved for provisional Q41: only a data migration that attaches a
+            text); `preset_attached` = reserved for Q41: only a data migration that attaches a
 
             preset to an account without a user request would produce it. No operation of this contract
 
@@ -5967,6 +6080,8 @@ components:
       - risk.limit_reached
       - risk.target_reached
       - risk.consistency_warning
+      - risk.evaluation_target_reached
+      - accounts.evaluation_restarted
       - trades.captured
       - trades.manual_created
       - trades.manual_changed
@@ -6765,6 +6880,13 @@ components:
           type: boolean
         is_enabled:
           type: boolean
+        cause:
+          type: string
+          enum:
+          - user
+          - account_ineligible
+          description: '`account_ineligible` — the Core switched the route off because its account became ineligible for the
+            source (Q67 b).'
     DetailsProfileChanged:
       type: object
       additionalProperties: false
@@ -7014,7 +7136,7 @@ components:
           minimum: 1
         effective:
           type: array
-          description: When each changed rule applies (Q48, provisional).
+          description: When each changed rule applies (Q48).
           items:
             type: object
             additionalProperties: false
@@ -7084,7 +7206,14 @@ components:
         exit_price:
           $ref: '#/components/schemas/Price'
         pnl:
+          description: Net (main value from 3.5.0).
           $ref: '#/components/schemas/Money'
+        gross_pnl:
+          $ref: '#/components/schemas/Money'
+        commission:
+          $ref: '#/components/schemas/MoneyString'
+        commission_source:
+          $ref: '#/components/schemas/CommissionSource'
         mae:
           $ref: '#/components/schemas/MoneyString'
         mfe:
@@ -7121,6 +7250,30 @@ components:
         plugin_pnl:
           $ref: '#/components/schemas/Money'
         fills_pnl:
+          $ref: '#/components/schemas/Money'
+    DetailsEvaluation:
+      type: object
+      additionalProperties: false
+      required:
+      - profit_target
+      - achieved
+      - start
+      description: '`risk.evaluation_target_reached` (notify only, Q70) and `accounts.evaluation_restarted` (with the previous
+        start and earned-before).'
+      properties:
+        start:
+          type: string
+          format: date
+        previous_start:
+          type: string
+          format: date
+        earned_before:
+          $ref: '#/components/schemas/Money'
+        previous_earned_before:
+          $ref: '#/components/schemas/Money'
+        profit_target:
+          $ref: '#/components/schemas/Money'
+        achieved:
           $ref: '#/components/schemas/Money'
     AuditDetailsByCode:
       type: object
@@ -7275,6 +7428,10 @@ components:
           $ref: '#/components/schemas/DetailsRiskState'
         risk.consistency_warning:
           $ref: '#/components/schemas/DetailsRiskState'
+        risk.evaluation_target_reached:
+          $ref: '#/components/schemas/DetailsEvaluation'
+        accounts.evaluation_restarted:
+          $ref: '#/components/schemas/DetailsEvaluation'
         trades.captured:
           $ref: '#/components/schemas/DetailsTrade'
         trades.manual_created:
@@ -7299,7 +7456,7 @@ components:
 
         top severity of the ADRs and shows the `CriticalBanner`, which stays until the item is read
 
-        (Q51, provisional). The plugin may map `success` → `info` and `danger` → `warning` in its UI; the
+        (Q51). The plugin may map `success` → `info` and `danger` → `warning` in its UI; the
 
         protocol carries the five values unchanged.
 
@@ -7554,6 +7711,8 @@ components:
           $ref: '#/components/schemas/DetailsRiskState'
         risk.consistency_warning:
           $ref: '#/components/schemas/DetailsRiskState'
+        risk.evaluation_target_reached:
+          $ref: '#/components/schemas/DetailsEvaluation'
         connection.status_changed:
           $ref: '#/components/schemas/DetailsConnectionStatus'
         accounts.opt_in_suspended:
@@ -7629,11 +7788,15 @@ components:
       - loss_count
       - breakeven_count
       - total_pnl
+      - total_gross_pnl
+      - total_commission
       - mae_sample_count
       - mfe_sample_count
-      description: 'Win rate = trades with P&L > 0 ÷ all trades (provisional, Q58 a: P&L = 0 is not a win; the counts
+      description: 'All P&L figures are NET (after commissions; S22 AC-3): a win is a trade with net P&L > 0, so a
 
-        are shown). MAE / MFE averages use only trades that have the value (`*_sample_count` of
+        trade of +2.00 gross with 2.50 commission is a loss (Q58: P&L = 0 is not a win; the counts are
+
+        shown). Win rate = wins ÷ all trades. MAE / MFE averages use only trades that have the value (`*_sample_count` of
 
         `trade_count`, Q55).
 
@@ -7657,7 +7820,18 @@ components:
           type: string
           enum:
           - gross
+          - net
+          description: '`net` from 3.5.0.'
+        total_gross_pnl:
+          $ref: '#/components/schemas/Money'
+        total_commission:
+          $ref: '#/components/schemas/MoneyString'
+        uncommissioned_count:
+          type: integer
+          minimum: 0
+          description: Trades whose commission is `none` (net = gross).
         avg_pnl:
+          description: Net average per trade.
           $ref: '#/components/schemas/Money'
         win_rate:
           $ref: '#/components/schemas/WinRate'
@@ -7925,14 +8099,14 @@ components:
               - not_material
               description: '`stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the
 
-                text case is provisional, Q42: the publisher flagged it as material). `not_material` never
+                text case is Q42: the publisher flagged it as material). `not_material` never
 
                 suspends (typo or format fix).
 
                 '
             reason:
-              description: The publisher's explanation shown to the user, expected with `text_changed` (optional while Q42
-                is provisional).
+              description: 'The publisher''s explanation shown to the user, present with `text_changed` (Q42 a: the publisher
+                flags the change and records why); optional in the schema for compatibility.'
               $ref: '#/components/schemas/LocalizedText'
       allOf:
       - if:
@@ -8339,6 +8513,94 @@ components:
                   $ref: '#/components/schemas/SourceRef'
       allOf:
       - $ref: '#/components/schemas/ProvenanceShape'
+    CommissionValue:
+      type: object
+      additionalProperties: false
+      required:
+      - amount
+      properties:
+        amount:
+          description: USD per contract and per side (a round turn costs twice), ≥ 0.
+          $ref: '#/components/schemas/MoneyAmount'
+    EvaluationTargetValue:
+      type: object
+      additionalProperties: false
+      required:
+      - amount
+      properties:
+        amount:
+          description: Net profit to reach since the evaluation start, > 0.
+          $ref: '#/components/schemas/MoneyAmount'
+    CommissionRule:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      description: Commission per contract and side, as the firm publishes it.
+      properties:
+        status:
+          $ref: '#/components/schemas/ProvenanceStatus'
+        value:
+          $ref: '#/components/schemas/CommissionValue'
+        sources:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/SourceRef'
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - value
+            - sources
+            properties:
+              value:
+                $ref: '#/components/schemas/CommissionValue'
+              sources:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/SourceRef'
+      allOf:
+      - $ref: '#/components/schemas/ProvenanceShape'
+    EvaluationTargetRule:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      description: Evaluation profit target (Q46).
+      properties:
+        status:
+          $ref: '#/components/schemas/ProvenanceStatus'
+        value:
+          $ref: '#/components/schemas/EvaluationTargetValue'
+        sources:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/SourceRef'
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - value
+            - sources
+            properties:
+              value:
+                $ref: '#/components/schemas/EvaluationTargetValue'
+              sources:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/SourceRef'
+      allOf:
+      - $ref: '#/components/schemas/ProvenanceShape'
     RuleField:
       type: string
       enum:
@@ -8348,6 +8610,8 @@ components:
       - daily_profit_target
       - trading_day_reset
       - consistency_rule
+      - commission_per_contract_side
+      - evaluation_profit_target
       description: Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.
     PresetRules:
       type: object
@@ -8370,6 +8634,13 @@ components:
           $ref: '#/components/schemas/TradingDayResetRule'
         consistency_rule:
           $ref: '#/components/schemas/ConsistencyRule'
+        commission_per_contract_side:
+          description: The firm's published commission per contract and side (U20 a; prefills the account floor, editable
+            on the account).
+          $ref: '#/components/schemas/CommissionRule'
+        evaluation_profit_target:
+          description: Evaluation phase only — the profit to reach to pass (Q46; S16 AC-10). Absent for funded / live phases.
+          $ref: '#/components/schemas/EvaluationTargetRule'
     PresetRuleValues:
       type: object
       additionalProperties: false
@@ -8392,6 +8663,8 @@ components:
           $ref: '#/components/schemas/TradingDayResetValue'
         consistency_rule:
           $ref: '#/components/schemas/ConsistencyValue'
+        evaluation_profit_target:
+          $ref: '#/components/schemas/EvaluationTargetValue'
     StanceInfo:
       type: object
       additionalProperties: false
@@ -8708,7 +8981,7 @@ components:
           maxLength: 32
         material:
           type: boolean
-          description: 'With `stance_text_changed` — flagged by the publisher as a material change (Q42, provisional;
+          description: 'With `stance_text_changed` — flagged by the publisher as a material change (Q42;
 
             `reason` is expected but optional while Q42 is open); only material automation/copy text
 
@@ -9105,6 +9378,10 @@ components:
             trading_day_reset:
               $ref: '#/components/schemas/ApplyChoice'
             consistency_rule:
+              $ref: '#/components/schemas/ApplyChoice'
+            commission_per_contract_side:
+              $ref: '#/components/schemas/ApplyChoice'
+            evaluation_profit_target:
               $ref: '#/components/schemas/ApplyChoice'
         rule_values:
           $ref: '#/components/schemas/PresetRuleValues'
@@ -9561,8 +9838,8 @@ components:
           enum:
           - notify
           - flatten_and_block
-          description: Default `notify` (Q3). `flatten_and_block` only with enforcement on (Q49, provisional); it falls back
-            to `notify` if enforcement is turned off later (Q63, provisional).
+          description: Default `notify` (Q3). `flatten_and_block` only with enforcement on (Q49); it falls back to `notify`
+            if enforcement is turned off later (Q63).
         consistency_threshold_pct:
           type: string
           pattern: ^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$
@@ -9572,6 +9849,10 @@ components:
           description: Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the
             CME session close.
           $ref: '#/components/schemas/TradingDayResetValue'
+        evaluation_profit_target:
+          description: Prop accounts in an evaluation phase (S13b; Q46) — prefilled from the preset, editable. Notify only
+            when reached (Q70); it never blocks or flattens.
+          $ref: '#/components/schemas/EvaluationTargetValue'
     RiskRulesRequest:
       type: object
       additionalProperties: false
@@ -9708,6 +9989,8 @@ components:
       - enforcement_enabled
       - limits_pending
       - pending_changes
+      - pnl_basis
+      - commission_source
       properties:
         account_id:
           $ref: '#/components/schemas/Uuid'
@@ -9782,13 +10065,72 @@ components:
               - daily_profit_target
         enforcement_enabled:
           type: boolean
+        pnl_basis:
+          type: string
+          enum:
+          - gross
+          - net
+          description: The basis of every meter (`net` from 3.5.0; S13 AC-2 — firms measure on net).
+        commission_source:
+          description: How today's commissions were obtained (`none` → the UI shows "comissão não informada; os limites podem
+            estar folgados demais", a notice, not a block).
+          $ref: '#/components/schemas/CommissionSource'
+        commissions_today:
+          $ref: '#/components/schemas/MoneyString'
+        evaluation:
+          type: object
+          additionalProperties: false
+          required:
+          - start
+          - profit_target
+          - earned_before
+          - achieved
+          - remaining
+          - percent
+          - state
+          - as_of
+          description: 'S13b (Q46) — present when the account has an `evaluation_profit_target`. `achieved` = net P&L
+
+            from `start` to now (the Core''s sum of the account''s fills; manual trades never count);
+
+            `remaining` = max(0, target − achieved); `percent` truncated. `target_reached` raises one
+
+            notification (`risk.evaluation_target_reached`, Q70); nothing automatic happens.
+
+            '
+          properties:
+            start:
+              type: string
+              format: date
+              description: The account's `evaluation_start`.
+            profit_target:
+              $ref: '#/components/schemas/Money'
+            earned_before:
+              $ref: '#/components/schemas/Money'
+            achieved:
+              description: earned_before + net P&L from `start` to now.
+              $ref: '#/components/schemas/Money'
+            remaining:
+              $ref: '#/components/schemas/MoneyString'
+            percent:
+              type: integer
+              minimum: 0
+            state:
+              type: string
+              enum:
+              - in_progress
+              - target_reached
+            reached_at:
+              $ref: '#/components/schemas/Timestamp'
+            as_of:
+              $ref: '#/components/schemas/Timestamp'
         limits_pending:
           type: boolean
           description: True while the risk module has not yet derived the account's latest limits version (ADR-0006); meters
             show the previous limits and new entries are skipped (`routing.limits_pending`).
         pending_changes:
           type: array
-          description: Looser values saved today that apply from the next trading day (Q48, provisional).
+          description: Looser values saved today that apply from the next trading day (Q48).
           items:
             type: object
             additionalProperties: false
@@ -9940,6 +10282,7 @@ components:
           - unblocked
           - trading_day_reset
           - rules_changed
+          - evaluation_progress
     SignalType:
       type: string
       enum:
@@ -9973,7 +10316,7 @@ components:
 
         `automation_not_accepted`, `copy_not_accepted`, `out_of_sync`, `risk_blocked`) are also the audit
 
-        codes of each skipped instruction; `no_bracket_profile` (S6, Q43 provisional) and
+        codes of each skipped instruction; `no_bracket_profile` (S6, Q43) and
 
         `limits_pending` (ADR-0006: the account''s limits are not yet derived) are skip codes added by this
 
@@ -10237,7 +10580,7 @@ components:
 
             first. Only `routing.automation_not_accepted` (automated source) and `routing.platform_unbound`
 
-            (provisional, Q37) block creation; every other reason only affects `status_if_routed`.
+            (Q37) block creation; every other reason only affects `status_if_routed`.
 
             '
           items:
@@ -10309,6 +10652,25 @@ components:
           $ref: '#/components/schemas/Uuid'
         account_id:
           $ref: '#/components/schemas/Uuid'
+    CommissionSource:
+      type: string
+      enum:
+      - platform
+      - configured
+      - mixed
+      - manual
+      - none
+      description: 'Where the commission came from. Effective commission of a fill = max(platform-reported,
+
+        `commission_per_contract_side` × quantity) (U20 a). `platform` = the platform''s value was used;
+
+        `configured` = the account floor was used (platform 0 or lower); `mixed` = both, fill by fill;
+
+        `manual` = typed in a manual trade; `none` = no commission at all (platform 0 and no floor):
+
+        net = gross and the UI shows "comissões não informadas".
+
+        '
     TradeDirection:
       type: string
       enum:
@@ -10348,10 +10710,13 @@ components:
       - duration_seconds
       - pnl
       - pnl_basis
+      - gross_pnl
+      - commission
+      - commission_source
       - origin
       - editable
       - created_at
-      description: 'One completed trade (provisional, Q57: one trade per entry with FIFO exits in individual mode;
+      description: 'One completed trade (Q57: one trade per entry with FIFO exits in individual mode;
 
         flat-to-flat in shared mode). Captured trades carry the numbers the plugin computed and sent
 
@@ -10407,15 +10772,29 @@ components:
           minimum: 0
           description: exit − entry (PO).
         pnl:
+          description: The main P&L, in the basis of `pnl_basis` (net from 3.5.0).
           $ref: '#/components/schemas/Money'
         pnl_basis:
           type: string
           enum:
           - gross
-          description: Gross, without commissions (provisional, Q54); a later `net` would be an added value.
+          - net
+          description: 'The basis of `pnl`. From 3.5.0 always `net` (after commissions; user decision 2026-10-23,
+
+            S21 AC-1); `gross` is kept in the enum only for compatibility with 3.4 readers.
+
+            '
+        gross_pnl:
+          description: P&L before commissions (shown alongside).
+          $ref: '#/components/schemas/Money'
+        commission:
+          description: Total commission of the trade (all its fills), ≥ 0.
+          $ref: '#/components/schemas/MoneyString'
+        commission_source:
+          $ref: '#/components/schemas/CommissionSource'
         mae:
-          description: Maximum adverse excursion in USD, ≥ 0 (provisional, Q52). Absent when not provided (manual, Q55) or
-            when the plugin did not observe the whole interval (never a partial value).
+          description: Maximum adverse excursion in USD, ≥ 0 (Q52). Absent when not provided (manual, Q55) or when the plugin
+            did not observe the whole interval (never a partial value).
           $ref: '#/components/schemas/MoneyString'
         mfe:
           description: Maximum favourable excursion in USD, ≥ 0 (as `mae`).
@@ -10445,7 +10824,7 @@ components:
           maxLength: 80
         editable:
           type: boolean
-          description: True only for manual trades (Q56, provisional).
+          description: True only for manual trades (Q56).
         row_version:
           type: integer
           minimum: 1
@@ -10518,6 +10897,8 @@ components:
       - count
       - total_pnl
       - pnl_basis
+      - total_gross_pnl
+      - total_commission
       - as_of
       properties:
         as_of:
@@ -10527,11 +10908,26 @@ components:
           type: integer
           minimum: 0
         total_pnl:
+          description: Net (`pnl_basis`).
           $ref: '#/components/schemas/Money'
         pnl_basis:
           type: string
           enum:
           - gross
+          - net
+          description: 'The basis of `pnl`. From 3.5.0 always `net` (after commissions; user decision 2026-10-23,
+
+            S21 AC-1); `gross` is kept in the enum only for compatibility with 3.4 readers.
+
+            '
+        total_gross_pnl:
+          $ref: '#/components/schemas/Money'
+        total_commission:
+          $ref: '#/components/schemas/MoneyString'
+        uncommissioned_count:
+          type: integer
+          minimum: 0
+          description: Trades with `commission_source` `none` (the UI warns that their net equals gross).
     ManualTradeFields:
       type: object
       required:
@@ -10566,10 +10962,19 @@ components:
           $ref: '#/components/schemas/ExcursionInput'
         mfe:
           $ref: '#/components/schemas/ExcursionInput'
+        commission:
+          description: 'Optional total commission of the trade, USD ≥ 0. Absent → the account''s
+
+            `commission_per_contract_side` × quantity × 2 sides (`commission_source: configured`), or 0
+
+            when the account has none (`commission_source: none`, labelled "comissões não informadas").
+
+            '
+          $ref: '#/components/schemas/ExcursionInput'
     ExcursionInput:
       type: string
       pattern: ^[0-9]{1,12}(\.[0-9]{1,2})?$
-      description: USD, ≥ 0, at most 2 decimals (Q52, provisional).
+      description: USD, ≥ 0, at most 2 decimals (Q52).
     ManualTradeRequest:
       allOf:
       - $ref: '#/components/schemas/ManualTradeFields'
@@ -10592,6 +10997,9 @@ components:
       - duration_seconds
       - pnl
       - pnl_basis
+      - gross_pnl
+      - commission
+      - commission_source
       properties:
         duration_seconds:
           type: integer
@@ -10602,6 +11010,14 @@ components:
           type: string
           enum:
           - gross
+          - net
+          description: '`net` from 3.5.0.'
+        gross_pnl:
+          $ref: '#/components/schemas/Money'
+        commission:
+          $ref: '#/components/schemas/MoneyString'
+        commission_source:
+          $ref: '#/components/schemas/CommissionSource'
     TradeCapturedEvent:
       type: object
       additionalProperties: false

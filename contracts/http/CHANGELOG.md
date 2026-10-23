@@ -1,5 +1,24 @@
 # HTTP API — changelog
 
+## 3.5.0 — 2026-10-23 (user decisions: net P&L, commission floor, evaluation target; Q37–Q68 decided)
+- **Versioning:** minor. `Trade.pnl`, the summary and the performance figures keep their shapes. `pnl_basis` already qualified `pnl`, and it gains the value `net`, now the only one sent. New fields are added. The meaning of `pnl` is therefore declared by `pnl_basis` (ADR-0002 §4; recorded for Esquadro and Crivo).
+- **Net P&L as the main value** (S21 AC-1, S22 AC-3, S13 AC-2 rev. 8):
+  - `Trade`: `gross_pnl`, `commission`, `commission_source` (`platform` / `configured` / `mixed` / `manual` / `none`).
+  - Manual trades take an optional `commission`; the preview takes it too.
+  - `TradesSummary` and `PerformanceFigures`: `total_gross_pnl`, `total_commission`, `uncommissioned_count`. A win needs net P&L > 0.
+  - `AccountRisk`: `pnl_basis`, `commission_source`, `commissions_today`.
+  - Audit `DetailsTrade` carries the gross P&L and the commission.
+- **Commission floor (U20 a):** `commission_per_contract_side` on the account (create, update, response) and as a preset rule (`CommissionRule`, `RuleField`, apply choices).
+- **Evaluation target (Q46, S13b; Q69 a, Q70 a):**
+  - preset rule `evaluation_profit_target` (also in `RiskRules` and `PresetRuleValues`);
+  - account `evaluation_start` + `evaluation_earned_before` (create);
+  - `restartEvaluation`;
+  - `AccountRisk.evaluation`;
+  - codes `risk.evaluation_target_reached` (audit + notification registry, `success`) and `accounts.evaluation_restarted`; SSE `risk.state_changed.reason: evaluation_progress`.
+- **Q67 (b) active:** `updateRoute` refuses switching on an ineligible route (422, `/is_enabled`); the Core switches routes off when their account becomes ineligible (audit `cause: account_ineligible`).
+- **Q35 decided** (setting on): the `route_enable` / `account_binding_change` step-ups are required; module texts updated.
+- "Provisional" marks for Q37–Q68 removed (decided 2026-10-23e).
+
 ## 3.4.1 — 2026-10-23 (review notes on 3.4.0; text only)
 - `getPerformance`: a foreign or unknown `account_id` matches nothing (empty figures, never 404); two-user isolation test required (QA Security info).
 - Rounding stated as half away from zero (negative averages); `bar_ratio` is `0.0000` when the largest |total_pnl| is 0 (Crivo N1, N2).

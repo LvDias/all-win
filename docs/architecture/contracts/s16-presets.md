@@ -41,7 +41,7 @@ SSE: `presets.version_available` (`firm_id`, `account_ids`).
    - `vps` ∈ `allowed` / `forbidden` / `conditional` / `unknown` / `not_confirmed`;
    - `personal_device` ∈ `required` / `not_required` / `unknown`. The research format's `yes`/`no` are mapped to these names so the wire never has a bare "yes".
 7. **Manual-only (S16 AC-7, Q-S16-6):** `manual_only.reason` is a `RuleQuote` (verbatim, source, date). The frame around it is UI text.
-8. **Material change (Q42, provisional):** `ReleaseChange` `stance_text_changed` carries `material` (and a bilingual `reason` when material). This matches `RuleVersion.change` (S5).
+8. **Material change (Q42):** `ReleaseChange` `stance_text_changed` carries `material` (and a bilingual `reason` when material). This matches `RuleVersion.change` (S5).
 9. **Suspension before applying (Q-S5-3, PO yes):** `AccountPresetState.newer_version.suspends` tells the UI the opt-in is already `pending_review`.
 10. **3.0.0 review fixes (Crivo, 2.5.0):**
    - P2: `applyPresetVersion` takes `firm_platform`; the diff has `firm_platform_required` / `firm_platforms`.
@@ -88,3 +88,11 @@ SSE: `presets.version_available` (`firm_id`, `account_ids`).
 - Catalog tables: `catalog.prop_firm`, `catalog.firm_release`, `catalog.firm_plan`, `catalog.preset` (firm, plan, phase, size), `catalog.preset_version` (preset, release, rule sets per firm platform as typed columns or `jsonb` with provenance), `catalog.stance` (vps / personal device per release). `catalog.opt_in_rule_version` already exists (rev. 8) and gets `release_id`.
 - The account's rule-field origins (`edited` / `chosen_from_conflict` + `chose` + `chosen_at`) need a home: `accounts.account_rule_value` (account, field, value, origin, chose, chosen_at).
 - **Backend design point (not a contract matter):** the rule values feed `risk.account_limits` (S13). Create, update and apply must save account and limits atomically. Either the accounts service writes both in one transaction through a risk port, or risk derives its limits from the `account.*` event with an "awaiting limits" state. ADR-0001 allows only events and query ports between modules, so the second fits the rules and needs a gate (no routing before limits exist). To be decided by the Software Architects with Backend.
+
+## 6. 3.5.0 additions
+
+`PresetRules` gains two optional keys:
+- `commission_per_contract_side` (`CommissionRule`), which prefills the account floor;
+- `evaluation_profit_target` (`EvaluationTargetRule`, evaluation phase only; S16 AC-10).
+
+`RuleField`, `PresetRuleValues` (target) and `applyPresetVersion.choices` include them.

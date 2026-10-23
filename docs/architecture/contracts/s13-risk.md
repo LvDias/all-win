@@ -28,12 +28,12 @@ SSE: `risk.state_changed` (state, stale, block, trading-day reset, rules changed
    - A drawdown of type `other` cannot be tracked and is listed in `untracked_rules`, as is an unresolved not-confirmed value.
    - Absent rules are `unset_rules` (UI "sem limite definido").
 3. **Concurrency token = the account's limits version** (`account.limits_version`, ADR-0006). Each save bumps it; the plugin receives the derived limits after the risk module catches up (§3).
-4. **Q48 (provisional):**
+4. **Q48 :**
    - a stricter value applies at once, a looser one from the next trading day (`pending_changes`). Looser (3.2.0, QA Security L1) also covers removing a rule, `flatten_and_block` → `notify`, and `daily_loss` `hard` → `soft_pause` / `none`;
    - the preview reports `effective` / `effective_from` per change and `would_be_reached`;
    - the save needs `acknowledge_reached: true` when it would already be reached, else 409 `risk.reached_not_acknowledged`. This guards against a race between the dialog and the save.
-5. **Q47 (provisional):** prop accounts need a daily loss limit unless the preset says `none` (422 `risk.daily_loss_required`). Real accounts may leave every rule unset.
-6. **Q49 / Q63 (provisional):** `flatten_and_block` needs enforcement on (422 `risk.flatten_requires_enforcement`). If enforcement is turned off later, the Core treats it as `notify` (S15 owns the switch).
+5. **Q47 :** prop accounts need a daily loss limit unless the preset says `none` (422 `risk.daily_loss_required`). Real accounts may leave every rule unset.
+6. **Q49 / Q63 :** `flatten_and_block` needs enforcement on (422 `risk.flatten_requires_enforcement`). If enforcement is turned off later, the Core treats it as `notify` (S15 owns the switch).
 7. **Q-S13-2 (PO):** prop accounts may edit their copy of the reset time. Real accounts may not (422 `risk.reset_not_editable`; they use the CME session close, `trading_day.source = cme_session_close`).
 8. **Q-S13-5:** for trailing drawdowns, `floor` is the account balance at which the drawdown is breached, as it stands now.
 9. **Q-S13-7:** the consistency threshold has at most one decimal, 0–100 (`^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$`, fixed in 3.2.0).
@@ -82,3 +82,12 @@ SSE: `risk.state_changed` (state, stale, block, trading-day reset, rules changed
   - `risk.drawdown_tracker` (high water, floor);
   - `risk.account_block` (cause, until; one active);
   - `warning_threshold_pct` is dropped (80 % is fixed, D18).
+
+## 7. 3.5.0 — net basis and the evaluation target
+
+- **Net (S13 AC-2 rev. 8; firms measure on net):** every meter is net. `AccountRisk` adds `pnl_basis: net`, `commission_source` and `commissions_today`. `commission_source: none` (platform 0 and no floor) shows the notice "comissão não informada; os limites podem estar folgados demais". It is not a block. The account floor `commission_per_contract_side` (U20 a) is an input in accounts; changing it bumps the limits version (ADR-0006).
+- **S13b — evaluation target (Q46; Q69 a, Q70 a):**
+  - `RiskRules.evaluation_profit_target` is prefilled from the preset (`PresetRules.evaluation_profit_target`, evaluation phase only) and editable.
+  - The account has `evaluation_start` (default: the registration date) and an optional `evaluation_earned_before`. They change only through `POST /api/v1/accounts/{id}/evaluation/restart`, audited as `accounts.evaluation_restarted`. A Sim / Playback reset never restarts the count.
+  - `AccountRisk.evaluation` carries `start`, `profit_target`, `earned_before`, `achieved` (earned_before + the Core's net sum of the account's fills since `start`; manual trades never count), `remaining`, `percent` (truncated), `state` (`in_progress` / `target_reached`), `reached_at` and `as_of`.
+  - Reaching the target raises one notification, `risk.evaluation_target_reached` (`success`), and does nothing automatic. Minimum trading days and payout are not in V1.

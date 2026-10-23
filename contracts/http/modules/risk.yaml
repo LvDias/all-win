@@ -62,7 +62,7 @@ paths:
       operationId: putAccountRiskRules
       summary: Set the account's risk rules (full replacement; optimistic concurrency by the limits `version`)
       description: |
-        An absent optional rule means "not set" (no warning, no refusal for it). Provisional (Q48):
+        An absent optional rule means "not set" (no warning, no refusal for it). Q48:
         a stricter value applies at once, a looser one from the next trading day (`AccountRisk.pending_changes`).
         A change of the reset time, and a change of drawdown type, always apply from the next trading
         day (`pending_reset_change`, `pending_changes[].change: drawdown_type_changed`).
@@ -154,9 +154,9 @@ components:
         Valid shape, refused by a rule; nothing saved. Codes and pointers (under `/rules/...`):
         - `risk.required_value_unresolved` — the field (a required preset value is not confirmed and not resolved);
         - `risk.daily_loss_required` — `/rules/daily_loss_limit` (prop account whose preset does not say
-          "none"; provisional, Q47);
+          "none"; Q47);
         - `risk.flatten_requires_enforcement` — `/rules/profit_target_on_reach` (`flatten_and_block` while
-          enforcement is off; provisional, Q49);
+          enforcement is off; Q49);
         - `risk.reset_not_editable` — `/rules/trading_day_reset` (real accounts use the CME session close);
         - `risk.consistency_not_applicable` — `/rules/consistency_threshold_pct` (real account, or the
           preset has no consistency rule);
@@ -190,7 +190,7 @@ components:
         profit_target_on_reach:
           type: string
           enum: [notify, flatten_and_block]
-          description: Default `notify` (Q3). `flatten_and_block` only with enforcement on (Q49, provisional); it falls back to `notify` if enforcement is turned off later (Q63, provisional).
+          description: Default `notify` (Q3). `flatten_and_block` only with enforcement on (Q49); it falls back to `notify` if enforcement is turned off later (Q63).
         consistency_threshold_pct:
           type: string
           pattern: '^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$'
@@ -198,6 +198,9 @@ components:
         trading_day_reset:
           description: Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the CME session close.
           $ref: 'presets.yaml#/components/schemas/TradingDayResetValue'
+        evaluation_profit_target:
+          description: Prop accounts in an evaluation phase (S13b; Q46) — prefilled from the preset, editable. Notify only when reached (Q70); it never blocks or flattens.
+          $ref: 'presets.yaml#/components/schemas/EvaluationTargetValue'
     RiskRulesRequest:
       type: object
       additionalProperties: false
@@ -267,7 +270,7 @@ components:
     AccountRisk:
       type: object
       additionalProperties: false
-      required: [account_id, as_of, stale, state, trading_day, meters, unset_rules, untracked_rules, enforcement_enabled, limits_pending, pending_changes]
+      required: [account_id, as_of, stale, state, trading_day, meters, unset_rules, untracked_rules, enforcement_enabled, limits_pending, pending_changes, pnl_basis, commission_source]
       properties:
         account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
@@ -310,12 +313,41 @@ components:
             until: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
             cause: { type: string, enum: [daily_loss, drawdown, daily_profit_target] }
         enforcement_enabled: { type: boolean }
+        pnl_basis:
+          type: string
+          enum: [gross, net]
+          description: The basis of every meter (`net` from 3.5.0; S13 AC-2 — firms measure on net).
+        commission_source:
+          description: How today's commissions were obtained (`none` → the UI shows "comissão não informada; os limites podem estar folgados demais", a notice, not a block).
+          $ref: 'trades.yaml#/components/schemas/CommissionSource'
+        commissions_today: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        evaluation:
+          type: object
+          additionalProperties: false
+          required: [start, profit_target, earned_before, achieved, remaining, percent, state, as_of]
+          description: |
+            S13b (Q46) — present when the account has an `evaluation_profit_target`. `achieved` = net P&L
+            from `start` to now (the Core's sum of the account's fills; manual trades never count);
+            `remaining` = max(0, target − achieved); `percent` truncated. `target_reached` raises one
+            notification (`risk.evaluation_target_reached`, Q70); nothing automatic happens.
+          properties:
+            start: { type: string, format: date, description: The account's `evaluation_start`. }
+            profit_target: { $ref: 'audit.yaml#/components/schemas/Money' }
+            earned_before: { $ref: 'audit.yaml#/components/schemas/Money' }
+            achieved:
+              description: earned_before + net P&L from `start` to now.
+              $ref: 'audit.yaml#/components/schemas/Money'
+            remaining: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+            percent: { type: integer, minimum: 0 }
+            state: { type: string, enum: [in_progress, target_reached] }
+            reached_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         limits_pending:
           type: boolean
           description: True while the risk module has not yet derived the account's latest limits version (ADR-0006); meters show the previous limits and new entries are skipped (`routing.limits_pending`).
         pending_changes:
           type: array
-          description: Looser values saved today that apply from the next trading day (Q48, provisional).
+          description: Looser values saved today that apply from the next trading day (Q48).
           items:
             type: object
             additionalProperties: false
@@ -387,4 +419,4 @@ components:
         account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         state: { $ref: '#/components/schemas/RiskState' }
         stale: { type: boolean }
-        reason: { type: string, enum: [state, stale, blocked, unblocked, trading_day_reset, rules_changed] }
+        reason: { type: string, enum: [state, stale, blocked, unblocked, trading_day_reset, rules_changed, evaluation_progress] }

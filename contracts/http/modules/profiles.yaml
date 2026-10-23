@@ -140,7 +140,7 @@ paths:
         Copies the current default of the size the profile was copied from (`copied_from_size`, which
         keeps the user's Q60 tie choice). For a profile without one (`set_by_user`) the Core uses the
         account's size, or the nearest standard size for a real account; on an exact tie (Q60,
-        provisional) the body must name `profile_size` (one of `getNearestProfileSize`'s candidates),
+        decided) the body must name `profile_size` (one of `getNearestProfileSize`'s candidates),
         else 422 `profiles.profile_size_required` / `profiles.profile_size_invalid`. An account with no
         profile gets its first copy this way (origin `size_default` / `nearest_size_default`). Optional
         `row_version` (stale → 409 `common.version_conflict`). No-op when the profile already equals that
@@ -191,7 +191,7 @@ paths:
       description: |
         Distance = absolute difference between the account size and each standard size; below the
         smallest standard size the smallest is used, above the largest the largest (PO, Q60). An exact
-        tie returns both sizes and the user chooses (`createAccount.profile_size`); provisional (Q60): the
+        tie returns both sizes and the user chooses (`createAccount.profile_size`); Q60 (option c): the
         Core does not choose. If the user later decides "always the smaller" or "always the larger",
         `candidates` simply has one entry. Each candidate says whether the user has a default for it.
       parameters:

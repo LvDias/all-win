@@ -255,6 +255,8 @@ components:
         - risk.limit_reached
         - risk.target_reached
         - risk.consistency_warning
+        - risk.evaluation_target_reached
+        - accounts.evaluation_restarted
         - trades.captured
         - trades.manual_created
         - trades.manual_changed
@@ -639,6 +641,10 @@ components:
         signal_types: { type: array, items: { $ref: 'routing.yaml#/components/schemas/SignalType' } }
         previous_is_enabled: { type: boolean }
         is_enabled: { type: boolean }
+        cause:
+          type: string
+          enum: [user, account_ineligible]
+          description: '`account_ineligible` — the Core switched the route off because its account became ineligible for the source (Q67 b).'
     DetailsProfileChanged:
       type: object
       additionalProperties: false
@@ -779,7 +785,7 @@ components:
         limits_version: { type: integer, minimum: 1 }
         effective:
           type: array
-          description: When each changed rule applies (Q48, provisional).
+          description: When each changed rule applies (Q48).
           items:
             type: object
             additionalProperties: false
@@ -812,7 +818,12 @@ components:
         entry_price: { $ref: '#/components/schemas/Price' }
         exit_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         exit_price: { $ref: '#/components/schemas/Price' }
-        pnl: { $ref: '#/components/schemas/Money' }
+        pnl:
+          description: Net (main value from 3.5.0).
+          $ref: '#/components/schemas/Money'
+        gross_pnl: { $ref: '#/components/schemas/Money' }
+        commission: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        commission_source: { $ref: 'trades.yaml#/components/schemas/CommissionSource' }
         mae: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
         mfe: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
     DetailsTradeChanged:
@@ -832,6 +843,18 @@ components:
         mismatch: { type: string, enum: [unknown_fills, pnl_differs, quantity_differs] }
         plugin_pnl: { $ref: '#/components/schemas/Money' }
         fills_pnl: { $ref: '#/components/schemas/Money' }
+    DetailsEvaluation:
+      type: object
+      additionalProperties: false
+      required: [profit_target, achieved, start]
+      description: '`risk.evaluation_target_reached` (notify only, Q70) and `accounts.evaluation_restarted` (with the previous start and earned-before).'
+      properties:
+        start: { type: string, format: date }
+        previous_start: { type: string, format: date }
+        earned_before: { $ref: '#/components/schemas/Money' }
+        previous_earned_before: { $ref: '#/components/schemas/Money' }
+        profit_target: { $ref: '#/components/schemas/Money' }
+        achieved: { $ref: '#/components/schemas/Money' }
     AuditDetailsByCode:
       type: object
       additionalProperties: false
@@ -911,6 +934,8 @@ components:
         risk.limit_reached: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.target_reached: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.evaluation_target_reached: { $ref: '#/components/schemas/DetailsEvaluation' }
+        accounts.evaluation_restarted: { $ref: '#/components/schemas/DetailsEvaluation' }
         trades.captured: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_created: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_changed: { $ref: '#/components/schemas/DetailsTradeChanged' }

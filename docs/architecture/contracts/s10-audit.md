@@ -34,7 +34,7 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
    - `command_sent`, `bracket_calculated`;
    - `order_received`, `order_working`, `partially_filled`, `filled`, `cancelled`, `rejected`, `expired`, `state_unknown`;
    - `fill_corrected` (a `fill.operation` of `amend` / `remove`).
-4. **New routing decision codes** named here: `routing.routed` (a full-quantity decision) and `routing.no_bracket_profile` (provisional, Q43). `routing.quantity_capped` keeps the spec's name, for the `capped` decision.
+4. **New routing decision codes** named here: `routing.routed` (a full-quantity decision) and `routing.no_bracket_profile` (Q43). `routing.quantity_capped` keeps the spec's name, for the `capped` decision.
 5. **Typed `details`:** `AuditDetailsByCode` is a type map (code → schema); the client types `details` by `code`. Money, prices and distances are decimal strings, and the UI does no arithmetic. `execution.bracket_calculated` carries the S6 AC-4 adjustment (requested distance, whole ticks, rounded flags, resulting prices).
 6. **`safe_to_display`:** the raw `details` JSON appears under "technical data" only when the Core marks it safe. The catalog's rendered fields are always shown. Secrets never reach `details` (redaction + the storage `CHECK`).
 7. **Exits:** `is_exit` on routing and execution entries lets the text say "saída" (spec §7 rule) without the client knowing the action rules.

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 3.4.1
+  version: 3.5.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
@@ -1202,6 +1202,7 @@ paths:
   /api/v1/accounts/{account_id}: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}' }
   /api/v1/accounts/{account_id}/archive-impact: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1archive-impact' }
   /api/v1/accounts/{account_id}/lifecycle: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1lifecycle' }
+  /api/v1/accounts/{account_id}/evaluation/restart: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1evaluation~1restart' }
   /api/v1/accounts/{account_id}/opt-ins/{kind}: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1opt-ins~1{kind}' }
   /api/v1/opt-in-rules: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1opt-in-rules' }
   /api/v1/rule-versions/{rule_version_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1rule-versions~1{rule_version_id}' }

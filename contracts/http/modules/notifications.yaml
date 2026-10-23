@@ -73,7 +73,7 @@ paths:
         Sets `read_at` and bumps `revision` (so the plugin's upsert sees it); already read → 200 with the
         item unchanged. Reading never changes or hides the state it reports (a block, a risk level, an out-
         of-sync flag stays visible in banners and badges). A later occurrence of a grouped item makes it
-        unread again only when its registry code has `reopen_on_occurrence: true` (provisional Q68 b: the
+        unread again only when its registry code has `reopen_on_occurrence: true` (Q68 b: the
         `danger` routing codes); otherwise only `count` and `updated_at` change. Emits `notification.read`.
       parameters:
         - { $ref: '#/components/parameters/NotificationId' }
@@ -134,7 +134,7 @@ components:
         Set by the Core from the registry. Web behaviour (S18 §3/§5): `info` / `warning` update the bell
         silently; `success` uses the success colour; `danger` raises a destructive toast; `critical` is the
         top severity of the ADRs and shows the `CriticalBanner`, which stays until the item is read
-        (Q51, provisional). The plugin may map `success` → `info` and `danger` → `warning` in its UI; the
+        (Q51). The plugin may map `success` → `info` and `danger` → `warning` in its UI; the
         protocol carries the five values unchanged.
     NotificationCode:
       type: string
@@ -273,6 +273,7 @@ components:
         risk.limit_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.consistency_warning: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
+        risk.evaluation_target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsEvaluation' }
         connection.status_changed: { $ref: 'audit.yaml#/components/schemas/DetailsConnectionStatus' }
         accounts.opt_in_suspended: { $ref: '#/components/schemas/ParamsOptInSuspendedByFirm' }
         presets.new_version: { $ref: '#/components/schemas/ParamsPresetNewVersion' }
