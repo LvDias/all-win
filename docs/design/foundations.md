@@ -1,7 +1,8 @@
 # Design Foundations — All Win Web
 
-> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
-> **Inputs:** [product-vision.md](../product/product-vision.md) rev. 3, [slice-plan.md](../product/release-1/slice-plan.md) rev. 3 (X-1..X-8, S3, S4, Q17–Q23), [ADR-0001](../architecture/adr/0001-technology-stack.md) §8–§9, PO answers of 2026-10-23 (Bússola).
+> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** proposed, pending PO review of rev. 2 · **Revision:** 2 · **Date:** 2026-10-23
+> **Inputs:** [product-vision.md](../product/product-vision.md) rev. 3, [slice-plan.md](../product/release-1/slice-plan.md) (X-1..X-8, S3, S4, S5, S16), [ADR-0001](../architecture/adr/0001-technology-stack.md) §8–§9, [ADR-0004](../architecture/adr/0004-adapter-protocol-v1.md) §8–§9, [auth-and-session-policy.md](../architecture/security/auth-and-session-policy.md), PO answers of 2026-10-23 (Bússola), user decisions of 2026-10-23 in [decisions.md](../delivery/decisions.md) (Q17–Q23, firms that forbid automation).
+> **Rev. 2 changes:** Q23 decided (§6.4); step-up pattern (§8.2); `outdated` connection state and automation states (§7.2); preset provenance: verified / not confirmed / edited, and the official rule quote (§7.4).
 > **Scope:** shared, cross-screen decisions for the web application. Screen behavior lives in [specs/](specs/). Business rules are only cited, never introduced here; anything not decided is marked **[Open]** (user decision, tracked by the PO) or **[Proposal]** (design recommendation for review).
 > **Consumers:** Frontend (implements in `web/src/shared/ui` and the theme), QA (checks), Plugin Engineer (status semantics and terminology, §7 and §10).
 
@@ -22,7 +23,8 @@
 - **Icons:** `lucide-react` (shadcn default). Icons beside text are `aria-hidden`; icon-only buttons have an accessible name (translated).
 - **Components used by S3/S4** (add others per slice): `Button`, `Input`, `InputOTP`, `Label`, `Form` (react-hook-form + zod, shadcn pattern), `Card`, `Table`, `Badge`, `Alert`, `AlertDialog`, `Dialog`, `Drawer` (mobile variant of Dialog, see §9), `DropdownMenu`, `Select`, `Switch`, `Checkbox`, `Tooltip`, `Skeleton`, `Separator`, `Sidebar`, `Sheet`, `Sonner` (toasts), `Progress` (only for non-semantic progress; risk usage uses the Risk meter in §7.3).
 - **Shared composites** to build once in `src/shared/ui` (specified here and in the specs):
-  - `SecretField`: §8.
+  - `SecretField`: §8.1. `StepUpDialog`: §8.2.
+  - `ProvenanceMark`, `FirmRuleQuote`: §7.4.
   - `StatusBadge`: §7.
   - `RiskMeter`: §7.3 (first used in S13; defined now so tokens are final).
   - `ResponsiveDialog`: Dialog ≥ `md`, Drawer below `md` (§9).
@@ -122,6 +124,14 @@ The same term is used everywhere (web, plugin, errors, audit). The Plugin Engine
 | Recovery codes | Códigos de recuperação | Recovery codes |
 | Invitation | Convite | Invitation |
 | Audit log | Registro de auditoria | Audit log |
+| Automated orders / automated source | Ordens automatizadas / Fonte automatizada | Automated orders / Automated source |
+| Accepts / doesn't accept automation | Aceita automação / Sem automação | Accepts automation / No automation |
+| Choice pending | Escolha pendente | Choice pending |
+| Official rule | Regra oficial | Official rule |
+| Not confirmed (conflicting official pages) | Não confirmado | Not confirmed |
+| Firm account platform (e.g. Rithmic, Tradovate) | Plataforma da conta na firma | Firm account platform |
+| Execution platform (e.g. NinjaTrader) | Plataforma de execução | Execution platform |
+| Step-up re-authentication | Confirme que é você | Confirm it's you |
 
 ## 6. Numbers, money, prices, dates
 
@@ -157,12 +167,12 @@ The same term is used everywhere (web, plugin, errors, audit). The Plugin Engine
 
 ### 6.4 Dates, times, time zones
 
-Pending **Q23** (user). The specs follow the PO recommendation (a) and change only in configuration if the user decides (b).
+**Q23 decided by the user (2026-10-23).**
 
-- **Storage/wire:** UTC instants (X-8). **Display time zone:** the user profile setting, defaulting to the browser's zone **[Q23 (a)]**.
-- **24-hour clock in both languages [Q23 (a)]** (`hourCycle: h23`).
+- **Storage/wire:** UTC instants (X-8). **Display time zone:** the user profile setting, defaulting to the browser's zone.
+- **24-hour clock in both languages** (`hourCycle: h23`).
 - Formats: date `23/10/2026` · `Oct 23, 2026`; date-time `23/10/2026 14:31:05` · `Oct 23, 2026, 14:31:05`; time `14:31:05` (seconds shown on audit/execution data, hidden elsewhere).
-- **The time zone is always visible next to reset and session times** **[Q23 (a)]**, e.g. `Reset às 17:00 (GMT-3)` / `Resets at 17:00 (GMT-3)`, using `timeZoneName: short`. Where the firm's own reset zone differs from the display zone, show both in a tooltip: `17:00 CT (19:00 GMT-3)`.
+- **The time zone is always visible next to reset and session times**, e.g. `Reset às 17:00 (GMT-3)` / `Resets at 17:00 (GMT-3)`, using `timeZoneName: short`. Where the firm's own reset zone differs from the display zone, show both in a tooltip: `17:00 CT (19:00 GMT-3)`.
 - Relative times ("há 2 min" / "2 min ago") only for recency indicators (last seen, last received), always with the absolute date-time in a `<time datetime>` element and tooltip.
 
 ## 7. Status semantics
@@ -197,11 +207,15 @@ Owned by S5/S11/S3. Listed here so the visual language is fixed now. Final copy 
 | Instance connected | success | `PlugZap` | `Conectada` / `Connected` |
 | Instance disconnected | danger | `Unplug` | `Desconectada` / `Disconnected` |
 | Instance awaiting pairing | info | `Hourglass` | `Aguardando pareamento` / `Awaiting pairing` |
+| Instance outdated (plugin below the minimum version, ADR-0004 §9) | warning | `CircleArrowUp` | `Desatualizada` / `Outdated` |
 | Instance unpaired / source revoked | neutral, strikethrough-free (use text) | `Ban` | `Despareada` / `Unpaired` · `Revogada` / `Revoked` |
 | Source active | success | `CircleCheck` | `Ativa` / `Active` |
 | Data stale / unknown (no recent update) | neutral | `CircleDashed` | `Sem dados recentes` / `No recent data` |
+| Account accepts automated sources (S5 opt-in) | info | `Bot` | `Aceita automação` / `Accepts automation` |
+| Account does not accept automated sources | neutral | `BotOff` | `Sem automação` / `No automation` |
+| Automation choice pending (firm forbids/conditions automation, no choice yet, or suspended after a rule change) | warning | `CircleHelp` | `Escolha pendente` / `Choice pending` |
 
-When several states apply to one account, show them in this priority order (most severe first): out of sync → disconnected → blocked → risk warning → paused/disabled. On narrow cards show the top one plus `+N` with the full list in a popover.
+When several states apply to one account, show them in this priority order (most severe first): out of sync → disconnected → blocked → risk warning → automation choice pending → paused/disabled. On narrow cards show the top one plus `+N` with the full list in a popover.
 
 ### 7.3 `RiskMeter` (pattern, first used by S13)
 
@@ -210,7 +224,29 @@ When several states apply to one account, show them in this priority order (most
 - Bar: track `--muted`, fill by state (§7.1); fill vs track ≥ 3 : 1 in both themes.
 - Live updates (SSE) do **not** announce every tick. Only a **state change** (normal → warning → reached) is announced via a polite live region, and it also becomes a notification (S18).
 
-## 8. Secrets: `SecretField` pattern (X-4, S3)
+### 7.4 Preset provenance and official rule text (S5, S16)
+
+Preset values come from official firm pages (vision §9). The user must always be able to tell **where a value came from** and **whether it is confirmed**. Each preset-derived field carries one of three provenance marks:
+
+| Provenance | When | Visual | Accessible text |
+|---|---|---|---|
+| **Verified** | Value verified on an official page | No badge, to keep forms calm. An `Info` icon-button after the label opens a popover: "Fonte oficial: {firm page title} · verificado em {date}" + link (opens in a new tab, `rel="noopener noreferrer"`) | "Fonte da regra" |
+| **Not confirmed** (decision 2026-10-23: official pages conflict; shipped without blocking the rest) | The firm's own pages disagree | Field **not prefilled** (O7). `Badge` warning `Não confirmado` / `Not confirmed` (`CircleHelp`) next to the label; field border uses `--status-warning`; under the field a `ConflictPicker`: "As páginas oficiais da firma divergem. Escolha um valor ou digite outro:" followed by one `RadioGroup` option per published value, each with its source link and access date, plus "Outro valor". A required field cannot be saved until resolved: "Resolva este valor para salvar." | Badge text + "valores publicados divergentes" |
+| **Edited by you** | The user changed a preset value on their account (S16 AC-2) | Neutral `Badge` `Editado` / `Edited` (`PencilLine`); popover shows the preset value and source: "Valor do preset: US$ 2.500,00 · fonte…" + `Restaurar valor do preset` | "Editado por você; valor do preset {value}" |
+
+- After the user resolves a not-confirmed value, it shows **both** marks: `Editado` and, in the popover, "Escolhido por você entre valores divergentes em {date}". The conflict is never presented as resolved by the firm.
+- A preset with not-confirmed items stays selectable (O8). In the preset picker it shows `{n} itens não confirmados` (warning text, not a badge, so the list stays scannable).
+- Provenance marks are never color-only: badge text and accessible text always carry the meaning.
+
+**`FirmRuleQuote`**: shows an official firm rule verbatim (used by the S5 automation opt-in and S16 stance display).
+- `figure` containing a `blockquote` (with `cite` = source URL) in the firm's original language (`lang="en"` when the page is English, so screen readers switch pronunciation). Left border `--status-info`, `--muted` background, `text-sm`.
+- `figcaption`: "{Firm} · {page title} · acessado em {date}" + link `Ver página oficial` / `View official page`, new tab.
+- **The text is never translated or summarized inside the quote**, because a paraphrase would be our interpretation. A one-line plain-language summary may appear *above* the quote, labeled "Resumo do All Win (não é aconselhamento jurídico)" / "All Win summary (not legal advice)".
+- Long quotes: first 6 lines visible, then `Mostrar texto completo` (`Collapsible`). The full text is in the DOM, so screen readers and find-in-page work.
+
+## 8. Secrets and sensitive actions
+
+### 8.1 `SecretField` pattern (X-4, S3)
 
 Used for the secret webhook URL (S3) and the authenticator setup key (TOTP). Pairing codes use a different, visible pattern (see S3 spec §S3-10).
 
@@ -219,6 +255,15 @@ Used for the secret webhook URL (S3) and the authenticator setup key (TOTP). Pai
 - **Auto re-mask:** when the dialog closes, the window loses visibility (`visibilitychange`), or after 60 s revealed.
 - **Visibility is limited to one moment.** Values exist only in the creation/rotation response (view-once, S3 AC-3). They are held in component state, never in TanStack Query caches persisted anywhere, URL, `localStorage`, toasts, analytics, error reports or `console`. The state is cleared on dialog close.
 - Mono font, `break-all`, `spellCheck=false`, `autoComplete="off"`, `data-sentry-mask`-style exclusion if any client telemetry is added later.
+
+### 8.2 `StepUpDialog` (auth policy §1, Q21)
+
+Sensitive actions require a recent authentication (≤ 15 min). The Core decides; the web reacts.
+- Trigger: the action's request returns `auth.step_up_required`. The web opens the dialog **before** any confirmation result is shown, keeps the user's pending input in memory, and **retries the original request once** after success. No retry loop.
+- Content: title "Confirme que é você" / "Confirm it's you"; text "Por segurança, digite sua senha para {action}." Fields: Senha (`current-password`) and, when TOTP is enabled, Código (`InputOTP`, with the recovery-code link). Actions `Confirmar` / `Cancelar`.
+- Cancel = the original action is not performed; the user returns to where they were, with nothing changed.
+- Errors: wrong password/code → inline "Senha ou código incorretos."; rate limited → as login.
+- Stacking: if the action already has a confirmation `AlertDialog`, the step-up dialog replaces it, and the confirmation result step follows. Two modals are never shown at once.
 
 ## 9. Mobile browsers
 
@@ -269,7 +314,6 @@ Applies to every screen. Spec-specific notes are in each spec.
 
 | ID | Item | Owner | Effect while open |
 |---|---|---|---|
-| Q23 | First-visit language, display time zone, 24 h clock | User (via PO) | §6.4 follows recommendation (a) |
 | — | Brand identity (logo, primary color) | User | Neutral primary; logo = product name in text |
 | — | Theme switcher dependency (`next-themes` or own) | Frontend / Architect | Either satisfies §4 |
 | — | `Intl.NumberFormat` string-decimal support in target browsers | Frontend | Fallback: single `decimal.js` helper |

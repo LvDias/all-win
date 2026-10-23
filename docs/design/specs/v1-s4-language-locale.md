@@ -1,10 +1,11 @@
 # V1-S4 — Language and locale — Screen spec
 
-> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** final for implementation, pending PO review of rev. 2 · **Revision:** 2 · **Date:** 2026-10-23
 > **Slice:** [V1-S4](../../product/release-1/slice-plan.md) (ready) · AC-1..AC-4 · cross-cutting X-3, X-6, X-8.
 > **Foundations:** [foundations.md](../foundations.md) F§5 glossary, F§6 formatting, F§11 accessibility.
 > **Stack:** `next-intl`, locale-prefixed routes `/pt-BR/...` and `/en/...`, default locale `pt-BR`, preference stored in the profile and sent to the plugin in `welcome` (ADR-0001 §9).
-> **Pending user decision:** **Q23** (first-visit language, display time zone, 24 h clock). This spec draws recommendation (a). Option (b) "always pt-BR, fixed America/Chicago" changes only §2 step 3 and §4.
+> **Decided by the user on 2026-10-23** ([decisions.md](../../delivery/decisions.md)): **Q23**: language from the browser (pt or en, else pt-BR); display time zone from the profile, defaulting to the browser; 24-hour clock in both languages. **Q11**: the plugin follows the web language.
+> **Rev. 2 changes:** Q23 applied (alternatives removed); plugin language via `welcome.locale` (ADR-0004).
 > **Surfaces:** Web (Frontend), plugin language (Plugin Engineer, §6).
 
 ---
@@ -14,7 +15,7 @@
 | Locale | Label in the switcher (always in its own language) | `lang` | Number/date locale |
 |---|---|---|---|
 | `pt-BR` | Português (Brasil) | `pt-BR` | `pt-BR` |
-| `en` | English | `en` | `en-US` (dates/numbers), 24 h per Q23 (a) |
+| `en` | English | `en` | `en-US` (dates/numbers), 24 h (Q23) |
 
 No flags (languages are not countries). Adding a locale later is a configuration + catalog change, not a layout change.
 
@@ -22,7 +23,7 @@ No flags (languages are not countries). Adding a locale later is a configuration
 
 1. **Signed in:** the profile's language. A cookie mirrors it (`NEXT_LOCALE`) so the middleware can redirect without calling the Core.
 2. **Not signed in, choice made before on this device:** the `NEXT_LOCALE` cookie (1 year).
-3. **First visit [Q23 (a)]:** browser `Accept-Language`: first `pt*` → `pt-BR`, first `en*` → `en`, anything else → `pt-BR`. *(Q23 (b): always `pt-BR`.)*
+3. **First visit (Q23):** browser `Accept-Language`: first `pt*` → `pt-BR`, first `en*` → `en`, anything else → `pt-BR`.
 4. Fallback: `pt-BR`.
 
 - `/` and any unprefixed path redirect to the resolved locale, keeping path and query.
@@ -53,12 +54,11 @@ No flags (languages are not countries). Adding a locale later is a configuration
 - Under language: "Também usado pelo plugin do NinjaTrader a partir da próxima conexão." / "Also used by the NinjaTrader plugin from its next connection." (AC-3, Q11). If ADR-0004 adds a live preference message, the text becomes "…imediatamente" / "…right away".
 - States: loading = skeleton for the two selects; error loading = `ErrorState` with retry; save per field (no global Save button), with success toast "Preferência salva." / "Preference saved.".
 
-## 4. Time zone preference [Q23 (a)]
+## 4. Time zone preference (Q23)
 
 - Field on the Preferences page: `Select` with search ("Fuso horário" / "Time zone"), IANA zones grouped by region, each shown as `(GMT-03:00) São Paulo` / `(GMT-05:00) Chicago`, current offset computed by the browser for display only.
-- Default: the browser's zone, saved to the profile on first sign-in (**proposal**; the Core needs a `time_zone` profile field). A small note shows when the browser zone differs from the saved one: "Seu navegador está em {zone}. Usar este fuso?" + `Usar` / `Use`.
+- Default: the browser's zone, saved to the profile on first sign-in (the Core needs a `time_zone` profile field: contract item for the Architect). A small note shows when the browser zone differs from the saved one: "Seu navegador está em {zone}. Usar este fuso?" + `Usar` / `Use`.
 - Every reset/session time shows its zone (F§6.4).
-- *(Q23 (b): no field; all times in `America/Chicago`, labelled "CT".)*
 
 ## 5. Message catalogs and translation rules (for Frontend)
 
@@ -72,7 +72,7 @@ No flags (languages are not countries). Adding a locale later is a configuration
 
 ## 6. Plugin language (AC-3, Q11 decided: follows the web)
 
-- The plugin displays the profile language received in `welcome` (ADR-0001 §6). It applies it at the next connection, or sooner if ADR-0004 supports a live update.
+- The plugin displays the profile language received in `welcome` (ADR-0004 §3, `welcome` carries the user locale). It applies it at the next connection. ADR-0004 v1 has no live locale message, so the help text in §3 says "a partir da próxima conexão".
 - Before the first pairing (no profile known): Windows UI language if `pt*` or `en*`, else pt-BR (S3-11).
 - Plugin strings live in `AllWin.Adapter.Core` resources (ADR-0001 §7) and use the F§5 glossary. Number formats follow F§6 with the plugin locale (`decimal` values; NinjaTrader's own grids keep NinjaTrader's formatting).
 
@@ -116,7 +116,6 @@ The user never sees a key name (AC-4: "no silent fallback to the key name").
 
 | ID | Question | Owner | Spec default |
 |---|---|---|---|
-| Q23 | First-visit language, time zone, 24 h | User | (a) |
 | — | `me.update_preferences` with `locale`, `time_zone` in the profile contract | Architect | Proposed |
-| — | Live language update to the plugin (ADR-0004) | Architect | Next connection |
+| — | Live language update to the plugin (not in ADR-0004 v1) | Architect | Next connection; a future minor version may add it |
 | — | Production behavior for a missing key | Frontend / Architect | pt-BR text + error report |

@@ -5,8 +5,9 @@
 
 | Document | Scope | Status | Implementer · QA |
 |---|---|---|---|
-| [foundations.md](foundations.md) | shadcn/ui tokens (light/dark), typography, layout, number/money/price/date display, status colors (risk 80 %, account/connection), secrets pattern, mobile browsers, feedback patterns, accessibility, glossary | proposed rev. 1 | Frontend · QA |
-| [specs/v1-s3-access-sources-pairing.md](specs/v1-s3-access-sources-pairing.md) | V1-S3: login, TOTP, invite sign-up, password reset, security settings, invitations (admin), signal sources (webhook URL view-once, rotate, revoke), NinjaTrader pairing (web + plugin states) | proposed rev. 1 | Frontend, Plugin Engineer (S3-11) · QA |
-| [specs/v1-s4-language-locale.md](specs/v1-s4-language-locale.md) | V1-S4: locale resolution, language switcher, preferences (language, time zone), catalogs, plugin language, missing translations | proposed rev. 1 | Frontend, Plugin Engineer (§6) · QA |
+| [foundations.md](foundations.md) | shadcn/ui tokens (light/dark), typography, layout, number/money/price/date display, status colors (risk 80 %, account/connection), secrets pattern, mobile browsers, feedback patterns, accessibility, glossary | proposed rev. 2 | Frontend · QA |
+| [specs/v1-s3-access-sources-pairing.md](specs/v1-s3-access-sources-pairing.md) | V1-S3: login (keep me signed in), TOTP, invite sign-up, password reset, security settings, step-up, admin (invitations, users: reset link, TOTP reset), signal sources (webhook URL view-once, rotate, revoke), NinjaTrader pairing / re-pairing / unpair (web + plugin states) | final rev. 2 (Q17–Q22 applied), PO review | Frontend, Plugin Engineer (S3-11) · QA |
+| [specs/v1-s4-language-locale.md](specs/v1-s4-language-locale.md) | V1-S4: locale resolution, language switcher, preferences (language, time zone), catalogs, plugin language, missing translations | final rev. 2 (Q23 applied), PO review | Frontend, Plugin Engineer (§6) · QA |
+| [specs/v1-s5-automation-opt-in.md](specs/v1-s5-automation-opt-in.md) | V1-S5 (+S7/S10/S16 touch points): per-account automation opt-in for firms that forbid automation (official rule quote, risk, no default, audit, step-up), suspension after rule change, routing unavailability, firm platform selection, "not confirmed" preset values | proposed rev. 1; O1/Q24–Q26 open with the user | Frontend · QA (Backend for routing skip/audit) |
 
-Next design slices (per slice plan §4): S5, S6, S7, S10, S13 (uses `RiskMeter`), S16, S18, S22, and the plugin panels for S13/S15.
+Next design slices (per slice plan §4): S5 full account form, S6, S7, S10, S13 (uses `RiskMeter`), S16, S18, S22, and the plugin panels for S13/S15.
