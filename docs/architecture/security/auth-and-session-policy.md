@@ -21,7 +21,7 @@
   - changing the password;
   - turning automatic enforcement **off** on an account;
   - raising an account's maximum position size;
-  - accepting automated sources on an account of a firm that forbids automation (S5 opt-in, `automation_choice: accepted`; declining needs no step-up);
+  - accepting an opt-in on an account (`automation` or `copy`, choice `accepted`; S5 and S7/S19). Declining needs no step-up;
   - admin actions: generating a password-reset link and resetting a user's TOTP.
 - **"Sign out" vs. "sign out everywhere":** logout deletes the current session server-side. Ending every session is triggered automatically by the events in §3. A user-facing "sign out of all devices" button is a PO item, not part of S3.
 

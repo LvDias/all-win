@@ -1,6 +1,6 @@
 # ADR-0003 — Standard instruction contract v1 and correlation identifiers
 
-- **Status:** Accepted (2026-10-23) — accepted by the user with answers P1–P5 (§10). Acceptance deltas: §4.1 automation opt-in gate and per-(source, account) signal filter; §7 token format; §5 command step codes
+- **Status:** Accepted (2026-10-23) — accepted by the user with answers P1–P5 (§10). Acceptance deltas: §4.1 automation and copy opt-in gates (option A, Q24–Q26) and per-(source, account) signal filter; §7 token format; §5 command step codes
 - **Owner:** Software Architect
 - **Answers:** product-vision.md §6 (draft fields) and §13 open question #2 (identifiers for modify/cancel and master replication).
 - **Implements user decisions:** A3 (secret in the URL, masked in every log), Q1 (conflict semantics), Q5 (followers' stop/target from their own profile), Q14 (out-of-sync gate), Q16 (command TTL; protocol details in ADR-0004).
@@ -66,7 +66,8 @@ For each target account selected by routing, the Core runs the steps below in or
 | Gate | Applies to | Code |
 |---|---|---|
 | Account disabled or paused | all actions | `routing.account_inactive` |
-| Account of a firm that forbids automation and the user has not opted in to automated sources (decision 2026-10-23, option A) | all actions from automated sources (every V1 source) | `routing.automation_not_accepted` |
+| Automated source (`tradingview`, `signal_engine`) and the account's **automation** opt-in is required but not `chosen`/`accepted` (option A; required when the firm's automation stance is forbidden, conditional, unknown or not confirmed, Q25; `pending_review` after a stance/text change, Q26) | all actions from automated sources | `routing.automation_not_accepted` |
+| Master-account source and the follower's **copy** opt-in is required but not `chosen`/`accepted` (Q24, same applicability and Q26 rule) | all actions from that master | `routing.copy_not_accepted` |
 | Signal type not selected for this (source, account) subscription (Q-A4, stored as `routing.subscription`) | all actions | `routing.signal_type_not_selected` |
 | Account flagged out of sync (Q14: stops until the user clears it) | position-increasing actions (`buy`/`sell` with `open`, `reverse`, `modify` of an entry) | `routing.out_of_sync` |
 | Risk block (account reached a limit; also with enforcement off, Q2) | position-increasing actions | `routing.risk_blocked` |
@@ -190,7 +191,7 @@ These are inputs for `docs/architecture/data/` (owner: Database Architect):
 | P4 | Expiry base | **`min(sent_at, received_at)`** |
 | P5 | Active contract month / rollover | **Global rollover catalog maintained by the admin**, with advance warning to users. The Core switches the active contract on the configured date |
 
-Related decisions used by this ADR: Q-A1 (one maximum position per account in V1), Q-A2 (stop/target profiles keyed by instrument), Q-A4 (signal filter per (source, account)), Q-N1 (dollar distances rounded toward the entry, see ADR-0004 §5), Q17 (several named TradingView sources per user, each with its own token), and the automation opt-in for firms that forbid automation (§4.1).
+Related decisions used by this ADR: Q-A1 (one maximum position per account in V1), Q-A2 (stop/target profiles keyed by instrument), Q-A4 (signal filter per (source, account)), Q-N1 (dollar distances rounded toward the entry, see ADR-0004 §5), Q17 (several named TradingView sources per user, each with its own token), and the per-account opt-ins for automation and copying (§4.1; option A, Q24, Q25, Q26; HTTP contract `setAccountOptIn`).
 
 ## 11. Consequences
 
