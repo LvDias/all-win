@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (auth, invitations, sessions, sources,
@@ -11,23 +11,48 @@ info:
     Conventions
     - Base paths: `/api/v1` (web, cookie session), `/ingress/v1` (webhooks), `/adapter/v1` (plugin HTTP;
       the WebSocket `/adapter/v1` is specified by ADR-0004 and contracts/adapter-protocol/v1).
+    - Authentication: the root `security` requires a full `session` for every operation. Public
+      operations declare `security: []`; the login verify endpoints accept only a `pendingSession`.
+      Every session operation answers 401 `auth.unauthenticated` without a valid session.
     - JSON only (`application/json; charset=utf-8`), except the ingress which also accepts `text/plain`.
     - Decimals are strings; timestamps are RFC 3339 UTC with `Z`; ids are lowercase UUIDs.
     - Errors: `{"error": {"code": "<stable.code>", ...}}`. Clients translate codes; never rely on text.
-    - State-changing requests are protected against CSRF by `SameSite=Lax` plus a strict `Origin`
-      check (must equal the app origin); requests without a matching `Origin` get 403 `common.forbidden_origin`.
-    - Sensitive operations (marked `x-step-up: true`) return 403 `auth.step_up_required` when the
-      session's last authentication is older than 15 minutes; the client calls `POST /api/v1/auth/step-up`
-      and retries (auth-and-session-policy.md §1).
+      - Any `/api/v1` or `/adapter/v1` request that does not match its schema (malformed JSON, unknown or
+        missing property, pattern/length/enum violation, malformed path or query parameter) gets
+        400 `common.invalid_request` with `error.pointer` (JSON pointer to the first offending field;
+        `/path/<name>` or `/query/<name>` for parameters). Framework default error bodies are never sent.
+      - Unexpected failures get 500 `common.internal` with no detail (no path, query, stack or SQL).
+      - The ingress is the exception: its token and path-parameter violations are always the empty 404
+        (S1 AC-2), and its body errors use the `ingress.*` codes.
+    - CSRF: state-changing `/api/v1` requests (POST, PUT, PATCH, DELETE), public ones included, require
+      `SameSite=Lax` cookies plus a strict `Origin` check (must equal the app origin); a missing or
+      different `Origin` gets 403 `common.forbidden_origin`. The rule does not apply to `/ingress/v1`
+      (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not a browser).
+    - Sensitive operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition
+      in `x-step-up-when`. They return 403 `auth.step_up_required` when the session's last
+      authentication is older than 15 minutes; the client calls `POST /api/v1/auth/step-up` and retries
+      (auth-and-session-policy.md §1).
+    - Check precedence (first failure wins): 401 `auth.unauthenticated` → 403 `common.forbidden_origin`
+      → 403 `auth.forbidden` (admin operations, non-admin caller) → 400 `common.invalid_request` →
+      404 `common.not_found` → 403 `auth.step_up_required` → operation-specific 409/422.
+      A non-admin therefore never sees `auth.step_up_required` on an admin operation.
     - Secrets (session cookie, ingress token, invitation/reset tokens, pairing codes, device tokens,
       TOTP secrets, recovery codes) are never logged (ADR-0001 §5, auth policy §3). One-time values are
       returned exactly once.
+    - Response headers (ADR-0001 §9): every Core response (`/api`, `/ingress`, `/adapter`) carries
+      `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`. Responses that carry a one-time
+      secret also declare `Cache-Control` explicitly. HSTS is set by Caddy; page headers (CSP etc.) by Next.js.
     - Rate-limited responses are 429 with a `Retry-After` header (seconds).
+    - Audit: every automatic action and every security-relevant change is written to the affected
+      user's visible audit log with its reason. Admin actions on a user are written to **that user's**
+      audit log, with the acting admin's id.
 servers:
   - url: https://{host}
     variables:
       host:
         default: localhost
+security:
+  - session: []
 tags:
   - name: ingress
   - name: auth
@@ -46,17 +71,20 @@ paths:
       operationId: ingressTradingView
       summary: Receive a TradingView alert (V1-S1)
       description: |
-        Processing order (ADR-0003 §7): authenticate token → parse → validate against instruction
-        schema v1 → apply source policy (ADR-0003 §6) → insert with UNIQUE (user_id, message_id) →
-        respond. Routing is asynchronous after commit. Every response must be produced well under
-        TradingView's ~3 s timeout. The `token` path segment is a secret: it must be masked in every
-        log (see docs/architecture/contracts/s1-webhook-ingest.md §4).
+        Processing order (ADR-0003 §7; full table in docs/architecture/contracts/s1-webhook-ingest.md §2):
+        per-IP rate limit → authenticate token → per-key rate limit → content type and size → parse →
+        validate against instruction schema v1 → apply source policy (ADR-0003 §6) → insert with
+        UNIQUE (user_id, message_id) → respond. Routing is asynchronous after commit. Every response must
+        be produced well under TradingView's ~3 s timeout. The whole path after `/ingress/` is treated as
+        a secret and never logged (ADR-0001 §5, s1 notes §4). No `Origin` check applies here.
       security: []
       parameters:
         - name: token
           in: path
           required: true
-          description: Source token `awk_<key_id>_<secret>`. Malformed tokens get the same 404 as unknown ones.
+          description: |
+            Source token `awk_<key_id>_<secret>`. Malformed, over-long or otherwise invalid values get the
+            same empty 404 as unknown tokens, never a 400 (S1 AC-2).
           schema:
             type: string
             maxLength: 128
@@ -93,7 +121,9 @@ paths:
                 schema:
                   value: { status: rejected, error: { code: ingress.schema_violation, pointer: /quantity } }
         '404':
-          description: Unknown, revoked or malformed token. Empty body; existence of user/source is never revealed.
+          description: |
+            Unknown, revoked, malformed or over-long token, and any other path or method under `/ingress`.
+            Empty body; existence of user/source is never revealed. Never 400/401/405.
         '413':
           description: '`ingress.payload_too_large` (> 16 KiB).'
           content:
@@ -116,6 +146,11 @@ paths:
           description: '`ingress.rate_limited` (per key and per IP). Header `Retry-After`.'
           headers:
             Retry-After: { $ref: '#/components/headers/RetryAfter' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngressRejected' }
+        '500':
+          description: '`common.internal`. The body never contains the path, the token or the request.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IngressRejected' }
@@ -150,8 +185,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResult' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/login/totp:
     post:
@@ -177,12 +215,15 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResult' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401':
           description: '`auth.invalid_code` (wrong or replayed code) or `auth.pending_expired`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/login/recovery-code:
     post:
@@ -211,23 +252,30 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResult' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401':
           description: '`auth.invalid_code` or `auth.pending_expired`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/logout:
     post:
       tags: [auth]
       operationId: logout
       summary: End the current session (server-side)
+      description: Idempotent. Accepts a full or pending session, or none; answers 204 to every same-origin request.
+      security: [{ session: [] }, { pendingSession: [] }, {}]
       responses:
         '204':
           description: Session ended; cookie cleared.
           headers:
             Set-Cookie: { $ref: '#/components/headers/SessionCookieClear' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/step-up:
     post:
@@ -247,15 +295,22 @@ paths:
                 code:
                   type: string
                   pattern: '^[0-9]{6}$'
-                  description: Required when TOTP is enabled.
+                  description: |
+                    Required when TOTP is enabled; omitting it then gives 401 `auth.invalid_code`, not
+                    400 `common.invalid_request`. Ignored when TOTP is disabled.
       responses:
         '204': { description: Re-authenticated; `authenticated_at` refreshed. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401':
-          description: '`auth.reauth_failed` (wrong password) or `auth.invalid_code`.'
+          description: |
+            `auth.unauthenticated` (no session), `auth.reauth_failed` (wrong password) or `auth.invalid_code`
+            (wrong, replayed or missing code when TOTP is enabled).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/invitations/lookup:
     post:
@@ -285,8 +340,11 @@ paths:
                   email: { type: string, format: email }
                   locale: { $ref: '#/components/schemas/Locale' }
                   expires_at: { $ref: '#/components/schemas/Timestamp' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '404': { $ref: '#/components/responses/InvitationInvalid' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/invitations/accept:
     post:
@@ -315,9 +373,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResult' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '404': { $ref: '#/components/responses/InvitationInvalid' }
         '422': { $ref: '#/components/responses/PasswordRejected' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/password-reset/request:
     post:
@@ -337,7 +398,10 @@ paths:
                 email: { type: string, format: email, maxLength: 254 }
       responses:
         '202':
-          description: Always returned, whether or not the e-mail exists or the request was throttled.
+          description: Returned for every well-formed same-origin request, whether or not the e-mail exists or the request was throttled.
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/auth/password-reset/confirm:
     post:
@@ -359,6 +423,8 @@ paths:
                 new_password: { $ref: '#/components/schemas/NewPassword' }
       responses:
         '204': { description: Password changed; every session of the user ended. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '404':
           description: '`auth.reset_token_invalid` (unknown, used, expired or superseded; one code for all).'
           content:
@@ -366,6 +432,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '422': { $ref: '#/components/responses/PasswordRejected' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/me:
     get:
@@ -378,6 +445,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '500': { $ref: '#/components/responses/InternalError' }
     patch:
       tags: [me]
       operationId: updateMe
@@ -399,12 +467,15 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '422':
           description: '`me.invalid_time_zone`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/me/security:
     get:
@@ -417,6 +488,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SecurityState' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/me/totp/setup:
     post:
@@ -427,6 +499,8 @@ paths:
       responses:
         '200':
           description: Enrolment secret, shown once; expires if not confirmed within 10 minutes.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema:
@@ -444,6 +518,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/me/totp/confirm:
     post:
@@ -463,15 +538,21 @@ paths:
       responses:
         '200':
           description: TOTP enabled.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RecoveryCodes' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '422':
           description: '`auth.invalid_code` or `auth.totp_setup_expired`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/me/totp/disable:
     post:
@@ -485,12 +566,15 @@ paths:
             schema: { $ref: '#/components/schemas/PasswordAndCode' }
       responses:
         '204': { description: TOTP disabled; recovery codes deleted. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401':
-          description: '`auth.reauth_failed` or `auth.invalid_code`.'
+          description: '`auth.unauthenticated`, `auth.reauth_failed` or `auth.invalid_code`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/me/recovery-codes/regenerate:
     post:
@@ -506,14 +590,20 @@ paths:
       responses:
         '200':
           description: New batch, shown once; the old batch is invalid.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RecoveryCodes' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401':
-          description: '`auth.reauth_failed` or `auth.invalid_code`.'
+          description: '`auth.unauthenticated`, `auth.reauth_failed` or `auth.invalid_code`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/me/password:
     post:
@@ -535,13 +625,16 @@ paths:
                 new_password: { $ref: '#/components/schemas/NewPassword' }
       responses:
         '204': { description: Changed; current session rotated, other sessions ended. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401':
-          description: '`auth.reauth_failed`.'
+          description: '`auth.unauthenticated` or `auth.reauth_failed` (wrong `current_password`).'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '403': { $ref: '#/components/responses/StepUpRequired' }
         '422': { $ref: '#/components/responses/PasswordRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/admin/invitations:
     get:
@@ -555,7 +648,9 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Invitation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [admin]
       operationId: createInvitation
@@ -575,6 +670,8 @@ paths:
       responses:
         '201':
           description: Created. `invite_url` (fragment form) is returned only here.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema:
@@ -585,12 +682,15 @@ paths:
                   invitation: { $ref: '#/components/schemas/Invitation' }
                   invite_url: { type: string, description: 'https://<host>/<locale>/invite#t=<token>' }
                   email_sent: { type: boolean, description: False when e-mail is disabled or failed (`invites.email_send_failed` is then logged); the admin delivers the link manually. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409':
           description: '`invites.email_taken` (a user or an open invitation already exists for this e-mail; admin-only screen).'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/admin/invitations/{invitation_id}/revoke:
     post:
@@ -600,8 +700,11 @@ paths:
         - { $ref: '#/components/parameters/InvitationId' }
       responses:
         '204': { description: Revoked (idempotent). }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/admin/users:
     get:
@@ -615,19 +718,26 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/AdminUser' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/admin/users/{user_id}/password-reset-link:
     post:
       tags: [admin]
       operationId: adminCreateResetLink
       summary: Generate a reset link when e-mail is unavailable (Q20 fallback; step-up)
+      description: |
+        Written to the affected user's visible audit log ("reset link generated by an administrator",
+        with the admin's id and the time; never the link) and to the admin trail.
       x-step-up: true
       parameters:
         - { $ref: '#/components/parameters/UserId' }
       responses:
         '201':
           description: Link returned once (fragment form), valid 30 minutes; supersedes earlier links.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema:
@@ -637,21 +747,30 @@ paths:
                 properties:
                   reset_url: { type: string, description: 'https://<host>/<locale>/reset-password#t=<token>' }
                   expires_at: { $ref: '#/components/schemas/Timestamp' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrStepUp' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/admin/users/{user_id}/totp-reset:
     post:
       tags: [admin]
       operationId: adminResetTotp
       summary: Remove a user's TOTP after an identity check (Q22; step-up); ends that user's sessions
+      description: |
+        Ends every session of the affected user (`session.ended` reason `admin_totp_reset`). Written to the
+        affected user's visible audit log with the admin's id and the time, and to the admin trail.
       x-step-up: true
       parameters:
         - { $ref: '#/components/parameters/UserId' }
       responses:
         '204': { description: TOTP and recovery codes removed; audited with the admin's id. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/ForbiddenOrStepUp' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/sources:
     get:
@@ -669,7 +788,9 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Source' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [sources]
       operationId: createSource
@@ -689,9 +810,12 @@ paths:
       responses:
         '201':
           description: Created.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SourceWithUrl' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/StepUpRequired' }
         '409':
@@ -699,6 +823,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/sources/{source_id}:
     patch:
@@ -722,12 +847,16 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Source' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: '`sources.name_taken`.'
+          description: '`sources.name_taken`, or `sources.revoked` (a revoked source keeps its name for history).'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/sources/{source_id}/rotate:
     post:
@@ -740,9 +869,13 @@ paths:
       responses:
         '200':
           description: New URL returned once.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SourceWithUrl' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/StepUpRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
@@ -750,6 +883,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/sources/{source_id}/revoke:
     post:
@@ -760,7 +894,11 @@ paths:
         - { $ref: '#/components/parameters/SourceId' }
       responses:
         '204': { description: Revoked (idempotent). Subsequent webhooks with its token get 404. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/connections:
     get:
@@ -778,7 +916,9 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Connection' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [connections]
       operationId: createConnection
@@ -797,6 +937,8 @@ paths:
       responses:
         '201':
           description: Created, awaiting pairing.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema:
@@ -806,12 +948,15 @@ paths:
                 properties:
                   connection: { $ref: '#/components/schemas/Connection' }
                   pairing: { $ref: '#/components/schemas/PairingCode' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/StepUpRequired' }
         '409':
-          description: '`connections.name_taken`.'
+          description: '`connections.name_taken` (case-insensitive, among the user''s connections that are not unpaired).'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/connections/{connection_id}:
     patch:
@@ -835,7 +980,16 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Connection' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/ForbiddenOrigin' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`connections.name_taken`, or `connections.unpaired` (an unpaired connection is kept read-only for history).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/connections/{connection_id}/pairing-code:
     post:
@@ -854,9 +1008,13 @@ paths:
       responses:
         '201':
           description: New code.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PairingCode' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/StepUpRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
@@ -864,6 +1022,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/connections/{connection_id}/unpair:
     post:
@@ -887,6 +1046,8 @@ paths:
                   description: Must be true when any mapped account has an open position (design S3-10 checkbox).
       responses:
         '204': { description: Unpaired; WebSocket closed with 4002; audited. }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/StepUpRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
@@ -894,6 +1055,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /adapter/v1/pairings:
     post:
@@ -927,6 +1089,8 @@ paths:
       responses:
         '201':
           description: Paired. `device_token` is returned exactly once; the plugin stores it with DPAPI.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema:
@@ -937,7 +1101,9 @@ paths:
                   connection_id: { $ref: '#/components/schemas/Uuid' }
                   device_token: { type: string, pattern: '^awd_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$' }
         '400':
-          description: '`pairing.invalid_code` — one code for unknown, expired, used or superseded (plugin shows one message).'
+          description: |
+            `pairing.invalid_code` — one code for unknown, expired, used or superseded (plugin shows one
+            message); or `common.invalid_request` with `pointer` when the body does not match the schema.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -953,6 +1119,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/events:
     get:
@@ -962,8 +1129,9 @@ paths:
       description: |
         `text/event-stream`. Each event has `event: <type>` and `data: <JSON>` matching
         `#/components/schemas/Event`. Does NOT extend the idle session timeout. On session end the
-        server sends `session.ended` and closes the stream. Clients reconnect with `Last-Event-ID`;
-        missed events are not replayed in V1 (clients refetch state after reconnect).
+        server sends `session.ended` and closes the stream. Events carry no SSE `id` and are not
+        replayed in V1: after every (re)connect the client refetches the state it displays (sources,
+        connections) and then applies events whose `at` is newer than what it holds.
       responses:
         '200':
           description: Stream.
@@ -971,6 +1139,7 @@ paths:
             text/event-stream:
               schema: { type: string }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /api/v1/accounts/{account_id}/opt-ins/{kind}:
     put:
@@ -981,17 +1150,22 @@ paths:
         Decisions 2026-10-23: option A (explicit per-account opt-in), Q24 (separate `copy` opt-in for
         followers of master replication), Q25 (the choice is required when the firm's stance for that kind
         is forbidden, conditional, unknown or not confirmed), Q26 (a new preset version that changes the
-        stance or its official text moves the state to `pending_review` and suspends that kind until the
-        user chooses again).
+        stance moves the state to `pending_review` and suspends that kind until the user chooses again).
+        **Provisional (Architect, 2026-10-23, awaiting user confirmation):** a material change of the
+        official rule text, with the same stance, also triggers `pending_review`, because the audit stores
+        the exact text the user saw. Typo/formatting-only edits of a quote do not.
         - `automation` covers automated sources (TradingView webhook, future signal engine).
         - `copy` covers receiving master-account replication as a follower.
-        The first choice is made **atomically with account creation** (S5 create/update requests embed
-        `OptInChoices`; a missing required choice is rejected with 422 `accounts.opt_in_required`), and
-        the `copy` choice atomically with adding the account as a follower (S7/S19). This operation is
-        for later changes and for resolving `pending_review`. `rule_version_id` must be the preset rule
-        version whose text the user saw; if it is stale the Core answers 409 `accounts.rule_version_changed`
-        and saves nothing. Every change is audited (date, user, kind, choice, rule version, previous value).
-      x-step-up: when choice = accepted
+        The first choice is made **atomically with account creation**: the S5 create/update requests carry
+        an `opt_ins` property of schema `OptInChoices` (pointer `/opt_ins/automation`, `/opt_ins/copy`);
+        a missing required choice is rejected with 422 `accounts.opt_in_required` and nothing is saved
+        (docs/architecture/contracts/s5-design-deltas.md). The `copy` choice is made atomically with adding
+        the account as a follower (S7/S19). This operation is for later changes and for resolving
+        `pending_review`. `rule_version_id` must be the preset rule version whose text the user saw; if it
+        is stale the Core answers 409 `accounts.rule_version_changed` and saves nothing. Every change is
+        audited (date, user, kind, choice, rule version, previous value).
+      x-step-up: conditional
+      x-step-up-when: choice == accepted
       parameters:
         - { $ref: '#/components/parameters/AccountId' }
         - name: kind
@@ -1009,6 +1183,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OptInState' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/StepUpRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
@@ -1021,6 +1197,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
 
 components:
   securitySchemes:
@@ -1045,6 +1222,9 @@ components:
     SessionCookieClear:
       description: Expires the session cookie.
       schema: { type: string }
+    NoStore:
+      description: The response carries a one-time secret; no cache may store it.
+      schema: { type: string, const: no-store }
 
   parameters:
     InvitationId: { name: invitation_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
@@ -1072,17 +1252,39 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     StepUpRequired:
-      description: '`auth.step_up_required` — call POST /api/v1/auth/step-up and retry.'
+      description: '`auth.step_up_required` — call POST /api/v1/auth/step-up and retry; or `common.forbidden_origin`.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Forbidden:
-      description: '`auth.forbidden` (not a platform admin).'
+      description: '`auth.forbidden` (not a platform admin); or `common.forbidden_origin` on state-changing requests.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     ForbiddenOrStepUp:
-      description: '`auth.forbidden` or `auth.step_up_required`.'
+      description: |
+        `auth.forbidden` (not a platform admin; checked first, so a non-admin never gets a step-up prompt),
+        `auth.step_up_required`, or `common.forbidden_origin`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ForbiddenOrigin:
+      description: '`common.forbidden_origin` — state-changing `/api/v1` request without a matching `Origin` header.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidRequest:
+      description: '`common.invalid_request` — the request does not match its schema; `error.pointer` locates the first offending field.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            body:
+              value: { error: { code: common.invalid_request, pointer: /name } }
+            path:
+              value: { error: { code: common.invalid_request, pointer: /path/source_id } }
+    InternalError:
+      description: '`common.internal` — unexpected failure; the body carries no detail.'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1254,11 +1456,17 @@ components:
     Source:
       type: object
       additionalProperties: false
-      required: [id, name, source_type, status, key_id, masked_url, created_at]
+      required: [id, name, source_type, is_automated, status, key_id, masked_url, created_at]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         name: { $ref: '#/components/schemas/DisplayName' }
         source_type: { type: string, enum: [tradingview] }
+        is_automated:
+          type: boolean
+          description: |
+            Derived by the Core from `source_type` (never stored, never set by the client): true when
+            instructions from this source are subject to the per-account `automation` opt-in (O1).
+            `tradingview` is automated. Clients must use this flag, not their own list of types.
         status: { type: string, enum: [active, revoked] }
         key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$' }
         masked_url:
@@ -1302,15 +1510,21 @@ components:
     Connection:
       type: object
       additionalProperties: false
-      required: [id, name, status, created_at]
+      required: [id, name, status, status_changed_at, created_at]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         name: { $ref: '#/components/schemas/DisplayName' }
         status:
           type: string
           enum: [awaiting_pairing, connected, disconnected, outdated, unpaired]
+        status_changed_at:
+          description: When `status` last changed (equals `created_at` until the first change).
+          $ref: '#/components/schemas/Timestamp'
         adapter_type: { type: string }
         adapter_version: { type: string }
+        instance_id:
+          description: Plugin instance id reported at pairing (D6). Absent until paired.
+          $ref: '#/components/schemas/Uuid'
         instance_name: { type: string }
         paired_at: { $ref: '#/components/schemas/Timestamp' }
         last_seen_at: { $ref: '#/components/schemas/Timestamp' }
@@ -1347,9 +1561,14 @@ components:
           $ref: '#/components/schemas/Uuid'
     OptInChoices:
       description: |
-        Embedded in the S5 account create/update requests (atomic create-with-choice). Must contain every
-        kind whose state would otherwise be required; otherwise 422 `accounts.opt_in_required` with a
-        pointer to the missing kind, and nothing is saved.
+        Embedded as the `opt_ins` property of the S5 account create/update request bodies (atomic
+        create-with-choice; the rest of those operations is defined in the S5 contract). Must contain every
+        kind whose choice is required for the account's preset version and is not already `chosen` for that
+        version; otherwise 422 `accounts.opt_in_required` with `pointer` `/opt_ins/automation` or
+        `/opt_ins/copy`, and nothing is saved. A stale `rule_version_id` gives 409
+        `accounts.rule_version_changed`. The S5 create/update operations are `x-step-up: conditional`,
+        `x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state`; the step-up happens
+        before the single save, so cancelling it saves nothing. A kind that is `not_required` is ignored.
       type: object
       additionalProperties: false
       minProperties: 1
@@ -1368,31 +1587,51 @@ components:
           enum: [not_required, chosen, pending_review]
           description: |
             not_required = real account or the stance is `allowed`; chosen = an explicit choice exists for
-            the current rule version; pending_review = the stance or its text changed after the choice, or a
-            requirement appeared for an account that had none (Q26). Routing treats `pending_review` and
-            `declined` as not accepted (`routing.automation_not_accepted` / `routing.copy_not_accepted`).
-            There is no "saved without a choice" state: first choices are atomic with creation.
-        choice: { type: string, enum: [accepted, declined] }
+            the current rule version; pending_review = the stance (or, provisionally, its official text)
+            changed after the choice, or a requirement appeared for an account that had none (Q26).
+            Routing treats `pending_review` and `declined` as not accepted (`routing.automation_not_accepted`
+            / `routing.copy_not_accepted`). There is no "saved without a choice" state: first choices are
+            atomic with creation.
+        choice:
+          type: string
+          enum: [accepted, declined]
+          description: |
+            With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in
+            force), present only if one was ever made, so the review dialog can show it; it is never
+            preselected. Absent with `not_required`.
         chosen_at: { $ref: '#/components/schemas/Timestamp' }
-        rule_version_id: { $ref: '#/components/schemas/Uuid' }
+        rule_version_id:
+          description: Rule version the `choice` was made against.
+          $ref: '#/components/schemas/Uuid'
         current_rule_version_id:
           description: The preset rule version currently in force for this account.
           $ref: '#/components/schemas/Uuid'
+      allOf:
+        - if: { properties: { state: { const: chosen } } }
+          then: { required: [choice, chosen_at, rule_version_id, current_rule_version_id] }
+        - if: { properties: { state: { const: pending_review } } }
+          then:
+            required: [current_rule_version_id]
+            dependentRequired: { choice: [chosen_at, rule_version_id] }
+        - if: { properties: { state: { const: not_required } } }
+          then: { not: { anyOf: [{ required: [choice] }, { required: [chosen_at] }, { required: [rule_version_id] }] } }
     Event:
-      description: SSE payloads (field `data`). `type` equals the SSE `event` name.
+      description: SSE payloads (field `data`). `type` equals the SSE `event` name; `at` is when the event happened (server clock).
       oneOf:
         - type: object
           additionalProperties: false
-          required: [type, connection_id, status]
+          required: [type, at, connection_id, status]
           properties:
             type: { const: connection.status_changed }
+            at: { $ref: '#/components/schemas/Timestamp' }
             connection_id: { $ref: '#/components/schemas/Uuid' }
             status: { type: string, enum: [awaiting_pairing, connected, disconnected, outdated, unpaired] }
         - type: object
           additionalProperties: false
-          required: [type, connection_id, instance_name, visible_accounts]
+          required: [type, at, connection_id, instance_name, visible_accounts]
           properties:
             type: { const: connection.paired }
+            at: { $ref: '#/components/schemas/Timestamp' }
             connection_id: { $ref: '#/components/schemas/Uuid' }
             instance_name: { type: string }
             visible_accounts:
@@ -1400,14 +1639,16 @@ components:
               items: { $ref: '#/components/schemas/VisibleAccount' }
         - type: object
           additionalProperties: false
-          required: [type, connection_id, reason]
+          required: [type, at, connection_id, reason]
           properties:
             type: { const: connection.pairing_code_invalidated }
+            at: { $ref: '#/components/schemas/Timestamp' }
             connection_id: { $ref: '#/components/schemas/Uuid' }
             reason: { type: string, enum: [superseded, pairing_locked] }
         - type: object
           additionalProperties: false
-          required: [type, reason]
+          required: [type, at, reason]
           properties:
             type: { const: session.ended }
+            at: { $ref: '#/components/schemas/Timestamp' }
             reason: { type: string, enum: [logout, expired, password_reset, password_changed, totp_changed, admin_totp_reset] }
