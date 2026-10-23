@@ -18,6 +18,7 @@
 //! - Differences `utoipa` cannot express are listed in `contracts/http/drift-allowlist.yaml`
 //!   as `{operationId, pointer, reason}`; an entry matching no difference fails.
 //! - The embedded instruction schema equals `contracts/instruction/v1/instruction.schema.json`.
+//! - The security schemes and the root `security` equal the contract's.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -403,6 +404,21 @@ fn embedded_instruction_schema_is_the_contract_file() {
         Sha256::digest(&file),
         "core/crates/contracts embeds a different instruction schema"
     );
+}
+
+#[test]
+fn security_schemes_and_root_security_match_the_contract() {
+    let contract = load_file(&contract_dir().join(CONTRACT_FILE));
+    let generated = app::openapi::document().unwrap();
+    for pointer in ["/components/securitySchemes", "/security"] {
+        let (g, c) = (generated.pointer(pointer), contract.pointer(pointer));
+        assert!(c.is_some(), "contract has no {pointer}");
+        assert_eq!(
+            g.map(|v| canonical(v, pointer.ends_with("Schemes"))),
+            c.map(|v| canonical(v, pointer.ends_with("Schemes"))),
+            "{pointer} differs from the contract"
+        );
+    }
 }
 
 #[test]

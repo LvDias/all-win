@@ -51,12 +51,14 @@ pub fn document() -> Result<Value, serde_json::Error> {
     Ok(doc)
 }
 
+/// The contract's only scheme since HTTP 2.0.0 (passwordless: no `pendingSession`).
 fn add_security_schemes(doc: &mut utoipa::openapi::OpenApi) {
-    let components = doc.components.get_or_insert_with(Default::default);
-    components.add_security_scheme(
-        "session",
-        SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("__Host-aw_session"))),
-    );
+    doc.components
+        .get_or_insert_with(Default::default)
+        .add_security_scheme(
+            "session",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("__Host-aw_session"))),
+        );
 }
 
 /// `utoipa` renders `security(())` as `[{}]` ("anonymous allowed"); the contract's

@@ -42,14 +42,14 @@ paths:
         be routable for that source (`listRouteCandidates`); a race is answered with the same code the
         picker showed. Audited as `routing.subscription_changed` (`created`).
         Copy routes of a follower (S19, V1.1) are not created here.
-        Step-up (QA Security M1; superset pending the user with Q35, Core setting
-        `step_up.q35_persistence_actions`, default on): when the source is automated, the route is
+        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
+        server configuration only, missing/invalid = on): when the source is automated, the route is
         enabled by this request, and the account's automation was not accepted with a step-up (a real
         account, or an opt-in that is `not_required`), the body must carry `step_up` for action
         `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
         `auth.code_invalid` (`StepUpFailed`).
       x-step-up: conditional
-      x-step-up-when: source is automated and is_enabled and the account's automation was not accepted with step-up (Q35 setting on)
+      x-step-up-when: source is automated and is_enabled and the account's automation was not accepted with step-up (Q35 decided, setting on)
       requestBody:
         required: true
         content:
@@ -86,22 +86,23 @@ paths:
       summary: Change a route's signal types or switch it on/off (optimistic concurrency)
       description: |
         Full replacement of `signal_types` and `is_enabled`. Switching off is always accepted. Switching
-        on while the account is not eligible for the source is currently accepted: the route is saved and
-        its status shows the reason, and nothing is routed (S7 AC-6). Provisional, Q67 (with the user):
-        if option (b) is decided, switching on is refused with 422 and the blocking reason code (same
-        codes as `createRoute`), and the Core switches a route off when its account becomes ineligible;
-        clients must already handle that 422. Routes of a revoked source are read-only. Check order after
+        on while the account is not eligible for the source is refused with 422 and the blocking reason
+        code (same codes as `createRoute`, pointer `/is_enabled`; Q67 b, decided). When an account becomes
+        ineligible (automation `declined` / `pending_review`, or unbound), the Core switches its routes
+        from that source off and audits `routing.subscription_changed` (`disabled`, cause
+        `account_ineligible`); when it becomes eligible again the route stays off (`route_disabled`) until
+        the user switches it on. Routes of a revoked source are read-only. Check order after
         authentication, Origin and schema: 404 → 409 `routing.source_revoked` → 409
         `common.version_conflict` → 422. Audited as `routing.subscription_changed` (`updated`, `enabled`
         or `disabled`, with previous and new values).
-        Step-up (QA Security M1; superset pending the user with Q35, Core setting
-        `step_up.q35_persistence_actions`, default on): when the source is automated, the route goes
+        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
+        server configuration only, missing/invalid = on): when the source is automated, the route goes
         from off to on by this request, and the account's automation was not accepted with a step-up (a real
         account, or an opt-in that is `not_required`), the body must carry `step_up` for action
         `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
         `auth.code_invalid` (`StepUpFailed`).
       x-step-up: conditional
-      x-step-up-when: source is automated and is_enabled changes false → true and the account's automation was not accepted with step-up (Q35 setting on)
+      x-step-up-when: source is automated and is_enabled changes false → true and the account's automation was not accepted with step-up (Q35 decided, setting on)
       parameters:
         - { $ref: '#/components/parameters/RouteId' }
       requestBody:
@@ -125,7 +126,7 @@ paths:
             application/json:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
         '422':
-          description: 'Reserved for Q67 option (b): `routing.automation_not_accepted` / `routing.platform_unbound` (pointer `/is_enabled`) when switching on an ineligible route. Not sent while Q67 is open.'
+          description: '`routing.automation_not_accepted` / `routing.platform_unbound` (pointer `/is_enabled`) — switching on a route whose account is not eligible for the source (Q67 b).'
           content:
             application/json:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -196,7 +197,7 @@ components:
         - `routing.account_manual_only` — `/account_id` (S16 AC-7);
         - `routing.automation_not_accepted` — `/account_id` (automated source; the account's automation
           opt-in is `declined` or `pending_review`);
-        - `routing.platform_unbound` — `/account_id` (provisional, Q37).
+        - `routing.platform_unbound` — `/account_id` (Q37).
       content:
         application/json:
           schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -232,7 +233,7 @@ components:
       description: |
         Why a route does not (fully) receive now. The gate codes of ADR-0003 §4.1 (`account_inactive`,
         `automation_not_accepted`, `copy_not_accepted`, `out_of_sync`, `risk_blocked`) are also the audit
-        codes of each skipped instruction; `no_bracket_profile` (S6, Q43 provisional) and
+        codes of each skipped instruction; `no_bracket_profile` (S6, Q43) and
         `limits_pending` (ADR-0006: the account's limits are not yet derived) are skip codes added by this
         contract (ADR-0003 delta pending, Esquadro). `source_revoked`, `platform_unbound`,
         `connection_disconnected` (every connection status other than `connected`: disconnected, outdated,
@@ -357,7 +358,7 @@ components:
           description: |
             Empty → selectable. Otherwise the option is shown disabled with these reasons, most severe
             first. Only `routing.automation_not_accepted` (automated source) and `routing.platform_unbound`
-            (provisional, Q37) block creation; every other reason only affects `status_if_routed`.
+            (Q37) block creation; every other reason only affects `status_if_routed`.
           items: { $ref: '#/components/schemas/RouteReason' }
         status_if_routed:
           description: The status a new enabled route would have now (e.g. `exits_only` for an out-of-sync account).

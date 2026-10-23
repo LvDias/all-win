@@ -41,6 +41,38 @@
         }
       }
     },
+    "DetailsEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profit_target",
+        "achieved",
+        "start"
+      ],
+      "description": "`risk.evaluation_target_reached` (notify only, Q70) and `accounts.evaluation_restarted` (with the previous start and earned-before).",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date"
+        },
+        "previous_start": {
+          "type": "string",
+          "format": "date"
+        },
+        "earned_before": {
+          "$ref": "#/$defs/Money"
+        },
+        "previous_earned_before": {
+          "$ref": "#/$defs/Money"
+        },
+        "profit_target": {
+          "$ref": "#/$defs/Money"
+        },
+        "achieved": {
+          "$ref": "#/$defs/Money"
+        }
+      }
+    },
     "DetailsRiskState": {
       "type": "object",
       "additionalProperties": false,
@@ -185,6 +217,11 @@
           "description": "requested − executed."
         }
       }
+    },
+    "Money": {
+      "type": "string",
+      "pattern": "^-?[0-9]{1,14}(\\.[0-9]{1,4})?$",
+      "description": "Money as a decimal string (NUMERIC(18,4))."
     },
     "OptInKind": {
       "type": "string",

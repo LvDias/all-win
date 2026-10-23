@@ -11,7 +11,7 @@
   ],
   "groupings": {
     "none": "every occurrence is its own notification",
-    "account_trading_day": "same code + account + trading day collapse into one item (count, last time); the first occurrence is unread; a later one marks the group unread again only when the code has reopen_on_occurrence: true (provisional, Q68)",
+    "account_trading_day": "same code + account + trading day collapse into one item (count, last time); the first occurrence is unread; a later one marks the group unread again only when the code has reopen_on_occurrence: true (Q68)",
     "firm_release": "one item per firm and release, with account_count"
   },
   "codes": {
@@ -45,8 +45,7 @@
       "grouping": "account_trading_day",
       "target": "account",
       "params": "DetailsRoutingDecision",
-      "reopen_on_occurrence": true,
-      "provisional": "Q68"
+      "reopen_on_occurrence": true
     },
     "routing.out_of_sync": {
       "category": "routing",
@@ -54,8 +53,7 @@
       "grouping": "account_trading_day",
       "target": "account",
       "params": "DetailsRoutingDecision",
-      "reopen_on_occurrence": true,
-      "provisional": "Q68"
+      "reopen_on_occurrence": true
     },
     "routing.expired": {
       "category": "routing",
@@ -63,8 +61,7 @@
       "grouping": "account_trading_day",
       "target": "instruction",
       "params": "DetailsRoutingDecision",
-      "reopen_on_occurrence": true,
-      "provisional": "Q68"
+      "reopen_on_occurrence": true
     },
     "routing.no_bracket_profile": {
       "category": "routing",
@@ -72,7 +69,6 @@
       "grouping": "account_trading_day",
       "target": "account",
       "params": "DetailsRoutingDecision",
-      "provisional": "Q50",
       "reopen_on_occurrence": false
     },
     "risk.warning": {
@@ -106,6 +102,14 @@
       "target": "account",
       "params": "DetailsRiskState",
       "rule": "one per state change"
+    },
+    "risk.evaluation_target_reached": {
+      "category": "risk",
+      "severity": "success",
+      "grouping": "none",
+      "target": "account",
+      "params": "DetailsEvaluation",
+      "rule": "once per evaluation count (S13b; Q70: notify only, nothing automatic)"
     },
     "connection.status_changed": {
       "category": "connection",
