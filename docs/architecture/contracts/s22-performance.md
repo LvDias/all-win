@@ -33,6 +33,6 @@ SSE: none of its own. `trade.captured` raises the "novos trades" banner; the fig
 6. **Isolation (X-2, QA Security on 3.4.0):** a foreign or unknown `account_id` matches nothing (empty totals and groups, never 404), as in `listTrades` / `listActivity`. Required test: two users, each filtering by the other's account id, get `trade_count` 0 and no groups.
 7. **Not in V1:** extra metrics (Q59: profit factor, best/worst trade, average win/loss, per-day curve) until the user decides.
 
-## 3. 3.5.0 — net figures (S22 AC-3 rev. 8)
+## 3. 4.0.0 (written as 3.5.0) — net figures (S22 AC-3 rev. 8)
 
 Every P&L figure is net. A win is a trade with net P&L > 0, so a trade of +2.00 gross with 2.50 commission is a loss. Totals add `total_gross_pnl`, `total_commission` and `uncommissioned_count`.

@@ -1,7 +1,12 @@
 # HTTP API — changelog
 
+## 4.0.0 — 2026-10-23 (BREAKING: re-release of 3.5.0 as a major; + Connection.disconnect_reason)
+- **Versioning (Esquadro, ADR-0002 §4 / U18):** `Trade.pnl`, `TradesSummary.total_pnl` and the performance P&L figures change meaning from gross to net. A client that reads only `pnl` would show another number, so this is breaking: document major, paths stay `/api/v1`. The content of 3.5.0 (2778318, never merged or consumed) is unchanged; its "minor" reasoning is withdrawn.
+- Root (Esquadro): `Connection.disconnect_reason` and optional `disconnect_reason` on the SSE `connection.status_changed` (`user`, `network`, `outdated`, `unpaired`; adapter protocol 1.3, close 4100; ADR-0004 §6).
+- Name mapping to adapter protocol 1.3 (confirmed): `trade_completed.net_pnl` / `gross_pnl` / `commission` → HTTP `pnl` (net) / `gross_pnl` / `commission`; HTTP `commission_source` adds `manual` (manual trades only); `commission_per_contract_side` has the same name; `limits.evaluation` (protocol) and `AccountRisk.evaluation` (HTTP) are different views of the same data.
+
 ## 3.5.0 — 2026-10-23 (user decisions: net P&L, commission floor, evaluation target; Q37–Q68 decided)
-- **Versioning:** minor. `Trade.pnl`, the summary and the performance figures keep their shapes. `pnl_basis` already qualified `pnl`, and it gains the value `net`, now the only one sent. New fields are added. The meaning of `pnl` is therefore declared by `pnl_basis` (ADR-0002 §4; recorded for Esquadro and Crivo).
+- **Versioning:** (superseded by 4.0.0: re-released as a major) minor. `Trade.pnl`, the summary and the performance figures keep their shapes. `pnl_basis` already qualified `pnl`, and it gains the value `net`, now the only one sent. New fields are added. The meaning of `pnl` is therefore declared by `pnl_basis` (ADR-0002 §4; recorded for Esquadro and Crivo).
 - **Net P&L as the main value** (S21 AC-1, S22 AC-3, S13 AC-2 rev. 8):
   - `Trade`: `gross_pnl`, `commission`, `commission_source` (`platform` / `configured` / `mixed` / `manual` / `none`).
   - Manual trades take an optional `commission`; the preview takes it too.

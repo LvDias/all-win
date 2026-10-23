@@ -51,7 +51,7 @@ SSE: `trade.captured` (also for manual trades), which drives the "n novos trades
 
 ## 6. 3.5.0 — net P&L as the main value (user decision 2026-10-23; S21 AC-1 rev. 8)
 
-- `pnl` is NET (after commissions) and is what lists sort and sum. `gross_pnl`, `commission` (total of the trade's fills) and `commission_source` sit alongside. `pnl_basis` stays on the wire, always `net`, so 3.5.0 is additive for 3.4 readers (the field's shape is unchanged; a value was added to its enum).
+- `pnl` is NET (after commissions) and is what lists sort and sum. `gross_pnl`, `commission` (total of the trade's fills) and `commission_source` sit alongside. `pnl_basis` stays on the wire, always `net`. Because `pnl` changed meaning (gross → net), the release is a major: **4.0.0** (ADR-0002 §4, Esquadro), with the same content as 3.5.0.
 - Effective commission of a fill = max(platform-reported, the account's `commission_per_contract_side` × quantity) (U20 a). `commission_source` ∈ `platform` / `configured` / `mixed` / `manual` / `none`. `none` means net = gross, with the label "comissões não informadas".
 - Manual trades: `commission` is optional. When it is absent, the Core applies floor × quantity × 2 sides (`configured`), or 0 (`none`).
 - `TradesSummary`: `total_pnl` (net), `total_gross_pnl`, `total_commission`, `uncommissioned_count`.

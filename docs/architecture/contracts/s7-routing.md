@@ -68,7 +68,7 @@ Step-up (3.0.0, QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_per
 - `routing.subscription.row_version integer NOT NULL DEFAULT 1` (optimistic concurrency).
 - `signal_types` for these routes are limited to `trigger`, `trade_plan`, `nq_trigger`; `master_account` stays for S19 follower subscriptions.
 
-## 6. 3.5.0
+## 6. 4.0.0 (written as 3.5.0)
 
 - Q67 (b) is decided and active (see §2.5).
 - Q35 is decided with the setting on: the `route_enable` step-up is required.

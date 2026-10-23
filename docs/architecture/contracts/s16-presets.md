@@ -89,7 +89,7 @@ SSE: `presets.version_available` (`firm_id`, `account_ids`).
 - The account's rule-field origins (`edited` / `chosen_from_conflict` + `chose` + `chosen_at`) need a home: `accounts.account_rule_value` (account, field, value, origin, chose, chosen_at).
 - **Backend design point (not a contract matter):** the rule values feed `risk.account_limits` (S13). Create, update and apply must save account and limits atomically. Either the accounts service writes both in one transaction through a risk port, or risk derives its limits from the `account.*` event with an "awaiting limits" state. ADR-0001 allows only events and query ports between modules, so the second fits the rules and needs a gate (no routing before limits exist). To be decided by the Software Architects with Backend.
 
-## 6. 3.5.0 additions
+## 6. 4.0.0 (written as 3.5.0) additions
 
 `PresetRules` gains two optional keys:
 - `commission_per_contract_side` (`CommissionRule`), which prefills the account floor;

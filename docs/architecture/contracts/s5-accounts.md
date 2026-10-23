@@ -103,7 +103,7 @@ They are written in the same transaction as the change, through `app.outbox`. Th
 - Catalog (firms, plans, presets, preset versions, diff, apply): done in 2.5.0 ([S16 notes](s16-presets.md)). `getOptInRules` and `getRuleVersion` are unchanged. `createAccount` / `updateAccount` gained `rule_values`, and applying a newer version of the same preset moved to `applyPresetVersion`.
 - The follower flow with the copy choice → S7/S19.
 
-## 7. 3.5.0 additions
+## 7. 4.0.0 (written as 3.5.0) additions
 
 - `commission_per_contract_side` (optional, USD per contract and side): the commission floor (U20 a), prefilled from the preset and editable, in create, update and the response.
 - `evaluation_start` + `evaluation_earned_before` on create (S13b). Later changes go through `restartEvaluation`, not `updateAccount`.
