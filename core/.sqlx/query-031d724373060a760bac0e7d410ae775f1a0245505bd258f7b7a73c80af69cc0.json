@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM routing.subscription\n               WHERE user_id = $1 AND id = $2 AND NOT ('master_account' = ANY (signal_types))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "031d724373060a760bac0e7d410ae775f1a0245505bd258f7b7a73c80af69cc0"
+}
