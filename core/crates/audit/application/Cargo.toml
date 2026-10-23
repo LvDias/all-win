@@ -10,5 +10,13 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+async-trait.workspace = true
 audit-enterprise.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
 shared-kernel.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

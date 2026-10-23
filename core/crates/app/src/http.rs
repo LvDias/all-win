@@ -2,10 +2,11 @@
 //! (`http.route`), or `<unmatched>` / `<unmatched-ingress>`; never the raw URI.
 
 use axum::Router;
-use axum::extract::{MatchedPath, Request};
-use axum::http::StatusCode;
+use axum::extract::{MatchedPath, Request, State};
+use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::get;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 
@@ -17,22 +18,42 @@ pub const UNMATCHED_INGRESS: &str = "<unmatched-ingress>";
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/metrics", get(metrics))
+        .with_state(state.clone())
+        .merge(adapter_tradingview::router(state.ingress.clone()))
         .fallback(fallback)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(make_span)
+                .on_request(())
                 .on_response(on_response),
         )
-        .with_state(state)
+        // ADR-0001 §9: every Core response.
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        ))
 }
 
 async fn healthz() -> StatusCode {
     StatusCode::NO_CONTENT
 }
 
+/// Operational counters (no keys, users or tokens). Served on the Core bind only;
+/// Caddy does not proxy it.
+async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let mut out = String::new();
+    state.ingress.metrics.render(&mut out);
+    ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], out)
+}
+
 /// Every unmatched request gets an empty 404, so a near-miss ingress URL is
 /// indistinguishable from an unknown token (S1 AC-2).
-async fn fallback() -> impl IntoResponse {
+async fn fallback() -> StatusCode {
     StatusCode::NOT_FOUND
 }
 
@@ -53,7 +74,7 @@ fn percent_decode_lossy(input: &str) -> String {
             && i + 2 < bytes.len()
             && let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
         {
-            out.push(h << 4 | l);
+            out.push((h << 4) | l);
             i += 3;
             continue;
         }
@@ -75,6 +96,13 @@ fn hex(b: u8) -> Option<u8> {
 /// Route template for logs and spans.
 pub fn route_label(request: &Request) -> &str {
     match request.extensions().get::<MatchedPath>() {
+        // The ingress route answers any other method with the empty 404 (§4.2).
+        Some(m)
+            if m.as_str() == adapter_tradingview::INGRESS_ROUTE
+                && request.method() != Method::POST =>
+        {
+            UNMATCHED_INGRESS
+        }
         Some(matched) => matched.as_str(),
         None if is_ingress_like(request.uri().path()) => UNMATCHED_INGRESS,
         None => UNMATCHED,
@@ -87,6 +115,7 @@ fn make_span(request: &Request) -> Span {
         http.method = %request.method(),
         http.route = route_label(request),
         http.status = tracing::field::Empty,
+        client.ip = tracing::field::Empty,
         key_id = tracing::field::Empty,
     )
 }

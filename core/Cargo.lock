@@ -6,8 +6,21 @@ version = 4
 name = "adapter-tradingview"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "axum",
+ "base64",
+ "chrono",
  "contracts",
+ "http-body-util",
  "routing-application",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "shared-kernel",
+ "subtle",
+ "tokio",
+ "tower",
+ "tracing",
 ]
 
 [[package]]
@@ -58,10 +71,24 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "adapter-tradingview",
  "anyhow",
+ "async-trait",
+ "audit-application",
+ "audit-infra",
  "axum",
+ "base64",
+ "catalog-application",
+ "catalog-infra",
+ "chrono",
  "contracts",
  "http-body-util",
+ "rand 0.10.3",
+ "routing-application",
+ "routing-infra",
+ "rust_decimal",
+ "serde_json",
+ "sha2 0.11.1",
  "shared-kernel",
  "sqlx",
  "thiserror",
@@ -70,6 +97,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -108,23 +136,34 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 name = "audit-application"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "audit-enterprise",
+ "chrono",
+ "serde_json",
  "shared-kernel",
+ "thiserror",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
 name = "audit-enterprise"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "serde_json",
  "shared-kernel",
+ "uuid",
 ]
 
 [[package]]
 name = "audit-infra"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "audit-application",
  "shared-kernel",
+ "sqlx",
 ]
 
 [[package]]
@@ -291,23 +330,25 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "catalog-application"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "catalog-enterprise",
- "shared-kernel",
+ "thiserror",
 ]
 
 [[package]]
 name = "catalog-enterprise"
 version = "0.1.0"
 dependencies = [
- "shared-kernel",
+ "thiserror",
 ]
 
 [[package]]
 name = "catalog-infra"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "catalog-application",
- "shared-kernel",
+ "sqlx",
 ]
 
 [[package]]
@@ -360,6 +401,12 @@ name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
+
+[[package]]
+name = "const-oid"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "contracts"
@@ -478,6 +525,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer 0.12.1",
+ "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
 ]
@@ -1561,23 +1609,36 @@ dependencies = [
 name = "routing-application"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "chrono",
  "routing-enterprise",
+ "serde_json",
  "shared-kernel",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
 name = "routing-enterprise"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "serde",
  "shared-kernel",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
 name = "routing-infra"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "routing-application",
+ "serde_json",
  "shared-kernel",
+ "sqlx",
+ "uuid",
 ]
 
 [[package]]
@@ -2228,14 +2289,11 @@ dependencies = [
  "bytes",
  "http",
  "http-body",
- "http-body-util",
  "percent-encoding",
  "pin-project-lite",
- "tokio",
  "tower-layer",
  "tower-service",
  "tracing",
- "uuid",
 ]
 
 [[package]]

@@ -10,5 +10,6 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+async-trait.workspace = true
 catalog-application.workspace = true
-shared-kernel.workspace = true
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "macros"] }
