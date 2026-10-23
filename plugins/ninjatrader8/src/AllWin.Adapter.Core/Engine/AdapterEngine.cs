@@ -581,6 +581,8 @@ namespace AllWin.Adapter.Core.Engine
         {
             StoreRecoveredTornWrite = _store.RecoveredFromTornWrite;
             if (StoreRecoveredTornWrite) _log.Write(LogLevel.Warning, "store.torn_tail_dropped", "an unconfirmed last write was discarded");
+            if (_store.Get(Collections.Meta, "position_seqs") is string seqs)
+                foreach (var pair in StoreJson.Read<Dictionary<string, long>>(seqs)) _positionSeqs[pair.Key] = pair.Value;
             if (_store.Get(Collections.Meta, "connection_epochs") is string epochs)
                 foreach (var pair in StoreJson.Read<Dictionary<string, long>>(epochs)) _connectionEpochs[pair.Key] = pair.Value;
             _instanceId = _store.Get(Collections.Meta, "instance_id") is string id ? StoreJson.Read<string>(id) : "";
@@ -648,13 +650,23 @@ namespace AllWin.Adapter.Core.Engine
                 foreach (var execution in SafeExecutions(mapping.PlatformAccount)) heldByPlatform.Add(mapping.PlatformAccount + "|" + execution.ExecutionId);
             }
             foreach (var pair in _fills.Where(p => p.Value.RecordedAt < cutoff && !heldByPlatform.Contains(p.Key)
-                && observedPrefixes.Any(prefix => p.Key.StartsWith(prefix, StringComparison.Ordinal))).ToList())
+                && observedPrefixes.Any(prefix => p.Key.StartsWith(prefix, StringComparison.Ordinal) && !InOpenPosition(prefix.Substring(0, prefix.Length - 1), p.Value))).ToList())
             {
                 _fills.Remove(pair.Key);
                 _pending.Add(new StoreOp(Collections.Fills, pair.Key, null));
             }
             // Keep the outbox sequence monotonic even after the outbox drains.
             Put(Collections.Meta, "next_outbox_seq", _nextOutboxSeq);
+        }
+
+        /// <summary>
+        /// The fill belongs to a position that is still open (its number is the current one and the position is not flat):
+        /// kept past retention, because the row 6 cap of ADR-0005 §N11 sums those fills (Code Review low).
+        /// </summary>
+        private bool InOpenPosition(string account, FillRecord fill)
+        {
+            if (fill.Instrument == null || fill.PositionSeq == 0) return false;
+            return fill.PositionSeq == CurrentPositionSeq(account, fill.Instrument) && PositionQuantity(account, fill.Instrument) != 0;
         }
 
         /// <summary>

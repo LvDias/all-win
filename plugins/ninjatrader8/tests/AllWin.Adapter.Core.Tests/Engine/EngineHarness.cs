@@ -22,19 +22,12 @@ namespace AllWin.Adapter.Core.Tests.Engine
         public List<Envelope> Frames { get; } = new List<Envelope>();
         public List<int> Closes { get; } = new List<int>();
 
-        private static readonly Lazy<Json.Schema.JsonSchema> Reference = new Lazy<Json.Schema.JsonSchema>(() =>
-        {
-            Json.Schema.SchemaRegistry.Global.Register(Json.Schema.JsonSchema.FromText(AllWin.Adapter.Core.Protocol.Schema.ContractSchemas.InstructionV1));
-            return Json.Schema.JsonSchema.FromText(AllWin.Adapter.Core.Protocol.Schema.ContractSchemas.AdapterProtocolV1);
-        });
-
         public void Send(string frame)
         {
             var decoded = ProtocolCodec.Decode(frame);
             if (!decoded.IsOk) throw new InvalidOperationException("Engine sent an invalid frame: " + decoded.Detail);
             // Second opinion from an independent JSON Schema implementation on every frame the engine sends.
-            var verdict = Reference.Value.Evaluate(System.Text.Json.Nodes.JsonNode.Parse(frame), new Json.Schema.EvaluationOptions { OutputFormat = Json.Schema.OutputFormat.Flag });
-            if (!verdict.IsValid) throw new InvalidOperationException("Reference validator rejects an engine frame: " + frame);
+            if (!Contracts.ReferenceSchema.IsValidAdapterFrame(frame)) throw new InvalidOperationException("Reference validator rejects an engine frame: " + frame);
             Frames.Add(decoded.Envelope!);
         }
 

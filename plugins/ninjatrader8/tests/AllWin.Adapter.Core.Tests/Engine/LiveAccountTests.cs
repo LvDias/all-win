@@ -352,6 +352,74 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
+        public void Shared_row_6_cap_ignores_entries_of_earlier_closed_positions()
+        {
+            // QA LN1: an earlier consented shared position must not raise the cap of the current one.
+            using var h = LiveHarness();
+            h.Deliver(Place(F1, Side.Buy, 2, protection: Shared()));
+            h.Deliver(Flatten("0192b3c4-0000-7000-8000-000000000d21"));
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.ExternalFill(Sim101, Mnq, Side.Buy, 1, 21000m); // a manual add: row 7, refused on A
+            h.Settle();
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(3, h.Platform.Position(Sim101, "MNQ"));
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity); // E1 + E2, not the manual add
+        }
+
+        [Fact]
+        public void Shared_row_6_counts_by_fill_an_add_received_before_the_owner_but_filled_after()
+        {
+            // QA M10 (probe Q8): E2 rests before E1 opens the position as the shared owner; E2 fills in the cancel race on A.
+            using var h = LiveHarness();
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            Assert.Equal(1, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(2, h.Platform.Position(Sim101, "MNQ"));
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+        }
+
+        [Fact]
+        public void Position_numbers_survive_a_restart()
+        {
+            using var h = LiveHarness();
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.AckAll();
+            h.Restart();
+            h.Connect(new Func<WelcomePayload>(() => { var w = DefaultWelcome(); w.SimulationOnly = false; return w; })());
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+        }
+
+        [Fact]
+        public void Fills_of_a_position_open_past_retention_are_kept_for_the_row_6_cap()
+        {
+            // Code Review low: a shared position open for more than 7 days, whose executions NT8 no longer lists.
+            using var h = LiveHarness();
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.AckAll();
+            h.Platform.ForgetExecutions(Sim101);
+            h.Tick(TimeSpan.FromDays(8)); // pruning runs
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+        }
+
+        [Fact]
         public void Shared_growth_from_a_non_consented_fill_on_A_is_still_refused()
         {
             using var h = LiveHarness();

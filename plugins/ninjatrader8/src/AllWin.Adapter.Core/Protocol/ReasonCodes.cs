@@ -39,7 +39,7 @@ namespace AllWin.Adapter.Core.Protocol
         /// <summary>
         /// The plugin cancelled on its own a working All Win entry or exit on a live account without consent (transition to
         /// state A, or "off" with U19 a): ADR-0005 §N11 row 2. Status cancelled, terminal, a failure for depends_on
-        /// (Architect 2026-10-23; registry entry in the 1.3 delta, emitted already as a generic code).
+        /// (Architect 2026-10-23; registry: contracts/adapter-protocol/v1/reason-codes.md, a code-only addition).
         /// </summary>
         public const string OrderLiveConsentCancelled = "order.live_consent_cancelled";
         public const string OrderProtectionFailed = "order.protection_failed";

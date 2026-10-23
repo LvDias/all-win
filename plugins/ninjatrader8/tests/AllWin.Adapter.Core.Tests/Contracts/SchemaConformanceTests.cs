@@ -1,10 +1,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json.Nodes;
 using AllWin.Adapter.Core.Protocol;
 using AllWin.Adapter.Core.Protocol.Schema;
-using Json.Schema;
 using Xunit;
 
 namespace AllWin.Adapter.Core.Tests.Contracts
@@ -51,9 +49,8 @@ namespace AllWin.Adapter.Core.Tests.Contracts
         [MemberData(nameof(AdapterFixtures))]
         public void Independent_validator_agrees(string kind, string file)
         {
-            var reference = ReferenceSchemas.Value;
             var json = File.ReadAllText(Path.Combine(RepoPaths.AdapterExamples, kind, file));
-            var expected = reference.Evaluate(JsonNode.Parse(json), new EvaluationOptions { OutputFormat = OutputFormat.Flag }).IsValid;
+            var expected = ReferenceSchema.IsValidAdapterFrame(json);
             var ours = ProtocolSchemas.ValidateFrame(ProtocolJson.Parse(json)).Count == 0;
             Assert.Equal(expected, ours);
         }
@@ -80,12 +77,5 @@ namespace AllWin.Adapter.Core.Tests.Contracts
         {
             Assert.ThrowsAny<Newtonsoft.Json.JsonException>(() => ProtocolJson.Parse("{\"a\":1,\"a\":2}"));
         }
-
-        private static readonly System.Lazy<JsonSchema> ReferenceSchemas = new System.Lazy<JsonSchema>(() =>
-        {
-            var instruction = JsonSchema.FromText(ContractSchemas.InstructionV1);
-            SchemaRegistry.Global.Register(instruction);
-            return JsonSchema.FromText(ContractSchemas.AdapterProtocolV1);
-        });
     }
 }
