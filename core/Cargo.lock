@@ -1736,6 +1736,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "risk-enterprise"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "rust_decimal",
+ "thiserror",
+]
+
+[[package]]
+name = "risk-infra"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "routing-application"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,18 @@
+[package]
+name = "risk-infra"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "risk module — infra layer: PostgreSQL schema `risk` (S13)."
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "macros", "migrate"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+uuid = { workspace = true, features = ["v7"] }
