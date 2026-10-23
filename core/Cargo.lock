@@ -41,6 +41,7 @@ dependencies = [
  "chrono",
  "rust_decimal",
  "serde",
+ "serde_json",
  "shared-kernel",
  "thiserror",
  "unicode-normalization",

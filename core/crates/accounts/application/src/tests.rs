@@ -980,6 +980,11 @@ impl PresetCatalog for TargetPreset {
             is_current: true,
             preset_id: Uuid::now_v7(),
             has_evaluation_target: true,
+            max_position_cap: None,
+            superseded_by: None,
+            manual_only: false,
+            release_version_number: 1,
+            rule_sets: vec![],
         }))
     }
 }

@@ -181,6 +181,24 @@ pub struct PresetFacts {
     /// Its resolved rules carry an evaluation target (S13b): only then do `evaluation_start` /
     /// `evaluation_earned_before` apply.
     pub has_evaluation_target: bool,
+    /// The cap when the maximum position is not confirmed: the highest published value (S16
+    /// §2.10); `None` when `max_position_qty` is verified.
+    pub max_position_cap: Option<MaxPositionQty>,
+    /// The same preset's version in the newest release; `is_current` ⇔ `None`.
+    pub superseded_by: Option<PresetVersionId>,
+    /// S16 AC-7: manual tracking only (no routing).
+    pub manual_only: bool,
+    pub release_version_number: i32,
+    /// One set without `firm_platform`, or one per firm platform. The adapter converts the
+    /// published documents; one that does not convert is a `PortError` (fail closed).
+    pub rule_sets: Vec<PresetRuleSet>,
+}
+
+/// A preset version's rules for one firm platform (or for all).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresetRuleSet {
+    pub firm_platform: Option<FirmPlatform>,
+    pub rules: accounts_enterprise::preset_values::PresetRules,
 }
 
 #[async_trait]

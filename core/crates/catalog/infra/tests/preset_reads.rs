@@ -248,3 +248,78 @@ async fn firm_reads_match_the_contract() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn preset_version_facts_for_the_accounts_port() {
+    let Some(db) = support::db().await else {
+        return;
+    };
+    let slug = format!("f-{}", Uuid::now_v7().simple());
+    publish(
+        &db,
+        &with_slug(example!("valid/release-v1-new-firm.json"), &slug),
+    )
+    .await;
+    let mut v2 = with_slug(example!("valid/release-v2-stance-changed.json"), &slug);
+    v2["plans"][0]["phases"][0]["sizes"][0]["rule_sets"][0]["rules"]["drawdown"]["value"]["amount"] =
+        json!("2500.00");
+    publish(&db, &v2).await;
+    let platforms = format!("g-{}", Uuid::now_v7().simple());
+    publish(
+        &db,
+        &with_slug(
+            example!("valid/release-not-confirmed-per-platform.json"),
+            &platforms,
+        ),
+    )
+    .await;
+
+    let queries = PresetQueries::new(Arc::new(PgInstrumentRepository::new(db.app.clone())));
+    let versions: Vec<(Uuid, String, i32)> = sqlx::query_as(
+        "SELECT v.id, f.slug, r.version_number FROM catalog.preset_version v
+         JOIN catalog.prop_firm f ON f.id = v.firm_id JOIN catalog.firm_release r ON r.id = v.release_id
+         WHERE f.slug IN ($1, $2)",
+    )
+    .bind(&slug)
+    .bind(&platforms)
+    .fetch_all(&db.admin)
+    .await
+    .unwrap();
+    let id = |s: &str, n: i32| {
+        versions
+            .iter()
+            .find(|(_, x, v)| x == s && *v == n)
+            .unwrap()
+            .0
+    };
+
+    let old = queries.version_facts(id(&slug, 1)).await.unwrap().unwrap();
+    let new = queries.version_facts(id(&slug, 2)).await.unwrap().unwrap();
+    assert_eq!(old.superseded_by, Some(new.preset_version_id));
+    assert_eq!(new.superseded_by, None);
+    assert_eq!(
+        (old.preset_id, new.release_version_number),
+        (new.preset_id, 2)
+    );
+    assert!(new.firm_platforms.is_empty() && new.rule_sets.len() == 1);
+
+    let per = queries
+        .version_facts(id(&platforms, 1))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(per.firm_platforms.len(), 2);
+    assert_eq!(
+        per.max_position_qty,
+        Some(50),
+        "both platforms verify 50 contracts"
+    );
+    assert!(per.has_evaluation_target);
+    assert!(
+        queries
+            .version_facts(Uuid::now_v7())
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

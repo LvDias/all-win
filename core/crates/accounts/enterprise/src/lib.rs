@@ -6,6 +6,7 @@ pub mod account;
 pub mod ids;
 pub mod lifecycle;
 pub mod opt_in;
+pub mod preset_values;
 pub mod profile;
 pub mod rule_value;
 pub mod values;

@@ -123,6 +123,37 @@ pub trait PresetReader: Send + Sync {
     ) -> Result<Option<Uuid>, CatalogError>;
 }
 
+/// What another module needs from a preset version (accounts reads it through its own
+/// `PresetCatalog` port; the adapter in `crates/app` maps it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PresetVersionFacts {
+    pub preset_version_id: Uuid,
+    pub preset_id: Uuid,
+    pub firm_id: Uuid,
+    pub firm_name: String,
+    pub plan_name: String,
+    pub phase: String,
+    pub size_amount: Decimal,
+    /// The published maximum position when verified; `None` when not confirmed.
+    pub max_position_qty: Option<i64>,
+    /// The cap when not confirmed: the highest published value (S16 §2.10).
+    pub max_position_cap: Option<i64>,
+    /// Firm platforms with their own rule set; empty when one set covers every platform.
+    pub firm_platforms: Vec<String>,
+    /// The same preset's version in the latest release, when newer than this one.
+    pub superseded_by: Option<Uuid>,
+    pub has_evaluation_target: bool,
+    /// S16 AC-7 reason (RuleQuote) when the preset is for manual tracking only.
+    pub manual_only: Option<Value>,
+    /// `(firm_platform, PresetRules)`.
+    pub rule_sets: Vec<(Option<String>, Value)>,
+    pub release_version_number: i32,
+}
+
+fn contracts_of(v: &Value) -> Option<i64> {
+    v.get("contracts").and_then(Value::as_i64)
+}
+
 // ---- use cases ------------------------------------------------------------------------------
 
 #[derive(Clone)]
@@ -157,6 +188,22 @@ impl PresetQueries {
     pub async fn list_releases(&self, firm_id: Uuid) -> Result<Option<Value>, CatalogError> {
         let data = self.reader.firm_data(firm_id).await?;
         Ok(FirmView::of(&data).map(|v| v.releases()))
+    }
+
+    /// Facts of a preset version for the accounts port; `None` when it does not exist.
+    pub async fn version_facts(
+        &self,
+        preset_version_id: Uuid,
+    ) -> Result<Option<PresetVersionFacts>, CatalogError> {
+        let Some(firm_id) = self
+            .reader
+            .firm_of_preset_version(preset_version_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let data = self.reader.firm_data(firm_id).await?;
+        Ok(FirmView::of(&data).and_then(|v| v.facts(preset_version_id)))
     }
 
     /// `getPresetVersion` (`PresetVersion`); `None` → 404.
@@ -204,6 +251,38 @@ fn not_confirmed_count<'a>(sets: impl Iterator<Item = &'a Value>) -> usize {
 
 /// One phase of a plan with its size options (and their amounts, for ordering).
 type PhaseSizes = (String, Vec<(Decimal, Value)>);
+
+/// Every `sources` entry as HTTP `SourceRef`: the file's per-source `quote` is import evidence.
+fn without_source_quotes(v: &Value) -> Value {
+    match v {
+        Value::Object(m) => Value::Object(
+            m.iter()
+                .map(|(k, child)| {
+                    let child = match (k.as_str(), child) {
+                        ("sources", Value::Array(items)) => Value::Array(
+                            items
+                                .iter()
+                                .map(|i| match i {
+                                    Value::Object(src) => Value::Object(
+                                        src.iter()
+                                            .filter(|(k, _)| k.as_str() != "quote")
+                                            .map(|(k, v)| (k.clone(), v.clone()))
+                                            .collect(),
+                                    ),
+                                    other => other.clone(),
+                                })
+                                .collect(),
+                        ),
+                        _ => without_source_quotes(child),
+                    };
+                    (k.clone(), child)
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(without_source_quotes).collect()),
+        other => other.clone(),
+    }
+}
 
 /// `research` as HTTP `SourceRef`s: the file's per-source `quote` is import evidence, not shown.
 fn research_json(r: &Value) -> Value {
@@ -530,22 +609,9 @@ impl<'a> FirmView<'a> {
         json!({"firm_id": self.firm.id, "releases": releases})
     }
 
-    fn preset_version(&self, id: Uuid) -> Option<Value> {
-        let v = self.d.versions.iter().find(|v| v.id == id)?;
-        let p = self.preset(v.preset_id)?;
-        let plan = self.plan(p.plan_id)?;
+    fn superseded_by(&self, v: &PresetVersionRow) -> Option<Uuid> {
         let release = self.d.releases.iter().find(|r| r.id == v.release_id)?;
-        let sets = self.sets_of(v.id);
-        let rule_sets: Vec<Value> = sets
-            .iter()
-            .map(|s| match &s.firm_platform {
-                Some(fp) => json!({"firm_platform": fp, "rules": s.rules}),
-                None => json!({"rules": s.rules}),
-            })
-            .collect();
-        // The same preset's version in the latest later release.
-        let superseded_by = self
-            .d
+        self.d
             .versions
             .iter()
             .filter(|o| o.preset_id == v.preset_id && o.id != v.id)
@@ -561,7 +627,85 @@ impl<'a> FirmView<'a> {
             })
             .filter(|(n, _)| *n > release.version_number)
             .max_by_key(|(n, _)| *n)
-            .map(|(_, id)| id);
+            .map(|(_, id)| id)
+    }
+
+    fn facts(&self, id: Uuid) -> Option<PresetVersionFacts> {
+        let v = self.d.versions.iter().find(|v| v.id == id)?;
+        let p = self.preset(v.preset_id)?;
+        let plan = self.plan(p.plan_id)?;
+        let release = self.d.releases.iter().find(|r| r.id == v.release_id)?;
+        let sets = self.sets_of(v.id);
+        let max_fields: Vec<&Value> = sets
+            .iter()
+            .filter_map(|s| s.rules.get("max_position_qty"))
+            .collect();
+        let verified: Vec<i64> = max_fields
+            .iter()
+            .filter(|f| f.get("status").and_then(Value::as_str) == Some("verified"))
+            .filter_map(|f| f.get("value").and_then(contracts_of))
+            .collect();
+        let published: Vec<i64> = max_fields
+            .iter()
+            .flat_map(|f| {
+                f.get("published_values")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+            })
+            .filter_map(|pv| pv.get("value").and_then(contracts_of))
+            .collect();
+        // One value when every rule set verifies the same maximum.
+        let max_position_qty = (verified.len() == max_fields.len() && !verified.is_empty())
+            .then(|| verified.iter().copied().min())
+            .flatten()
+            .filter(|m| verified.iter().all(|x| x == m));
+        Some(PresetVersionFacts {
+            preset_version_id: v.id,
+            preset_id: p.id,
+            firm_id: self.firm.id,
+            firm_name: self.firm.name.clone(),
+            plan_name: plan.name.clone(),
+            phase: p.phase.clone(),
+            size_amount: p.size_amount,
+            max_position_qty,
+            max_position_cap: published
+                .iter()
+                .chain(&verified)
+                .copied()
+                .max()
+                .filter(|_| max_position_qty.is_none()),
+            firm_platforms: sets
+                .iter()
+                .filter_map(|s| s.firm_platform.clone())
+                .collect(),
+            superseded_by: self.superseded_by(v),
+            has_evaluation_target: sets
+                .iter()
+                .any(|s| s.rules.get("evaluation_profit_target").is_some()),
+            manual_only: v.manual_only.clone(),
+            rule_sets: sets
+                .iter()
+                .map(|s| (s.firm_platform.clone(), s.rules.clone()))
+                .collect(),
+            release_version_number: release.version_number,
+        })
+    }
+
+    fn preset_version(&self, id: Uuid) -> Option<Value> {
+        let v = self.d.versions.iter().find(|v| v.id == id)?;
+        let p = self.preset(v.preset_id)?;
+        let plan = self.plan(p.plan_id)?;
+        let release = self.d.releases.iter().find(|r| r.id == v.release_id)?;
+        let sets = self.sets_of(v.id);
+        let rule_sets: Vec<Value> = sets
+            .iter()
+            .map(|s| match &s.firm_platform {
+                Some(fp) => json!({"firm_platform": fp, "rules": without_source_quotes(&s.rules)}),
+                None => json!({"rules": without_source_quotes(&s.rules)}),
+            })
+            .collect();
+        let superseded_by = self.superseded_by(v);
         let mut out = json!({
             "id": v.id, "preset_id": p.id, "firm_id": self.firm.id, "firm_name": self.firm.name,
             "plan_id": plan.id, "plan_name": plan.name, "phase": p.phase,
@@ -580,5 +724,34 @@ impl<'a> FirmView<'a> {
             out["superseded_by"] = json!(s);
         }
         Some(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn source_quotes_are_import_evidence_only() {
+        let rules = json!({"drawdown": {"status": "not_confirmed", "published_values": [
+            {"value": {"amount": "1"}, "sources": [{"url": "https://a.example/x", "accessed_at": "2026-10-20", "quote": "q"}]},
+            {"value": {"amount": "2"}, "sources": [{"url": "https://a.example/y", "accessed_at": "2026-10-20"}]}]}});
+        let out = without_source_quotes(&rules);
+        assert_eq!(
+            out["drawdown"]["published_values"][0]["sources"][0],
+            json!({"url": "https://a.example/x", "accessed_at": "2026-10-20"})
+        );
+        assert_eq!(
+            out["drawdown"]["published_values"][0]["value"],
+            json!({"amount": "1"})
+        );
+        let research = json!({"searched_on": "2026-10-20", "sources": [{"url": "https://a.example", "accessed_at": "2026-10-20", "quote": "q"}]});
+        assert!(
+            research_json(&research)["sources"][0]
+                .get("quote")
+                .is_none()
+        );
     }
 }
