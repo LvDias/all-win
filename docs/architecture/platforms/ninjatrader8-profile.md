@@ -53,7 +53,7 @@ Each fact carries one of these labels:
 | Language features that need .NET Core runtime support may still fail on .NET Framework 4.8. | [INF] |
 | 8.1.2: "Updated Newtonsoft to version 13 … Some custom scripts that reference old versions of Newtonsoft will need the references updated". The exact 13.0.x build is not documented. | [OFF] [8.1.2](https://static.ninjatrader.com/support/helpGuides/nt8/8_1_2.htm), [EXP] |
 | Since 8.1.1 the platform signs in with a NinjaTrader user login instead of license keys. | [OFF-s] 8.1.1 notes, as summarized by the subagent research |
-| NT8 has a DirectX 10 dependency, and staff report crashes on VPS/servers without it. Prefer a Windows 11 VM or PC with GPU acceleration for the test machine. | [OFF] requirements; [SEC] forum |
+| A GPU is "highly recommended", not required. Without one, Windows renders DirectX 10 in software through WARP ([Microsoft WARP](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/directx-warp)). Staff acknowledged "some DirectX errors" on VMs. A GPU-less Windows Server 2022 Desktop Experience VPS is acceptable for compile and Sim/Playback tests; E1/E3 must confirm stability, with a vGPU plan as the fallback. Recommended spec (official): quad core, 8 GB RAM, SSD. Our dev box should have 6–8 vCPU, 16–24 GB RAM and 150–200 GB NVMe [INF]. | [OFF] requirements (checked 2026-10-23); [SEC] forum; [EXP] |
 
 ## 3. Extension types: AddOn vs Strategy vs Indicator
 
