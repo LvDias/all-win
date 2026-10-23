@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.pairing_code SET invalidated_at = $3\n                    WHERE user_id = $1 AND connection_id = $2 AND used_at IS NULL AND invalidated_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0ce384d4b72194f2efa21bf6b78e08206aa39e2044aa7fb3a55101031629a62c"
+}

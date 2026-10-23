@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.invitation (id, email_normalized, locale, token_hash, issued_by, created_at, expires_at)\n                   VALUES ($1, $2, $3, $4, $5, $6, $7)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Bytea",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "519fd2c4abb7b86f224715c742013b866b5f6bb7aba8abadbf5c315fd1a929d8"
+}

@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (\n                 SELECT 1 FROM identity.session\n                  WHERE user_id = $1 AND ip_address = $2::text::inet AND login_at >= $3 AND mfa_state <> 'pending'\n               ) AS \"found!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "found!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "6e879f4ce948725a034bf4984de7f34a79b7dc6ac68b4a003409f114bd86b6df"
+}

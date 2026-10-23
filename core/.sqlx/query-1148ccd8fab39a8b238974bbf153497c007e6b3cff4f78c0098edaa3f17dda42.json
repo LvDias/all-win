@@ -1,0 +1,120 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT s.id, s.user_id, s.source_type, s.name, s.created_at, s.archived_at,\n                      k.key_id AS \"key_id!\", k.created_at AS \"key_created_at!\", k.key_count AS \"key_count!\"\n                 FROM identity.source s\n                 JOIN LATERAL (\n                   SELECT key_id, created_at, count(*) OVER () AS key_count\n                     FROM identity.source_key WHERE source_id = s.id\n                    ORDER BY created_at DESC, id DESC LIMIT 1\n                 ) k ON true\n                WHERE s.user_id = $1 AND ($2 OR s.archived_at IS NULL)\n                ORDER BY s.created_at, s.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.source",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.source",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "source_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.source",
+            "name": "source_type"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.source",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.source",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "archived_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.source",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "key_id!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.source_key",
+            "name": "key_id"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "key_created_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.source_key",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "key_count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "1148ccd8fab39a8b238974bbf153497c007e6b3cff4f78c0098edaa3f17dda42"
+}

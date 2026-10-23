@@ -1,0 +1,22 @@
+[package]
+name = "identity-application"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Identity use cases and ports (V1-S3)."
+
+[lints]
+workspace = true
+
+[dependencies]
+identity-enterprise.workspace = true
+shared-kernel.workspace = true
+async-trait.workspace = true
+chrono = { workspace = true, features = ["clock", "std"] }
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

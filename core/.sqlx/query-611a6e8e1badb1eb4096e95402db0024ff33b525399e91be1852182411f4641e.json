@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.password_reset SET used_at = $2\n                    WHERE id = $1 AND used_at IS NULL AND invalidated_at IS NULL AND expires_at > $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "611a6e8e1badb1eb4096e95402db0024ff33b525399e91be1852182411f4641e"
+}

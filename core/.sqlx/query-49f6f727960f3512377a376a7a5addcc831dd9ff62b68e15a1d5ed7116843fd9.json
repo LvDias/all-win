@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.recovery_code SET used_at = $3\n                    WHERE id = (SELECT id FROM identity.recovery_code\n                                 WHERE user_id = $1 AND used_at IS NULL AND code_hmac = ANY($2)\n                                 LIMIT 1 FOR UPDATE)\n                      AND used_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "ByteaArray",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "49f6f727960f3512377a376a7a5addcc831dd9ff62b68e15a1d5ed7116843fd9"
+}

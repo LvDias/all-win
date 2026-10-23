@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.app_user\n                      SET locale = COALESCE($2, locale), time_zone = COALESCE($3, time_zone), updated_at = now()\n                    WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "61a1afd3c538e44e0e2c9db46f3a8c566a7796441f11cba74298335059444521"
+}

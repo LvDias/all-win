@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.totp_credential SET last_used_step = $2\n                    WHERE user_id = $1 AND enabled_at IS NOT NULL AND (last_used_step IS NULL OR last_used_step < $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "80012873cf54589d8daaae3655e123cc75f0ba014579e7f8bc7a93f916ccb5f0"
+}
