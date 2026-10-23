@@ -396,4 +396,13 @@ describe("RulesForm", () => {
     expect(accountBodies).toHaveLength(0);
     expect(screen.queryByText(/Digite a parte decimal explicitamente/)).not.toBeInTheDocument();
   });
+
+  it("describes a money field by its error and the value it understood (a11y)", async () => {
+    serve();
+    renderApp(<RulesForm accountId={accountId} />);
+    const loss = await screen.findByLabelText("Limite de perda diária, em dólares");
+    const ids = (loss.getAttribute("aria-describedby") ?? "").split(" ");
+    expect(ids).toHaveLength(1);
+    expect(document.getElementById(ids[0] ?? "")).toHaveTextContent("Entendido como US$ 1.000,00");
+  });
 });

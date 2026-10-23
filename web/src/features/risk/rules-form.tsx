@@ -327,7 +327,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
         </CardHeader>
         <CardContent className="grid gap-4">
           <FieldRow id={ids.drawdownAmount} label={t("fields.drawdownAmount")} error={errors.drawdownAmount} help={t("tighterNow")} parsed={understood(drawdownAmount, 2, rules.drawdown?.amount)}>
-            <Input id={ids.drawdownAmount} inputMode="decimal" value={drawdownAmount} onChange={(event) => setDrawdownAmount(event.target.value)} autoComplete="off" aria-invalid={errors.drawdownAmount ? true : undefined} aria-describedby={describedBy(ids.drawdownAmount, errors.drawdownAmount)} />
+            <Input id={ids.drawdownAmount} inputMode="decimal" value={drawdownAmount} onChange={(event) => setDrawdownAmount(event.target.value)} autoComplete="off" aria-invalid={errors.drawdownAmount ? true : undefined} aria-describedby={describedBy(ids.drawdownAmount, errors.drawdownAmount, understood(drawdownAmount, 2, rules.drawdown?.amount))} />
           </FieldRow>
           <FieldRow id={ids.drawdownType} label={t("fields.drawdownType")} error={errors.drawdownType}>
             <Select value={drawdownType} onValueChange={(value) => setDrawdownType(value as DrawdownType)}>
@@ -351,7 +351,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
             </div>
           ) : (
             <FieldRow id={ids.dailyLoss} label={t("fields.dailyLoss")} error={errors.dailyLoss} help={t("looserLater")} parsed={understood(dailyLoss, 2, rules.daily_loss_limit?.amount)}>
-              <Input id={ids.dailyLoss} inputMode="decimal" value={dailyLoss} onChange={(event) => setDailyLoss(event.target.value)} autoComplete="off" aria-invalid={errors.dailyLoss ? true : undefined} aria-describedby={describedBy(ids.dailyLoss, errors.dailyLoss)} />
+              <Input id={ids.dailyLoss} inputMode="decimal" value={dailyLoss} onChange={(event) => setDailyLoss(event.target.value)} autoComplete="off" aria-invalid={errors.dailyLoss ? true : undefined} aria-describedby={describedBy(ids.dailyLoss, errors.dailyLoss, understood(dailyLoss, 2, rules.daily_loss_limit?.amount))} />
             </FieldRow>
           )}
         </CardContent>
@@ -363,7 +363,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
         </CardHeader>
         <CardContent className="grid gap-4">
           <FieldRow id={ids.profitTarget} label={t("fields.profitTarget")} error={errors.profitTarget} parsed={understood(profitTarget, 2, rules.daily_profit_target?.amount)}>
-            <Input id={ids.profitTarget} inputMode="decimal" value={profitTarget} onChange={(event) => setProfitTarget(event.target.value)} autoComplete="off" aria-invalid={errors.profitTarget ? true : undefined} aria-describedby={describedBy(ids.profitTarget, errors.profitTarget)} />
+            <Input id={ids.profitTarget} inputMode="decimal" value={profitTarget} onChange={(event) => setProfitTarget(event.target.value)} autoComplete="off" aria-invalid={errors.profitTarget ? true : undefined} aria-describedby={describedBy(ids.profitTarget, errors.profitTarget, understood(profitTarget, 2, rules.daily_profit_target?.amount))} />
           </FieldRow>
           <fieldset className="grid gap-2">
             <legend className="mb-1 text-sm font-medium">{t("fields.onReach")}</legend>
@@ -399,7 +399,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
         </CardHeader>
         <CardContent className="grid gap-4">
           <FieldRow id={ids.commission} label={t("fields.commission")} error={errors.commission} help={t("commission.help")} parsed={understood(commission, 4, account.commission_per_contract_side)}>
-            <Input id={ids.commission} inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} autoComplete="off" aria-invalid={errors.commission ? true : undefined} aria-describedby={describedBy(ids.commission, errors.commission)} />
+            <Input id={ids.commission} inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} autoComplete="off" aria-invalid={errors.commission ? true : undefined} aria-describedby={describedBy(ids.commission, errors.commission, understood(commission, 4, account.commission_per_contract_side))} />
           </FieldRow>
           {commission.trim() === "" ? <Alert tone="warning">{t("commission.empty")}</Alert> : null}
           <p className="text-xs text-muted-foreground">{t("commission.lowerLater")}</p>
@@ -499,14 +499,19 @@ function stable(value: unknown): string {
   return JSON.stringify(value);
 }
 
-const describedBy = (id: string, error?: string) => (error ? `${id}-error` : undefined);
+/** The error and the "understood as" line, when present, are the field's description. */
+const describedBy = (id: string, error?: string, parsed?: string) => [error ? `${id}-error` : null, parsed ? `${id}-parsed` : null].filter(Boolean).join(" ") || undefined;
 
 function FieldRow({ id, label, error, help, parsed, children }: { id: string; label: string; error?: string; help?: string; parsed?: string; children: ReactNode }) {
   return (
     <div className="grid gap-2">
       <Label htmlFor={id}>{label}</Label>
       {children}
-      {parsed ? <p className="text-xs text-muted-foreground">{parsed}</p> : null}
+      {parsed ? (
+        <p id={`${id}-parsed`} className="text-xs text-muted-foreground">
+          {parsed}
+        </p>
+      ) : null}
       {help ? <p className="text-xs text-muted-foreground">{help}</p> : null}
       {error ? (
         <p id={`${id}-error`} className="text-sm text-status-danger">
