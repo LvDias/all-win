@@ -1,0 +1,25 @@
+[package]
+name = "qa-backend"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# QA-owned black-box tests (QA [Backend]); one test target per module. A target that needs a
+# slice not yet on main is gated by that slice's feature: verification merges this branch at the
+# slice SHA and runs `cargo test -p qa-backend --features <slice>`.
+[features]
+s5 = []
+s6 = []
+s7 = []
+
+[[test]]
+name = "s7_routing"
+required-features = ["s7"]
+
+[dev-dependencies]
+routing-enterprise.workspace = true
