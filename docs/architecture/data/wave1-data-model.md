@@ -1,6 +1,11 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 7; **rev. 7.1 proposed**: step-up `action` = the 8 `StepUpAction` values of HTTP 2.0.0, with `target_id` per action (D1); code-role mapping (D2); shared-browser device rule and `device_key_in_use` (C4). Rev. 7 aligns with HTTP contract 2.0.0: the channel change becomes an entity, `identity.channel_change`, with status, hold and cancellation, and the code roles become `current_value` / `new_value` / `other_channel` (§3, §4.1, §4.3, §6.5, §8, §9). Rev. 6 (Crivo-approved, 539d45e): passwordless sign-in replaces password + TOTP (user requirement change 2026-10-23, Q21/Q22 superseded). It removes `password_hash`, `totp_credential`, `recovery_code` and `password_reset`, and adds verified channels on `app_user`, `signup_code`, `one_time_code`, `code_send_counter` and `known_device` (§3, §4.1, §4.2, §4.3, §6.5, §8, §9). The account is created only when the signup e-mail code is confirmed (S3 AC-2). It ships as a forward migration #2b, `identity_passwordless` (§8). Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
+- **Status:** Accepted (2026-10-23), rev. 7.1; **rev. 8 proposed** (contracts S5 2.1.0, S7 2.2.0, S6 2.3.0 by Compasso; Architect/Code Review pending). Rev. 8 adds:
+  - on `accounts.account`: `firm_name`, `firm_platform`, `*_pending_reason`, the create idempotency key, and the preset-or-manual `CHECK` (§5.2);
+  - `catalog.opt_in_rule_version`, with the generic versions seeded in S5 (§5.1);
+  - `row_version`/`origin`/`copied_at`/`customized` on `account_bracket_profile` (§5.4);
+  - `row_version` on `routing.subscription` (§5.5).
+- Rev. 7.1: step-up `action` = the 8 `StepUpAction` values of HTTP 2.0.0, with `target_id` per action (D1); code-role mapping (D2); shared-browser device rule and `device_key_in_use` (C4). Rev. 7 aligns with HTTP contract 2.0.0: the channel change becomes an entity, `identity.channel_change`, with status, hold and cancellation, and the code roles become `current_value` / `new_value` / `other_channel` (§3, §4.1, §4.3, §6.5, §8, §9). Rev. 6 (Crivo-approved, 539d45e): passwordless sign-in replaces password + TOTP (user requirement change 2026-10-23, Q21/Q22 superseded). It removes `password_hash`, `totp_credential`, `recovery_code` and `password_reset`, and adds verified channels on `app_user`, `signup_code`, `one_time_code`, `code_send_counter` and `known_device` (§3, §4.1, §4.2, §4.3, §6.5, §8, §9). The account is created only when the signup e-mail code is confirmed (S3 AC-2). It ships as a forward migration #2b, `identity_passwordless` (§8). Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
@@ -516,6 +521,41 @@ CREATE TABLE catalog.standard_account_size (             -- 25k, 50k, 100k, 150k
 
 Prop firm presets (`catalog.prop_firm`, `catalog.preset`, `catalog.preset_version`) come with S16 (Wave 2), shaped by the R1 research format. Accounts reserve nullable `firm_id` and `preset_version_id` for them.
 
+**Opt-in rule versions (rev. 8; S5 contract §5.5).** The table exists from S5, because a prop account without a preset chooses against a **generic** version per kind (Q40, provisional). S16 fixes the non-generic shape and adds the foreign keys to firm and preset.
+
+```sql
+CREATE TABLE catalog.opt_in_rule_version (               -- global, no RLS; append-only (published text the user saw)
+  id                uuid PRIMARY KEY,
+  kind              text NOT NULL CHECK (kind IN ('automation','copy')),
+  firm_stance       text NOT NULL CHECK (firm_stance IN ('allowed','forbidden','conditional','unknown','not_confirmed')),
+  is_generic        boolean NOT NULL,
+  firm_id           uuid,                                -- S16: FK to catalog.prop_firm
+  preset_version_id uuid,                                -- S16: FK to catalog.preset_version
+  firm_platform     text CHECK (firm_platform ~ '^[a-z][a-z0-9_]{0,31}$'),  -- when the rule is platform-specific
+  version_number    integer NOT NULL CHECK (version_number >= 1),
+  published_at      timestamptz NOT NULL DEFAULT now(),
+  quotes            jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(quotes) = 'array'),   -- RuleQuote[], validated by the Core
+  research          jsonb CHECK (research IS NULL OR jsonb_typeof(research) = 'object'), -- unknown, not generic
+  change_cause      text CHECK (change_cause IN ('stance_changed','text_changed','not_material')),
+  change_reason     jsonb CHECK (change_reason IS NULL OR jsonb_typeof(change_reason) = 'object'),  -- {"pt-BR": …, "en": …}
+  previous_id       uuid REFERENCES catalog.opt_in_rule_version(id),
+  UNIQUE (id, kind),
+  CONSTRAINT rule_version_generic_check CHECK (NOT is_generic OR (firm_stance = 'unknown' AND quotes = '[]'::jsonb
+             AND research IS NULL AND firm_id IS NULL AND preset_version_id IS NULL AND firm_platform IS NULL)),
+  CONSTRAINT rule_version_firm_check CHECK (is_generic OR firm_id IS NOT NULL),
+  CONSTRAINT rule_version_change_check CHECK ((previous_id IS NULL) = (change_cause IS NULL)),
+  CONSTRAINT rule_version_reason_check CHECK (change_cause IS DISTINCT FROM 'text_changed' OR change_reason IS NOT NULL)
+);
+CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_version (kind, version_number) WHERE is_generic;
+-- Non-generic numbering (per preset selection and kind) gets its unique key in S16.
+-- Grants: allwin_app SELECT, INSERT (publishing goes through the admin use case); no UPDATE/DELETE for anyone at
+-- runtime, so a published text cannot change under a recorded choice. A correction is a new version (change_cause).
+-- The current version of a selection is the highest version_number.
+```
+
+- **S5 seeds** two generic rows, `automation` and `copy`, at version 1, inside migration #5. They hold no text: no quotes, and the UI shows its own generic warning. So the seed has no product content to wait for.
+- `account.automation_rule_version_id` / `copy_rule_version_id` reference this table. A cross-module foreign key to `catalog` is allowed, like `instrument`. That the referenced row has the matching `kind` is a Core rule plus a §9 test; a composite FK would need constant generated columns on `account` for little gain.
+
 ### 5.2 Trading accounts
 
 ```sql
@@ -524,10 +564,12 @@ CREATE TABLE accounts.account (
   user_id           uuid NOT NULL REFERENCES identity.app_user(id),
   display_name      text NOT NULL,
   kind              text NOT NULL CHECK (kind IN ('prop','real')),
-  firm_id           uuid,                                -- prop only; catalog (S16)
-  plan_name         text,
-  phase             text,                                -- [Q-A3] open: list from preset research
+  firm_id           uuid,                                -- prop with a preset; catalog (S16)
+  firm_name         text CHECK (char_length(firm_name) BETWEEN 1 AND 80),  -- prop, manual mode (rev. 8)
+  plan_name         text CHECK (char_length(plan_name) BETWEEN 1 AND 80),  -- manual mode
+  phase             text CHECK (char_length(phase) BETWEEN 1 AND 80),      -- manual mode; [Q-A3] open
   preset_version_id uuid,                                -- S16
+  firm_platform     text CHECK (firm_platform ~ '^[a-z][a-z0-9_]{0,31}$'),  -- with a preset only (rev. 8)
   size_amount       NUMERIC(18,4) NOT NULL CHECK (size_amount > 0),   -- real: any size (Q12)
   currency          char(3) NOT NULL DEFAULT 'USD',
   multiplier        integer NOT NULL DEFAULT 1 CHECK (multiplier BETWEEN 1 AND 1000),
@@ -538,19 +580,33 @@ CREATE TABLE accounts.account (
   automation_state  text NOT NULL DEFAULT 'not_required'
                     CHECK (automation_state IN ('not_required','chosen','pending_review')),  -- opt-in (decision 2026-10-23, A)
   automation_choice text CHECK (automation_choice IN ('accepted','declined')),  -- no default: NULL until the user chooses
-  automation_rule_version_id uuid,                       -- preset version whose rule text the user saw (S16)
+  automation_rule_version_id uuid REFERENCES catalog.opt_in_rule_version(id),  -- the rule text the user saw
+  automation_pending_reason text CHECK (automation_pending_reason IN ('stance_changed','text_changed','preset_attached')),
   automation_chosen_at timestamptz,
   copy_state        text NOT NULL DEFAULT 'not_required'
                     CHECK (copy_state IN ('not_required','chosen','pending_review')),  -- copy opt-in (Q24, approved)
   copy_choice       text CHECK (copy_choice IN ('accepted','declined')),
-  copy_rule_version_id uuid,
+  copy_rule_version_id uuid REFERENCES catalog.opt_in_rule_version(id),
+  copy_pending_reason text CHECK (copy_pending_reason IN ('stance_changed','text_changed','preset_attached')),
   copy_chosen_at    timestamptz,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
   archived_at       timestamptz,                         -- "deleted" (S5 AC-6); history keeps the id
   row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
+  create_idempotency_key uuid,                           -- Idempotency-Key of the create (rev. 8)
+  create_request_hash    bytea CHECK (octet_length(create_request_hash) = 32),  -- SHA-256 of the canonical body, step_up excluded
   UNIQUE (user_id, id),
-  CHECK (kind = 'prop' OR (firm_id IS NULL AND plan_name IS NULL AND phase IS NULL AND preset_version_id IS NULL)),
+  CONSTRAINT account_create_key UNIQUE (user_id, create_idempotency_key),
+  CHECK ((create_idempotency_key IS NULL) = (create_request_hash IS NULL)),
+  CHECK (kind = 'prop' OR (firm_id IS NULL AND firm_name IS NULL AND plan_name IS NULL AND phase IS NULL
+                           AND preset_version_id IS NULL AND firm_platform IS NULL)),
+  -- prop: a preset XOR the three manual fields (S5 contract §2.4); with a preset they come from the catalog
+  CHECK (kind = 'real'
+         OR (preset_version_id IS NOT NULL AND firm_name IS NULL AND plan_name IS NULL AND phase IS NULL)
+         OR (preset_version_id IS NULL AND firm_id IS NULL AND firm_platform IS NULL
+             AND firm_name IS NOT NULL AND plan_name IS NOT NULL AND phase IS NOT NULL)),
+  CHECK ((automation_state = 'pending_review') = (automation_pending_reason IS NOT NULL)),
+  CHECK ((copy_state = 'pending_review') = (copy_pending_reason IS NOT NULL)),
   CHECK (kind = 'prop' OR (automation_state = 'not_required' AND copy_state = 'not_required')),
   -- OptInState: chosen → choice + time set; pending_review → previous choice kept (shown, never preselected)
   -- or NULL if never chosen; not_required → all NULL. choice and chosen_at are set together.
@@ -568,7 +624,13 @@ CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_
 ```
 
 - The bounds `multiplier ≤ 1000` and `max_position_qty ≤ 10000` mirror the structural caps in the contracts (instruction `quantity` ≤ 1000, command `quantity` ≤ 10000). The business limit is the user's value.
-- `firm_id` / `phase` become mandatory for `prop` once S16 exists. Until then a prop account can be saved without a preset, so no `CHECK` yet.
+- **Prop selection (rev. 8):** a preset (`preset_version_id`, with `firm_id` and optional `firm_platform`) **or** the manual `firm_name` / `plan_name` / `phase`, never both. Manual mode covers the time before S16 (Q40) and plans excluded from presets (S16 AC-9). With a preset, firm, plan and phase are read from the catalog, not copied. `size_amount` is always stored, since risk reads it.
+- **Create idempotency (rev. 8):**
+  - The key and request hash stay on the row; there is no separate table. Only a successful create stores them.
+  - A concurrent second request with the same key hits `account_create_key`. The Core then re-reads the row: the same hash replays 200, a different hash gets 409 `accounts.idempotency_key_reused`.
+  - The 24-h window is checked against `created_at`. **To align with the contract:** after 24 h the key is still taken (the UNIQUE never expires), so a late replay gets 409 and never creates a second account. A replay for an account archived since then returns it as it is.
+- **`*_pending_reason`** (Q26, Q41, Q42) is set exactly with `pending_review` and cleared on the next choice.
+- **Generic rule version (Q40):** a manual-mode prop account whose choice is required names the generic version of its kind, so "a choice always names the rule seen" holds before S16.
 - "Max position cannot exceed the preset's" (S5 AC-3) is a domain rule checked against the preset version.
 - **Automation opt-in** (decision 2026-10-23, option A; ADR-0003 §4.1 gate `routing.automation_not_accepted`):
   - Routing reads it through the `accounts` query port. An account accepts automated sources only when `automation_state = 'not_required'`, or when `automation_state = 'chosen'` and `automation_choice = 'accepted'`. A `declined` or `pending_review` account is skipped and audited.
@@ -640,13 +702,27 @@ CREATE TABLE accounts.account_bracket_profile (          -- the account's own co
   stop_distance    NUMERIC(22,10) NOT NULL CHECK (stop_distance > 0),
   target_distance  NUMERIC(22,10) NOT NULL CHECK (target_distance > 0),
   copied_from_size NUMERIC(18,4),                        -- provenance (nearest standard size for real accounts)
+  origin           text NOT NULL CHECK (origin IN ('size_default','nearest_size_default','set_by_user')),  -- rev. 8 (S6 2.3.0)
+  copied_at        timestamptz,                          -- initial copy or last restore
+  customized       boolean NOT NULL DEFAULT false,       -- edited after the copy; false again on restore
+  row_version      integer NOT NULL DEFAULT 1,           -- optimistic concurrency (putAccountProfile)
   updated_at       timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id, instrument_id),
+  CHECK ((origin = 'set_by_user') = (copied_from_size IS NULL)),
+  CHECK ((copied_from_size IS NULL) = (copied_at IS NULL)),
   FOREIGN KEY (user_id, account_id) REFERENCES accounts.account (user_id, id),
   CHECK (distance_unit <> 'ticks' OR (stop_distance = trunc(stop_distance) AND target_distance = trunc(target_distance))),
   CHECK (distance_unit <> 'usd'   OR (stop_distance = round(stop_distance, 4) AND target_distance = round(target_distance, 4)))
 );
 ```
+
+- **Provenance (rev. 8, S6 contract §4):**
+  - A copy (`size_default`, `nearest_size_default`) carries `copied_from_size` and `copied_at`, and `set_by_user` carries neither, matching the contract's `if/then`.
+  - `default_now` is derived, not stored: it is the current `default_bracket_profile` of `copied_from_size`.
+  - Restore sets `copied_at = now()` and `customized = false`. An edit sets `customized = true` and keeps the origin.
+  - **To align:** may a `set_by_user` profile be `customized`? The model allows it; the contract does not say.
+- **No profile (Q43, provisional):** an account created while its size had no default has no row, and routing skips its entries with `routing.no_bracket_profile`. The nearest-size tie rule (Q-S6-7) is a Core/PO rule with no schema impact.
+- USD distances: the contract takes 2 decimals and the `CHECK` keeps 4 as headroom (Q-S6-6).
 
 ### 5.5 Routing configuration (S7)
 
@@ -660,6 +736,7 @@ CREATE TABLE routing.subscription (                      -- source → account, 
                  cardinality(signal_types) >= 1
                  AND signal_types <@ ARRAY['trigger','trade_plan','nq_trigger','master_account']::text[]),
   is_enabled   boolean NOT NULL DEFAULT true,
+  row_version  integer NOT NULL DEFAULT 1 CHECK (row_version >= 1),  -- optimistic concurrency (updateRoute; rev. 8)
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now(),
   UNIQUE (user_id, source_id, account_id)
@@ -668,6 +745,7 @@ CREATE INDEX subscription_source_idx ON routing.subscription (user_id, source_id
 ```
 
 - **Signal filter per (source, account)** (Q-A4 decided, ALIGN-5 accepted; ADR-0003 §4.1 gate `routing.signal_type_not_selected`). Per-account behavior is the special case where the user sets the same filter on every source.
+- The S7 route endpoints accept only `trigger`, `trade_plan` and `nq_trigger`; `master_account` stays in the `CHECK` for S19 follower subscriptions (S7 contract §5). This is a Core validation, with no schema change.
 - Multiplier and max position are read from `accounts` at routing time. Every routing decision **snapshots** the values it used (§6), so the audit trail stays explainable after an edit.
 
 ### 5.6 Risk core (preview for S13–S15; only `max_position_qty` is needed by S5–S7)
@@ -1038,9 +1116,9 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 2b | `identity_passwordless` (rev. 6): drops the password/TOTP/recovery/reset objects and adds channels, `known_device`, `signup_code`, `channel_change`, `one_time_code`, `code_send_counter` and the new session columns; see below | S3 (Brasa); version stamped after the latest merged migration |
 | 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
-| 5 | `accounts_create_account`: `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6) | before M1, so seeds use real tables |
+| 5 | `accounts_create_account`: `catalog.opt_in_rule_version` + the 2 generic seed rows, `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6). Rev. 8 columns go in directly, since #5 is not written yet | before M1, so seeds use real tables |
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
-| 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` | M1 / S7 |
+| 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` (with `row_version`, rev. 8) | M1 / S7 |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
@@ -1104,6 +1182,23 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - `delivery_state` (rev. 6): a channel-change send suppressed by a clash and one to a free value both end `sent`, and the clash writes no `auth.code_delivery_failed`; a resend resets it to `pending`; a failed send of a registered user writes `auth.code_delivery_failed`;
    - `code_send_counter` (rev. 6): a registered and an unregistered identifier hit the limit at the same count; concurrent upserts never lose a send; no column holds the address;
    - a choice without `*_rule_version_id` fails;
+   - rev. 8, `account`:
+     - a prop account with a preset and `firm_name`, a prop account with neither, and a manual one missing `phase` all fail;
+     - a real account with `firm_platform` fails;
+     - `pending_review` without `*_pending_reason`, and a reason with `chosen`, fail;
+     - the same `create_idempotency_key` twice for one user fails, and for two users passes;
+     - a key without a hash fails;
+   - rev. 8, `opt_in_rule_version`:
+     - a generic row with quotes, a firm or a non-`unknown` stance fails;
+     - a second generic version 1 of the same kind fails;
+     - `text_changed` without `change_reason` fails;
+     - `allwin_app` cannot `UPDATE` or `DELETE`;
+     - an account's `automation_rule_version_id` pointing to a `copy` row is rejected by the Core;
+   - rev. 8, `account_bracket_profile`:
+     - `set_by_user` with `copied_from_size` fails;
+     - a copy without `copied_at` fails;
+     - a stale `row_version` updates 0 rows;
+   - rev. 8, `subscription`: a stale `row_version` updates 0 rows;
    - decimal round-trip at maximum scale (`NUMERIC(22,10)`, `NUMERIC(18,4)`) through sqlx `rust_decimal`.
 3. The RLS lint test (§3) runs in CI.
 4. The Q13 §9 size measurement on 1 M synthetic audit rows.
