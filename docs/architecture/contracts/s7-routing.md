@@ -16,7 +16,7 @@
 
 SSE: `route.changed` (create, update, delete). Status changes caused by the account, the opt-in, sync, risk or the connection arrive as `account.changed` / `connection.status_changed`; the client then refetches `listRoutes`.
 
-Step-up (3.0.0, QA Security M1; superset pending the user with Q35, Core setting, default on): `createRoute` / `updateRoute` need `step_up` (action `route_enable`, target = the account) when a route from an automated source is switched on for an account whose automation was not accepted with a step-up (a real account, or an opt-in that is `not_required`). Otherwise a stolen session could start automated trading without a fresh code. Follower routes with the copy choice (`account_opt_in_accept`, target = the follower) come with S19 (V1.1).
+Step-up (3.0.0, QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on, server configuration only, missing/invalid = on): `createRoute` / `updateRoute` need `step_up` (action `route_enable`, target = the account) when a route from an automated source is switched on for an account whose automation was not accepted with a step-up (a real account, or an opt-in that is `not_required`). Otherwise a stolen session could start automated trading without a fresh code. Follower routes with the copy choice (`account_opt_in_accept`, target = the follower) come with S19 (V1.1).
 
 ## 2. Decisions
 
@@ -30,17 +30,16 @@ Step-up (3.0.0, QA Security M1; superset pending the user with Q35, Core setting
    - `connection_disconnected`;
    - `out_of_sync`;
    - `risk_blocked` (from S14);
-   - `no_bracket_profile` (S6, Q43 provisional; + `instrument_ids`: profiles are per account × instrument);
+   - `no_bracket_profile` (S6, Q43; + `instrument_ids`: profiles are per account × instrument);
    - `limits_pending` (ADR-0006: the account's limits are not yet derived; entries only);
    - `route_disabled`.
 
    `blocks` is fixed per code: `entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`; `all_actions` otherwise. `connection_disconnected` covers every connection status other than `connected`.
 
    The skip audit uses the gate codes of ADR-0003 §4.1. The enum may grow in a minor version, and clients show a generic text for an unknown code.
-4. **What blocks creation:** only `automation_not_accepted` (automated source) and `platform_unbound` (provisional, Q37). Every other reason, paused accounts included, only affects `status_if_routed`. Manual-only accounts are never candidates (S7 AC-7b) and are listed apart, with the preset's reason (empty before S16).
+4. **What blocks creation:** only `automation_not_accepted` (automated source) and `platform_unbound` (Q37). Every other reason, paused accounts included, only affects `status_if_routed`. Manual-only accounts are never candidates (S7 AC-7b) and are listed apart, with the preset's reason (empty before S16).
 5. **Inactive routes are kept (Q-S7-2).** A route whose account declined automation stays saved, with its reason.
-   - Turning it on is allowed today: it is saved, and its status still shows the reason.
-   - Q67 (with the user), provisional option (b): switching on would be refused with 422 (reserved on `updateRoute`, `/is_enabled`), and the Core would switch routes off when their account becomes ineligible. Clients already handle that 422, so (b) needs no breaking change.
+   - Q67 (b, decided; 3.5.0): switching on is refused with 422 while the account is ineligible (`/is_enabled`), and the Core switches the routes off when their account becomes ineligible (audited `routing.subscription_changed`, cause `account_ineligible`). They stay off when it becomes eligible again, until the user switches them on.
 6. **Live status (3.0.0, S7-1):** `route.changed` (`cause: status`) is sent whenever any route's effective status changes, whatever the cause.
 7. **Revoked sources (Q-S7-3):** their routes are listed and are read-only. `updateRoute` and `deleteRoute` get 409 `routing.source_revoked`.
 8. **Disconnected connection (Q-S7-5):** configuration is allowed; the status shows `routing.connection_disconnected`.
@@ -58,7 +57,7 @@ Step-up (3.0.0, QA Security M1; superset pending the user with Q35, Core setting
 | `routing.account_unknown` | 422 | `/account_id` | create |
 | `routing.account_manual_only` | 422 | `/account_id` | create |
 | `routing.automation_not_accepted` | 422 | `/account_id` | create |
-| `routing.platform_unbound` | 422 | `/account_id` | create (provisional, Q37) |
+| `routing.platform_unbound` | 422 | `/account_id` | create (Q37) |
 
 ## 4. Audit
 
@@ -68,3 +67,8 @@ Step-up (3.0.0, QA Security M1; superset pending the user with Q35, Core setting
 
 - `routing.subscription.row_version integer NOT NULL DEFAULT 1` (optimistic concurrency).
 - `signal_types` for these routes are limited to `trigger`, `trade_plan`, `nq_trigger`; `master_account` stays for S19 follower subscriptions.
+
+## 6. 4.0.0 (written as 3.5.0)
+
+- Q67 (b) is decided and active (see §2.5).
+- Q35 is decided with the setting on: the `route_enable` step-up is required.

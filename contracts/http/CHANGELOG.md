@@ -1,5 +1,47 @@
 # HTTP API — changelog
 
+## 4.3.0 — 2026-10-23 (S3 audit codes; additive)
+- Audit codes `security.invitation_issued` (`invitation_id`, `masked_email`, `email_sent`), `security.invitation_revoked`, `security.account_created` (`DetailsSecurityInvitation`), category `security` (Esquadro, from the S3 implementation).
+- `KnownAuditCode` states the category of each code family (e.g. `sources.*` / `connections.*` → config, `connection.status_changed` → connection, `security.*` → security).
+
+## 4.2.1 — 2026-10-23 (text only)
+- `Trade.commission`: the allocation of a fill shared by several trades (flip, FIFO partial close) follows the exact protocol 1.3 rule: pro rata by quantity, 4 decimals half away from zero, remainder to the trade allocated last. `pnl` = `gross_pnl` − `commission`.
+- Manual trades: the floor used for a blank commission is the EFFECTIVE floor at save time, as derived by risk (data model 15.1); a pending lowered floor is not used early (Crivo note).
+- Notes (s21): a manual trade with `commission_source: configured` is labelled "estimada" (S21 AC-7, Q71); it is derivable, with no new field.
+
+## 4.2.0 — 2026-10-23 (Q71 decided; no schema change)
+- Manual trades: a blank `commission` is computed by the Core with the ADR-0004 §7 per-fill rule on both sides: floor × quantity × 2 (`configured`), or 0 with no floor (`none`, "comissões não informadas"). The floor in force at save time is used, with no later recompute. `previewManualTrade` returns the value, and a typed commission overrides it (`manual`).
+- Notes: s13 wording `none` = not reported and no floor (Crivo nit).
+
+## 4.1.0 — 2026-10-23 (Code Review of 4.0.0; additive)
+- F1: a lower (or removed) `commission_per_contract_side` applies from the next trading day (it loosens net limits; ADR-0006 §3.7, ADR-0004 §7); a higher one at once. New optional `AccountRisk.pending_commission_change` (`effective_from`, `new_commission_per_contract_side`, `change`: `commission_floor_lowered` / `commission_floor_removed`).
+- QA Security (low, same as F1): in `updateAccount`, an absent `commission_per_contract_side` now means unchanged (exception to the full replacement), and `null` removes the floor explicitly. The removal applies from the next trading day and is audited.
+- F2: `CommissionSource` uses the same per-fill sentence as adapter protocol 1.3 `fill.commission` / ADR-0004 §7: `platform` when reported ≥ floor × quantity (it won); `configured` when the floor won (reported lower, zero, or absent with a floor); `none` when absent and no floor.
+
+## 4.0.0 — 2026-10-23 (BREAKING: re-release of 3.5.0 as a major; + Connection.disconnect_reason)
+- **Versioning (Esquadro, ADR-0002 §4 / U18):** `Trade.pnl`, `TradesSummary.total_pnl` and the performance P&L figures change meaning from gross to net. A client that reads only `pnl` would show another number, so this is breaking: document major, paths stay `/api/v1`. The content of 3.5.0 (2778318, never merged or consumed) is unchanged; its "minor" reasoning is withdrawn.
+- Root (Esquadro): `Connection.disconnect_reason` and optional `disconnect_reason` on the SSE `connection.status_changed` (`user`, `network`, `outdated`, `unpaired`; adapter protocol 1.3, close 4100; ADR-0004 §6).
+- Name mapping to adapter protocol 1.3 (confirmed): `trade_completed.net_pnl` / `gross_pnl` / `commission` → HTTP `pnl` (net) / `gross_pnl` / `commission`; HTTP `commission_source` adds `manual` (manual trades only); `commission_per_contract_side` has the same name; `limits.evaluation` (protocol) and `AccountRisk.evaluation` (HTTP) are different views of the same data.
+
+## 3.5.0 — 2026-10-23 (user decisions: net P&L, commission floor, evaluation target; Q37–Q68 decided)
+- **Versioning:** (superseded by 4.0.0: re-released as a major) minor. `Trade.pnl`, the summary and the performance figures keep their shapes. `pnl_basis` already qualified `pnl`, and it gains the value `net`, now the only one sent. New fields are added. The meaning of `pnl` is therefore declared by `pnl_basis` (ADR-0002 §4; recorded for Esquadro and Crivo).
+- **Net P&L as the main value** (S21 AC-1, S22 AC-3, S13 AC-2 rev. 8):
+  - `Trade`: `gross_pnl`, `commission`, `commission_source` (`platform` / `configured` / `mixed` / `manual` / `none`).
+  - Manual trades take an optional `commission`; the preview takes it too.
+  - `TradesSummary` and `PerformanceFigures`: `total_gross_pnl`, `total_commission`, `uncommissioned_count`. A win needs net P&L > 0.
+  - `AccountRisk`: `pnl_basis`, `commission_source`, `commissions_today`.
+  - Audit `DetailsTrade` carries the gross P&L and the commission.
+- **Commission floor (U20 a):** `commission_per_contract_side` on the account (create, update, response) and as a preset rule (`CommissionRule`, `RuleField`, apply choices).
+- **Evaluation target (Q46, S13b; Q69 a, Q70 a):**
+  - preset rule `evaluation_profit_target` (also in `RiskRules` and `PresetRuleValues`);
+  - account `evaluation_start` + `evaluation_earned_before` (create);
+  - `restartEvaluation`;
+  - `AccountRisk.evaluation`;
+  - codes `risk.evaluation_target_reached` (audit + notification registry, `success`) and `accounts.evaluation_restarted`; SSE `risk.state_changed.reason: evaluation_progress`.
+- **Q67 (b) active:** `updateRoute` refuses switching on an ineligible route (422, `/is_enabled`); the Core switches routes off when their account becomes ineligible (audit `cause: account_ineligible`).
+- **Q35 decided** (setting on): the `route_enable` / `account_binding_change` step-ups are required; module texts updated.
+- "Provisional" marks for Q37–Q68 removed (decided 2026-10-23e).
+
 ## 3.4.1 — 2026-10-23 (review notes on 3.4.0; text only)
 - `getPerformance`: a foreign or unknown `account_id` matches nothing (empty figures, never 404); two-user isolation test required (QA Security info).
 - Rounding stated as half away from zero (negative averages); `bar_ratio` is `0.0000` when the largest |total_pnl| is 0 (Crivo N1, N2).

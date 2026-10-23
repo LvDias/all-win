@@ -3,7 +3,7 @@
 - **Status:** proposed (2026-10-23), for Code Review. Owner: Software Architect (Compasso). Written as 2.1.0 and released as **3.0.0** together with the Code Review fixes (ADR-0002 §4: a breaking change before the first deploy bumps the document major). Applies on top of 2.0.0 (passwordless, Esquadro).
 - **Contract:** [`contracts/http/modules/accounts.yaml`](../../../contracts/http/modules/accounts.yaml) and the S5 part of [`modules/presets.yaml`](../../../contracts/http/modules/presets.yaml), bundled into `openapi.bundled.yaml`.
 - **Inputs:** slice-plan rev. 7, V1-S5 AC-1…AC-11 · design spec `v1-s5-automation-opt-in.md` rev. 3b §14/§17 · [s5-design-deltas.md](s5-design-deltas.md) D1–D16 (still valid) · [wave1-data-model.md](../data/wave1-data-model.md) §5.2–§5.3 · auth policy rev. 2 §6 (step-up).
-- **Provisional:** everything that depends on Q37–Q42 (user questions, slice-plan §7) follows the PO recommendation and is marked "provisional" in the contract. If the user decides otherwise, the affected parts change in a minor version.
+- **Decided (2026-10-23e):** Q37–Q42 follow the PO recommendation (user decision); the "provisional" marks were removed in 3.5.0. Before that, if the user decides otherwise, the affected parts change in a minor version.
 
 ## 1. Operations
 
@@ -31,7 +31,7 @@ SSE (`/api/v1/events`): `account.changed` (any change the user sees, so the clie
    - Only a success consumes the key, so the retry after a step-up works.
 3. **Binding by natural key** `{connection_id, platform_account}` (`UNIQUE (connection_id, platform_account)` in `gateway.venue_account`). `VisibleAccount` does not change. Its `account_id` plus the account list give the "already bound to {name}" text without another call.
 4. **Prop selection:** either `preset_version_id` (+ `firm_platform`) or the four manual fields `firm_name`, `plan_name`, `phase`, `size_amount`. Manual mode covers the time before S16 (Q40) and the plans that are excluded from presets (S16 AC-9). With a preset, firm, plan, phase and size come from the preset version.
-5. **Generic rule version (provisional, Q40):** a prop account without a preset uses a global generic rule version per kind (`RuleVersion.is_generic`, stance `unknown`, no quotes). Its choice is required (Q25), and `rule_version_id` keeps naming the rule the user saw, so the data-model invariant "a choice always names the rule seen" holds before S16.
+5. **Generic rule version (Q40):** a prop account without a preset uses a global generic rule version per kind (`RuleVersion.is_generic`, stance `unknown`, no quotes). Its choice is required (Q25), and `rule_version_id` keeps naming the rule the user saw, so the data-model invariant "a choice always names the rule seen" holds before S16.
 6. **`OptInState` changes (2.1.0, now owned by `modules/accounts.yaml`):**
    - `firm_stance` and `current_rule_version_id` are optional (absent only for real accounts);
    - new `pending_reason` ∈ `stance_changed` / `text_changed` / `preset_attached`, required exactly with `pending_review` (Q26, Q42, Q41).
@@ -40,7 +40,7 @@ SSE (`/api/v1/events`): `account.changed` (any change the user sees, so the clie
 8. **Q42 — material text change:** `RuleVersion.change` carries `cause` (`stance_changed` / `text_changed` / `not_material`), the previous version and stance, and a bilingual `reason` written by the publisher (required for `text_changed`). Only `stance_changed` and `text_changed` suspend.
 9. **Q-S5-3 (PO: yes):** a published rule version with a suspending cause moves `chosen` accounts to `pending_review` even before the user applies the new preset version to the account (S16 AC-3).
 10. **Schema errors stay 400.** A fractional multiplier, a size with more than 2 decimals, a zero size or a blank name get 400 `common.invalid_request` with the pointer. The spec's `accounts.multiplier_invalid` is not needed: the UI maps the pointer.
-11. **Profile size tie (Q60, provisional option c):** a real account copies the default of the nearest standard size. Distance is the absolute difference; below 25k the Core uses 25k, above 300k it uses 300k. On an exact tie the Core does not choose: `getNearestProfileSize` (S6) returns both candidates, and `createAccount` then requires `profile_size` (422 `accounts.profile_size_required` / `accounts.profile_size_invalid`). If the user decides (a) smaller or (b) larger, the candidate list has one entry and the contract does not change.
+11. **Profile size tie (Q60 option c):** a real account copies the default of the nearest standard size. Distance is the absolute difference; below 25k the Core uses 25k, above 300k it uses 300k. On an exact tie the Core does not choose: `getNearestProfileSize` (S6) returns both candidates, and `createAccount` then requires `profile_size` (422 `accounts.profile_size_required` / `accounts.profile_size_invalid`). If the user decides (a) smaller or (b) larger, the candidate list has one entry and the contract does not change.
 12. **3.0.0 review fixes (Crivo, 2.4.0):**
    - `updateAccount` requires `opt_ins.automation` only when that request changes the automation rule version; `copy` is never required there (S5-1).
    - `setAccountOptIn` is idempotent for the same choice and version (no step-up on the no-op).
@@ -48,7 +48,7 @@ SSE (`/api/v1/events`): `account.changed` (any change the user sees, so the clie
    - `AccountUpdateRequest` mirrors the create rules: preset XOR manual, `size_amount` without a preset.
    - `SizeAmount` refuses zero by pattern.
    - Response schemas are deliberately looser than the data-model `CHECK`s; the Core never returns a row that breaks them.
-   - Step-up (QA Security L1; superset pending the user with Q35): changing the binding of an account that receives automation needs action `account_binding_change` (target = account).
+   - Step-up (QA Security L1; Q35 decided 2026-10-23, setting on): changing the binding of an account that receives automation needs action `account_binding_change` (target = account).
 13. **Isolation:** another user's account or connection is indistinguishable from a non-existent one (404 `common.not_found`; 422 `accounts.platform_account_unknown`). `accounts.platform_account_taken` (409) is only ever about the caller's own accounts.
 
 ## 3. Error codes (for the UI and i18n)
@@ -59,7 +59,7 @@ SSE (`/api/v1/events`): `account.changed` (any change the user sees, so the clie
 | `common.version_conflict` | 409 | — | update, lifecycle |
 | `accounts.name_taken` | 409 | `/display_name` | create, update |
 | `accounts.platform_account_taken` | 409 | `/binding` | create, update |
-| `accounts.binding_open_position` | 409 | `/binding` | update (provisional, Q38) |
+| `accounts.binding_open_position` | 409 | `/binding` | update (Q38) |
 | `accounts.rule_version_changed` | 409 | — (+ `error.current_rule_version_id`) | create, update, setAccountOptIn |
 | `accounts.delete_open_position` | 409 | — | archive |
 | `accounts.lifecycle_transition_invalid` | 409 | — | lifecycle |
@@ -70,7 +70,7 @@ SSE (`/api/v1/events`): `account.changed` (any change the user sees, so the clie
 | `accounts.firm_platform_required` / `accounts.firm_platform_unknown` | 422 | `/firm_platform` (`/query/firm_platform` on getOptInRules) | create, update, getOptInRules |
 | `accounts.platform_account_unknown` | 422 | `/binding` | create, update |
 | `accounts.platform_account_kind_not_allowed` | 422 | `/binding` | create, update |
-| `accounts.profile_size_required` / `accounts.profile_size_invalid` | 422 | `/profile_size` | create (real account, tie; provisional, Q60) |
+| `accounts.profile_size_required` / `accounts.profile_size_invalid` | 422 | `/profile_size` | create (real account, tie; Q60) |
 | `auth.step_up_required` / `auth.code_invalid` / `common.forbidden_origin` | 403 | — | the step-up operations (`StepUpFailed`) |
 
 Q-S5-13: `accounts.platform_unbound` is a **routing** reason (an unbound account is not routable), not an S5 write error. It is defined with the S7 reason codes.
@@ -102,3 +102,9 @@ They are written in the same transaction as the change, through `app.outbox`. Th
 - Profile provenance (`copied_from_size`) and the "initial profile: nearest standard size" line → S6 contract.
 - Catalog (firms, plans, presets, preset versions, diff, apply): done in 2.5.0 ([S16 notes](s16-presets.md)). `getOptInRules` and `getRuleVersion` are unchanged. `createAccount` / `updateAccount` gained `rule_values`, and applying a newer version of the same preset moved to `applyPresetVersion`.
 - The follower flow with the copy choice → S7/S19.
+
+## 7. 4.0.0 (written as 3.5.0) additions
+
+- `commission_per_contract_side` (optional, USD per contract and side): the commission floor (U20 a), prefilled from the preset and editable, in create, update and the response. In `updateAccount` it is the one exception to the full replacement: absent = unchanged, `null` = remove (4.1.0, QA Security). A lower or removed floor applies from the next trading day.
+- `evaluation_start` + `evaluation_earned_before` on create (S13b). Later changes go through `restartEvaluation`, not `updateAccount`.
+- Q35 decided 2026-10-23 with the setting on: the step-up of `account_binding_change` is required. Q37–Q42 are decided, and the "provisional" marks were removed.

@@ -239,6 +239,9 @@ components:
         - security.channel_change_not_completed
         - security.device_forgotten
         - security.signed_out_everywhere
+        - security.invitation_issued
+        - security.invitation_revoked
+        - security.account_created
         - accounts.created
         - accounts.updated
         - accounts.archived
@@ -255,6 +258,8 @@ components:
         - risk.limit_reached
         - risk.target_reached
         - risk.consistency_warning
+        - risk.evaluation_target_reached
+        - accounts.evaluation_restarted
         - trades.captured
         - trades.manual_created
         - trades.manual_changed
@@ -264,6 +269,12 @@ components:
         Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
         auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
         `sync.*` (S11), `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
+        Category by code family (the `category` of each entry): `ingress.*` → ingress; `routing.*` →
+        routing, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →
+        execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →
+        connection (a plugin restart is a `connection.status_changed` with `previous_status`);
+        `security.*` → security; `sources.*`, `connections.*`, `accounts.*`, `profiles.*`, `presets.*`
+        and `trades.manual_*` → config; `trades.reconcile_mismatch` → execution.
     AuditEntry:
       type: object
       additionalProperties: false
@@ -639,6 +650,10 @@ components:
         signal_types: { type: array, items: { $ref: 'routing.yaml#/components/schemas/SignalType' } }
         previous_is_enabled: { type: boolean }
         is_enabled: { type: boolean }
+        cause:
+          type: string
+          enum: [user, account_ineligible]
+          description: '`account_ineligible` — the Core switched the route off because its account became ineligible for the source (Q67 b).'
     DetailsProfileChanged:
       type: object
       additionalProperties: false
@@ -779,7 +794,7 @@ components:
         limits_version: { type: integer, minimum: 1 }
         effective:
           type: array
-          description: When each changed rule applies (Q48, provisional).
+          description: When each changed rule applies (Q48).
           items:
             type: object
             additionalProperties: false
@@ -812,7 +827,12 @@ components:
         entry_price: { $ref: '#/components/schemas/Price' }
         exit_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         exit_price: { $ref: '#/components/schemas/Price' }
-        pnl: { $ref: '#/components/schemas/Money' }
+        pnl:
+          description: Net (main value from 3.5.0).
+          $ref: '#/components/schemas/Money'
+        gross_pnl: { $ref: '#/components/schemas/Money' }
+        commission: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        commission_source: { $ref: 'trades.yaml#/components/schemas/CommissionSource' }
         mae: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
         mfe: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
     DetailsTradeChanged:
@@ -832,6 +852,30 @@ components:
         mismatch: { type: string, enum: [unknown_fills, pnl_differs, quantity_differs] }
         plugin_pnl: { $ref: '#/components/schemas/Money' }
         fills_pnl: { $ref: '#/components/schemas/Money' }
+    DetailsEvaluation:
+      type: object
+      additionalProperties: false
+      required: [profit_target, achieved, start]
+      description: '`risk.evaluation_target_reached` (notify only, Q70) and `accounts.evaluation_restarted` (with the previous start and earned-before).'
+      properties:
+        start: { type: string, format: date }
+        previous_start: { type: string, format: date }
+        earned_before: { $ref: '#/components/schemas/Money' }
+        previous_earned_before: { $ref: '#/components/schemas/Money' }
+        profit_target: { $ref: '#/components/schemas/Money' }
+        achieved: { $ref: '#/components/schemas/Money' }
+    DetailsSecurityInvitation:
+      type: object
+      additionalProperties: false
+      required: [invitation_id]
+      description: |
+        `security.invitation_issued` (the admin's trail; with `masked_email` and `email_sent`),
+        `security.invitation_revoked`, and `security.account_created` (the new user's log: the
+        invitation that created the account). Never an unmasked address or the invitation token.
+      properties:
+        invitation_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        masked_email: { $ref: '#/components/schemas/MaskedChannelValue' }
+        email_sent: { type: boolean, description: Whether the invitation e-mail was handed to the mail provider. }
     AuditDetailsByCode:
       type: object
       additionalProperties: false
@@ -895,6 +939,9 @@ components:
         security.channel_change_not_completed: { $ref: '#/components/schemas/DetailsSecurityChannelChange' }
         security.device_forgotten: { $ref: '#/components/schemas/DetailsSecurityDevice' }
         security.signed_out_everywhere: { $ref: '#/components/schemas/DetailsEmpty' }
+        security.invitation_issued: { $ref: '#/components/schemas/DetailsSecurityInvitation' }
+        security.invitation_revoked: { $ref: '#/components/schemas/DetailsSecurityInvitation' }
+        security.account_created: { $ref: '#/components/schemas/DetailsSecurityInvitation' }
         accounts.created: { $ref: '#/components/schemas/DetailsAccountChange' }
         accounts.updated: { $ref: '#/components/schemas/DetailsAccountChange' }
         accounts.archived: { $ref: '#/components/schemas/DetailsAccountChange' }
@@ -911,6 +958,8 @@ components:
         risk.limit_reached: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.target_reached: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.evaluation_target_reached: { $ref: '#/components/schemas/DetailsEvaluation' }
+        accounts.evaluation_restarted: { $ref: '#/components/schemas/DetailsEvaluation' }
         trades.captured: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_created: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_changed: { $ref: '#/components/schemas/DetailsTradeChanged' }

@@ -34,7 +34,7 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
    - `command_sent`, `bracket_calculated`;
    - `order_received`, `order_working`, `partially_filled`, `filled`, `cancelled`, `rejected`, `expired`, `state_unknown`;
    - `fill_corrected` (a `fill.operation` of `amend` / `remove`).
-4. **New routing decision codes** named here: `routing.routed` (a full-quantity decision) and `routing.no_bracket_profile` (provisional, Q43). `routing.quantity_capped` keeps the spec's name, for the `capped` decision.
+4. **New routing decision codes** named here: `routing.routed` (a full-quantity decision) and `routing.no_bracket_profile` (Q43). `routing.quantity_capped` keeps the spec's name, for the `capped` decision.
 5. **Typed `details`:** `AuditDetailsByCode` is a type map (code → schema); the client types `details` by `code`. Money, prices and distances are decimal strings, and the UI does no arithmetic. `execution.bracket_calculated` carries the S6 AC-4 adjustment (requested distance, whole ticks, rounded flags, resulting prices).
 6. **`safe_to_display`:** the raw `details` JSON appears under "technical data" only when the Core marks it safe. The catalog's rendered fields are always shown. Secrets never reach `details` (redaction + the storage `CHECK`).
 7. **Exits:** `is_exit` on routing and execution entries lets the text say "saída" (spec §7 rule) without the client knowing the action rules.
@@ -62,3 +62,11 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
 
 - **Esquadro (S3), done:** the 14 `security.*` codes and their `details` (`DetailsSecurity*`) are in `KnownAuditCode` / `AuditDetailsByCode`. Masked values always contain `*`; no code, challenge, token, cookie, or unmasked e-mail or number.
 - **S11 / S13–S15 / S18 contracts:** `sync.*`, `risk.*`, `notifications.*`, same procedure.
+
+## 5. 4.3.0 additions (Esquadro, from the S3 implementation)
+
+- `security.invitation_issued` (`invitation_id`, `masked_email`, `email_sent`; the admin's trail), `security.invitation_revoked`, and `security.account_created` (the new user's log), all in category `security`.
+- The category of each code family is stated in `KnownAuditCode`:
+  - `sources.*`, `connections.*` → config;
+  - `connection.status_changed` → connection (a plugin restart is a `connection.status_changed` with `previous_status`);
+  - `security.*` → security.
