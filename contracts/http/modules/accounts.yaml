@@ -576,7 +576,7 @@ components:
         evaluation_start:
           type: string
           format: date
-          description: Accounts with an evaluation target only (Q46, S13b; Q69 a) — the day the evaluation count starts; default the registration date in the user's time zone. Invariant — an account with an evaluation target always has an `evaluation_start`; when an existing account gains a target (selection or preset change, `applyPresetVersion`, a rule edit), the Core sets a missing start to the same default in that transaction. Sent for an account without an evaluation target → 422 `accounts.evaluation_not_applicable`. Later changes only through `restartEvaluation`.
+          description: Accounts with an evaluation target only (Q46, S13b; Q69 a) — the day the evaluation count starts; default the registration date in the user's time zone. Invariant — an account with an evaluation target always has an `evaluation_start`; when an existing account gains a target (selection or preset change, `applyPresetVersion`, a rule edit), the Core sets a missing start to the same default in that transaction; that is a rule-input change, so it bumps `account.limits_version` and emits `account.limits_changed` (ADR-0006 §3.1). Sent for an account without an evaluation target → 422 `accounts.evaluation_not_applicable`. Later changes only through `restartEvaluation`.
         evaluation_earned_before:
           description: Net profit already made in this evaluation before `evaluation_start` (optional; counts toward the target). Accounts with an evaluation target only (else 422 `accounts.evaluation_not_applicable`).
           $ref: 'presets.yaml#/components/schemas/MoneyAmount'

@@ -93,3 +93,9 @@ Step-up (3.0.0, QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_per
   - already on the reverse side → `routing.position_conflict` (rejected and notified, never a flatten).
 
   A reverse never opens on a barred account.
+
+## 9. 5.1.0
+
+- An open leg of a `reverse` with an opposite position that expires **at routing** (the decision sees the TTL exceeded, e.g. a late webhook) closes only: the close leg runs (exits never expire), and the open is skipped with `routing.expired`. Outcome `capped` (audit `partial`), `reverse_closed_qty`, notification `routing.reverse_close_only` with `reason_code: routing.expired`. Flat → outcome `expired`. Already on the reverse side → `routing.position_conflict`, since the position check comes first. ADR-0003 gets the same sentence in Esquadro's next delta.
+- An open leg that expires **later, in the gateway queue** (connection down, close executed on reconnect) is not a routing decision. The decision stays `routed`, and ADR-0004 §5 applies to the command as it stands: `expired`, audited as `execution.expired`, and the account is flagged out of sync. Whether a reverse whose close just ran is exempt from the flag, and whether it gets `routing.reverse_close_only`, is Esquadro's next ADR-0004 delta (Crivo R1 on 5.1.0).
+- `reverse_closed_qty` / `closed_qty` = abs(position) read at the decision: the quantity the close leg is sent to flatten. The executed result is in the execution entries.

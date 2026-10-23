@@ -1,6 +1,6 @@
 {
   "$comment": "Notification registry v1 (V1-S18). Single source of codes for the Web (HTTP modules/notifications.yaml) and the plugin (adapter protocol 1.3). Owner: Software Architect (Compasso). params names a $defs entry of params.schema.json, which check_openapi.py generates from the HTTP bundle (NotificationParamsByCode). Texts live in each client's pt-BR/en catalog; drift test: every code has a key in both languages in both clients.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "params_schema": "params.schema.json",
   "severities": [
     "info",
@@ -77,7 +77,7 @@
       "grouping": "none",
       "target": "instruction",
       "params": "ParamsReverseCloseOnly",
-      "rule": "Q74: always sent, one per occurrence, for every gate including routing.limits_pending; replaces the gate's grouped notification for that occurrence"
+      "rule": "Q74: always sent, one per occurrence, for every gate including routing.limits_pending, and for an open leg that expired (routing.expired, 5.1.0); replaces the gate's grouped notification for that occurrence"
     },
     "risk.warning": {
       "category": "risk",
