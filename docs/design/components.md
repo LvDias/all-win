@@ -211,7 +211,7 @@ Rules: an `EmptyState` is never shown while loading (use `Skeleton`) or on error
 | `panel` | `NotificationBell` popover | Compact: severity icon, title, **one-line** body (truncated, full text in the title attribute and the list), account name, relative time, unread dot. The whole row is the link. No secondary action |
 | `card` | list page | Severity icon, title, one or two lines of body, account link, absolute date-time with seconds and zone, group count `×3` and "última às {time}", `Nova`/`Não lida` text badge when unread. Actions: `Ver detalhes` (link) and `Marcar como lida` (ghost button; for read items the text "Lida", no action) |
 
-**Data (all from the Core, never computed):** `id`, `severity` (`info | success | warning | danger | critical`), `title`, `body`, `account` (name, `deleted`), `occurred_at`, `count`, `last_at`, `read`, `target_url`.
+**Data (all from the Core, never computed):** `id`, `severity` (`info | success | warning | danger | critical`), `title`, `body`, `account` (name, `deleted`), `occurred_at`, `count`, `last_at`, `read`, `target` (kind + id, the client builds the URL).
 
 - **Severity:** tokens and icons per F§7 (`info` `Info` neutral/info · `success` `CircleCheck` · `warning` `TriangleAlert` · `danger` `OctagonX` · `critical` `OctagonX` with a 2 px border and the visible prefix "Crítica"). An sr-only label carries the severity ("Aviso", "Perigo", "Crítica").
 - **Unread:** a dot **plus** sr-only "Não lida" (panel) or the visible `Nova` badge (card); read items use `--muted-foreground` for the body, never for the title. Not color alone.
@@ -269,7 +269,7 @@ Rules: an `EmptyState` is never shown while loading (use `Skeleton`) or on error
 - Reduced motion: appears without slide animation.
 - After reconnect it shows the refetched unread set; while stale it adds `Sem dados recentes`.
 
-**Data this component needs [Dependency S18]:** `severity = critical`, `read`, `target_url` per notification and the unread critical count.
+**Data this component needs [Dependency S18]:** `severity = critical`, `read`, `target` (kind + id) per notification and the unread critical count.
 
 ---
 
