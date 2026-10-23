@@ -10,7 +10,7 @@
 //! | `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop; only when Caddy sets it and the Core is reachable only through Caddy |
 //! | `INGRESS_IP_FLOOD_PER_MIN` | `3000` | step 1: every request, per IPv4 address / IPv6 /64 |
 //! | `INGRESS_TRADINGVIEW_FLOOD_PER_MIN` | `30000` | step 1 for addresses in the TradingView ranges |
-//! | `INGRESS_TRADINGVIEW_SOURCE_RANGES` | empty | comma-separated CIDRs of TradingView's webhook IPs; non-empty requires `INGRESS_TRUST_FORWARDED_FOR=true` |
+//! | `INGRESS_TRADINGVIEW_SOURCE_RANGES` | empty | comma-separated CIDRs of TradingView's webhook IPs (IPv4 /16 or narrower, IPv6 /32 or narrower); non-empty requires `INGRESS_TRUST_FORWARDED_FOR=true` |
 //! | `INGRESS_IP_TOKEN_FAILURES_PER_MIN` | `30` | step 2: token failures per IP before the identical 429 |
 //! | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | step 3: per authenticated key |
 //! | `INGRESS_UNKNOWN_KEY_CACHE_TTL_S` | `60` | step 2: negative cache of unknown `key_id`s (0 disables) |
@@ -85,8 +85,14 @@ impl Config {
                 .split(',')
                 .filter(|r| !r.trim().is_empty())
                 .map(|r| r.parse())
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|_| ConfigError::Invalid("INGRESS_TRADINGVIEW_SOURCE_RANGES"))?,
+                .collect::<Result<Vec<adapter_tradingview::Cidr>, _>>()
+                .ok()
+                .filter(|ranges| {
+                    ranges
+                        .iter()
+                        .all(adapter_tradingview::Cidr::is_narrow_enough)
+                })
+                .ok_or(ConfigError::Invalid("INGRESS_TRADINGVIEW_SOURCE_RANGES"))?,
             None => Vec::new(),
         };
         let trust_forwarded_for = parse_or(&get, "INGRESS_TRUST_FORWARDED_FOR", Some(false))?;
@@ -226,5 +232,36 @@ mod tests {
             bad,
             Err(ConfigError::Invalid("INGRESS_TRUST_FORWARDED_FOR"))
         ));
+    }
+
+    #[test]
+    fn tradingview_ranges_require_trusted_forwarding_and_narrow_prefixes() {
+        let with = |ranges: &'static str, trust: &'static str| {
+            Config::from_lookup(move |k| match k {
+                "DATABASE_URL" => Some("postgres://x".into()),
+                "INGRESS_TRADINGVIEW_SOURCE_RANGES" => Some(ranges.into()),
+                "INGRESS_TRUST_FORWARDED_FOR" => Some(trust.into()),
+                _ => None,
+            })
+        };
+        let tv = "52.89.214.238/32, 34.212.75.30";
+        assert!(matches!(with(tv, "false"), Err(ConfigError::Conflict(_))));
+        assert_eq!(with(tv, "true").unwrap().tradingview_source_ranges.len(), 2);
+        for bad in ["not-a-cidr", "0.0.0.0/0", "10.0.0.0/8", "::/0"] {
+            assert!(
+                matches!(
+                    with(bad, "true"),
+                    Err(ConfigError::Invalid("INGRESS_TRADINGVIEW_SOURCE_RANGES"))
+                ),
+                "{bad}"
+            );
+        }
+        // Empty list: every address gets the normal cap; no forwarding requirement.
+        assert!(
+            with("", "false")
+                .unwrap()
+                .tradingview_source_ranges
+                .is_empty()
+        );
     }
 }
