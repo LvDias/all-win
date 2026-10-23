@@ -1,0 +1,45 @@
+// All Win tailnet policy (nt8-spike-plan §6.3, decision T1). Versioned here; the user applies it in the
+// Tailscale admin console (Access controls). Default deny: only the rules below exist.
+//
+// Nodes:  the user's devices (untagged)        -> autogroup:member
+//         the Linux dev server                 -> tag:allwin-dev   (outbound-only)
+//         the Windows test VPS                 -> tag:allwin-nt8
+// Tailscale SSH stays OFF (no "ssh" section): OpenSSH with keys is the audited path.
+// No exit nodes, no subnet routes, no auto approvers.
+{
+	"tagOwners": {
+		"tag:allwin-dev": ["autogroup:admin"],
+		"tag:allwin-nt8": ["autogroup:admin"],
+	},
+
+	"acls": [
+		// The user's devices reach the VPS: RDP and SSH.
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["tag:allwin-nt8:3389", "tag:allwin-nt8:22"],
+		},
+		// The dev server reaches the VPS over SSH only (agents run `ssh allwin-agent@allwin-nt8-01`).
+		{
+			"action": "accept",
+			"src":    ["tag:allwin-dev"],
+			"dst":    ["tag:allwin-nt8:22"],
+		},
+		// Nothing else is allowed:
+		//  - tag:allwin-nt8 -> anything: no rule, so the VPS cannot open connections to the dev server or the Mac.
+		//  - anything -> tag:allwin-dev: no rule, so the dev server is outbound-only in the tailnet.
+	],
+
+	// Checked by the admin console before the policy is saved.
+	"tests": [
+		{
+			"src":    "tag:allwin-dev",
+			"accept": ["tag:allwin-nt8:22"],
+			"deny":   ["tag:allwin-nt8:3389", "tag:allwin-nt8:80", "tag:allwin-nt8:445"],
+		},
+		{
+			"src":  "tag:allwin-nt8",
+			"deny": ["tag:allwin-dev:22", "tag:allwin-dev:443", "tag:allwin-nt8:22"],
+		},
+	],
+}
