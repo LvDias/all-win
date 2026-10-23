@@ -113,19 +113,18 @@ async fn handle(
     drop(token);
 
     if let Err(retry) = s.key_limiter.check(&caller.key_id, Instant::now()) {
-        audit_rejection(
-            s,
-            &caller,
-            received_at,
-            RejectionCode::RateLimited,
-            None,
-            None,
-        )
-        .await;
+        let rejection = Rejection {
+            code: RejectionCode::RateLimited,
+            pointer: None,
+            message_id: None,
+        };
+        audit_rejection(s, &caller, received_at, rejection, None).await;
         return (Outcome::RateLimitedKey, rate_limited(retry));
     }
 
-    match accept(s, &caller, request, received_at).await {
+    // Body size for the audit entry: declared first, then the bytes actually read.
+    let mut size_bytes = declared_length(request.headers());
+    match accept(s, &caller, request, received_at, &mut size_bytes).await {
         Ok(outcome) => {
             let (status, label) = match outcome {
                 IngestOutcome::Accepted(_) => ("accepted", Outcome::Accepted),
@@ -134,16 +133,14 @@ async fn handle(
             let body = json!({ "status": status, "instruction_id": outcome.instruction_id() });
             (label, (StatusCode::OK, axum::Json(body)).into_response())
         }
-        Err(Failure::Rejected {
-            code,
-            pointer,
-            message_id,
-        }) => {
-            audit_rejection(s, &caller, received_at, code, pointer.clone(), message_id).await;
-            (
-                Outcome::Rejected,
-                rejected(status_of(code), code, pointer.as_deref()),
-            )
+        Err(Failure::Rejected(rejection)) => {
+            let response = rejected(
+                status_of(rejection.code),
+                rejection.code,
+                rejection.pointer.as_deref(),
+            );
+            audit_rejection(s, &caller, received_at, rejection, size_bytes).await;
+            (Outcome::Rejected, response)
         }
         Err(Failure::Internal(e)) => internal(&e),
     }
@@ -155,21 +152,23 @@ fn authenticates(token: &IngressToken, key: &ResolvedSourceKey) -> bool {
     matches && !key.revoked && key.source_type == SOURCE_TYPE
 }
 
+struct Rejection {
+    code: RejectionCode,
+    pointer: Option<String>,
+    message_id: Option<MessageId>,
+}
+
 enum Failure {
-    Rejected {
-        code: RejectionCode,
-        pointer: Option<String>,
-        message_id: Option<MessageId>,
-    },
+    Rejected(Rejection),
     Internal(String),
 }
 
 fn reject(code: RejectionCode, pointer: Option<&str>) -> Failure {
-    Failure::Rejected {
+    Failure::Rejected(Rejection {
         code,
         pointer: pointer.map(str::to_owned),
         message_id: None,
-    }
+    })
 }
 
 async fn accept(
@@ -177,6 +176,7 @@ async fn accept(
     caller: &Caller,
     request: Request,
     received_at: chrono::DateTime<chrono::Utc>,
+    size_bytes: &mut Option<u64>,
 ) -> Result<IngestOutcome, Failure> {
     if !allowed_content_type(request.headers()) {
         return Err(reject(RejectionCode::UnsupportedMediaType, None));
@@ -187,6 +187,7 @@ async fn accept(
     let bytes = axum::body::to_bytes(request.into_body(), MAX_BODY_BYTES)
         .await
         .map_err(|_| reject(RejectionCode::PayloadTooLarge, None))?;
+    *size_bytes = Some(bytes.len() as u64);
     let text = std::str::from_utf8(&bytes).map_err(|_| reject(RejectionCode::InvalidJson, None))?;
     let value: Value =
         serde_json::from_str(text).map_err(|_| reject(RejectionCode::InvalidJson, None))?;
@@ -217,10 +218,12 @@ async fn accept(
     };
     let message_id = MessageId::parse(instruction.message_id.clone())
         .map_err(|_| reject(RejectionCode::SchemaViolation, Some("/message_id")))?;
-    let with_message = |code, pointer: &str| Failure::Rejected {
-        code,
-        pointer: Some(pointer.to_owned()),
-        message_id: Some(message_id.clone()),
+    let with_message = |code, pointer: &str| {
+        Failure::Rejected(Rejection {
+            code,
+            pointer: Some(pointer.to_owned()),
+            message_id: Some(message_id.clone()),
+        })
     };
     policy::check(&instruction).map_err(|(code, pointer)| with_message(code, pointer))?;
     let enabled = s
@@ -293,9 +296,8 @@ async fn audit_rejection(
     s: &IngressState,
     caller: &Caller,
     at: chrono::DateTime<chrono::Utc>,
-    code: RejectionCode,
-    pointer: Option<String>,
-    message_id: Option<MessageId>,
+    rejection: Rejection,
+    size_bytes: Option<u64>,
 ) {
     let event = IngressEvent {
         user_id: caller.user_id,
@@ -303,9 +305,10 @@ async fn audit_rejection(
         source_id: caller.source_id,
         key_id: caller.key_id.clone(),
         kind: IngressEventKind::Rejected {
-            code,
-            pointer,
-            message_id,
+            code: rejection.code,
+            pointer: rejection.pointer,
+            message_id: rejection.message_id,
+            size_bytes,
         },
     };
     if let Err(e) = s.reject.handle(event).await {

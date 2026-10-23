@@ -321,6 +321,16 @@ async fn policy_and_catalog_rejections_are_422_and_audited() {
     )
     .await;
     assert_eq!(rejected, 5);
+    let sized = count(
+        db,
+        "SELECT count(*) FROM audit.audit_entry WHERE code = 'ingress.rejected' AND (details->>'size_bytes')::int > 0 AND details ? 'error_code' AND details ? 'message_id'",
+        s.user_id,
+    )
+    .await;
+    assert_eq!(
+        sized, 5,
+        "rejections carry code, pointer, message_id and body size"
+    );
 }
 
 #[tokio::test]

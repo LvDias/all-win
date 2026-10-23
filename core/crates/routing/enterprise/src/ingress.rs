@@ -56,6 +56,8 @@ pub enum IngressEventKind {
         code: RejectionCode,
         pointer: Option<String>,
         message_id: Option<MessageId>,
+        /// Body size in bytes when known (Q13 §8); never the body itself.
+        size_bytes: Option<u64>,
     },
 }
 
