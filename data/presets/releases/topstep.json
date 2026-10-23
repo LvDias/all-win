@@ -1,0 +1,553 @@
+{
+  "schema_version": "1.0",
+  "firm": {
+    "slug": "topstep",
+    "name": "Topstep",
+    "domains": [
+      "topstep.com"
+    ],
+    "manual_only": {
+      "reason": {
+        "text": "TopstepX™ is the only available trading platform.",
+        "language": "en",
+        "page_title": "New to Topstep? Start here.",
+        "url": "https://help.topstep.com/en/articles/8284199-new-to-topstep-start-here",
+        "accessed_at": "2026-10-23"
+      }
+    }
+  },
+  "release": {
+    "version_number": 1,
+    "verified_on": "2026-10-23",
+    "research_file": "docs/product/presets/research/topstep.md",
+    "changes": []
+  },
+  "platforms": [
+    {
+      "code": "topstepx",
+      "label": "TopstepX"
+    }
+  ],
+  "stances": {
+    "automation": [
+      {
+        "kind": "automation",
+        "version": 1,
+        "firm_stance": "conditional",
+        "quotes": [
+          {
+            "text": "Yes, with conditions. Topstep won't help set up or troubleshoot automated strategies, and no exceptions are made for errant trades or malfunctions. Test on your Practice Account first and review Prohibited Conduct and Prohibited Trading Strategies before going live.",
+            "language": "en",
+            "page_title": "Trading Combine® Parameters",
+            "url": "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
+            "accessed_at": "2026-10-23",
+            "section": "Trading Combine"
+          },
+          {
+            "text": "The API Gateway is built for the simulated environment and isn't available on Live, so automated strategies are not possible at this time in the Live Funded Account.",
+            "language": "en",
+            "page_title": "Live Funded Account Parameters",
+            "url": "https://help.topstep.com/en/articles/10657969-live-funded-account-parameters",
+            "accessed_at": "2026-10-23",
+            "section": "Live Funded Account"
+          },
+          {
+            "text": "All trading activity must originate from your personal device. The use of VPS, VPNs, and remote servers is prohibited by Topstep's Terms of Use. Running automation on a VPS can result in account suspension or removal from the program.",
+            "language": "en",
+            "page_title": "TopstepX™ API Access",
+            "url": "https://help.topstep.com/en/articles/11187768-topstepx-api-access",
+            "accessed_at": "2026-10-23",
+            "section": "All account types"
+          }
+        ]
+      }
+    ],
+    "copy": [
+      {
+        "kind": "copy",
+        "version": 1,
+        "firm_stance": "conditional",
+        "quotes": [
+          {
+            "text": "Trade copying is only available for Trading Combine® and Express Funded Account® accounts. Live Funded Account® accounts cannot use the Trade Copier.",
+            "language": "en",
+            "page_title": "TopstepX™",
+            "url": "https://help.topstep.com/en/articles/14434175-topstepx",
+            "accessed_at": "2026-10-23",
+            "section": "Trading Combine and Live Funded Account"
+          }
+        ]
+      }
+    ],
+    "vps": {
+      "value": "forbidden",
+      "quotes": [
+        {
+          "text": "Using any VPN or VPS on Accounts is strictly prohibited and may result in account termination and forfeiture of profits.",
+          "language": "en",
+          "page_title": "Terms of use",
+          "url": "https://www.topstep.com/terms-of-use",
+          "accessed_at": "2026-10-23"
+        }
+      ]
+    },
+    "personal_device": {
+      "value": "required",
+      "quotes": [
+        {
+          "text": "All trading activity must originate from your personal device. The use of VPS, VPNs, and remote servers is prohibited by Topstep's Terms of Use. Running automation on a VPS can result in account suspension or removal from the program.",
+          "language": "en",
+          "page_title": "TopstepX™ API Access",
+          "url": "https://help.topstep.com/en/articles/11187768-topstepx-api-access",
+          "accessed_at": "2026-10-23"
+        }
+      ]
+    }
+  },
+  "plans": [
+    {
+      "key": "trading-combine",
+      "name": "Trading Combine",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "50k",
+              "size_label": "$50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 50,
+                        "published_text": "5 mini / 50 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Trading Combine® Parameters"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "2000.00",
+                        "stops_trailing_at": "Once it reaches your starting balance, it locks permanently."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284204-what-is-the-maximum-loss-limit",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "What is the Maximum Loss Limit?"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "kind": "none"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://help.topstep.com/en/articles/10490293-daily-loss-limit-in-the-trading-combine-and-express-funded-account",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "Daily Loss Limit in the Trading Combine and Express Funded Account"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "kind": "soft_pause",
+                            "amount": "1000.00"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://help.topstep.com/en/articles/10490293-daily-loss-limit-in-the-trading-combine-and-express-funded-account",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "Daily Loss Limit in the Trading Combine and Express Funded Account"
+                            },
+                            {
+                              "url": "https://www.topstep.com/topstep-prop",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "The Best Futures Prop Firm"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "17:00",
+                        "time_zone": "America/Chicago",
+                        "published_text": "5:00 PM CT"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Trading Combine® Parameters"
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Your single best day of profit must stay at or below 55% of your Profit Target. If it exceeds that, your Profit Target increases.",
+                        "threshold_pct": "55"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284208-consistency-at-topstep",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Consistency at Topstep"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284208-consistency-at-topstep",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Consistency at Topstep"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "$100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 100,
+                        "published_text": "10 mini / 100 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Trading Combine® Parameters"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "3000.00",
+                        "stops_trailing_at": "Once it reaches your starting balance, it locks permanently."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284204-what-is-the-maximum-loss-limit",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "What is the Maximum Loss Limit?"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "kind": "none"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://help.topstep.com/en/articles/10490293-daily-loss-limit-in-the-trading-combine-and-express-funded-account",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "Daily Loss Limit in the Trading Combine and Express Funded Account"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "kind": "soft_pause",
+                            "amount": "2000.00"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://help.topstep.com/en/articles/10490293-daily-loss-limit-in-the-trading-combine-and-express-funded-account",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "Daily Loss Limit in the Trading Combine and Express Funded Account"
+                            },
+                            {
+                              "url": "https://www.topstep.com/topstep-prop",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "The Best Futures Prop Firm"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "17:00",
+                        "time_zone": "America/Chicago",
+                        "published_text": "5:00 PM CT"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Trading Combine® Parameters"
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Your single best day of profit must stay at or below 55% of your Profit Target. If it exceeds that, your Profit Target increases.",
+                        "threshold_pct": "55"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284208-consistency-at-topstep",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Consistency at Topstep"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284208-consistency-at-topstep",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Consistency at Topstep"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "$150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 150,
+                        "published_text": "15 mini / 150 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Trading Combine® Parameters"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "4500.00",
+                        "stops_trailing_at": "Once it reaches your starting balance, it locks permanently."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284204-what-is-the-maximum-loss-limit",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "What is the Maximum Loss Limit?"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "kind": "none"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://help.topstep.com/en/articles/10490293-daily-loss-limit-in-the-trading-combine-and-express-funded-account",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "Daily Loss Limit in the Trading Combine and Express Funded Account"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "kind": "soft_pause",
+                            "amount": "3000.00"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://help.topstep.com/en/articles/10490293-daily-loss-limit-in-the-trading-combine-and-express-funded-account",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "Daily Loss Limit in the Trading Combine and Express Funded Account"
+                            },
+                            {
+                              "url": "https://www.topstep.com/topstep-prop",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "The Best Futures Prop Firm"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "17:00",
+                        "time_zone": "America/Chicago",
+                        "published_text": "5:00 PM CT"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Trading Combine® Parameters"
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Your single best day of profit must stay at or below 55% of your Profit Target. If it exceeds that, your Profit Target increases.",
+                        "threshold_pct": "55"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284208-consistency-at-topstep",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Consistency at Topstep"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.topstep.com/en/articles/8284208-consistency-at-topstep",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Consistency at Topstep"
+                        },
+                        {
+                          "url": "https://www.topstep.com/topstep-prop",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "The Best Futures Prop Firm"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "excluded_plans": [
+    {
+      "name": "Topstep Labs Challenges",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S-3, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S-3, 2026-10-23); register it manually."
+      }
+    },
+    {
+      "name": "Topstep Labs $25K Static Trading Combine",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S-3, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S-3, 2026-10-23); register it manually."
+      }
+    },
+    {
+      "name": "Topstep Labs $50K Static Trading Combine",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S-3, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S-3, 2026-10-23); register it manually."
+      }
+    },
+    {
+      "name": "Topstep Labs $250K Freedom Trading Combine",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S-3, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S-3, 2026-10-23); register it manually."
+      }
+    },
+    {
+      "name": "Pro Account",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S-3, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S-3, 2026-10-23); register it manually."
+      }
+    }
+  ]
+}
