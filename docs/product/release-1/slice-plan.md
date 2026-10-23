@@ -1,6 +1,6 @@
 # Release 1 (V1) — Slice Plan — All Win
 
-> **Owner:** Product Owner (Bússola @ Dev2) · **Status:** approved by the user on 2026-10-23 ([decision log](../../delivery/decisions.md)) · **Revision:** 6 (R2 scope decisions: manual-only firms, VPS rules; [Decision 2026-10-23b/c/d] = second/third/fourth batch of user decisions) · **Date:** 2026-10-23
+> **Owner:** Product Owner (Bússola @ Dev2) · **Status:** approved by the user on 2026-10-23 ([decision log](../../delivery/decisions.md)) · **Revision:** 7 (passwordless sign-in replaces password + TOTP in S3; new slice S3b; Q28–Q36 open; rev. 6 = R2 scope decisions: manual-only firms, VPS rules; [Decision 2026-10-23b/c/d] = second/third/fourth batch of user decisions) · **Date:** 2026-10-23
 > **Baseline:** [product-vision.md](../product-vision.md) rev. 3 (user-approved). This plan does not change any decision there; gaps found are listed in §7 as questions.
 > Labels: **[Decision]** = from the vision · **[Proposal]** = recommendation still awaiting user approval (items approved on 2026-10-23 are now marked [Decision 2026-10-23]) · **[Assumption]** · **[Blocker]**.
 > Slice status vocabulary: `draft` (criteria incomplete or blocked by a question) · `blocked` (criteria complete, waiting on an external dependency) · `ready` (criteria complete, can start) · then specified → implemented → QA verified → deployed → business accepted (tracked by the Maestro on the board).
@@ -35,7 +35,7 @@ These are checked in QA for every slice that touches the relevant surface, inste
 - **X-1 Platform neutrality.** No Core behavior depends on a specific platform; platform specifics live only in adapters (TradingView Input, NinjaTrader plugin). Verified by Architect review on each Core slice. (§4, §5)
 - **X-2 Per-user isolation.** A user can never see, change, route to, or receive data about another user's accounts, keys, instructions, logs, or trades — in the Web, in the Core API, and in the plugin. Each slice touching data includes at least one negative test with two users. (§2, §11)
 - **X-3 Exact numbers.** Prices, P&L, money, and limits are stored and computed without floating-point rounding errors; displayed values match stored values. (§11)
-- **X-4 Secrets.** Source keys, plugin credentials, and passwords never appear in plain text in storage, logs, audit views, or error messages. (§11)
+- **X-4 Secrets.** Source keys, plugin credentials, and one-time sign-in codes never appear in plain text in storage, logs, audit views, or error messages. (§11)
 - **X-5 Transparency.** Every automatic action (route, skip, partial skip, flatten, block, reject, refuse) produces an audit entry with its reason, visible to the user (see V1-S10). (§11)
 - **X-6 Bilingual UI.** All user-visible text (Web and plugin) exists in pt-BR and en; no hard-coded single-language strings. (§2)
 - **X-7 Simulation only.** All development and QA use simulation, demo, or playback accounts. (§11)
@@ -50,7 +50,8 @@ These are checked in QA for every slice that touches the relevant surface, inste
 | V1-S1 | Webhook ingest: authenticated, validated, idempotent, logged | TradingView Input, Core | S0, ADR-0003 (JSON v1 + ids), adapter-sim | ready |
 | V1-S2 | NinjaTrader plugin: connect to Core and execute a routed entry on a sim account | NT plugin, Core | S0, ADR-0004 (Core↔plugin protocol v1), NT8 spike, Windows+NT8 machine (Q15) | ready |
 | **V1-M1** | **First end-to-end demo**: TradingView alert → Core → one NinjaTrader sim account, result back to Core | all | S1 + S2 | milestone |
-| V1-S3 | User sign-up/login, per-user isolation, source keys and plugin pairing | Web, Core, NT plugin | S0 | ready |
+| V1-S3 | Passwordless sign-up/login by e-mail code, per-user isolation, source keys and plugin pairing | Web, Core, NT plugin | S0 | ready (AC-12 blocked by Q28; open items Q29–Q36 do not block the rest) |
+| V1-S3b | WhatsApp as a second code channel (sign-up, login, step-up, channel change) | Web, Core | S3, **U17** (WhatsApp supplier, user cost decision), Q31 | blocked |
 | V1-S4 | Bilingual foundation (pt-BR/en) | Web, NT plugin | S0 | ready |
 | V1-S5 | Account registration and lifecycle (enable / disable / pause) | Web, Core, NT plugin | S3 | ready |
 | V1-S6 | Stop/target profiles by account size; individual mode | Web, Core, NT plugin | S5 | ready |
@@ -63,7 +64,7 @@ These are checked in QA for every slice that touches the relevant surface, inste
 | V1-S13 | Risk rules per account and live risk state with 80% warnings | Web, Core, NT plugin | S5, S11 | ready |
 | V1-S14 | Core risk gate (refuse routing at limit; master-limit behavior) | Core | S13 | ready |
 | V1-S15 | Automatic enforcement in the plugin (flatten, cancel, block until reset) | NT plugin, Core, Web | S13 | ready |
-| V1-S16 | Prop firm presets: model, versioning, selection, editing | Web, Core | S5 | ready |
+| V1-S16 | Prop firm presets: model, versioning, selection, editing | Web, Core | S5 (free editing of copied risk rules arrives with S13) | ready |
 | V1-R1 | Preset research — priority firms (Apex, Phidias, Lucid) | research | none | ready |
 | V1-R2 | Preset research — Topstep, Take Profit Trader, MyFundedFutures, Tradeify, Bulenox, TradeDay, Top One Futures, Alpha Futures | research | R1 format | ready |
 | V1-R3 | Preset research — Elite Trader Funding, Earn2Trade, Funded Futures Family, Phoenix Trader Funding, OneUp Trader, BluSky, Leeloo Trading | research | R1 format | ready |
@@ -139,17 +140,56 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 
 **Given** a test TradingView alert (or an equivalent HTTP post of the same message) with a valid key and a `buy 1 MNQ` instruction, **when** it is sent, **then** within seconds one NinjaTrader sim account receives a market buy of 1 MNQ with stop and target from the profile, the fill and bracket are reported back, and the user can see the full chain (received → routed → filled) in the audit trail (minimal view acceptable). Sending the same message again produces no second order.
 
-### V1-S3 — Sign-up/login, isolation, source keys, plugin pairing (ready)
+### V1-S3 — Passwordless sign-up/login, isolation, source keys, plugin pairing (ready; AC-12 blocked by Q28)
 
-**Goal / value:** each trader has a private space; only they can send instructions to their accounts.
+**Goal / value:** each trader has a private space; only they can send instructions to their accounts; access is proven by a one-time code sent to a channel the user owns. **There is no password.**
 **Surfaces:** Web, Core, NT plugin.
+**Change record:** rev. 7 replaces the password + optional TOTP model (Q20 reset part, Q22, A5) by passwordless sign-in **[Decision 2026-10-23, user requirement change]**. In this slice the only channel is **e-mail**; WhatsApp is slice **V1-S3b**. Items marked [Open] depend on the questions in §7 (Q28–Q36) and on U16.
 
-- **AC-1** Sign-up is **invite-only** in V1 (Q6 [Decision 2026-10-23]): only a person with a valid, unused, unexpired invitation can create an account; without one, sign-up is refused with a clear message. Invited users can sign in and out. Invitations are issued **only by the admin**, single-use, bound to one e-mail, valid 7 days, delivered manually (Q19 [Decision 2026-10-23b]). Transactional e-mail is used only for invitations and password reset, with an admin-generated reset link as fallback (Q20). Sessions: 12 h idle / 24 h absolute, remember-me 7 d / 30 d, step-up after 15 min for sensitive actions (Q21). TOTP recovery: 10 single-use codes; password + code to enable/disable; admin-assisted reset (Q22).
-- **AC-1b** **Two-factor authentication (TOTP, authenticator app) is optional** and strongly suggested in the UI; once enabled, sign-in requires the code; the user can disable it only after re-authenticating (A5 [Decision 2026-10-23]).
-- **AC-2** Every Web view and Core request returns only the signed-in user's data; a two-user negative test exists for each data area (X-2).
-- **AC-3** The user can generate, view once, and revoke a per-source secret; after revocation, instructions with the old secret are rejected (S1 AC-2). Secrets are stored only in non-reversible or encrypted form (X-4).
-- **AC-4** The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others. Unpairing an instance whose accounts are destinations is allowed after a confirmation listing them; those accounts become out of sync and nothing is closed (Q18 [Decision 2026-10-23b]).
-- **AC-5** Password reset and session expiry exist; failed sign-in attempts do not reveal whether an email is registered.
+**Sign-up**
+
+- **AC-1** Sign-up is **invite-only** (Q6). Only a person with a valid, unused, unexpired invitation can start sign-up; otherwise it is refused with a clear message. Invitations are issued only by the admin, single-use, bound to one e-mail, valid 7 days, delivered manually (Q19, unchanged).
+- **AC-2** The invitee enters their e-mail and confirms it with a code sent to it (AC-5). The account is created, and the invitation consumed, only after the code is confirmed. A failed or abandoned confirmation leaves the invitation usable until it expires. **[Assumption from Q19]** the e-mail must equal the invited e-mail.
+- **AC-3** No password is ever requested, stored or reset. The WhatsApp number is not part of S3 sign-up (see S3b, Q31).
+
+**Sign-in and codes**
+
+- **AC-4** Sign-in: the user enters their e-mail, receives a code at that e-mail and enters it to be signed in. (When S3b ships, the user chooses e-mail or WhatsApp.) Sign out ends the current session.
+- **AC-5** Code rules **[Decision]**: single-use; expires after 10 minutes; invalidated after 5 wrong attempts (the user must request a new one); the code is never stored, logged or audited in plain text (X-4). **[Open U16]** format: 8 uppercase alphanumeric characters without ambiguous ones (Maestro's recommendation, pending Architect) vs. upper + lower + digits + specials; tests must not depend on the format until U16 closes. **[Assumption]** a new code request invalidates the previous code of the same purpose; code entry ignores case and surrounding spaces if the final format allows it.
+- **AC-6** Sending limits apply **per user and per IP** to every code request (sign-up, sign-in, step-up, channel change). When a limit is hit the request is refused with a stable error code and the user is told to wait; no code is sent. **[Open Q33]** the numeric limits and resend cooldown (Architect proposes, user approves).
+- **AC-7** Failed or unknown-account sign-in attempts do not reveal whether an e-mail is registered: the visible response and timing are the same, and no code is sent to an unregistered e-mail. Delivery failure for a registered e-mail is shown to that user only after they are signed in or via a generic "if the account exists…" message (no enumeration).
+- **AC-8** Sessions: 12 h idle / 24 h absolute; "keep me signed in" 7 d idle / 30 d absolute (Q21, carried over from the password model **[Open Q29: confirm as is]**). Expiry returns to sign-in with a clear message.
+
+**New device and sensitive actions**
+
+- **AC-9** **New-device notice:** when a user signs in from a device not previously used with that account, an e-mail is sent to the account e-mail saying so, in the user's language (S4 AC-2). It is an account e-mail, not a notification (S18 AC-3). The sign-up session itself sends no notice **[Assumption]**. **[Open Q34]** exact content and "this was not me" handling.
+- **AC-10** **Step-up:** these actions require a **new code** at the time of the action: (i) turning automation on for an account (S5 AC-9 opt-in, S7), (ii) unpairing a NinjaTrader instance (AC-15), (iii) changing the e-mail or WhatsApp number (AC-11). Without a valid code the action is not performed and the attempt is audited. **[Open Q30]** whether a recent code covers several actions (the earlier 15-minute window, Q21). **[Open Q35]** the Architect's wider list (source token create/rotate, pairing code, enforcement off, raising max position, admin actions) is [Proposal] only until decided.
+- **AC-11** **Changing the e-mail (or WhatsApp number, S3b):** the user enters the new value and must confirm a code sent to the **old** channel and a code sent to the **new** channel. The change takes effect only when both are confirmed; until then the old value stays in force. A pending change expires after 10 minutes **[Assumption: same as AC-5]**. Each channel value belongs to one account only **[Assumption]**; a clash is refused without revealing who owns it. **[Open Q28]** when the old channel is no longer reachable.
+- **AC-12** **[Blocked Q28]** Recovery when the user has lost access to every verified channel: no behavior is specified until the user decides.
+
+**Isolation, sources, pairing (unchanged by this change)**
+
+- **AC-13** Every Web view and Core request returns only the signed-in user's data; a two-user negative test exists for each data area, including code and session endpoints (X-2).
+- **AC-14** The user can generate, view once, and revoke a per-source secret; after revocation, instructions with the old secret are rejected (S1 AC-2). Secrets are stored only in non-reversible or encrypted form (X-4).
+- **AC-15** The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others. Unpairing an instance whose accounts are destinations is allowed after a confirmation listing them (and the AC-10 code); those accounts become out of sync and nothing is closed (Q18). **[Open Q66]** whether the plugin only disconnects locally (revocation in the Web with the AC-10 code) or revokes the pairing itself.
+- **AC-16** Transparency: sign-ins, failed or rate-limited attempts, new-device notices, step-up successes and failures, and channel changes appear in the user's audit log with their reason (S10).
+
+**Superseded by rev. 7 (do not implement):** password and password policy (D10), password reset (Q20 reset part, D9), optional TOTP and its suggestion banner (A5, D13), TOTP recovery codes and admin-assisted TOTP reset (Q22, D12), former AC-1b and AC-5 text. Still valid: Q6, Q19, Q21 (pending Q29), the transactional e-mail now also carries sign-in codes and new-device notices (Q8 still excludes e-mail *notifications*).
+
+**Dependencies / risk:** sign-in now depends on e-mail delivery being available; if it is down nobody can sign in (SRE/availability input requested through the Maestro; see §6).
+
+### V1-S3b — WhatsApp as a second code channel (blocked)
+
+**Goal / value:** the user can receive codes on WhatsApp as well as e-mail.
+**Surfaces:** Web, Core. **Depends on:** S3; **U17** (supplier and its cost: user decision); Q31 (is it mandatory). **Status:** blocked until U17 is decided; criteria below are complete. **Supplier research (input to U17, not a decision; unconfirmed items marked in the file):** [whatsapp-otp-providers.md](../research/whatsapp-otp-providers.md).
+
+- **AC-1** A user can add a WhatsApp number (international format, country code required) and confirm it with a code sent to that number. Unconfirmed numbers are never used.
+- **AC-2** Sign-in offers a choice of channel (e-mail or WhatsApp) among the user's confirmed channels; the code rules, limits and wrong-attempt rules of S3 AC-5/AC-6 apply identically to both.
+- **AC-3** Step-up (S3 AC-10) may use any confirmed channel. Changing the WhatsApp number follows S3 AC-11 (code to old and new number).
+- **AC-4** The new-device notice is still sent by e-mail even if the sign-in used WhatsApp.
+- **AC-5** If WhatsApp delivery fails, the user is told and can request a code by e-mail; the Core never silently sends the same code through another channel **[Proposal]**.
+- **AC-6** Sign-up and sign-in for users who have no confirmed WhatsApp number keep working with e-mail only **[Open Q31]**: whether WhatsApp becomes mandatory for new invitations or existing users once S3b ships.
+- **AC-7** Every WhatsApp send is audited (without the code); per-message cost is visible to the admin **[Open U17]**.
 
 ### V1-S4 — Bilingual foundation (ready)
 
@@ -245,7 +285,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 ### V1-S13 — Risk rules and live risk state (ready)
 
 - **AC-1** Per account, the user can set drawdown (amount and type: trailing intraday, end-of-day trailing, static), daily loss limit, daily profit target, and firm-specific rules such as consistency rules. (§9)
-- **AC-2** The Core keeps each account's current risk state from execution results and plugin-reported P&L, and the user sees it per account (used vs limit).
+- **AC-2** The Core keeps each account's current risk state from execution results and plugin-reported P&L, and the user sees it per account (used vs limit). **Only those two sources count** (clarification rev. 7): trades entered manually (S21 AC-3) never change the risk state, the limits, the blocks or the consistency figures; they appear only in the trade list and the metrics (S21, S22).
 - **AC-3** At 80% of each limit, a warning is shown in the Web and in the plugin. (§9)
 - **AC-4** Trading day resets at the prop firm's reset time (from the preset) or, for real accounts, at the CME futures session close. (§9)
 - **AC-5** **Daily profit target:** the user chooses per account between "notify only" (default) and "flatten and block like a loss limit" (enforcement on); with "notify only" the user is notified once when it is reached (Q3 [Decision 2026-10-23]).
@@ -270,7 +310,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 ### V1-S16 — Prop firm presets: model and UI (ready)
 
 - **AC-1** A preset records firm, plan, account size, phase, **platform/connection** (e.g., Rithmic, Tradovate; rules that differ by platform are stored per platform), all rules from S13, maximum position size, trading-day reset time, the firm's stance on trade copying and automated trading (classification + verbatim text), source URL(s), verification/access date, and version. (§9, §12; [Decision 2026-10-23b])
-- **AC-2** Selecting a preset fills the account's rules and max position; the user can edit the copy on their account without changing the preset.
+- **AC-2** Selecting a preset fills the account's rules and max position; the user can edit the copy on their account without changing the preset. **Sequencing (rev. 7, PO):** until S13 ships, S16 delivers fill-from-preset, choosing a published value or typing one for a "not confirmed" field (AC-6), restoring a preset value, and editing max position (S5 AC-3); **free editing of the copied risk rules (drawdown, daily loss, profit target, consistency, reset) is delivered by S13 AC-1** and S16 AC-2 is QA-complete only after S13. No user decision needed: no rule changes, only the slice in which the editing arrives.
 - **AC-3** When a preset gets a new version, existing accounts are not changed silently; the user is told and chooses whether to apply. [Decision 2026-10-23, plan approval]
 - **AC-4** The firm's stance on copying/automation is shown **with its source and date** when the user registers an account with that firm and when they add it to routing (§12; [Decision 2026-10-23b]). For firms that forbid automation, S5 AC-7 applies.
 - **AC-5** A preset is selectable when its fields are verified **or** marked "not confirmed"; fields that conflict across the firm's official pages ship as **"not confirmed"** and do not block the rest of the preset ([Decision 2026-10-23b]). A firm with no verified data is not offered.
@@ -302,7 +342,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 
 - **AC-1** Skipped excess, refusals, 80% warnings, blocks, out-of-sync flags, and disconnects create notifications visible in the Web and in the plugin.
 - **AC-2** The user can mark notifications as read; unread count is visible.
-- **AC-3** V1 has **in-app notifications only** (Web + plugin); no email or messaging-app channels (Q8 [Decision 2026-10-23]). Account e-mails needed by S3 (invite, password reset) are not notifications.
+- **AC-3** V1 has **in-app notifications only** (Web + plugin); no email or messaging-app channels (Q8 [Decision 2026-10-23]). Account e-mails needed by S3 (invitation, sign-in codes, new-device notices) are not notifications.
 
 ### V1-S19 — Master replication: entries and exits (ready — V1.1)
 
@@ -323,7 +363,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 
 - **AC-1** Each completed trade on a connected account is captured with: account, instrument, direction, quantity, entry/exit time and price, time in trade, P&L, MAE, MFE, and originating signal/source. (§10)
 - **AC-2** Metrics are computed by the plugin from the user's own data; only computed numbers are sent; no raw price data is stored (§10).
-- **AC-3** The user can enter a trade manually with the same fields (source = "manual").
+- **AC-3** The user can enter a trade manually with the same fields (source = "manual"). Manual trades feed **only** the trade list and the performance metrics, never the risk state or enforcement (S13 AC-2).
 - **AC-4** The user can list and filter trades by account, date, source, and signal type.
 
 ### V1-S22 — Performance metrics view (ready)
@@ -346,6 +386,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 | Firms that forbid copying or automation | User account violations | Stance shown at registration and routing (S16 AC-4); not legal advice (§12) |
 | Core accidentally becomes NinjaTrader-specific | Rework for Tradovate in release 2 | X-1 review on every Core slice |
 | Risk state in Core diverges from platform's real P&L | Wrong blocks or missed limits | Plugin is the second barrier (§5); S15 AC-4 |
+| Sign-in depends on e-mail (and later WhatsApp) delivery; a provider outage or spam-foldering locks users out | Nobody can sign in or confirm sensitive actions | SRE/availability input; Q28 recovery path; resend rules (Q33) |
 | Terms of use / privacy policy not ready | Launch blocked | Flagged now as user-owned release gate |
 
 ---
@@ -382,9 +423,9 @@ All accepted per recommendation [Decision 2026-10-23b]; Q21 = 12 h idle / 24 h a
 | Q17 | How many TradingView sources (each with its own secret URL) per user? | (a) Several named sources (e.g., one per chart/alert); (b) one per user in V1 | **(a)** — the routine is "one alert per chart", and per-source routing (S7) and revocation then stay independent |
 | Q18 | Unpairing a NinjaTrader instance whose accounts are routing destinations, possibly with an open position | (a) Allow after a confirmation listing affected accounts; with an open position, a stronger warning that the position stays open in NinjaTrader without platform monitoring/enforcement, and the accounts are flagged out of sync; (b) block unpairing while a position is open | **(a)** — the user stays in control; nothing is closed automatically |
 | Q19 | Who issues invitations (Q6) and how? | (a) A platform-admin role (held by the user), single-use link bound to one e-mail, valid 7 days, delivered manually (copy link); (b) any user can invite | **(a)** |
-| Q20 | Transactional e-mail in V1 for password reset (and invitations)? Q8 excluded e-mail *notifications* only | (a) Yes, transactional e-mail only for invite and password reset; (b) no e-mail: the admin generates a one-time reset link | **(a)** — self-service reset; (b) as fallback if e-mail is not wanted |
-| Q21 | Session length / "keep me signed in" | Architect proposes values (idle and absolute timeout); user approves | Architect proposal → user |
-| Q22 | Optional TOTP recovery | (a) 10 single-use recovery codes shown once at activation; enabling/disabling requires password + current code; lost device without codes → admin-assisted reset after identity check; (b) no recovery codes, admin reset only | **(a)** |
+| Q20 | Transactional e-mail in V1 for password reset (and invitations)? Q8 excluded e-mail *notifications* only | (a) Yes, transactional e-mail only for invite and password reset; (b) no e-mail: the admin generates a one-time reset link | **(a)** — self-service reset; (b) as fallback if e-mail is not wanted | **Superseded rev. 7 — password reset no longer exists; transactional e-mail now carries invitations, sign-in codes and new-device notices.**
+| Q21 | Session length / "keep me signed in" | Architect proposes values (idle and absolute timeout); user approves | Architect proposal → user | **Superseded rev. 7 — values carried over to the passwordless model, pending Q29.**
+| Q22 | Optional TOTP recovery | (a) 10 single-use recovery codes shown once at activation; enabling/disabling requires password + current code; lost device without codes → admin-assisted reset after identity check; (b) no recovery codes, admin reset only | **(a)** | **Superseded rev. 7 — TOTP and recovery codes no longer exist (passwordless sign-in).**
 | Q23 | Locale defaults: first-visit language, display time zone, time format | (a) Language from the browser (pt or en, else pt-BR); time zone from the profile (default = browser), always shown next to reset/session times; 24-hour clock in both languages; (b) always pt-BR, fixed America/Chicago | **(a)** |
 
 ### Questions for the user — 2026-10-23 (rev. 4) — decided
@@ -400,6 +441,127 @@ Q24–Q27 accepted as recommended [Decision 2026-10-23c]. R1 conflict list: reco
 | — | Preset conflicts R1 (31 items) | See [r1-conflicts-for-user.md](../presets/r1-conflicts-for-user.md) | Recommendations accepted [Decision 2026-10-23c]; item-by-item review later |
 | — | R2 scope findings | See [r2-conflicts-for-user.md](../presets/r2-conflicts-for-user.md) | S-1..S-5 decided [Decision 2026-10-23d]; later R2 items open |
 
+### Questions for the user — passwordless sign-in (rev. 7) — open
+
+User requirement 2026-10-23: no password; e-mail/WhatsApp codes ([S3](#v1-s3--passwordless-sign-uplogin-isolation-source-keys-plugin-pairing-ready-ac-12-blocked-by-q28)). Items **U16** (code format) and **U17** (WhatsApp supplier/cost) are already open with the Maestro/Architect and are **not decided here**. New gaps:
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q28 | What happens if the user loses access to **all** verified channels (or to the old channel when changing e-mail/WhatsApp)? | (a) Admin-assisted recovery after an identity check by the admin; the admin issues a one-time recovery for a new e-mail; audited; the old e-mail gets a notice; (b) none — the user asks for a new invitation and starts over (old data stays inaccessible or is merged by the admin manually); (c) a pre-registered third channel/recovery contact | **(a)** — same spirit as the former admin-assisted TOTP reset; (c) adds a channel to secure |
+| Q29 | Sessions: keep the Q21 values (12 h idle / 24 h absolute; "keep me signed in" 7 d / 30 d)? Does "remember this device" also skip the new-device notice? | (a) Keep Q21 values; the new-device notice still fires on any first use of a device; (b) shorter sessions now that each sign-in needs an external code; (c) longer | **(a)** |
+| Q30 | Step-up frequency: new code on **every** sensitive action, or one code valid for a short window (e.g. the earlier 15 min) covering several actions? | (a) Every action asks a new code (literal reading of the requirement); (b) 15-min window | **(a)** for V1 — sensitive actions are rare; revisit if it annoys the user |
+| Q31 | WhatsApp at sign-up before S3b exists, and after: is it mandatory? | (a) Optional: sign up with e-mail only; WhatsApp is added later in the profile; after S3b, a reminder but never forced; (b) mandatory for new invitations once S3b ships, existing users get a deadline; (c) mandatory from day 1 (blocks release until a supplier exists) | **(a)** — the requirement says WhatsApp "may come after e-mail"; the e-mail path must work alone |
+| Q32 | Can an e-mail/WhatsApp number be used by more than one account (e.g. a shared family number)? | (a) One account per e-mail and per number; (b) numbers may be shared | **(a)** — a shared channel breaks per-user isolation of codes |
+| Q33 | Code sending limits (per user, per IP, resend cooldown)? | (a) Architect proposes numbers; user approves; (b) user sets them | **(a)** |
+| Q34 | New-device notice: content and handling | (a) Time, browser/OS summary and approximate location, plus a "this was not me" instruction that leads to ending all sessions; no automatic action; (b) plain information only | **(a)** if the Architect confirms feasibility; "sign out of all devices" was a PO item outside S3 and would enter S3 here |
+| Q35 | Step-up list: keep only the user's three actions (automation on, unpair NT8, change e-mail/WhatsApp), or also the Architect's earlier list (source token create/rotate, pairing code, enforcement off, raising max position, admin actions)? | (a) The three now; add the others if the user asks; (b) all of them | **(a)** minimum as stated; the Architect to say which extras are a security must |
+| Q36 | Does the invitation e-mail have to equal the sign-up e-mail, and may the invitee change it at sign-up? | (a) Must be equal (Q19 binding); (b) invitee may use another e-mail, confirmed by code | **(a)** |
+
+### Questions for the user — S5 follow-ups from design (Q-S5-x) — open
+
+Raised by the Product Designer in the S5 opt-in spec §17. Items already answered by the plan are not repeated here.
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q37 | Is linking an account to an account exposed by a paired NinjaTrader instance required to save it (S5 AC-1 says "link it")? Manual-only accounts (Topstep, S16 AC-7) can never be linked | (a) Optional: an account can be saved unlinked; unlinked accounts are tracked manually and can never be routed or receive automation; (b) required for every account except manual-only presets | **(a)** |
+| Q38 | May the linked platform account be changed while the account has an open position? | (a) Blocked while a position is open (same spirit as deleting, S5 AC-6); (b) allowed with a strong warning; the account is flagged out of sync | **(a)** |
+| Q39 | Deleting an account (refused with an open position, S5 AC-6): what happens to its routes, to a follower relation, and to its history? | (a) The account is archived: hidden from lists; its routes and any master/follower relation are removed after a confirmation that lists them; history (audit, trades) is kept per S10 AC-3 and the removal is audited; (b) hard delete of everything except the audit | **(a)** — S10 AC-3: entries cannot be deleted by the user |
+| Q40 | S5 ships before the preset catalog (S16). How is a prop account registered meanwhile (firm/plan/phase, max position), and what about the automation opt-in? | (a) Firm, plan and phase as free text; max position typed by the user; the firm's stance is "unknown", so the explicit opt-in (Q25) is required with a generic warning that no rule text is available; (b) no opt-in until S16 — prop accounts cannot receive automated sources before S16; (c) no opt-in, the user is responsible (sim only) | **(a)** — applies Q25 consistently ("unknown" needs a choice) and costs little |
+| Q41 | When S16 later attaches a preset to prop accounts created before it, do those accounts go to "review pending" (automated sources suspended until the user confirms the stance, as in Q26)? | (a) Yes; (b) keep the previous choice and notify | **(a)** — consistent with Q26 |
+| Q42 | What is a **material change of a stance text** that suspends automation (S5 AC-11 includes "or its text")? Typo or format fixes should not | (a) The person who publishes the preset version flags the change as material (meaning changed) and records why; unflagged changes never suspend; (b) any change in the verbatim text suspends; (c) only a change of the stance class | **(a)** |
+
+### Questions for the user — S6 follow-up from design (Q-S6-2) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q43 | A new instruction entry reaches an account whose size has **no stop/target profile defined** (the system ships no invented default values; S6 AC-1, AC-5 make the profile the only source of stop/target). What happens? | (a) The entry is **skipped and audited** with the reason "no stop/target profile"; exits (`close`, reduce) still work (P1); the account screen shows a banner asking the user to define the profile; (b) the entry executes **without** stop/target (unprotected position); (c) the system ships default values (needs the user to supply them) | **(a)** — never opens an unprotected position; (c) only if the user provides the numbers |
+
+### Questions for the user — S10 follow-ups from design (Q-S10-1, Q-S10-4) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q44 | Can the user **export** their audit log (e.g. CSV)? Not in S10 AC-1..4 | (a) Not in V1: the log is readable and filterable on screen; export is a later slice; (b) CSV export of the filtered list in V1 | **(a)** — smaller scope; the log already holds up to 24 months. Whether a data-portability right applies is for the privacy policy (user-owned) |
+| Q45 | The retention period (24 months rolling, "configurable", S10 AC-3): can the **user** change it, or is it a system setting changed only by the admin? | (a) Read-only for users, shown as one line; changed only by the admin through system configuration; (b) a user setting within limits | **(a)** |
+
+### Questions for the user — S16 follow-up from design (Q-S16-1) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q46 | Presets store, from the research, the evaluation **profit target**, **minimum trading days** and **payout rules that change what the trader may do** (research format §4). No slice uses or tracks them in V1. Should the preset screen show them? (The daily profit target of S13 AC-5 is a different item and is covered.) | (a) Not shown in V1: stored with source and date in the preset only; tracking an evaluation's progress is a later slice; (b) shown as read-only information with source and date, not tracked or enforced | **(a)** — a read-only list of rules the product does not follow could be read as if it did; revisit with an evaluation-progress feature |
+
+### Questions for the user — S13 risk follow-ups from design (Q-S13-1, 3, 4) — open
+
+Risk rules decide when trading is blocked and positions are closed: nothing below is applied until the user decides; the Product Designer draws the recommendation labeled **provisional**.
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q47 | Which risk rules must a **prop** account have before it can be saved? Written today: drawdown and reset time cannot stay "not confirmed" (S16 AC-6); max position is mandatory (S5 AC-3). Not written: the daily loss limit | (a) Prop accounts need drawdown and daily loss limit, unless the preset states the firm has **no** daily loss limit (explicit "none"); everything else optional; real accounts: every rule optional ("can set", S13 AC-1), with unset rules shown as "not set"; (b) only drawdown required | **(a)** |
+| Q48 | When does an edited limit take effect, and may lowering it below what the day has already used trigger enforcement at once? Raising a limit must not unblock a blocked account before the reset ("no early unlock", vision §9) | (a) Every edit takes effect immediately; a block already applied stays until the reset; (b) **tightening** is immediate, **loosening** applies from the next trading day; (c) every edit applies from the next trading day. In (a) and (b), if the new value is already exceeded, the Core stops routing new entries at once (S14 AC-1) and, with enforcement on, the plugin flattens at once, after a warning before saving that names this effect | **(b)** — tightening protects at once, loosening cannot be used to bypass a limit mid-day |
+| Q49 | S13 AC-5 describes "flatten and block at the daily profit target" as "(enforcement on)". May it be saved while the account's enforcement is **off**? With enforcement off the Core only refuses new entries (S14 AC-1); nothing is flattened | (a) Allowed to save, with a clear warning that nothing will be flattened until enforcement is turned on; (b) the option is unavailable until enforcement is on, with the reason shown; (c) choosing it turns enforcement on for the account | **(b)** — avoids a user believing the account will be flattened when it will not; (c) changes a safety setting as a side effect |
+
+### Questions for the user — S18 follow-ups from design (Q-S18-2, Q-S18-3) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q50 | An entry is skipped because the account has **no stop/target profile** (Q43 option a). S18 AC-1 lists "refusals" as notifiable; skips caused by a choice the user made (automation not accepted, signal type not selected — S7 AC-2, AC-6) are audited only | (a) Notify (a missed trade because of missing configuration is unexpected), repeated ones grouped; (b) audit only | **(a)** |
+| Q51 | What is the "maximum alert" for the automatic flatten of an orphan-leg position (Q27 b), which the user did not ask for? | (a) A fixed, non-dismissible alert at the top of the Web (and the same in the plugin) that stays until the user marks it as read, plus the audit entry; (b) a high-priority notification in the list only; V1 has no other channel (Q8) | **(a)** — an automatic closing of a position must not be missable |
+
+### Questions for the user — S21 trade list follow-ups from design (Q-S21-1, 2, 4, 5, 6, 7) — open
+
+These define the numbers the performance view (S22) reconciles with the trade list (S22 AC-2, X-3). The Product Designer draws the recommendation labeled **provisional**.
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q52 | Unit of MAE and MFE (vision §10 names them without a unit) | (a) USD, exact strings like P&L; (b) points; (c) ticks | **(a)** — comparable with P&L and averageable across instruments |
+| Q53 | The trade list/period filter (S21 AC-4, S22 AC-1) uses which date? | (a) The trade's **exit** time, in the profile time zone (Q23); (b) the trading day (the account's reset time, S13 AC-4); (c) entry time | **(a)** — the P&L is realized at exit; trading-day grouping can come with S22 if wanted |
+| Q54 | Do commissions/fees count in a trade's P&L? | (a) Gross P&L only in V1, stated on the trade detail; manual trades are computed from prices, quantity and tick value; (b) net P&L when the platform reports fees, and an optional fee field in manual entry | **(a)** — adapters may not report fees reliably; avoids mixing gross and net in one column |
+| Q55 | MAE/MFE in a **manually entered** trade (S21 AC-3 says "same fields") | (a) Optional: shown as "—" when missing and left out of MAE/MFE averages, with the number of trades used shown; (b) required; (c) missing counts as zero | **(a)** — the user rarely knows them; (c) would distort averages |
+| Q56 | May the user **edit or delete** a manually entered trade? Captured trades cannot be edited | (a) Edit and delete allowed for manual trades; each change audited with before/after; the metrics follow; (b) delete only; (c) neither | **(a)** |
+| Q57 | What is "one trade" when entries are added to a position or partly closed (S21 AC-1 says "completed trade")? | (a) Flat-to-flat round trip (all entries and exits until the position is flat); (b) one trade per **entry**, exits matched first-in-first-out (as the protective orders, S8 AC-4b), a partial exit splits the entry; (c) hybrid: (b) in individual mode, (a) in shared mode, where the position has one stop and target | **(c)** — in individual mode each entry has its own stop/target and its own signal, so win rate by signal type (S22 AC-1) needs one trade per entry; shared mode manages one position |
+
+### Questions for the user — S22 performance view follow-ups from design (Q-S22-1, Q-S22-4) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q58 | How does **win rate** (S22 AC-1) count a trade with P&L exactly 0? | (a) Not a win: win rate = trades with P&L > 0 divided by all trades; the screen states the counts (wins, losses, zero); (b) zero-P&L trades are left out of both the numerator and the denominator; (c) zero counts as a win | **(a)** |
+| Q59 | Which metrics does the view show? AC-1 lists totals/averages of P&L, win rate, time in trade, MAE and MFE, split by source and signal type. Extras the designer could draw: profit factor, best and worst trade, average win and average loss, per-day P&L curve | (a) Only the AC-1 list in V1; extras in a later slice; (b) add profit factor, best/worst trade, average win/loss; (c) add all of them including the per-day curve | **(a)** — extras depend on how a trade is counted (Q57) and on fees (Q54); better to add them once those are decided |
+
+### Questions for the user — real-account profile tie-break (Q-S6-7) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q60 | A real account starts from the profile of the "nearest standard size" (S5 AC-2, Q12). Distance is measured by the difference in account amount; below 25k uses 25k and above 300k uses 300k. If the size is **exactly halfway** between two standard sizes (e.g. 37,500 between 25k and 50k), which one? | (a) The smaller size; (b) the larger size; (c) no automatic choice: the user picks one of the two when saving the account (the account starts from the profile they choose) | **(c)** — the written rule does not say which profile is safer, and the case is rare |
+
+### Questions for the user — S15 enforcement follow-ups from design (Q-S15-2, 3, 5) — open
+
+Enforcement flattens positions and blocks accounts: nothing below is applied until the user decides; the Product Designer draws the recommendation labeled **provisional**.
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q61 | The user turns enforcement **on** while a limit is already exceeded today (S15 AC-2 says "on reaching a limit"). The Core already refuses new entries regardless of enforcement (S14 AC-1) | (a) Enforce at once: flatten, cancel working orders and block until the reset, after a confirmation that names any open position that will be closed; (b) enforcement starts at the next trading day; today only the Core refusal applies; (c) the switch stays unavailable until the reset | **(a)** — the user asked for protection explicitly; consistent with Q48 (b) for tightening |
+| Q62 | When the reset ends a block, does the user get a notification, and is the release audited? S18 AC-1 lists "blocks" but not their end; X-5 says automatic actions are audited | (a) Both: an informational notification and an audit entry with the reason "trading day reset"; (b) audit entry only; (c) neither | **(a)** |
+| Q63 | The user turns enforcement **off** (allowed when the account is not blocked) while "flatten and block at the daily profit target" is set (S13 AC-5, Q49) | (a) The target setting returns to "notify only", stated in the confirmation and audited; (b) the setting stays but only the Core refusal of new entries applies | **(a)** — consistent with Q49 (b), where the option exists only with enforcement on |
+| Q64 | May enforcement be turned on for an account that has **no limit set** (possible for real accounts, Q47)? | (a) Allowed, with a permanent status "no limits set — nothing to enforce"; (b) the switch needs at least one enforceable limit | **(b)** — a switch that does nothing can be mistaken for protection |
+
+### Questions for the user — plugin panels follow-ups from design (Q-P1, Q-P2) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q65 | When an account is blocked or a warning arrives, how does the plugin tell the user (S15 AC-6 says the user is told in the plugin and why)? A window that opens by itself takes keyboard focus while the user may be typing an order | (a) Never takes focus: an entry in the plugin log, a non-activating toast if feasible, and a permanent status on the account in the plugin panel; (b) the plugin window opens by itself on a block | **(a)** — stealing focus from a trading window can cause mistaken orders |
+| Q66 | Unpair **from the plugin itself** (Q18 allows unpairing with a confirmation listing the affected accounts, a strong warning if a position is open or enforcement is on, and the accounts become out of sync). S3 AC-10 requires a new code for unpairing, which the plugin cannot receive | (a) The plugin offers a **local disconnect** only: warning with the consequences and a checkbox to confirm; the pairing stays registered in the Core, which shows the instance as disconnected and applies the out-of-sync rules; **revoking** the pairing is done in the Web with the new code (S3 AC-10); (b) the plugin unpair also revokes the pairing in the Core, without the code | **(a)** |
+
+### Questions for the user — route switch on an ineligible account (Q-S7-8) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q67 | S7 AC-6 says an account that does not accept automated sources "cannot be subscribed" to an automated source (creation is blocked). What about the on/off switch of a route that already exists when the account becomes ineligible (declined opt-in, pending review after a preset change)? Meanwhile nothing is routed: instructions are skipped and audited | (a) The switch can be turned on and off freely; the choice is saved and the status shows why the route is not active; if the account becomes eligible again, routes left "on" start working; (b) turning **off** is always allowed; turning **on** is unavailable while the account is ineligible, with the reason, so every route starts again only by a new explicit action; (c) the switch is disabled in both directions | **(b)** — it follows AC-6 literally, never traps the user with a route they cannot turn off, and nothing restarts by itself when the opt-in is accepted again |
+
+### Questions for the user — grouped notifications that were already read (Q-S18-1) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q68 | Repeated identical notifications (same code, account and trading day) are shown as one group with a count. If the user already **read** the group and the same problem happens again that day, should it become unread again? Audit is not affected: it keeps one entry per event (S10 AC-1) | (a) Yes for every code; (b) yes for **danger** codes (risk block, out-of-sync, expired command), while the other groups stay read and only the count grows; (c) no, a read group stays read (current spec) | **(b)** — a second block or out-of-sync on the same day must be noticed; routine skips (e.g. excess quantity) would not re-alert |
+
 ## 8. Architect inputs requested
 
 Pending answers from Prumo @ Dev3 are recorded in §9 when received.
@@ -413,11 +575,11 @@ Pending answers from Prumo @ Dev3 are recorded in §9 when received.
 
 **2026-10-23 — Local OCO (F5), Prumo (rev. 4):** S9 AC-4 and S11 AC-5 agreed; plugin reports `oco_location` (local/server/unknown, unknown = local) in hello; reconnect snapshot carries order states and correlation via order name; cases (iii) double fill → Q27, (iv) broker disconnection; Sim reset/Playback rewind = discontinuity (S11 AC-6). S19 needs two Windows machines/VMs.
 
-**2026-10-23 — User decisions on architecture items (rev. 3):** A1 stack per ADR-0001; A2 production in the US central region (near Chicago) — no product AC impact; A3 secret in the URL, masked in every log (→ S1 AC-1, AC-6); A4 replication always via Core in V1 (→ S19 AC-3); A5 optional TOTP (→ S3 AC-1b); A6 private GitHub + CI (push only with authorization).
+**2026-10-23 — User decisions on architecture items (rev. 3):** A1 stack per ADR-0001; A2 production in the US central region (near Chicago) — no product AC impact; A3 secret in the URL, masked in every log (→ S1 AC-1, AC-6); A4 replication always via Core in V1 (→ S19 AC-3); A5 optional TOTP (→ superseded by passwordless sign-in, S3 rev. 7); A6 private GitHub + CI (push only with authorization).
 
 **2026-10-23 — Prumo @ Dev3** (incorporated in rev. 2):
 - M1 path is viable as walking skeleton. Order: ADR-0003 + ADR-0004 with fixtures → short NT8 spike → Core (against adapter-sim) and plugin in parallel. Web not needed before M1 (seed data).
-- Plugin (AddOn) sees all accounts of the instance, receives executions/positions/P&L, can cancel and flatten in Sim and Playback. Limits: block is reactive (→ S15 AC-6); Playback uses simulated clock (→ S15 AC-7); enforcement must work with Core offline (→ S15 AC-4); one connection + credential per instance (→ S3 AC-4).
+- Plugin (AddOn) sees all accounts of the instance, receives executions/positions/P&L, can cancel and flatten in Sim and Playback. Limits: block is reactive (→ S15 AC-6); Playback uses simulated clock (→ S15 AC-7); enforcement must work with Core offline (→ S15 AC-4); one connection + credential per instance (→ S3 AC-15).
 - ADR-0003 comes right after S0 approval; schema 1.0 reserves correlation fields so basic actions do not break later. Preliminary ids: `message_id` (dedupe), `position_ref`/`order_ref` (source), `instruction_id`/`command_id` per destination (Core), `platform_order_id` (execution report). Master replication blocked until ADR-0003 and ADR-0004 are accepted by the user.
 - Architect will recommend the webhook secret in the URL rather than the body (Pine inputs can leak via status line/shared layouts) — user decision; the plan says "per-source secret" without fixing position.
 - New product questions: Windows+NT8 machine (Q15), command TTL (Q16).
