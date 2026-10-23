@@ -72,8 +72,9 @@ paths:
       description: |
         Sets `read_at` and bumps `revision` (so the plugin's upsert sees it); already read → 200 with the
         item unchanged. Reading never changes or hides the state it reports (a block, a risk level, an out-
-        of-sync flag stays visible in banners and badges). A later occurrence of a grouped item does not
-        make it unread again. Emits `notification.read`.
+        of-sync flag stays visible in banners and badges). A later occurrence of a grouped item makes it
+        unread again only when its registry code has `reopen_on_occurrence: true` (provisional Q68 b: the
+        `danger` routing codes); otherwise only `count` and `updated_at` change. Emits `notification.read`.
       parameters:
         - { $ref: '#/components/parameters/NotificationId' }
       responses:
@@ -169,7 +170,7 @@ components:
         count:
           type: integer
           minimum: 1
-          description: Occurrences grouped into this item (same code + account + trading day; registry `grouping`). The audit keeps one entry per occurrence.
+          description: Occurrences grouped into this item (same code + account + trading day; registry `grouping`, and `reopen_on_occurrence` for whether a new occurrence marks it unread). The audit keeps one entry per occurrence.
         source_event_ids:
           type: array
           maxItems: 50

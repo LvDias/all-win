@@ -63,6 +63,8 @@ paths:
       description: |
         An absent optional rule means "not set" (no warning, no refusal for it). Provisional (Q48):
         a stricter value applies at once, a looser one from the next trading day (`AccountRisk.pending_changes`).
+        A change of the reset time, and a change of drawdown type, always apply from the next trading
+        day (`pending_reset_change`, `pending_changes[].change: drawdown_type_changed`).
         Looser means a higher limit or target, and also: removing a rule (absent = no limit), changing
         `profit_target_on_reach` from `flatten_and_block` to `notify`, and changing `daily_loss_limit.kind`
         from `hard` to `soft_pause` or `none` (QA Security L1); each is audited and listed in
@@ -324,7 +326,28 @@ components:
                 type: string
                 pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
                 description: The new limit (money as a decimal string; a percent for consistency). Absent when the change removes the rule or changes only a kind or `profit_target_on_reach`.
-              change: { type: string, enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened] }
+              change:
+                type: string
+                enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened, drawdown_type_changed]
+                description: |
+                  What is pending. `drawdown_type_changed` (a change of type is not comparable, so it waits
+                  for the next trading day) and `daily_loss_softened` carry the new value in
+                  `new_drawdown` / `new_daily_loss`.
+              new_drawdown: { $ref: 'presets.yaml#/components/schemas/DrawdownValue' }
+              new_daily_loss: { $ref: 'presets.yaml#/components/schemas/DailyLossValue' }
+            allOf:
+              - if: { properties: { change: { const: drawdown_type_changed } }, required: [change] }
+                then: { required: [new_drawdown], properties: { kind: { const: drawdown } } }
+              - if: { properties: { change: { const: daily_loss_softened } }, required: [change] }
+                then: { required: [new_daily_loss], properties: { kind: { const: daily_loss } } }
+        pending_reset_change:
+          type: object
+          additionalProperties: false
+          required: [effective_from, new_reset]
+          description: A saved change of the trading-day reset time (prop accounts), which always applies from the next trading day (ADR-0006 §3.7).
+          properties:
+            effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            new_reset: { $ref: 'presets.yaml#/components/schemas/TradingDayResetValue' }
     RiskSummaryList:
       type: object
       additionalProperties: false

@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 3.2.1 — 2026-10-23 (Code Review of 3.2.0; additive)
+- `AccountRisk.pending_reset_change` (a saved reset-time change, always from the next trading day) and `pending_changes[].change: drawdown_type_changed` with `new_drawdown`; `daily_loss_softened` carries `new_daily_loss` (Crivo F1).
+- Notification registry: `reopen_on_occurrence` per `account_trading_day` code, true for `routing.risk_blocked`, `routing.out_of_sync`, `routing.expired` (provisional Q68 b; a / c only flip the flags); checked by `check_openapi.py`.
+- Notes: no `critical` code yet in V1 (S11 / S15 add them); index hints and `group_key` for the notification table.
+
 ## 3.2.0 — 2026-10-23 (V1-S18 notifications; additive) — notes: docs/architecture/contracts/s18-notifications.md
 - Module `notifications`: `listNotifications` (status, category, account; MAC cursor; critical unread first), `getUnreadCount`, `markNotificationRead`, `markNotificationsRead` (ids or `up_to`); SSE `notification.created`, `.updated`, `.read`. Fields identical to adapter protocol 1.3 (Esquadro): `notification_id`, `revision`, `code`, `category`, `severity` (info, success, warning, danger, critical), `params`, `count`, `source_event_ids`, `target` (structured, never a URL).
 - New `contracts/notifications/v1/registry.json` (codes, category, severity, grouping, target, params) and the generated `params.schema.json` (JSON Schema `$defs` from the bundle); `check_openapi.py` checks registry ↔ `NotificationParamsByCode` and the drift of `params.schema.json`.

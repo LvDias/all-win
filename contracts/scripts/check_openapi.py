@@ -180,6 +180,9 @@ def notification_params(doc, base, errs):
             errs.append(f'notification {code}: exactly one of severity / severity_by_params, with registry values')
         if e.get('grouping') not in (reg.get('groupings') or {}):
             errs.append(f'notification {code}: unknown grouping {e.get("grouping")}')
+        if 'reopen_on_occurrence' in e and (not isinstance(e['reopen_on_occurrence'], bool)
+                                            or e.get('grouping') != 'account_trading_day'):
+            errs.append(f'notification {code}: reopen_on_occurrence is a boolean of account_trading_day codes')
         if 'target' in e and e['target'] not in targets:
             errs.append(f'notification {code}: unknown target {e["target"]}')
     defs, todo = {}, [r.get('$ref', '').split('/')[-1] for r in by_code.values()]
