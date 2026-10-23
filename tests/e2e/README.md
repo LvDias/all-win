@@ -13,7 +13,7 @@ Source: `docs/architecture/contracts/s1-webhook-ingest.md` (contract 1.1.0), S1 
 | `10-ingest` | AC-1 valid fixtures + audit "received" + `received_at`; source policy 422; AC-7 unsupported symbol; AC-3 invalid fixtures (400 + pointer, no receipt); invalid JSON; AC-2 empty 404 matrix (unknown/wrong/short/long/malformed tokens, other `/ingress` paths, other methods) and indistinguishable responses; AC-4 duplicate (same `instruction_id`, one row, audit), 20 parallel posts → 1 accepted + 19 duplicate; AC-5 same `message_id` for two users; per-user scoping |
 | `20-latency` | p95 < 300 ms smoke (client-side through Caddy: an upper bound of the contract measure) |
 | `30-masking` | Capture controls; M1–M4, M6 a–o, M7, M10, R2/R3 Caddy log structure, M5, whole-run scan |
-| `40-disruptive` | M8 rate limit (valid and invalid tokens); M9 PostgreSQL stopped (500 `common.internal`); M9 Core stopped (Caddy 502); final whole-run scan |
+| `40-disruptive` | M8 rate limit (valid and invalid tokens; a spoofed `X-Forwarded-For` must not reset the per-IP limit); M9 PostgreSQL stopped (500 `common.internal`); M9 Core stopped (Caddy 502); final whole-run scan |
 
 Files run in name order with one worker: later files revoke a token, exhaust rate limits and stop services.
 
@@ -34,7 +34,7 @@ E2E_SEED_CMD='…' E2E_REVOKE_CMD='…' pnpm -s test:s1 --reporter=dot
 ```
 
 The suite starts its own compose project (`allwin-e2e-<id>`) with a generated env file (random
-password, free loopback ports, `RUST_LOG=trace`), builds the Core image, and removes containers, volumes and
+passwords, free loopback ports, `RUST_LOG=trace`), builds the Core image, and removes containers, volumes and
 its run directory at the end. QA verdicts use a clean worktree at the exact SHA (`E2E_STACK_ROOT`).
 Docker calls go through `sg docker -c` when the user is not in the `docker` group.
 
@@ -49,6 +49,8 @@ Docker calls go through `sg docker -c` when the user is not in the `docker` grou
 | `E2E_REVOKE_CMD` | — | Revokes a key for M5. Gets `KEY_ID` and `E2E_COMPOSE`. Unset → M5 reported untested |
 | `E2E_METRICS_PATH` | — | Metrics path on the Core's loopback port. Unset → metrics reported untested |
 | `E2E_ENABLED_SYMBOLS` | `MNQ` | Symbols enabled by the seed catalog (AC-7) |
+| `E2E_CADDY_LOG_LEVEL` | `DEBUG` | Caddy server/error log level in the generated env file |
+| `E2E_RUST_LOG` | `trace` | Core log filter in the generated env file |
 | `E2E_EXTRA_ROUTES` | — | Extra `http.route` templates allowed in M10 |
 | `E2E_SQL_INSTRUCTION` / `_RECEIPT` / `_AUDIT` | `routing.instruction` / `routing.message_receipt` / `audit.audit_entry` | Relations (wave1-data-model §6) |
 | `E2E_LATENCY_SAMPLES` / `_PAUSE_MS` / `_P95_MS` | 60 / 50 / 300 | Latency smoke |
@@ -56,7 +58,7 @@ Docker calls go through `sg docker -c` when the user is not in the `docker` grou
 
 ## Known limits
 
-- Caddy debug logging is not enabled by the infra config; "Caddy debug log" in M1 needs a debug variant from DevOps.
+- Caddy debug output is searched when the infra has the `CADDY_LOG_LEVEL` switch (infra 7a35afb+); the suite sets it to `DEBUG` and asserts that debug lines were captured.
 - The Core panic hook cannot be triggered black-box; panic output is covered only as part of Core stderr.
 - AC-7 "adding a symbol needs no code change" is a configuration review item; the suite checks rejection of a disabled symbol.
 - Functional tests retry a 429 after `Retry-After`; the concurrency, latency and M8 tests do not.

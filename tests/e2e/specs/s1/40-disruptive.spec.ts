@@ -61,8 +61,25 @@ test.describe('S1 masking — disruptive (contract §4.3)', () => {
     expectRejected('M8 invalid tokens 429', invalid.last, 429, 'ingress.rate_limited');
     expect(invalid.last.headers['retry-after'], 'M8: Retry-After header').toBeDefined();
 
-    expectNoLeak('M8', await allSources(since, [{ label: 'M8-valid', res: valid.last }, { label: 'M8-invalid', res: invalid.last }]));
     await waitRetryAfter(invalid.last);
+
+    // The Core trusts the last X-Forwarded-For hop (set by Caddy): a client-supplied header must not reset the per-IP limit.
+    let spoofed: RawResponse | undefined;
+    for (let i = 1; i <= config.rateLimit.maxBurst; i++) {
+      spoofed = await post(ingress(syntheticToken('x').value), '{}', { ...JSON_HEADERS, 'x-forwarded-for': `203.0.113.${i % 250}` }, { retry429: false });
+      if (spoofed.status === 429) break;
+    }
+    expect(spoofed!.status, 'M8: spoofed X-Forwarded-For bypasses the per-IP limit').toBe(429);
+
+    expectNoLeak(
+      'M8',
+      await allSources(since, [
+        { label: 'M8-valid', res: valid.last },
+        { label: 'M8-invalid', res: invalid.last },
+        { label: 'M8-spoofed-xff', res: spoofed! },
+      ]),
+    );
+    await waitRetryAfter(spoofed!);
   });
 
   test('M9 database down → 500 common.internal without path, token or SQL', async () => {

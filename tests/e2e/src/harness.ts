@@ -4,7 +4,8 @@ import { expect } from '@playwright/test';
 import { config, INGRESS_PREFIX } from './config.ts';
 import { formatHits, fragmentTerms, M6O_CUTS, maskAll, parseToken, scan, secretTerms, type Hit, type SearchTerm, type Token } from './canary.ts';
 import { JSON_HEADERS, send, type RawResponse } from './http.ts';
-import { loadState, pgDump, serviceLogs, type StackState } from './stack.ts';
+import { readFileSync } from 'node:fs';
+import { composeFiles, loadState, pgDump, serviceLogs, type StackState } from './stack.ts';
 
 export interface Ctx {
   s: StackState;
@@ -107,6 +108,13 @@ export async function allSources(since: string | undefined, responses: Array<{ l
 
 // ---- Caddy log structure (R2/R3) -------------------------------------------------------------------
 
+/** True when the infra under test has the Caddy log-level switch and the suite asked for DEBUG. */
+export function caddyDebugExpected(): boolean {
+  const level = process.env.E2E_CADDY_LOG_LEVEL ?? 'DEBUG';
+  const composeText = readFileSync(composeFiles()[0]!, 'utf8');
+  return level.toUpperCase() === 'DEBUG' && composeText.includes('CADDY_LOG_LEVEL');
+}
+
 export interface StructureFinding {
   line: number;
   logger: string;
@@ -125,10 +133,11 @@ function keyPaths(v: unknown, prefix = ''): string[] {
  * R2: no access line carries request>uri or a Referer header; R3: no other Caddy line carries request>uri or
  * request>headers. Any `uri` key at any depth is reported too. Only key paths are reported, never values.
  */
-export function caddyStructureFindings(caddyLog: string): { findings: StructureFinding[]; accessLines: number; jsonLines: number } {
+export function caddyStructureFindings(caddyLog: string): { findings: StructureFinding[]; accessLines: number; jsonLines: number; debugLines: number } {
   const findings: StructureFinding[] = [];
   let accessLines = 0;
   let jsonLines = 0;
+  let debugLines = 0;
   caddyLog.split('\n').forEach((raw, i) => {
     const line = raw.trim();
     if (!line.startsWith('{')) return;
@@ -139,6 +148,7 @@ export function caddyStructureFindings(caddyLog: string): { findings: StructureF
       return;
     }
     jsonLines++;
+    if (obj.level === 'debug') debugLines++;
     const logger = typeof obj.logger === 'string' ? obj.logger : '(none)';
     const isAccess = logger.startsWith('http.log.access');
     if (isAccess) accessLines++;
@@ -150,7 +160,7 @@ export function caddyStructureFindings(caddyLog: string): { findings: StructureF
       if (!isAccess && p === 'request>headers') findings.push({ line: i + 1, logger, issue: `key ${p}` });
     }
   });
-  return { findings, accessLines, jsonLines };
+  return { findings, accessLines, jsonLines, debugLines };
 }
 
 // ---- Responses -------------------------------------------------------------------------------------

@@ -8,6 +8,7 @@ import { JSON_HEADERS } from '../../src/http.ts';
 import { loadFixtures, uniqueMessageId, validInstruction } from '../../src/instructions.ts';
 import {
   allSources,
+  caddyDebugExpected,
   caddyStructureFindings,
   ctx,
   expectAccepted,
@@ -197,9 +198,12 @@ test.describe('S1 masking (contract §4.3)', () => {
 
   test('R2/R3 Caddy log structure: no URI, no Referer, no headers outside access', async () => {
     const caddy = serviceLogs(ctx().s, 'caddy');
-    const { findings, accessLines } = caddyStructureFindings(caddy);
+    const { findings, accessLines, debugLines } = caddyStructureFindings(caddy);
     // n/o variants are non-ingress requests and must produce access lines, otherwise this check is vacuous.
     expect(accessLines, 'R2: no Caddy access line captured (access logging inactive?)').toBeGreaterThan(0);
+    test.info().annotations.push({ type: 'caddy', description: `access=${accessLines} debug=${debugLines}` });
+    if (caddyDebugExpected()) expect(debugLines, 'M1: Caddy DEBUG requested but no debug line captured').toBeGreaterThan(0);
+    else test.info().annotations.push({ type: 'untested', description: 'Caddy debug output (no CADDY_LOG_LEVEL switch in this infra revision)' });
     expect(findings, 'R2/R3: forbidden keys in Caddy log lines').toEqual([]);
   });
 

@@ -116,18 +116,22 @@ function parseEnv(text: string): Record<string, string> {
   return out;
 }
 
-/** Generates a disposable env file (random password and loopback ports, RUST_LOG=trace) from .env.example. */
+/** Generates a disposable env file (random passwords and loopback ports, RUST_LOG=trace, Caddy DEBUG) from .env.example. */
 export async function generateEnvFile(): Promise<string> {
   ensureRunDir();
   const example = resolve(config.stackRoot, 'infra/compose/.env.example');
   const base = parseEnv(readFileSync(example, 'utf8'));
+  // Every *_PASSWORD (superuser and ALLWIN_* roles) gets a fresh URL-safe value.
+  const passwords = Object.fromEntries(Object.keys(base).filter((k) => k.endsWith('_PASSWORD')).map((k) => [k, randomBytes(18).toString('hex')]));
   const values: Record<string, string> = {
     ...base,
-    POSTGRES_PASSWORD: randomBytes(18).toString('hex'),
+    ...passwords,
     POSTGRES_HOST_PORT: String(await freePort()),
     CORE_HOST_PORT: String(await freePort()),
     CADDY_HTTPS_PORT: String(await freePort()),
     RUST_LOG: process.env.E2E_RUST_LOG ?? 'trace',
+    // M1 searches the Caddy debug output too (ignored by infra revisions without the switch).
+    CADDY_LOG_LEVEL: process.env.E2E_CADDY_LOG_LEVEL ?? 'DEBUG',
   };
   const file = resolve(config.runDir, 'compose.env');
   writeFileSync(file, Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n', { mode: 0o600 });
