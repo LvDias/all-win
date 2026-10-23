@@ -123,7 +123,30 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
   - **Time in force:** protective orders are GTC (a DAY order would drop protection at the session end). Entry orders are DAY.
   - **Expiry re-check:** `expires_at` is checked on receipt **and** right before submitting to the platform, which covers waits on `depends_on` and the per-account queue.
   - **`flatten` on a flat account:** `cancelled` + `command.already_flat`, a terminal success for `depends_on`.
-  - **`reduce` that cannot reduce** (flat, or same side): `cancelled` + `command.nothing_to_reduce`, never opening or flipping. A reduce larger than the position is capped (`order.quantity_capped`).
+  - **`reduce` that cannot reduce** (flat): `cancelled` + `command.nothing_to_reduce`, never opening or flipping. A reduce larger than the position is capped (`order.quantity_capped`).
+  - **Position-identity guard on `reduce` (protocol 1.2, U13 option A, user decision 2026-10-23):**
+    - **Identity record** (adapter, every protection mode): a durable record per (account, instrument) holding `identity` (an All Win `command_id`, `external` or `unknown`), the **signed quantity** it describes and the **id of the last fill** applied to it. It is written in the same journal batch as the fill that changes it.
+      - It is set only when a fill takes the position from flat to non-flat, or flips it. The identity is then the `command_id` of that fill's All Win `place` (open) command; for a non-All Win fill (`origin: external`) it is `external`.
+      - Adds and partial closes, All Win or external, keep the identity and update quantity and last fill. External adds are accepted: an All Win reduce may then reduce contracts added by hand, which only reduces exposure (Vigia I2).
+      - Going flat ends it.
+      - It is a concept **separate from the shared-bracket owner** (which exists only in shared mode and keeps its own rule above). The two may differ, for example on an external position with an All Win shared add.
+    - **Identity becomes `unknown`** (fail closed) whenever the adapter cannot vouch for it:
+      - journal lost, reset or pruned for that instrument;
+      - at startup, reconnect or catch-up, when the platform position or the latest execution for that instrument differs from the record's quantity or last fill (for example the user closed and reopened the same size while the plugin or NT8 was down);
+      - `SimulationAccountReset` / `account_reset`;
+      - a fill correction (`amend`/`remove`) touching the opening fill;
+      - at the guard, when the live platform position differs from the record (an execution still queued, ADR-0005 N6).
+      - An `unknown` or `external` identity never matches a `position_ref`. NT8 execution retention and ordering across a restart are verified by spikes E4/E9 (untested).
+    - **Core:** every `reduce` carries `refs.position_ref` = the identity in the Core's expected state, derived from the **order of execution reports** (the fill whose `position_after` moved from 0), never from routing order: with two entries in flight from flat, the first to fill is the identity. If the Core holds no All Win identity, it does not send the reduce; routing skips it with `routing.position_unknown`, audited.
+    - **Adapter steps for a `reduce`, in order** (after the account checks):
+      0. **crash-window lookup** by order name `(command_id, x)`: any match is adopted and reported (filled, partially filled, cancelled…), never re-checked; 2+ matches → `order.ambiguous_reference`; a failed lookup → never submit. This comes first, so a re-delivery after a lost journal reports what already happened instead of "nothing to reduce" or "position changed";
+      1. flat → `cancelled` + `command.nothing_to_reduce` (benign race: the bracket closed it);
+      2. identity ≠ `position_ref`, `unknown` or `external`, **or** the order side does not oppose the position (a defensive check, never open or flip) → `rejected` + `command.position_changed`, nothing submitted. A reduce in a **1.0/1.1 envelope** (an older Core, which cannot send `refs`) takes this path too. A reduce in a **1.2 envelope** without `refs` is schema-invalid: the adapter answers `error` `protocol.invalid_message` and does not ack or execute it, so it stays in the Core outbox. It is a Core bug, never a reason-code outcome, and the Core raises an alert on any `protocol.invalid_message` about its own frames;
+      3. otherwise submit, capped to the position.
+    - **Core on `command.position_changed`:** the account goes `out_of_sync` (`sync.position_changed`) with an alert and an audit row, and the Core waits for the user (alert and wait). A dependent command gets `command.prerequisite_failed`.
+    - **Clearing out-of-sync discards pending reduces** (Vigia I1): when the user clears an account's `out_of_sync`, the Core marks that account's `reduce` commands still in the outbox (for example stuck after a rollback to a 1.1 session) as `expired`, audited, and never retransmits them.
+    - **`flatten` is unchanged:** no guard, no expiry. Closing whatever is open always reduces exposure.
+    - **Not in 1.2** (Pêndulo I2): reporting the adapter's identity in `position_snapshot` so the Core can re-learn it after `out_of_sync`. Until the position is flat, the Core keeps skipping reduces with `routing.position_unknown`. Revisit in a later minor.
   - **Modify/cancel outcomes:** one outcome report per target under the modify/cancel `command_id`, never with fills. The Core classifies reports by the action of their command.
   - **Fill corrections** (`amend`/`remove`): the recomputed order-level status, the original `fill_id`, and an authoritative `position_after`.
 - **Orphan-order protection in the adapter:** whenever an account's position in a contract becomes flat **for any reason**, the adapter immediately cancels the remaining All Win stop/target orders for it, and reports them `cancelled` with `reason_code: order.orphan_cancelled` (vision §8).
@@ -132,7 +155,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
   - **Default TTL: 5 seconds.** Editable per account between 1 and 60 seconds (Q16: short default, per-account editable). The 5 s default is decided (T2).
   - **Core side:** the Core never sends a command whose `expires_at` has passed. Pending commands found expired after a reconnect or restart become `expired`, are audited, and the account is flagged **out of sync**.
   - **Adapter side:** the adapter rejects a command received after `expires_at`, using its clock corrected by the skew measured between `welcome.sent_at` and local receipt, and reports `status: expired`, `reason_code: command.expired`. A command already submitted to the platform is never cancelled because of expiry.
-  - **Which commands carry it:** the schema **requires** `expires_at` on position-increasing commands (`place` with `position_effect: open`). For exits (`flatten`, `reduce`, `cancel`, protective `modify`) it is optional, and the Core omits it, so a late exit still reduces exposure; late exits are audited as late (T1, decided: only entries expire).
+  - **Which commands carry it:** the schema **requires** `expires_at` on position-increasing commands (`place` with `position_effect: open`). For exits (`flatten`, `reduce`, `cancel`, protective `modify`) it is optional, and the Core omits it, so a late exit still reduces exposure; late exits are audited as late (T1, decided: only entries expire). From 1.2 a late `reduce` is protected by the position-identity guard instead of an expiry (U13): it executes only against the position it was meant for.
 
 ## 6. Synchronization, disconnects and out-of-sync (Q14)
 
@@ -140,7 +163,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 
 | Trigger | Result |
 |---|---|
-| Command `rejected`, `expired`, or `partially_filled` without completion before the order's end of life | `out_of_sync` + alert |
+| Command `rejected`, `expired`, or `partially_filled` without completion before the order's end of life | `out_of_sync` + alert (`command.position_changed` → `sync.position_changed`, 1.2) |
 | Disconnect while the account had an open position or a command in flight | `out_of_sync` + alert ("alert and wait") |
 | Disconnect while flat with nothing in flight | `disconnected` only. On reconnect, if the snapshot shows flat with no All Win working orders, the state returns to normal automatically and the user is notified |
 | Reconnect snapshot differs from the expected state (position or All Win working orders) | `out_of_sync` + alert listing the differences |
@@ -226,8 +249,9 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 - `protocol_version` is `major.minor`. Additive optional fields and new enum values bump the minor, and receivers must ignore nothing silently: unknown enum values from a newer minor are answered with `error` `protocol.unsupported_value`.
 - A new message type is also a minor bump. The sender uses it only when the negotiated version includes it (the schema enforces it for `account_state`).
 - Envelopes created after `welcome` carry the negotiated version. Outbox frames keep their original bytes on retransmission, so a receiver accepts any envelope minor that is less than or equal to the negotiated one (e.g. a `1.0` frame inside a `1.1` session).
-- **Rollback (newer frame, older session):** an outbox frame created in a newer-minor session is still retransmitted byte-identical if a later session negotiates an older minor (e.g. Core rollback from 1.1 to 1.0). The receiver accepts it when its `type` exists in the negotiated version and its payload validates against the schema the receiver knows; otherwise it answers `error` `protocol.unsupported_value` with `ref_msg_id` and does **not** ack it, so the frame stays in the outbox and the session is flagged for the user. Every A→C type exists in 1.0, so this case cannot lose an execution report.
+- **Rollback (newer frame, older session):** an outbox frame created in a newer-minor session is still retransmitted byte-identical if a later session negotiates an older minor (e.g. Core rollback from 1.1 to 1.0). The receiver accepts it when its `type` exists in the negotiated version and its payload validates against the schema the receiver knows; otherwise it answers `error` `protocol.unsupported_value` with `ref_msg_id` and does **not** ack it, so the frame stays in the outbox and the session is flagged for the user. Every A→C type exists in 1.0, so this case cannot lose an execution report. A 1.2 `reduce` frame (with `refs`) retransmitted to an adapter that negotiated 1.1 fails the 1.1 schema and is refused the same way: it stays unacked and is never executed. This is intended. **Never "fix" it by stripping `refs`**, because that would run the reduce without the guard.
 - A new major lives in `contracts/adapter-protocol/v2/`, and the Core serves both for a transition period.
+- **Reduce needs 1.2:** the Core never sends a `reduce` on a session that negotiated a version below 1.2. **At the Core upgrade to 1.2**, undelivered `reduce` frames created before it (1.0/1.1, without `refs`) are marked `expired`, audited, and never retransmitted, so an old frame cannot reach a still-1.1 plugin unguarded (Pêndulo L3). Routing skips it with `routing.adapter_protocol_outdated` (audited, alert), so a reduce never runs without the position-identity guard (§5). A 1.2 adapter rejects a reduce in a 1.0/1.1 envelope with `command.position_changed`; a 1.2-envelope reduce without `refs` is `protocol.invalid_message`, not acked (§5).
 - An adapter older than the Core's minimum version is refused with 4003. The plugin shows "update required", and the web app shows the connection as *outdated*.
 
 ## 10. Testing
@@ -252,6 +276,8 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 | T2 | Default command TTL | **5 s**, editable 1–60 s per account |
 | T3 | External order or fill on a destination | **Out of sync** for master-replication destinations; **audit only** for TradingView-only destinations |
 | Q18 | Unpairing a connection | Allowed with confirmation; its accounts become out of sync; nothing is closed |
+| U13 | Late partial exit (`reduce`) when the position changed | **(A)** position-identity guard: `refs.position_ref`, `command.position_changed`, `out_of_sync`, audit; `flatten` unchanged (decided 2026-10-23; protocol 1.2, §5) |
+| U15 | Live accounts in release plugin builds | A local opt-in in the plugin, "Allow live accounts", **off by default**, required in addition to the Core's `welcome.simulation_only = false` (decided 2026-10-23; ADR-0005 N11) |
 | Q-O1 (Q27) | Double fill of a locally simulated bracket while NT8 was down (§6.1) | **(b)**: automatically flatten only the position created by the orphan leg, with a top-severity alert and audit (decided 2026-10-23) |
 
 ## 12. Consequences
