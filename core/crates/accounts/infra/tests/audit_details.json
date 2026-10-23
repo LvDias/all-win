@@ -131,12 +131,15 @@
  },
  "accounts.evaluation_restarted": {
   "additionalProperties": false,
+  "description": "`accounts.evaluation_restarted`: old and new start and earned-before, and the target in force. No progress figure (that is risk data, S13b).",
   "properties": {
    "earned_before": {
+    "description": "Money as a decimal string (NUMERIC(18,4)).",
     "pattern": "^-?[0-9]{1,14}(\\.[0-9]{1,4})?$",
     "type": "string"
    },
    "previous_earned_before": {
+    "description": "Money as a decimal string (NUMERIC(18,4)).",
     "pattern": "^-?[0-9]{1,14}(\\.[0-9]{1,4})?$",
     "type": "string"
    },
@@ -145,6 +148,7 @@
     "type": "string"
    },
    "profit_target": {
+    "description": "Money as a decimal string (NUMERIC(18,4)).",
     "pattern": "^-?[0-9]{1,14}(\\.[0-9]{1,4})?$",
     "type": "string"
    },

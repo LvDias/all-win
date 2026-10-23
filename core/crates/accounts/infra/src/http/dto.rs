@@ -261,15 +261,13 @@ pub fn create_command(
             .transpose()?,
         binding: binding(b.binding),
         rule_values: b.rule_values,
-        // Real accounts only; ignored otherwise (contract).
-        profile_size: match kind {
-            AccountKind::Real => b
-                .profile_size
-                .as_deref()
-                .map(|s| size(s, "/profile_size"))
-                .transpose()?,
-            AccountKind::Prop => None,
-        },
+        // Any kind (5.x, Q73 b): the profile planner decides whether the size is a tie and ignores
+        // it otherwise.
+        profile_size: b
+            .profile_size
+            .as_deref()
+            .map(|s| size(s, "/profile_size"))
+            .transpose()?,
         opt_ins: opt_ins(b.opt_ins.as_ref())?,
         step_up: b.step_up.map(StepUpBody::proof),
     })
