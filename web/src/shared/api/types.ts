@@ -18,6 +18,16 @@ export type Device = Schemas["Device"];
 export type StepUpProof = Schemas["StepUpProof"];
 export type StepUpAction = Schemas["StepUpAction"];
 export type ApiLocale = Schemas["Locale"];
+export type AccountRisk = Schemas["AccountRisk"];
+export type RiskMeterData = Schemas["RiskMeter"];
+export type RiskState = Schemas["RiskState"];
+export type RiskRuleKind = Schemas["RiskRuleKind"];
+export type RiskRules = Schemas["RiskRules"];
+export type AccountRiskRules = Schemas["AccountRiskRules"];
+export type RiskRulesRequest = Schemas["RiskRulesRequest"];
+export type RiskRulesPreview = Schemas["RiskRulesPreview"];
+export type RiskSummaryList = Schemas["RiskSummaryList"];
+export type Account = Schemas["Account"];
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 /** Response bodies and request bodies taken from the generated paths, so contract drift breaks the build. */
