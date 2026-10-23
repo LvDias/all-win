@@ -108,8 +108,15 @@ fn admin_user(u: &UserSummary) -> AdminUser {
     }
 }
 
-fn change_dto(v: &ChannelChangeView) -> ChannelChange {
-    ChannelChange {
+/// Fails closed on an `on_hold` change without its deadline: the contract requires `hold_until`
+/// whenever the status is `on_hold` (allOf if/then).
+fn change_dto(v: &ChannelChangeView) -> Result<ChannelChange, IdentityError> {
+    if v.status == ChangeStatus::OnHold && v.hold_until.is_none() {
+        return Err(IdentityError::Internal(
+            "on_hold channel change without hold_until".into(),
+        ));
+    }
+    Ok(ChannelChange {
         id: v.id.as_uuid().to_string(),
         channel: CodeChannel::of(v.channel),
         status: match v.status {
@@ -135,7 +142,7 @@ fn change_dto(v: &ChannelChangeView) -> ChannelChange {
             .collect(),
         expires_at: ts(v.expires_at),
         hold_until: v.hold_until.map(ts),
-    }
+    })
 }
 
 fn issued_dto(v: &identity_application::views::ChallengeIssued) -> ChallengeIssued {
@@ -665,22 +672,33 @@ pub(super) async fn update_me(
     ))]
 pub(super) async fn get_my_security(State(s): S, Session(ctx): Session) -> Response {
     match GetMySecurity::new(s.deps.clone()).handle(&ctx).await {
-        Ok(v) => json(
-            StatusCode::OK,
-            &SecurityState {
-                email: v.email,
-                whatsapp: v.whatsapp,
-                channel_change_allowed_at: ts(v.channel_change_allowed_at),
-                pending_channel_change: v.pending_channel_change.as_ref().map(change_dto),
-                session: SessionInfo {
-                    persistent: v.session.persistent,
-                    idle_timeout_s: v.session.idle_timeout_s,
-                    absolute_timeout_s: v.session.absolute_timeout_s,
-                    idle_expires_at: ts(v.session.idle_expires_at),
-                    absolute_expires_at: ts(v.session.absolute_expires_at),
+        Ok(v) => {
+            let pending = match v
+                .pending_channel_change
+                .as_ref()
+                .map(change_dto)
+                .transpose()
+            {
+                Ok(p) => p,
+                Err(e) => return err(e),
+            };
+            json(
+                StatusCode::OK,
+                &SecurityState {
+                    email: v.email,
+                    whatsapp: v.whatsapp,
+                    channel_change_allowed_at: ts(v.channel_change_allowed_at),
+                    pending_channel_change: pending,
+                    session: SessionInfo {
+                        persistent: v.session.persistent,
+                        idle_timeout_s: v.session.idle_timeout_s,
+                        absolute_timeout_s: v.session.absolute_timeout_s,
+                        idle_expires_at: ts(v.session.idle_expires_at),
+                        absolute_expires_at: ts(v.session.absolute_expires_at),
+                    },
                 },
-            },
-        ),
+            )
+        }
         Err(e) => err(e),
     }
 }
@@ -784,7 +802,10 @@ pub(super) async fn start_channel_change(
         .handle(&ctx, cmd)
         .await
     {
-        Ok(v) => json(StatusCode::ACCEPTED, &change_dto(&v)),
+        Ok(v) => match change_dto(&v) {
+            Ok(dto) => json(StatusCode::ACCEPTED, &dto),
+            Err(e) => err(e),
+        },
         Err(e) => err(e),
     }
 }
@@ -825,7 +846,11 @@ pub(super) async fn verify_channel_change_code(
         .await
     {
         Ok(v) => {
-            let mut resp = json(StatusCode::OK, &change_dto(&v.change));
+            let dto = match change_dto(&v.change) {
+                Ok(dto) => dto,
+                Err(e) => return err(e),
+            };
+            let mut resp = json(StatusCode::OK, &dto);
             if let Some(c) = v
                 .session
                 .as_ref()
@@ -1405,8 +1430,16 @@ mod tests {
             expires_at: at,
             hold_until: Some(at + chrono::Duration::hours(72)),
         };
-        let json = serde_json::to_value(change_dto(&v)).unwrap();
+        let json = serde_json::to_value(change_dto(&v).unwrap()).unwrap();
         assert_eq!(json["status"], "on_hold");
         assert_eq!(json["hold_until"], "2026-10-26T09:00:00.000Z");
+        let missing = ChannelChangeView {
+            hold_until: None,
+            ..v
+        };
+        assert!(matches!(
+            change_dto(&missing),
+            Err(IdentityError::Internal(_))
+        ));
     }
 }

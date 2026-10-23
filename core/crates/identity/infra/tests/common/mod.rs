@@ -117,6 +117,10 @@ async fn ensure_roles(admin: &PgPool) {
 
 pub async fn setup() -> Option<Db> {
     let Ok(admin_url) = std::env::var("TEST_DATABASE_ADMIN_URL") else {
+        assert!(
+            std::env::var("ALLWIN_REQUIRE_DB_TESTS").as_deref() != Ok("1"),
+            "TEST_DATABASE_ADMIN_URL is required"
+        );
         eprintln!("skipped: TEST_DATABASE_ADMIN_URL not set");
         return None;
     };
