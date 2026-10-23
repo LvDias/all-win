@@ -22,7 +22,8 @@ infra/scripts/allwin-heavy pnpm test
    cwd, environment, tty and exit code pass through. Without a user bus it falls back to `nice -n 10` only
    and says so.
 3. **Defaults** (override by exporting first): `CARGO_BUILD_JOBS=2`, `RUST_TEST_THREADS=2`,
-   `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target`.
+   `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target`, `PLAYWRIGHT_PORT` = a free port in 3200-3899 chosen per
+   worktree, and `PLAYWRIGHT_BASE_URL=http://localhost:$PLAYWRIGHT_PORT` (see "Playwright ports").
 4. **`--fresh-target`** (or `ALLWIN_HEAVY_FRESH_TARGET=1`): see "QA verdict runs" below.
 
 Do not leave background processes behind (a dev server, a container client): they inherit the slot and hold it
@@ -73,3 +74,12 @@ command (the slot stays held), and removes that directory when the command ends,
 Several commands on the same SHA that should reuse the build: set `ALLWIN_HEAVY_KEEP_TARGET=1` and delete
 `verify-*` yourself afterwards (`rm -rf "$HOME"/.cache/allwin/cargo-target/verify-<sha12>*`). Without
 `allwin-heavy`, use `CARGO_TARGET_DIR=$PWD/core/target` in the verification worktree.
+
+## Playwright ports
+
+`web/playwright.config.ts` starts the app on `PLAYWRIGHT_PORT` (default 3100) and, outside CI, **reuses a server that
+is already listening there** (`reuseExistingServer`). Two worktrees on the same port can therefore test each other's
+build (false green or false red). `allwin-heavy` exports a free `PLAYWRIGHT_PORT` per worktree (start from a hash of the
+worktree path, first port not listening) and a matching `PLAYWRIGHT_BASE_URL`; no change to the config is needed.
+Outside the wrapper: `PLAYWRIGHT_PORT=<a free port> pnpm exec playwright test`, and stop the server afterwards.
+The API-level suite in `tests/e2e` uses a fresh compose project per run and is not affected.
