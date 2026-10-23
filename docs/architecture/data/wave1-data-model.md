@@ -1,6 +1,6 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 4. Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3: Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1–#3 are written and under DBA review (not yet run against PostgreSQL).
+- **Status:** Accepted (2026-10-23), rev. 5. Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
@@ -736,9 +736,6 @@ CREATE INDEX outbox_due_idx ON app.outbox (next_attempt_at, occurred_at)
 -- dispatcher (allwin_worker) delivers due, live events at least once; a failure sets attempts+1,
 -- last_error, next_attempt_at, so it never blocks the head of the queue. allwin_worker has
 -- UPDATE (published_at) from #1 and UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at) from #1b.
--- An event type with no registered consumer is marked published on its first pass (S1, CR5 C3): it never
--- piles up and is never delivered late when a consumer appears ("never execute late"). M1 adds
--- per-consumer delivery tracking instead of reusing published_at.
 -- Published rows are purged after 7 days; dead-lettered rows are never purged automatically: they are
 -- an operational alert (a lost audit entry would break X-5) and are replayed or closed by an operator.
 
@@ -770,6 +767,16 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 ```
 
 - **Filters (S10 AC-2):** date, account, source, signal type and outcome are served by the user/time and user/account indexes, with the rest filtered inside the user's time range. No further index is added until measured (no speculative indexes).
+- **Dispatcher rules** (Architect decision (A), 2026-10-23; replaces rev. 4 "marked published on the first pass"):
+  1. **An event is never marked published unless it was consumed.**
+     - Consumers are registered before start.
+     - Startup **fails** when an event type that a module emits has no consumer.
+     - Events whose type has no registered consumer are not fetched (`event_type = ANY(<registered types>)`). They stay visible and are counted by a metric and alert: unpublished, not dead-lettered, older than N minutes. That catches, for example, a type retired by a deploy.
+  2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event). `published_at` keeps meaning "every registered consumer has consumed it".
+  3. **Each consumer declares a start policy at registration:**
+     - `from_now`: cursor at the registration instant, no backfill. This is the default for consumers that **act** (routing, commands).
+     - `backfill`: from the oldest unconsumed event. Consumers that **record** (audit) use it, so the user-visible log never misses an entry (X-5).
+  4. **"Never execute late" is enforced at the point of action**, not by the dispatcher. Late entries never execute (they expire by `expiry_base` + the account's TTL; ADR-0003 §7, ADR-0004 §5). Late exits may execute and are audited as late, per T1 (pending the user's decision on the `position_ref` proposal).
 - **Durability of audit:** ADR-0001 §4 publishes events "in-process, after commit". A crash between commit and handler would lose the audit entry, which breaks X-5. The outbox above closes that gap (ALIGN-2, accepted: at-least-once dispatcher, consumers dedupe; audit on `source_event_id`).
 
 ### 6.5 Activity record, retention and volume
