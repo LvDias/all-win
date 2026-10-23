@@ -28,7 +28,9 @@ use identity_application::views::{
     ChannelChangeView, ConnectionView, DeliveryView, InvitationView, SignedIn, SourceView,
 };
 use identity_enterprise::channel_change::ChangeStatus;
-use identity_enterprise::connection::{AdapterBuild, AdapterInfo, ConnectionStatus};
+use identity_enterprise::connection::{
+    AdapterBuild, AdapterInfo, ConnectionStatus, DisconnectReason,
+};
 use identity_enterprise::ids::{ChannelChangeId, DeviceId};
 use identity_enterprise::ids::{ConnectionId, InvitationId, SourceId};
 use identity_enterprise::invitation::InvitationStatus;
@@ -222,6 +224,12 @@ fn connection_dto(v: &ConnectionView) -> Connection {
             ConnectionStatus::Outdated => ConnectionStatusDto::Outdated,
             ConnectionStatus::Unpaired => ConnectionStatusDto::Unpaired,
         },
+        disconnect_reason: v.status.implied_disconnect_reason().map(|r| match r {
+            DisconnectReason::User => DisconnectReasonDto::User,
+            DisconnectReason::Network => DisconnectReasonDto::Network,
+            DisconnectReason::Outdated => DisconnectReasonDto::Outdated,
+            DisconnectReason::Unpaired => DisconnectReasonDto::Unpaired,
+        }),
         status_changed_at: ts(v.status_changed_at),
         adapter_type: instance.map(|i| i.adapter.adapter_type.clone()),
         adapter_version: instance.map(|i| i.adapter.version.clone()),

@@ -3,8 +3,8 @@
 //! `TEST_DATABASE_ADMIN_URL`, migrates it as `allwin_owner` and drops it at the end.
 //! Without `TEST_DATABASE_ADMIN_URL` the tests are skipped (with a note on stderr).
 //! `ALLWIN_TEST_PRE_MIGRATIONS` (`:`-separated .sql files) supplies migrations that live on
-//! another branch until integration. The `allwin_app` URL is `IDENTITY_TEST_APP_URL`, else
-//! `DATABASE_URL` (which sqlx macros may need at build time).
+//! another branch until integration. Role URLs derive from
+//! `TEST_DATABASE_ADMIN_URL` with the fixed test-only passwords (common/mod.rs).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

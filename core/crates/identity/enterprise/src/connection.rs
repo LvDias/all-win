@@ -64,6 +64,37 @@ impl ConnectionStatus {
             _ => None,
         }
     }
+
+    /// The disconnect reason the status alone implies (contract 4.0.0 `disconnect_reason`).
+    /// `disconnected` needs the close code (`user` = 4100, else `network`), which the gateway
+    /// reports with S2; until then it has none.
+    pub fn implied_disconnect_reason(self) -> Option<DisconnectReason> {
+        match self {
+            Self::Outdated => Some(DisconnectReason::Outdated),
+            Self::Unpaired => Some(DisconnectReason::Unpaired),
+            Self::AwaitingPairing | Self::Connected | Self::Disconnected => None,
+        }
+    }
+}
+
+/// Why a connection is not connected (adapter protocol 1.3; close 4100 = `user`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisconnectReason {
+    User,
+    Network,
+    Outdated,
+    Unpaired,
+}
+
+impl DisconnectReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Network => "network",
+            Self::Outdated => "outdated",
+            Self::Unpaired => "unpaired",
+        }
+    }
 }
 
 /// Live state of a paired connection, reported by the gateway's adapter sessions.

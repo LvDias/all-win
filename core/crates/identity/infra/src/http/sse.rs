@@ -17,6 +17,7 @@ use chrono::{DateTime, Utc};
 use http_body_util::Channel;
 use identity_application::auth::{Activity, AuthenticateSession};
 use identity_application::deps::IdentityDeps;
+use identity_enterprise::connection::ConnectionStatus;
 use identity_enterprise::ids::{DeviceId, SessionId};
 use serde_json::{Value, json};
 use shared_kernel::UserId;
@@ -105,15 +106,25 @@ impl SseHub {
                     ends: Some(ends),
                 }
             }
-            "identity.connection_status_changed" => Message {
-                event: "connection.status_changed",
-                data: json!({
+            "identity.connection_status_changed" => {
+                let mut data = json!({
                     "type": "connection.status_changed", "at": at(occurred_at),
                     "connection_id": payload.get("connection_id"), "status": payload.get("status"),
-                })
-                .to_string(),
-                ends: None,
-            },
+                });
+                if let Some(reason) = payload
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .and_then(ConnectionStatus::parse)
+                    .and_then(ConnectionStatus::implied_disconnect_reason)
+                {
+                    data["disconnect_reason"] = json!(reason.as_str());
+                }
+                Message {
+                    event: "connection.status_changed",
+                    data: data.to_string(),
+                    ends: None,
+                }
+            }
             "identity.connection_paired" => Message {
                 event: "connection.paired",
                 data: json!({
@@ -244,7 +255,16 @@ mod tests {
         assert_eq!(m.event, "connection.status_changed");
         let v: Value = serde_json::from_str(&m.data).unwrap();
         assert_eq!(v["status"], "connected");
+        assert!(v.get("disconnect_reason").is_none());
         assert!(v["at"].as_str().unwrap().ends_with('Z'));
+        assert!(hub.publish(
+            user,
+            "identity.connection_status_changed",
+            Utc::now(),
+            &json!({"connection_id": id.to_string(), "status": "outdated"})
+        ));
+        let v: Value = serde_json::from_str(&rx.try_recv().unwrap().data).unwrap();
+        assert_eq!(v["disconnect_reason"], "outdated");
         assert!(!hub.publish(user, "security.signed_in", Utc::now(), &json!({})));
         assert!(!hub.publish(
             user,

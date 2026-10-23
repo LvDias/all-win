@@ -64,6 +64,57 @@ pub fn with_db(url: &str, db: &str) -> String {
     out
 }
 
+/// Cluster-wide roles with the fixed test-only passwords the app tests also set
+/// (`crates/app/tests/support/mod.rs`): every test binary converges on the same credentials,
+/// whatever ran before it.
+const ROLES: [(&str, &str, &str); 4] = [
+    ("allwin_owner", "owner-test-only", "NOBYPASSRLS"),
+    ("allwin_app", "app-test-only", "NOBYPASSRLS"),
+    ("allwin_worker", "worker-test-only", "BYPASSRLS"),
+    ("allwin_maint", "maint-test-only", "BYPASSRLS"),
+];
+
+/// `admin` with another user, password and database (same host, port and query).
+fn as_role(admin: &str, role: &str, db: &str) -> String {
+    let password = ROLES
+        .iter()
+        .find(|(r, _, _)| *r == role)
+        .map(|(_, p, _)| *p)
+        .unwrap();
+    let url = with_db(admin, db);
+    let (scheme, rest) = url.split_once("://").unwrap();
+    let host = rest.rsplit_once('@').map_or(rest, |(_, h)| h);
+    format!("{scheme}://{role}:{password}@{host}")
+}
+
+async fn ensure_roles(admin: &PgPool) {
+    // Parallel tests would otherwise ALTER the same role at once ("tuple concurrently updated").
+    // `admin` has one connection, so lock and unlock run on the same session.
+    sqlx::query("SELECT pg_advisory_lock(7320301)")
+        .execute(admin)
+        .await
+        .unwrap();
+    for (role, password, rls) in ROLES {
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)")
+                .bind(role)
+                .fetch_one(admin)
+                .await
+                .unwrap();
+        let verb = if exists { "ALTER" } else { "CREATE" };
+        // Constants only, never input.
+        let sql = format!("{verb} ROLE {role} WITH LOGIN PASSWORD '{password}' {rls}");
+        if let Err(e) = sqlx::raw_sql(AssertSqlSafe(sql)).execute(admin).await {
+            // A concurrent binary created it first.
+            assert!(e.to_string().contains("already exists"), "{e}");
+        }
+    }
+    sqlx::query("SELECT pg_advisory_unlock(7320301)")
+        .execute(admin)
+        .await
+        .unwrap();
+}
+
 pub async fn setup() -> Option<Db> {
     let Ok(admin_url) = std::env::var("TEST_DATABASE_ADMIN_URL") else {
         eprintln!("skipped: TEST_DATABASE_ADMIN_URL not set");
@@ -75,6 +126,7 @@ pub async fn setup() -> Option<Db> {
         .connect(&admin_url)
         .await
         .unwrap();
+    ensure_roles(&admin).await;
     // `name` is generated here from a UUID, never from input.
     sqlx::raw_sql(AssertSqlSafe(format!(
         "CREATE DATABASE {name} OWNER allwin_owner"
@@ -86,10 +138,7 @@ pub async fn setup() -> Option<Db> {
 
     let owner = PgPoolOptions::new()
         .max_connections(2)
-        .connect(&with_db(
-            &std::env::var("MIGRATION_DATABASE_URL").unwrap(),
-            &name,
-        ))
+        .connect(&as_role(&admin_url, "allwin_owner", &name))
         .await
         .unwrap();
     let mut files: Vec<PathBuf> = std::env::var("ALLWIN_TEST_PRE_MIGRATIONS")
@@ -119,20 +168,12 @@ pub async fn setup() -> Option<Db> {
     }
     let app = PgPoolOptions::new()
         .max_connections(8)
-        .connect(&with_db(
-            &std::env::var("IDENTITY_TEST_APP_URL")
-                .or_else(|_| std::env::var("DATABASE_URL"))
-                .unwrap(),
-            &name,
-        ))
+        .connect(&as_role(&admin_url, "allwin_app", &name))
         .await
         .unwrap();
     let worker = PgPoolOptions::new()
         .max_connections(2)
-        .connect(&with_db(
-            &std::env::var("WORKER_DATABASE_URL").unwrap(),
-            &name,
-        ))
+        .connect(&as_role(&admin_url, "allwin_worker", &name))
         .await
         .unwrap();
     let inspect = PgPoolOptions::new()

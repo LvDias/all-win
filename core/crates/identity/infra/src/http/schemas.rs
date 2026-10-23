@@ -657,6 +657,16 @@ pub enum ConnectionStatusDto {
     Unpaired,
 }
 
+/// Why the connection is not connected (inline enum in the contract).
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DisconnectReasonDto {
+    User,
+    Network,
+    Outdated,
+    Unpaired,
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct VisibleAccount {
@@ -695,6 +705,9 @@ pub struct Connection {
     #[schema(value_type = DisplayName)]
     pub name: String,
     pub status: ConnectionStatusDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(inline, nullable = false)]
+    pub disconnect_reason: Option<DisconnectReasonDto>,
     /// When `status` last changed (equals `created_at` until the first change).
     #[schema(value_type = Timestamp)]
     pub status_changed_at: String,
