@@ -30,11 +30,13 @@ use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::sync::OnceLock;
 use tower::ServiceExt;
 
-const ROLES: [(&str, &str, &str); 4] = [
+const ROLES: [(&str, &str, &str); 5] = [
     ("allwin_owner", "owner-test-only", "NOBYPASSRLS"),
     ("allwin_app", "app-test-only", "NOBYPASSRLS"),
     ("allwin_worker", "worker-test-only", "BYPASSRLS"),
     ("allwin_maint", "maint-test-only", "BYPASSRLS"),
+    // S16 publish-release CLI only; its grants come from the migrations.
+    ("allwin_publisher", "publisher-test-only", "NOBYPASSRLS"),
 ];
 
 pub struct TestDb {
@@ -42,6 +44,7 @@ pub struct TestDb {
     pub app: PgPool,
     pub worker: PgPool,
     pub maint: PgPool,
+    pub publisher: PgPool,
 }
 
 /// `(admin url, database name)`, created and migrated once per test binary on its own
@@ -115,6 +118,7 @@ pub async fn db() -> Option<TestDb> {
         app: pool("allwin_app", "app-test-only", 8).await,
         worker: pool("allwin_worker", "worker-test-only", 2).await,
         maint: pool("allwin_maint", "maint-test-only", 1).await,
+        publisher: pool("allwin_publisher", "publisher-test-only", 1).await,
     })
 }
 
