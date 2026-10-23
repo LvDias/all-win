@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 14; **rev. 15 proposed** (user decisions of 2026-10-23: net P&L as the main value, risk on net, V1 evaluation target, U20 (a) commission floor; Architect, HTTP contract and Code Review pending). Rev. 15 (§5.6, §5.7, §6.3, §6.6):
+- **Status:** Accepted (2026-10-23), rev. 15; **rev. 15.1 proposed** (Code Review notes on rev. 15): a lower `commission_per_contract_side` is scheduled like other looser inputs (Esquadro, ADR-0006 §3.7), and the adjusted-balance window is stated.
+- Rev. 15 (8101a15) — user decisions of 2026-10-23: net P&L as the main value, risk on net, V1 evaluation target, U20 (a) commission floor. Rev. 15 (§5.6, §5.7, §6.3, §6.6):
   - per-fill effective commission with its source;
   - gross / commission / net on trades;
   - `commission_per_contract_side` and `evaluation_profit_target` as account rule fields, also in the preset;
@@ -801,6 +802,7 @@ CREATE TABLE risk.account_limits (                       -- derived, typed copy 
   profit_target_on_reach    text NOT NULL DEFAULT 'notify' CHECK (profit_target_on_reach IN ('notify','flatten_and_block')),
   consistency_threshold_pct NUMERIC(4,1) CHECK (consistency_threshold_pct BETWEEN 0 AND 100),  -- tracked, never enforced (AC-6)
   evaluation_profit_target  NUMERIC(18,4) CHECK (evaluation_profit_target > 0),   -- rev. 15 (Q46, V1): notice only
+  commission_per_contract_side NUMERIC(18,4) CHECK (commission_per_contract_side >= 0),  -- rev. 15.1: the rate IN FORCE today (a lower one waits in scheduled_limit); NULL = none
   evaluation_start          date,                        -- rev. 15: copy of account.evaluation_start
   evaluation_earned_before  NUMERIC(18,4),                -- rev. 15: copy of account.evaluation_earned_before
   reset_source              text NOT NULL CHECK (reset_source IN ('firm','cme_session_close')),
@@ -819,7 +821,8 @@ CREATE TABLE risk.scheduled_limit (                      -- DERIVED (ADR-0006 §
   user_id               uuid NOT NULL,
   account_id            uuid NOT NULL,
   kind                  text NOT NULL CHECK (kind IN ('daily_loss','drawdown','daily_profit_target','consistency','profit_target_on_reach',
-                                                   'trading_day_reset')),  -- reset changes are ALWAYS scheduled (F1)
+                                                   'trading_day_reset',     -- reset changes are ALWAYS scheduled (F1)
+                                                   'commission_per_contract_side')),  -- rev. 15.1: a LOWER rate only
   new_value             jsonb CHECK (new_value IS NULL OR (jsonb_typeof(new_value) = 'object'
                           AND NOT jsonb_path_exists(new_value, '$.**.amount ? (@.type() == "number")'))),  -- money as strings
   is_unset              boolean NOT NULL DEFAULT false,  -- the scheduled change removes the rule
@@ -888,7 +891,7 @@ CREATE UNIQUE INDEX account_block_active_key ON risk.account_block (account_id) 
 - **Net (rev. 15; user decision: risk computed on net):**
   - Daily loss, drawdown, the daily profit target and S15 enforcement all use net figures.
   - `realized_pnl_net` = gross − effective commissions.
-  - The trailing drawdown's high water and floor follow the **adjusted** balance = platform balance − Σ `commission_gap`. A simulation account that reports no commission therefore still pays the configured floor.
+  - The trailing drawdown's high water and floor follow the **adjusted** balance = platform balance − Σ `commission_gap` **over every `trading_day` row since the account's tracking start** (cumulative, not the day's). For the evaluation baseline and progress, the window is since `evaluation_start`. A simulation account that reports no commission therefore still pays the configured floor.
   - **Live usage** (daily loss and the intraday drawdown on equity) also deducts the **expected closing commission** = rate × open quantity, using the floor only, since the platform's real one is not known yet. This is fail-closed: a limit triggers a few dollars earlier, never later. End-of-day and realized values stay realized-only. The plugin uses the same rule (ADR-0004 §7, protocol 1.3). The expected commission is computed per request, not stored.
 - **Evaluation target (rev. 15, Q46 in V1):**
   - Inputs are in `accounts`: `evaluation_start`, defaulting to the registration date, and the `evaluation_profit_target` rule field.
@@ -1066,6 +1069,7 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
 - **Rev. 15 fields:**
   - `commission_per_contract_side`: `{"amount": "0.37"}` (U20 a). It is prefilled from the preset when the firm publishes it (origin = preset, i.e. no row), and editable (`edited` / `set_by_user`).
     - It **is a limits input** (Esquadro): the plugin applies the same floor in local enforcement and in `trade_completed`, and receives it in `limits.commission_per_contract_side` (protocol 1.3). A change bumps `limits_version` so risk re-sends `limits`.
+    - **A lower rate is looser** (Esquadro, ADR-0006 §3.7): it is scheduled for the next trading day (`scheduled_limit` kind `commission_per_contract_side`), and a higher rate applies now. Fail-closed: live usage deducts less expected commission only from the next day.
     - The bump recomputes nothing already recorded. It only enters new fills' effective commission, on the Core (gateway snapshot) and in the plugin alike, and past fills keep their rate. A fill at the exact boundary where plugin and Core diverge goes to `trades.reconcile_mismatch`.
   - `evaluation_profit_target`: `{"amount": "3000.00"}` (Q46). It is a limits input, together with `account.evaluation_start`.
     - A change applies at once and is never scheduled, because it is a target, not a limit.
@@ -1260,9 +1264,13 @@ CREATE TABLE gateway.execution_report (
   CHECK ((fill_id IS NULL) = (commission_effective IS NULL) AND (fill_id IS NULL) = (commission_source IS NULL)),
   CHECK (commission_source IS DISTINCT FROM 'none' OR commission_effective = 0)
 );
--- rev. 15: gateway computes the effective commission once per fill when it records the report: the account rate
--- is read through the accounts query port, as a point-in-time snapshot like routing's multiplier snapshot. Trades
--- and risk consume it; neither recomputes it. A later rate change never rewrites past fills.
+-- rev. 15/15.1: gateway computes the effective commission once per fill when it records the report. The rate is
+-- the one IN FORCE, read from risk's derived limits through the risk query port
+-- (risk.account_limits.commission_per_contract_side; Code Review F1). It is not the latest input in accounts,
+-- because a lowered rate only applies from the next trading day (ADR-0006 §3.7). Gateway, risk and the plugin's
+-- `limits` therefore use the same rate, also during a derivation lag. It is a point-in-time snapshot, like
+-- routing's multiplier snapshot. Trades and risk consume it, never recompute it, and a later change never rewrites
+-- past fills.
 CREATE UNIQUE INDEX execution_report_fill_key ON gateway.execution_report (account_id, fill_id) WHERE fill_operation = 'add';
 CREATE INDEX execution_report_fill_history_idx ON gateway.execution_report (account_id, fill_id, occurred_at)
   WHERE fill_id IS NOT NULL;
@@ -1735,6 +1743,9 @@ CREATE INDEX trade_user_duration_idx      ON trades.trade (user_id, duration_sec
      - the sort by P&L uses net;
      - a mixed trade → `mixed`;
      - a rate change does not alter past fills or trades, and it does bump `limits_version` (the plugin gets the new floor);
+     - a lower rate mid-day → a `scheduled_limit` row for the next trading day, while today's floor stays; a higher rate applies at once;
+     - after a mid-day lowering, today's fills still use the old, higher floor in gateway (`commission_rate`), risk and plugin `limits` alike, so no `trades.reconcile_mismatch` results; from the next trading day all three use the lower rate;
+     - the adjusted balance subtracts the cumulative gap since tracking start (drawdown) or since `evaluation_start` (evaluation), never only today's;
      - live daily-loss usage deducts rate × open quantity, while end-of-day and realized values do not;
      - `evaluation_start` does bump it;
      - the risk daily loss uses `realized_pnl_net`;
