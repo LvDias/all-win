@@ -1,12 +1,14 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 2.0.0
+  version: 2.4.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
-    sessions, devices, channel changes, sources, NinjaTrader connections and pairing) and the S5 per-account
-    opt-in operation (automation / copy) requested by design. Security rules: auth-and-session-policy.md rev. 2.
+    sessions, devices, channel changes, sources, NinjaTrader connections and pairing) in this root, and in
+    `modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`), the opt-in rule versions of the
+    S16 catalog (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`) and V1-S10
+    activity (`audit`). Security rules: auth-and-session-policy.md rev. 2.
     Version 2.0.0 is breaking (password and TOTP removed). Paths stay `/api/v1`: no version was ever deployed
     and there are no external clients, so the path major moves only for breaking changes after the first
     production deploy (ADR-0002 §4).
@@ -72,6 +74,10 @@ tags:
   - name: pairing
   - name: events
   - name: accounts
+  - name: presets
+  - name: routing
+  - name: profiles
+  - name: audit
 
 paths:
   /ingress/v1/tradingview/{token}:
@@ -1183,74 +1189,32 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '500': { $ref: '#/components/responses/InternalError' }
 
-  /api/v1/accounts/{account_id}/opt-ins/{kind}:
-    put:
-      tags: [accounts]
-      operationId: setAccountOptIn
-      summary: Record or change an explicit per-account opt-in (automation or copy) after the account exists
-      description: |
-        Decisions 2026-10-23: option A (explicit per-account opt-in), Q24 (separate `copy` opt-in for
-        followers of master replication), Q25 (the choice is required when the firm's stance for that kind
-        is forbidden, conditional, unknown or not confirmed), Q26 (a new preset version that changes the
-        stance moves the state to `pending_review` and suspends that kind until the user chooses again).
-        **Provisional (Architect, 2026-10-23, awaiting user confirmation):** a material change of the
-        official rule text, with the same stance, also triggers `pending_review`, because the audit stores
-        the exact text the user saw. Typo/formatting-only edits of a quote do not.
-        - `automation` covers automated sources (TradingView webhook, future signal engine).
-        - `copy` covers receiving master-account replication as a follower.
-        The first choice is made **atomically with account creation**: the S5 create/update requests carry
-        an `opt_ins` property of schema `OptInChoices` (pointer `/opt_ins/automation`, `/opt_ins/copy`);
-        a missing required choice is rejected with 422 `accounts.opt_in_required` and nothing is saved
-        (docs/architecture/contracts/s5-design-deltas.md). The `copy` choice is made atomically with adding
-        the account as a follower (S7/S19). This operation is for later changes and for resolving
-        `pending_review`. `rule_version_id` must be the preset rule version whose text the user saw; if it
-        is stale the Core answers 409 `accounts.rule_version_changed` and saves nothing. Every change is
-        audited (date, user, kind, choice, rule version, previous value).
-      x-step-up: conditional
-      x-step-up-when: choice == accepted
-      parameters:
-        - { $ref: '#/components/parameters/AccountId' }
-        - name: kind
-          in: path
-          required: true
-          schema: { $ref: '#/components/schemas/OptInKind' }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [choice, rule_version_id]
-              properties:
-                choice: { type: string, enum: [accepted, declined] }
-                rule_version_id:
-                  description: Preset rule version whose text was displayed.
-                  $ref: '#/components/schemas/Uuid'
-                step_up:
-                  description: Required when `choice` is `accepted` (step-up action `account_opt_in_accept`, target = this account).
-                  $ref: '#/components/schemas/StepUpProof'
-      responses:
-        '200':
-          description: Saved and audited.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OptInState' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/StepUpFailed' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: '`accounts.rule_version_changed` — `error.current_rule_version_id` carries the current version; nothing saved.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '422':
-          description: '`accounts.opt_in_not_applicable` (state is `not_required`: real account, or the firm allows that kind).'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '500': { $ref: '#/components/responses/InternalError' }
+  # V1-S5 (module accounts) and the S5 part of the S16 catalog (module presets); owner Compasso.
+  /api/v1/accounts: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts' }
+  /api/v1/accounts/{account_id}: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}' }
+  /api/v1/accounts/{account_id}/archive-impact: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1archive-impact' }
+  /api/v1/accounts/{account_id}/lifecycle: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1lifecycle' }
+  /api/v1/accounts/{account_id}/opt-ins/{kind}: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1opt-ins~1{kind}' }
+  /api/v1/opt-in-rules: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1opt-in-rules' }
+  /api/v1/rule-versions/{rule_version_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1rule-versions~1{rule_version_id}' }
+  # V1-S7 (module routing); owner Compasso.
+  /api/v1/routes: { $ref: 'modules/routing.yaml#/paths/~1api~1v1~1routes' }
+  /api/v1/routes/{route_id}: { $ref: 'modules/routing.yaml#/paths/~1api~1v1~1routes~1{route_id}' }
+  /api/v1/route-candidates: { $ref: 'modules/routing.yaml#/paths/~1api~1v1~1route-candidates' }
+  # V1-S6 (module profiles); owner Compasso.
+  /api/v1/instruments: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1instruments' }
+  /api/v1/default-profiles: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1default-profiles' }
+  /api/v1/default-profiles/{instrument_id}/{size_amount}: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1default-profiles~1{instrument_id}~1{size_amount}' }
+  /api/v1/accounts/{account_id}/profiles: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1profiles' }
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1profiles~1{instrument_id}' }
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}/restore: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1profiles~1{instrument_id}~1restore' }
+  /api/v1/profile-sizes/nearest: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1profile-sizes~1nearest' }
+  /api/v1/profile-preview: { $ref: 'modules/profiles.yaml#/paths/~1api~1v1~1profile-preview' }
+  # V1-S10 (module audit); owner Compasso.
+  /api/v1/activity: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity' }
+  /api/v1/activity/filter-options: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity~1filter-options' }
+  /api/v1/activity/{entry_id}: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity~1{entry_id}' }
+  /api/v1/instructions/{instruction_id}/timeline: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1instructions~1{instruction_id}~1timeline' }
 
 components:
   securitySchemes:
@@ -1682,81 +1646,13 @@ components:
           items: { type: string }
         created_at: { $ref: '#/components/schemas/Timestamp' }
         unpaired_at: { $ref: '#/components/schemas/Timestamp' }
-    OptInKind:
-      type: string
-      enum: [automation, copy]
-    FirmStance:
-      type: string
-      enum: [allowed, forbidden, conditional, unknown, not_confirmed]
-      description: Stance of the account's preset version for the opt-in kind. A missing stance in the preset is `unknown`.
-    OptInChoiceRequest:
-      type: object
-      additionalProperties: false
-      required: [choice, rule_version_id]
-      properties:
-        choice: { type: string, enum: [accepted, declined] }
-        rule_version_id:
-          description: Preset rule version whose text was displayed.
-          $ref: '#/components/schemas/Uuid'
-    OptInChoices:
-      description: |
-        Embedded as the `opt_ins` property of the S5 account create/update request bodies (atomic
-        create-with-choice; the rest of those operations is defined in the S5 contract). Must contain every
-        kind whose choice is required for the account's preset version and is not already `chosen` for that
-        version; otherwise 422 `accounts.opt_in_required` with `pointer` `/opt_ins/automation` or
-        `/opt_ins/copy`, and nothing is saved. A stale `rule_version_id` gives 409
-        `accounts.rule_version_changed`. The S5 create/update operations are `x-step-up: conditional`,
-        `x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state`; the step-up happens
-        before the single save, so cancelling it saves nothing. A kind that is `not_required` is ignored.
-      type: object
-      additionalProperties: false
-      minProperties: 1
-      properties:
-        automation: { $ref: '#/components/schemas/OptInChoiceRequest' }
-        copy: { $ref: '#/components/schemas/OptInChoiceRequest' }
-    OptInState:
-      type: object
-      additionalProperties: false
-      required: [kind, state, firm_stance]
-      properties:
-        kind: { $ref: '#/components/schemas/OptInKind' }
-        firm_stance: { $ref: '#/components/schemas/FirmStance' }
-        state:
-          type: string
-          enum: [not_required, chosen, pending_review]
-          description: |
-            not_required = real account or the stance is `allowed`; chosen = an explicit choice exists for
-            the current rule version; pending_review = the stance (or, provisionally, its official text)
-            changed after the choice, or a requirement appeared for an account that had none (Q26).
-            Routing treats `pending_review` and `declined` as not accepted (`routing.automation_not_accepted`
-            / `routing.copy_not_accepted`). There is no "saved without a choice" state: first choices are
-            atomic with creation.
-        choice:
-          type: string
-          enum: [accepted, declined]
-          description: |
-            With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in
-            force), present only if one was ever made, so the review dialog can show it; it is never
-            preselected. Absent with `not_required`.
-        chosen_at: { $ref: '#/components/schemas/Timestamp' }
-        rule_version_id:
-          description: Rule version the `choice` was made against.
-          $ref: '#/components/schemas/Uuid'
-        current_rule_version_id:
-          description: The preset rule version currently in force for this account.
-          $ref: '#/components/schemas/Uuid'
-      allOf:
-        - if: { properties: { state: { const: chosen } } }
-          then: { required: [choice, chosen_at, rule_version_id, current_rule_version_id] }
-        - if: { properties: { state: { const: pending_review } } }
-          then:
-            required: [current_rule_version_id]
-            dependentRequired: { choice: [chosen_at, rule_version_id] }
-        - if: { properties: { state: { const: not_required } } }
-          then: { not: { anyOf: [{ required: [choice] }, { required: [chosen_at] }, { required: [rule_version_id] }] } }
     Event:
       description: SSE payloads (field `data`). `type` equals the SSE `event` name; `at` is when the event happened (server clock).
       oneOf:
+        - $ref: 'modules/accounts.yaml#/components/schemas/AccountChangedEvent'
+        - $ref: 'modules/accounts.yaml#/components/schemas/AccountArchivedEvent'
+        - $ref: 'modules/routing.yaml#/components/schemas/RouteChangedEvent'
+        - $ref: 'modules/audit.yaml#/components/schemas/AuditEntryRecordedEvent'
         - type: object
           additionalProperties: false
           required: [type, at, connection_id, status]

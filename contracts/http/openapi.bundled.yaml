@@ -3,31 +3,32 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 2.0.0
+  version: 2.4.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
-    \ connections and pairing) and the S5 per-account\nopt-in operation (automation / copy) requested by design. Security\
-    \ rules: auth-and-session-policy.md rev. 2.\nVersion 2.0.0 is breaking (password and TOTP removed). Paths stay `/api/v1`:\
-    \ no version was ever deployed\nand there are no external clients, so the path major moves only for breaking changes after\
-    \ the first\nproduction deploy (ADR-0002 §4).\nThe Core generates its own spec from handlers (utoipa); CI fails on any\
-    \ drift from this file.\n\nConventions\n- Base paths: `/api/v1` (web, cookie session), `/ingress/v1` (webhooks), `/adapter/v1`\
-    \ (plugin HTTP;\n  the WebSocket `/adapter/v1` is specified by ADR-0004 and contracts/adapter-protocol/v1).\n- Authentication:\
-    \ the root `security` requires a full `session` for every operation. Public\n  operations declare `security: []`. There\
-    \ are no passwords: a session starts only from a one-time code\n  (`verifyLoginCode`, `completeSignup`).\n  Every session\
-    \ operation answers 401 `auth.unauthenticated` without a valid session.\n- JSON only (`application/json; charset=utf-8`),\
-    \ except the ingress which also accepts `text/plain`.\n- Decimals are strings; timestamps are RFC 3339 UTC with `Z`; ids\
-    \ are lowercase UUIDs.\n- Errors: `{\"error\": {\"code\": \"<stable.code>\", ...}}`. Clients translate codes; never rely\
-    \ on text.\n  - Any `/api/v1` or `/adapter/v1` request that does not match its schema (malformed JSON, unknown or\n  \
-    \  missing property, pattern/length/enum violation, malformed path or query parameter) gets\n    400 `common.invalid_request`\
-    \ with `error.pointer` (JSON pointer to the first offending field;\n    `/path/<name>` or `/query/<name>` for parameters).\
-    \ Framework default error bodies are never sent.\n  - Unexpected failures get 500 `common.internal` with no detail (no\
-    \ path, query, stack or SQL).\n  - The ingress is the exception: its token and path-parameter violations are always the\
-    \ empty 404\n    (S1 AC-2), and its body errors use the `ingress.*` codes.\n- CSRF: state-changing `/api/v1` requests\
-    \ (POST, PUT, PATCH, DELETE), public ones included, require\n  `SameSite=Lax` cookies plus a strict `Origin` check (must\
-    \ equal the app origin); a missing or\n  different `Origin` gets 403 `common.forbidden_origin`. The rule does not apply\
-    \ to `/ingress/v1`\n  (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not a browser).\n- Sensitive\
-    \ operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition\n  in `x-step-up-when`. Every\
-    \ such operation is POST or PUT, and its JSON body has an optional `step_up`\n  property (`StepUpProof`: `challenge_id`\
+    \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
+    \ the opt-in rule versions of the\nS16 catalog (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`)\
+    \ and V1-S10\nactivity (`audit`). Security rules: auth-and-session-policy.md rev. 2.\nVersion 2.0.0 is breaking (password\
+    \ and TOTP removed). Paths stay `/api/v1`: no version was ever deployed\nand there are no external clients, so the path\
+    \ major moves only for breaking changes after the first\nproduction deploy (ADR-0002 §4).\nThe Core generates its own\
+    \ spec from handlers (utoipa); CI fails on any drift from this file.\n\nConventions\n- Base paths: `/api/v1` (web, cookie\
+    \ session), `/ingress/v1` (webhooks), `/adapter/v1` (plugin HTTP;\n  the WebSocket `/adapter/v1` is specified by ADR-0004\
+    \ and contracts/adapter-protocol/v1).\n- Authentication: the root `security` requires a full `session` for every operation.\
+    \ Public\n  operations declare `security: []`. There are no passwords: a session starts only from a one-time code\n  (`verifyLoginCode`,\
+    \ `completeSignup`).\n  Every session operation answers 401 `auth.unauthenticated` without a valid session.\n- JSON only\
+    \ (`application/json; charset=utf-8`), except the ingress which also accepts `text/plain`.\n- Decimals are strings; timestamps\
+    \ are RFC 3339 UTC with `Z`; ids are lowercase UUIDs.\n- Errors: `{\"error\": {\"code\": \"<stable.code>\", ...}}`. Clients\
+    \ translate codes; never rely on text.\n  - Any `/api/v1` or `/adapter/v1` request that does not match its schema (malformed\
+    \ JSON, unknown or\n    missing property, pattern/length/enum violation, malformed path or query parameter) gets\n   \
+    \ 400 `common.invalid_request` with `error.pointer` (JSON pointer to the first offending field;\n    `/path/<name>` or\
+    \ `/query/<name>` for parameters). Framework default error bodies are never sent.\n  - Unexpected failures get 500 `common.internal`\
+    \ with no detail (no path, query, stack or SQL).\n  - The ingress is the exception: its token and path-parameter violations\
+    \ are always the empty 404\n    (S1 AC-2), and its body errors use the `ingress.*` codes.\n- CSRF: state-changing `/api/v1`\
+    \ requests (POST, PUT, PATCH, DELETE), public ones included, require\n  `SameSite=Lax` cookies plus a strict `Origin`\
+    \ check (must equal the app origin); a missing or\n  different `Origin` gets 403 `common.forbidden_origin`. The rule does\
+    \ not apply to `/ingress/v1`\n  (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not a browser).\n\
+    - Sensitive operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition\n  in `x-step-up-when`.\
+    \ Every such operation is POST or PUT, and its JSON body has an optional `step_up`\n  property (`StepUpProof`: `challenge_id`\
     \ + `code`). The client first calls `requestStepUp` for that\n  action and target; one code authorizes one action (auth\
     \ policy §6). Missing proof → 403\n  `auth.step_up_required`; a wrong, expired, used or mismatched proof → 403 `auth.code_invalid`.\n\
     \  The proof travels in the body, never in a header, so access logs cannot record it.\n- One-time codes: every verification\
@@ -60,6 +61,10 @@ tags:
 - name: pairing
 - name: events
 - name: accounts
+- name: presets
+- name: routing
+- name: profiles
+- name: audit
 paths:
   /ingress/v1/tradingview/{token}:
     post:
@@ -1572,6 +1577,342 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/accounts:
+    get:
+      tags:
+      - accounts
+      operationId: listAccounts
+      summary: List the signed-in user's accounts (archived accounts excluded)
+      description: 'One call for the whole list screen (no pagination in V1; a user has tens of accounts). Sorted by
+
+        `display_name` (case-insensitive). Filtering is client-side. Only the caller''s accounts.
+
+        '
+      responses:
+        '200':
+          description: The accounts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+      - accounts
+      operationId: createAccount
+      summary: Register a prop or real account, with its first opt-in choices, in one save
+      description: 'Idempotent by the `Idempotency-Key` header (a UUID the client generates once per form
+
+        submission). A key is never released: a retry with the same key and the same body (`step_up`
+
+        ignored) within 24 h returns 200 with the account created by the first request, as it is now
+
+        (with `archived_at` if it was archived since), and changes nothing; the same key with a different
+
+        body, or after 24 h, gets 409 `accounts.idempotency_key_reused`. A key never creates a second
+
+        account. Only a successful create consumes a key, so the retry after a step-up reuses it.
+
+        Account ids are generated by the Core.
+
+        Real accounts copy the default profile of the nearest standard size (S6). When the size is
+
+        exactly between two standard sizes the user picks one: `profile_size` is then required (422
+
+        `accounts.profile_size_required`) and must be one of the candidates of `getNearestProfileSize`
+
+        (422 `accounts.profile_size_invalid`). Provisional (Q60): if the user later decides "smaller" or
+
+        "larger", the candidates list just has one entry and nothing else changes.
+
+        Prop accounts take either a preset version (`preset_version_id`, S16) or the manual fields
+
+        (`firm_name`, `plan_name`, `phase`, `size_amount`; before S16 and for plans without a preset).
+
+        `opt_ins` must hold every kind whose choice is required (`OptInChoices`); before S16 the
+
+        automation stance of a prop account is `unknown`, so its choice is required against the generic
+
+        rule version (provisional, Q40). Real accounts never take `opt_ins`.
+
+        Step-up: when any `opt_ins.*.choice` is `accepted` the body must carry `step_up` for action
+
+        `account_create_opt_in_accept` (no target; StepUpProof). Check order after authentication,
+
+        Origin and schema: idempotent replay → step-up → 409 → 422. Nothing is saved on any error. Audited as `accounts.created`
+        and, per kind chosen,
+
+        `accounts.opt_in_chosen`, in the same transaction.
+
+        '
+      x-step-up: conditional
+      x-step-up-when: any opt_ins.*.choice == accepted
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountCreateRequest'
+            examples:
+              real:
+                value:
+                  kind: real
+                  display_name: Conta real
+                  size_amount: '25000.00'
+                  max_position_qty: 3
+                  multiplier: 1
+                  binding:
+                    connection_id: 5a2b8c3d-1e4f-4a6b-8c7d-9e0f1a2b3c4d
+                    platform_account: Sim101
+              prop_manual:
+                value:
+                  kind: prop
+                  display_name: Apex 50K 1
+                  firm_name: Apex Trader Funding
+                  plan_name: 50K Rithmic
+                  phase: Evaluation
+                  size_amount: '50000.00'
+                  max_position_qty: 2
+                  opt_ins:
+                    automation:
+                      choice: declined
+                      rule_version_id: 1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b
+      responses:
+        '200':
+          description: Replay of a create already done with this `Idempotency-Key`; the account it created, unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '201':
+          description: Created and audited.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/StepUpFailed'
+        '409':
+          $ref: '#/components/responses/AccountWriteConflict'
+        '422':
+          $ref: '#/components/responses/AccountWriteRejected'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}:
+    get:
+      tags:
+      - accounts
+      operationId: getAccount
+      summary: One account (detail screen)
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: The account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags:
+      - accounts
+      operationId: updateAccount
+      summary: Edit an account (full replacement of the editable fields; optimistic concurrency by `row_version`)
+      description: 'The body is the whole editable state (the edit form sends every field): an absent `binding`
+
+        unbinds, an absent `multiplier` resets it to 1; `kind` cannot change. Changing the
+
+        preset version, the firm platform or the manual prop fields may select a different rule version:
+
+        the request must then carry `opt_ins` for each kind whose choice becomes required, or the Core
+
+        answers 422 `accounts.opt_in_required` (D16). Applying a newer preset version to the account
+
+        (S16 AC-3) is this operation with the new `preset_version_id`.
+
+        Changing or removing the binding while the account has an open position is refused with 409
+
+        `accounts.binding_open_position` (provisional, Q38). Lowering `max_position_qty` below an open
+
+        position is allowed; open positions are not changed.
+
+        Step-up: when an `opt_ins.*.choice` is `accepted` and changes the stored state, the body must
+
+        carry `step_up` for action `account_opt_in_accept` with target = this account. Check order after
+
+        authentication, Origin and schema: 404 → step-up → 409 → 422. Audited as
+
+        `accounts.updated` (changed fields with old and new values) and `accounts.opt_in_chosen`.
+
+        '
+      x-step-up: conditional
+      x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountUpdateRequest'
+      responses:
+        '200':
+          description: Saved and audited (a request that changes nothing returns the account and is not audited).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/StepUpFailed'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/AccountWriteConflict'
+        '422':
+          $ref: '#/components/responses/AccountWriteRejected'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+      - accounts
+      operationId: archiveAccount
+      summary: Delete (archive) an account
+      description: 'Refused with 409 `accounts.delete_open_position` while the account has an open position (S5 AC-6;
+
+        last known state when the connection is down). Otherwise the account is archived: it leaves every
+
+        list, receives no instruction, and its name becomes free again. Provisional (Q39): its routes and
+
+        master/follower relations are removed in the same transaction (listed beforehand by
+
+        `getAccountArchiveImpact`), its binding is released, and the audit and history keep the id and a
+
+        name snapshot. Audited as `accounts.archived` with what was removed. An archived or unknown id
+
+        gets 404.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      responses:
+        '204':
+          description: Archived and audited.
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`accounts.delete_open_position` — nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/archive-impact:
+    get:
+      tags:
+      - accounts
+      operationId: getAccountArchiveImpact
+      summary: What deleting the account would remove (for the confirmation dialog)
+      description: 'Read-only. The confirmation lists these items; `archiveAccount` removes whatever exists when it
+
+        runs (each item is audited), so a route added in between is removed too.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: The impact.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchiveImpact'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/lifecycle:
+    put:
+      tags:
+      - accounts
+      operationId: setAccountLifecycle
+      summary: Pause, resume, disable or enable an account (S5 AC-4)
+      description: 'Sets the target state. Allowed transitions: `active` → `paused` (pause); `paused` → `active`
+
+        (resume); `active` or `paused` → `disabled` (disable); `disabled` → `active` (enable). Any other
+
+        transition gets 409 `accounts.lifecycle_transition_invalid`. Setting the current state is a
+
+        no-op (200, not audited). A paused or disabled account receives no instruction at all, exits
+
+        included (S7 AC-8); open positions and orders are not touched. Audited as
+
+        `accounts.lifecycle_changed` (previous and new state, whether a position was open).
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LifecycleRequest'
+      responses:
+        '200':
+          description: The account in its new state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`common.version_conflict` (stale `row_version`) or `accounts.lifecycle_transition_invalid`; nothing
+            changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/accounts/{account_id}/opt-ins/{kind}:
     put:
       tags:
@@ -1586,31 +1927,27 @@ paths:
 
         stance moves the state to `pending_review` and suspends that kind until the user chooses again).
 
-        **Provisional (Architect, 2026-10-23, awaiting user confirmation):** a material change of the
+        **Provisional (awaiting the user, Q42):** a change of the official rule text that the publisher of
 
-        official rule text, with the same stance, also triggers `pending_review`, because the audit stores
-
-        the exact text the user saw. Typo/formatting-only edits of a quote do not.
+        the preset version flags as material also triggers `pending_review`; unflagged edits never do.
 
         - `automation` covers automated sources (TradingView webhook, future signal engine).
 
         - `copy` covers receiving master-account replication as a follower.
 
-        The first choice is made **atomically with account creation**: the S5 create/update requests carry
+        The first choice is made **atomically with account creation** (`opt_ins` of `createAccount` /
 
-        an `opt_ins` property of schema `OptInChoices` (pointer `/opt_ins/automation`, `/opt_ins/copy`);
+        `updateAccount`, schema `OptInChoices`). The `copy` choice is made atomically with adding the
 
-        a missing required choice is rejected with 422 `accounts.opt_in_required` and nothing is saved
+        account as a follower (S7/S19); for an account that is not a follower `copy` is `not_required`
 
-        (docs/architecture/contracts/s5-design-deltas.md). The `copy` choice is made atomically with adding
+        and this operation answers 422 `accounts.opt_in_not_applicable`. This operation is for later
 
-        the account as a follower (S7/S19). This operation is for later changes and for resolving
+        changes and for resolving `pending_review`. `rule_version_id` must be the rule version whose text
 
-        `pending_review`. `rule_version_id` must be the preset rule version whose text the user saw; if it
+        the user saw; if it is stale the Core answers 409 `accounts.rule_version_changed` and saves
 
-        is stale the Core answers 409 `accounts.rule_version_changed` and saves nothing. Every change is
-
-        audited (date, user, kind, choice, rule version, previous value).
+        nothing. Every change is audited (date, user, kind, choice, rule version, previous value).
 
         '
       x-step-up: conditional
@@ -1639,7 +1976,7 @@ paths:
                   - accepted
                   - declined
                 rule_version_id:
-                  description: Preset rule version whose text was displayed.
+                  description: Rule version whose text was displayed (`RuleVersion.id`).
                   $ref: '#/components/schemas/Uuid'
                 step_up:
                   description: Required when `choice` is `accepted` (step-up action `account_opt_in_accept`, target = this
@@ -1668,11 +2005,815 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '422':
-          description: '`accounts.opt_in_not_applicable` (state is `not_required`: real account, or the firm allows that kind).'
+          description: '`accounts.opt_in_not_applicable` (state is `not_required`: real account, the firm allows that kind,
+            or `copy` on an account that is not a follower).'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/opt-in-rules:
+    get:
+      tags:
+      - presets
+      operationId: getOptInRules
+      summary: Rule versions in force for a prop selection, before or after the account exists
+      description: 'The account form calls it on every selection change (firm, plan, phase, size, firm platform),
+
+        because the rule version depends on the selection and there is no account id yet (spec §5.2).
+
+        With `preset_version_id` → the rules of that preset version (and `firm_platform` when the preset
+
+        has platform-specific rules). Without it → the **generic** rule versions used by prop accounts
+
+        without a preset (stance `unknown`, no quotes; provisional, Q40). Global catalog data, the same
+
+        for every user; any signed-in user may read it.
+
+        '
+      parameters:
+      - name: preset_version_id
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      - name: firm_platform
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/FirmPlatform'
+      responses:
+        '200':
+          description: One rule version per kind.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptInRules'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: '`accounts.firm_platform_required` or `accounts.firm_platform_unknown` (pointer `/query/firm_platform`).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/rule-versions/{rule_version_id}:
+    get:
+      tags:
+      - presets
+      operationId: getRuleVersion
+      summary: One opt-in rule version (current text, or a previous one for comparison)
+      description: 'Used for `OptInState.current_rule_version_id`, for the previous version shown in the review
+
+        dialog (`RuleVersion.change.previous_rule_version_id`) and for the version a past choice was
+
+        made against. Rule versions are immutable once published.
+
+        '
+      parameters:
+      - name: rule_version_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: The rule version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleVersion'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/routes:
+    get:
+      tags:
+      - routing
+      operationId: listRoutes
+      summary: The caller's routes, with the effective status computed by the Core
+      description: 'Filter by `source_id` (routing page) or `account_id` (account `Rotas` tab); without filters, all
+
+        routes. Routes of revoked sources are included (read-only, Q-S7-3); routes of archived accounts
+
+        no longer exist (S5 `archiveAccount`). Account facts (name, firm, multiplier, max position,
+
+        opt-ins) come from `listAccounts`; the client joins by `account_id` (two calls, no N+1). After
+
+        `account.changed`, `connection.status_changed` or `route.changed` the client refetches.
+
+        An unknown or foreign `source_id` / `account_id` filter returns an empty list.
+
+        '
+      parameters:
+      - name: source_id
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      - name: account_id
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: The routes, sorted by account `display_name`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteList'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+      - routing
+      operationId: createRoute
+      summary: Route a source to an account with the selected signal types
+      description: 'Idempotent by its natural key: one route per (source, account). A second create for the same
+
+        pair gets 409 `routing.route_exists` (the client refetches and switches to edit). The account must
+
+        be routable for that source (`listRouteCandidates`); a race is answered with the same code the
+
+        picker showed. Audited as `routing.subscription_changed` (`created`).
+
+        Copy routes of a follower (S19, V1.1) are not created here.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteCreateRequest'
+            examples:
+              route:
+                value:
+                  source_id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                  account_id: 0b9f4c1e-7d2a-4e7b-9a52-3c1d8e6f2a10
+                  signal_types:
+                  - trigger
+                  - trade_plan
+                  is_enabled: true
+      responses:
+        '201':
+          description: Created and audited.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Route'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '409':
+          description: '`routing.route_exists` — nothing created.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/RouteRejected'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/routes/{route_id}:
+    put:
+      tags:
+      - routing
+      operationId: updateRoute
+      summary: Change a route's signal types or switch it on/off (optimistic concurrency)
+      description: 'Full replacement of `signal_types` and `is_enabled`. Switching a route on is allowed even when
+
+        the account is currently not eligible: the route stays saved and its status shows the reason
+
+        (Q-S7-2). Routes of a revoked source are read-only: 409 `routing.source_revoked`. Audited as
+
+        `routing.subscription_changed` (`updated`, `enabled` or `disabled`, with previous and new values).
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/RouteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteUpdateRequest'
+      responses:
+        '200':
+          description: Saved (a request that changes nothing is not audited).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Route'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`common.version_conflict` or `routing.source_revoked`; nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+      - routing
+      operationId: deleteRoute
+      summary: Remove a route
+      description: 'Open positions and orders are not changed. Routes of a revoked source cannot be removed (409
+
+        `routing.source_revoked`, Q-S7-3). Audited as `routing.subscription_changed` (`removed`).
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/RouteId'
+      responses:
+        '204':
+          description: Removed and audited.
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`routing.source_revoked` — nothing removed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/route-candidates:
+    get:
+      tags:
+      - routing
+      operationId: listRouteCandidates
+      summary: Accounts the user can route a source to, the unavailable ones with reasons, and manual-only accounts
+      description: 'For the account picker of the route dialog. Accounts that already have a route for the source
+
+        are not listed. Manual-only accounts (S16 AC-7) are never in `candidates`; they are listed in
+
+        `manual_only` with the preset''s reason, for the "Can''t find an account?" explanation (S7 AC-7b).
+
+        Before S16 `manual_only` is always empty. An unknown or foreign `source_id` gets 404.
+
+        '
+      parameters:
+      - name: source_id
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: The candidates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteCandidates'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/instruments:
+    get:
+      tags:
+      - profiles
+      operationId: listInstruments
+      summary: Enabled instruments with their exact tick data (global catalog)
+      description: Only MNQ in V1. Values are decimal strings; the UI never hard-codes them and does no arithmetic with them.
+      responses:
+        '200':
+          description: The instruments, sorted by symbol.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstrumentList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/default-profiles:
+    get:
+      tags:
+      - profiles
+      operationId: listDefaultProfiles
+      summary: The caller's default profile for every standard size, for one instrument
+      description: 'Always one entry per standard size (25k … 300k, `catalog.standard_account_size`), in size order;
+
+        a size the user has not defined has no `profile` (UI `Não definido`; no invented values, Q-S6-2).
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/InstrumentIdQuery'
+      responses:
+        '200':
+          description: The defaults.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultProfileList'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/default-profiles/{instrument_id}/{size_amount}:
+    put:
+      tags:
+      - profiles
+      operationId: putDefaultProfile
+      summary: Define or replace the default profile of one standard size (upsert)
+      description: 'Idempotent: the same body twice leaves one profile and one audit entry (an unchanged profile is
+
+        not audited). Affects only accounts created afterwards; existing accounts keep their own copy
+
+        (Q-S6-3). A size that is not a standard size gets 404. Audited as `profiles.default_changed`.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/InstrumentIdPath'
+      - name: size_amount
+        in: path
+        required: true
+        description: A standard size as a decimal string without separators, e.g. `50000` or `50000.00`.
+        schema:
+          $ref: '#/components/schemas/SizeAmount'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DistanceProfile'
+            examples:
+              usd:
+                value:
+                  distance_unit: usd
+                  stop_distance: '100.10'
+                  target_distance: '200.00'
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultProfileEntry'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/DistanceRejected'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/profiles:
+    get:
+      tags:
+      - profiles
+      operationId: listAccountProfiles
+      summary: The account's own profiles, one entry per enabled instrument
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: The account's profiles.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfileList'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}:
+    put:
+      tags:
+      - profiles
+      operationId: putAccountProfile
+      summary: Customize the account's own profile (the default is not changed)
+      description: 'Applies to the next entries only; open positions and working orders are not changed (Q-S6-5).
+
+        `row_version` is required when the account already has a profile for the instrument (stale or
+
+        missing → 409 `common.version_conflict`) and must be absent when it has none (an account created
+
+        while its size had no default, Q43). Audited as `profiles.account_changed` (`edited`).
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      - $ref: '#/components/parameters/InstrumentIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountProfileRequest'
+      responses:
+        '200':
+          description: Saved and audited.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfile'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`common.version_conflict` — nothing saved.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/DistanceRejected'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}/restore:
+    post:
+      tags:
+      - profiles
+      operationId: restoreAccountProfile
+      summary: Replace the account's profile with the current default of its size (Q-S6-4)
+      description: 'Copies the current default of the account''s size (the nearest standard size for a real account
+
+        of another size, chosen by the Core). Idempotent in effect: restoring twice leaves the same
+
+        profile (the second call is not audited). Applies to the next entries only. Audited as
+
+        `profiles.account_changed` (`restored`).
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      - $ref: '#/components/parameters/InstrumentIdPath'
+      responses:
+        '200':
+          description: Restored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfile'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: '`profiles.default_missing` — the size has no default profile yet; nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/profile-sizes/nearest:
+    get:
+      tags:
+      - profiles
+      operationId: getNearestProfileSize
+      summary: The standard size(s) whose default profile a real account of this size starts from
+      description: 'Distance = absolute difference between the account size and each standard size; below the
+
+        smallest standard size the smallest is used, above the largest the largest (PO, Q60). An exact
+
+        tie returns both sizes and the user chooses (`createAccount.profile_size`); provisional (Q60): the
+
+        Core does not choose. If the user later decides "always the smaller" or "always the larger",
+
+        `candidates` simply has one entry. Each candidate says whether the user has a default for it.
+
+        '
+      parameters:
+      - name: size_amount
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/SizeAmount'
+      - $ref: '#/components/parameters/InstrumentIdQuery'
+      responses:
+        '200':
+          description: One or two candidates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NearestProfileSize'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/profile-preview:
+    get:
+      tags:
+      - profiles
+      operationId: previewProfile
+      summary: Stateless conversion of a stop/target pair to whole ticks, points and dollars (Core arithmetic)
+      description: 'Used by `DistanceFields` while the user types (debounced). Stores nothing, audits nothing. Uses
+
+        the same conversion as execution (ADR-0004 §5): points and dollars become whole ticks with the
+
+        instrument''s exact tick size and tick value; a value that is not a whole number of ticks is
+
+        **rounded toward the entry** (down to the tighter distance), reported with `rounded: true`. A
+
+        distance below one tick gets 422 `profiles.distance_below_one_tick`.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/InstrumentIdQuery'
+      - name: distance_unit
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/DistanceUnit'
+      - name: stop_distance
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/DistanceValue'
+      - name: target_distance
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/DistanceValue'
+      responses:
+        '200':
+          description: The equivalents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileEquivalents'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/DistanceRejected'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/activity:
+    get:
+      tags:
+      - audit
+      operationId: listActivity
+      summary: The caller's activity entries, newest first, filtered, with a cursor
+      description: 'Filters combine with AND; the values inside one array filter combine with OR. Array filters
+
+        repeat the parameter (`account_id=a&account_id=b`). `from` defaults to 24 h before `to`; `to`
+
+        defaults to now; both are instants (X-8). `q` is an exact instruction id or `message_id`: it
+
+        returns the entries of that instruction (no free-text search). An unknown or foreign id in a
+
+        filter simply matches nothing. Entries older than the retention horizon no longer exist.
+
+        `next_cursor` is opaque and bound to the same filters; a cursor used with other filters gets
+
+        400 `common.invalid_request` (pointer `/query/cursor`).
+
+        '
+      parameters:
+      - name: from
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Timestamp'
+      - name: to
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Timestamp'
+      - name: account_id
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Uuid'
+      - name: source_id
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Uuid'
+      - name: signal_type
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/AuditSignalType'
+      - name: outcome
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AuditOutcome'
+      - name: category
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/AuditCategory'
+      - name: code
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/AuditCode'
+      - name: q
+        in: query
+        required: false
+        description: Exact instruction id or `message_id`.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9._:-]+$
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 512
+          pattern: ^[A-Za-z0-9_-]+$
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      responses:
+        '200':
+          description: One page of entries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityPage'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/activity/filter-options:
+    get:
+      tags:
+      - audit
+      operationId: getActivityFilterOptions
+      summary: Values for the activity filters, including archived accounts and revoked sources
+      responses:
+        '200':
+          description: The options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityFilterOptions'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/activity/{entry_id}:
+    get:
+      tags:
+      - audit
+      operationId: getActivityEntry
+      summary: One activity entry (detail panel)
+      parameters:
+      - name: entry_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: The entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEntry'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/instructions/{instruction_id}/timeline:
+    get:
+      tags:
+      - audit
+      operationId: getInstructionTimeline
+      summary: One instruction from receipt to every account's result (S10 AC-2), in one call
+      description: '`intake` holds the receipt steps, including every `ingress.duplicate_ignored` of the same
+
+        `message_id` (Q-S10-6). `accounts` holds one block per account the instruction was routed to or
+
+        skipped for, sorted by account name, each with its steps in `occurred_at` order (ties by the
+
+        Core''s sequence) and its final outcome. Unknown, foreign and purged-by-retention ids all get the
+
+        same 404 `common.not_found`. While `status` is `in_progress` new steps arrive as
+
+        `audit.entry_recorded` events; the client refetches.
+
+        '
+      parameters:
+      - name: instruction_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: The timeline.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstructionTimeline'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 components:
@@ -1758,6 +2899,31 @@ components:
         $ref: '#/components/schemas/Uuid'
     ChangeId:
       name: change_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID generated by the client once per create submission; reused on retries (not a secret).
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    InstrumentIdPath:
+      name: instrument_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    InstrumentIdQuery:
+      name: instrument_id
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    RouteId:
+      name: route_id
       in: path
       required: true
       schema:
@@ -1870,6 +3036,81 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    AccountWriteConflict:
+      description: "Nothing saved. Codes (pointer where shown):\n- `accounts.idempotency_key_reused` (create only; same key\
+        \ with a different body, or reuse after 24 h; never a second account);\n- `common.version_conflict` (update; stale\
+        \ `row_version`, reload);\n- `accounts.name_taken` — `/display_name` (case-insensitive, among the caller's live accounts);\n\
+        - `accounts.platform_account_taken` — `/binding` (already bound to another of the caller's\n  accounts; a platform\
+        \ account of another user is never reported as taken, see 422);\n- `accounts.binding_open_position` — `/binding` (update;\
+        \ provisional, Q38);\n- `accounts.rule_version_changed` — `error.current_rule_version_id` (an `opt_ins` choice names\
+        \ a\n  rule version that is no longer the one in force for the selection).\n"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            name_taken:
+              value:
+                error:
+                  code: accounts.name_taken
+                  pointer: /display_name
+            rule_version_changed:
+              value:
+                error:
+                  code: accounts.rule_version_changed
+                  current_rule_version_id: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+    AccountWriteRejected:
+      description: "Valid shape, refused by a rule; nothing saved. Codes and pointers:\n- `accounts.opt_in_required` — `/opt_ins/automation`\
+        \ or `/opt_ins/copy`;\n- `accounts.opt_in_not_applicable` — `/opt_ins/<kind>` (real account, or the kind is\n  `not_required`\
+        \ for the selection); the client refetches and drops the section;\n- `accounts.max_position_exceeds_preset` — `/max_position_qty`\
+        \ (above the preset maximum);\n- `accounts.preset_version_unknown` — `/preset_version_id` (unknown, withdrawn, or\
+        \ a superseded\n  version on create);\n- `accounts.firm_platform_required` / `accounts.firm_platform_unknown` — `/firm_platform`;\n\
+        - `accounts.platform_account_unknown` — `/binding` (no such platform account on a connection of\n  the caller, or\
+        \ the connection is unpaired; identical for another user's connection);\n- `accounts.platform_account_kind_not_allowed`\
+        \ — `/binding` (`live` or `unknown` kind outside\n  production; ADR-0004 §8);\n- `accounts.profile_size_required`\
+        \ / `accounts.profile_size_invalid` — `/profile_size` (create of\n  a real account whose size is a tie between two\
+        \ standard sizes; provisional, Q60).\n"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            opt_in_required:
+              value:
+                error:
+                  code: accounts.opt_in_required
+                  pointer: /opt_ins/automation
+    DistanceRejected:
+      description: "Valid shape, refused by a rule; nothing saved. Codes and pointers (`/query/...` on the preview):\n- `profiles.distance_below_one_tick`\
+        \ — `/stop_distance` or `/target_distance` (zero, or less than\n  one tick after conversion);\n- `profiles.distance_too_large`\
+        \ — `/stop_distance` or `/target_distance` (more than 10 000 ticks).\nA value whose shape does not fit its unit (fractional\
+        \ ticks, dollars with more than 2 decimals)\nis a schema error: 400 `common.invalid_request` with the pointer.\n"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            below_one_tick:
+              value:
+                error:
+                  code: profiles.distance_below_one_tick
+                  pointer: /stop_distance
+    RouteRejected:
+      description: "Valid shape, refused by a rule; nothing created. Codes and pointers:\n- `routing.source_unknown` — `/source_id`\
+        \ (unknown or another user's; identical);\n- `routing.source_revoked` — `/source_id`;\n- `routing.account_unknown`\
+        \ — `/account_id` (unknown, archived or another user's; identical);\n- `routing.account_manual_only` — `/account_id`\
+        \ (S16 AC-7);\n- `routing.automation_not_accepted` — `/account_id` (automated source; the account's automation\n \
+        \ opt-in is `declined` or `pending_review`);\n- `routing.platform_unbound` — `/account_id` (provisional, Q37).\n"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            not_accepted:
+              value:
+                error:
+                  code: routing.automation_not_accepted
+                  pointer: /account_id
   schemas:
     Uuid:
       type: string
@@ -2418,151 +3659,14 @@ components:
           $ref: '#/components/schemas/Timestamp'
         unpaired_at:
           $ref: '#/components/schemas/Timestamp'
-    OptInKind:
-      type: string
-      enum:
-      - automation
-      - copy
-    FirmStance:
-      type: string
-      enum:
-      - allowed
-      - forbidden
-      - conditional
-      - unknown
-      - not_confirmed
-      description: Stance of the account's preset version for the opt-in kind. A missing stance in the preset is `unknown`.
-    OptInChoiceRequest:
-      type: object
-      additionalProperties: false
-      required:
-      - choice
-      - rule_version_id
-      properties:
-        choice:
-          type: string
-          enum:
-          - accepted
-          - declined
-        rule_version_id:
-          description: Preset rule version whose text was displayed.
-          $ref: '#/components/schemas/Uuid'
-    OptInChoices:
-      description: 'Embedded as the `opt_ins` property of the S5 account create/update request bodies (atomic
-
-        create-with-choice; the rest of those operations is defined in the S5 contract). Must contain every
-
-        kind whose choice is required for the account''s preset version and is not already `chosen` for that
-
-        version; otherwise 422 `accounts.opt_in_required` with `pointer` `/opt_ins/automation` or
-
-        `/opt_ins/copy`, and nothing is saved. A stale `rule_version_id` gives 409
-
-        `accounts.rule_version_changed`. The S5 create/update operations are `x-step-up: conditional`,
-
-        `x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state`; the step-up happens
-
-        before the single save, so cancelling it saves nothing. A kind that is `not_required` is ignored.
-
-        '
-      type: object
-      additionalProperties: false
-      minProperties: 1
-      properties:
-        automation:
-          $ref: '#/components/schemas/OptInChoiceRequest'
-        copy:
-          $ref: '#/components/schemas/OptInChoiceRequest'
-    OptInState:
-      type: object
-      additionalProperties: false
-      required:
-      - kind
-      - state
-      - firm_stance
-      properties:
-        kind:
-          $ref: '#/components/schemas/OptInKind'
-        firm_stance:
-          $ref: '#/components/schemas/FirmStance'
-        state:
-          type: string
-          enum:
-          - not_required
-          - chosen
-          - pending_review
-          description: 'not_required = real account or the stance is `allowed`; chosen = an explicit choice exists for
-
-            the current rule version; pending_review = the stance (or, provisionally, its official text)
-
-            changed after the choice, or a requirement appeared for an account that had none (Q26).
-
-            Routing treats `pending_review` and `declined` as not accepted (`routing.automation_not_accepted`
-
-            / `routing.copy_not_accepted`). There is no "saved without a choice" state: first choices are
-
-            atomic with creation.
-
-            '
-        choice:
-          type: string
-          enum:
-          - accepted
-          - declined
-          description: 'With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in
-
-            force), present only if one was ever made, so the review dialog can show it; it is never
-
-            preselected. Absent with `not_required`.
-
-            '
-        chosen_at:
-          $ref: '#/components/schemas/Timestamp'
-        rule_version_id:
-          description: Rule version the `choice` was made against.
-          $ref: '#/components/schemas/Uuid'
-        current_rule_version_id:
-          description: The preset rule version currently in force for this account.
-          $ref: '#/components/schemas/Uuid'
-      allOf:
-      - if:
-          properties:
-            state:
-              const: chosen
-        then:
-          required:
-          - choice
-          - chosen_at
-          - rule_version_id
-          - current_rule_version_id
-      - if:
-          properties:
-            state:
-              const: pending_review
-        then:
-          required:
-          - current_rule_version_id
-          dependentRequired:
-            choice:
-            - chosen_at
-            - rule_version_id
-      - if:
-          properties:
-            state:
-              const: not_required
-        then:
-          not:
-            anyOf:
-            - required:
-              - choice
-            - required:
-              - chosen_at
-            - required:
-              - rule_version_id
     Event:
       description: SSE payloads (field `data`). `type` equals the SSE `event` name; `at` is when the event happened (server
         clock).
       oneOf:
+      - $ref: modules/accounts.yaml#/components/schemas/AccountChangedEvent
+      - $ref: modules/accounts.yaml#/components/schemas/AccountArchivedEvent
+      - $ref: modules/routing.yaml#/components/schemas/RouteChangedEvent
+      - $ref: modules/audit.yaml#/components/schemas/AuditEntryRecordedEvent
       - type: object
         additionalProperties: false
         required:
@@ -2643,3 +3747,2568 @@ components:
             - signed_out_everywhere
             - device_revoked
             - channel_changed
+    AccountName:
+      type: string
+      minLength: 1
+      maxLength: 80
+      description: Trimmed by the Core (NFC); must not be blank. Unique per user among live accounts, case-insensitive.
+    AccountKind:
+      type: string
+      enum:
+      - prop
+      - real
+    LifecycleState:
+      type: string
+      enum:
+      - active
+      - paused
+      - disabled
+    SizeAmount:
+      type: string
+      description: 'Account size in `currency` (decimal string, at most 2 decimals). Must be > 0: zero gets 400 `common.invalid_request`.'
+      pattern: ^[0-9]{1,12}(\.[0-9]{1,2})?$
+    MaxPositionQty:
+      type: integer
+      minimum: 1
+      maximum: 10000
+      description: Maximum position in contracts, one number per account in V1 (Q-A1). Mandatory (S5 AC-3).
+    Multiplier:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      description: Whole number ≥ 1 (S5 AC-5); a fraction or zero gets 400 `common.invalid_request` with the pointer.
+    FirmPlatform:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{0,31}$
+      description: Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`);
+        the options come from the preset version (S16). Not the execution platform.
+    ManualText:
+      type: string
+      minLength: 1
+      maxLength: 80
+      description: Free text (trimmed by the Core) for prop accounts without a preset.
+    PlatformAccountRef:
+      type: object
+      additionalProperties: false
+      required:
+      - connection_id
+      - platform_account
+      description: A platform account reported by one of the caller's connections (`Connection.visible_accounts`).
+      properties:
+        connection_id:
+          $ref: '#/components/schemas/Uuid'
+        platform_account:
+          type: string
+          minLength: 1
+          maxLength: 128
+    AccountBinding:
+      type: object
+      additionalProperties: false
+      required:
+      - connection_id
+      - connection_name
+      - connection_status
+      - platform_account
+      - kind
+      - oco_location
+      description: The bound platform account, as last reported by the plugin. `oco_location` `unknown` is treated as `local`
+        (S9 AC-4).
+      properties:
+        connection_id:
+          $ref: '#/components/schemas/Uuid'
+        connection_name:
+          $ref: '#/components/schemas/DisplayName'
+        connection_status:
+          type: string
+          enum:
+          - awaiting_pairing
+          - connected
+          - disconnected
+          - outdated
+          - unpaired
+        platform_account:
+          type: string
+          maxLength: 128
+        kind:
+          type: string
+          enum:
+          - simulation
+          - playback
+          - live
+          - unknown
+        oco_location:
+          type: string
+          enum:
+          - local
+          - server
+          - unknown
+        bound_at:
+          $ref: '#/components/schemas/Timestamp'
+    AccountOptIns:
+      type: object
+      additionalProperties: false
+      required:
+      - automation
+      - copy
+      properties:
+        automation:
+          $ref: '#/components/schemas/OptInState'
+        copy:
+          $ref: '#/components/schemas/OptInState'
+    Account:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - kind
+      - display_name
+      - size_amount
+      - currency
+      - multiplier
+      - max_position_qty
+      - lifecycle_state
+      - opt_ins
+      - has_open_position
+      - row_version
+      - created_at
+      - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        kind:
+          $ref: '#/components/schemas/AccountKind'
+        display_name:
+          $ref: '#/components/schemas/AccountName'
+        firm_name:
+          type: string
+          description: Prop only. From the preset when `preset_version_id` is set, else the manual text.
+        plan_name:
+          type: string
+          description: Prop only (as `firm_name`).
+        phase:
+          type: string
+          description: Prop only (as `firm_name`).
+        firm_id:
+          description: Prop with a preset only (S16 catalog).
+          $ref: '#/components/schemas/Uuid'
+        preset_version_id:
+          description: Prop with a preset only. The version applied to this account; a newer one is applied only by the user
+            (S16 AC-3).
+          $ref: '#/components/schemas/Uuid'
+        firm_platform:
+          $ref: '#/components/schemas/FirmPlatform'
+        size_amount:
+          $ref: '#/components/schemas/SizeAmount'
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+          description: ISO 4217; 'USD' in V1.
+        multiplier:
+          $ref: '#/components/schemas/Multiplier'
+        max_position_qty:
+          $ref: '#/components/schemas/MaxPositionQty'
+        lifecycle_state:
+          $ref: '#/components/schemas/LifecycleState'
+        binding:
+          description: Absent when the account is not bound; an unbound account is never routed (provisional, Q37).
+          $ref: '#/components/schemas/AccountBinding'
+        opt_ins:
+          $ref: '#/components/schemas/AccountOptIns'
+        has_open_position:
+          type: boolean
+          description: Last known from the platform (gateway); false when unbound. Used for the lifecycle and delete messages.
+        row_version:
+          type: integer
+          minimum: 1
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+        archived_at:
+          description: Only in the idempotent replay of a create whose account was archived since; every other read of an
+            archived account is 404.
+          $ref: '#/components/schemas/Timestamp'
+      allOf:
+      - if:
+          properties:
+            kind:
+              const: prop
+        then:
+          required:
+          - firm_name
+          - plan_name
+          - phase
+        else:
+          not:
+            anyOf:
+            - required:
+              - firm_name
+            - required:
+              - plan_name
+            - required:
+              - phase
+            - required:
+              - firm_id
+            - required:
+              - preset_version_id
+            - required:
+              - firm_platform
+    AccountList:
+      type: object
+      additionalProperties: false
+      required:
+      - accounts
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+    AccountCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - display_name
+      - max_position_qty
+      description: '`kind: real` → `size_amount` required; no prop fields; no `opt_ins`.
+
+        `kind: prop` → either `preset_version_id` (+ `firm_platform` when the preset requires it; firm,
+
+        plan, phase and size then come from the preset and must be absent) or all of `firm_name`,
+
+        `plan_name`, `phase`, `size_amount` (manual).
+
+        '
+      properties:
+        kind:
+          $ref: '#/components/schemas/AccountKind'
+        display_name:
+          $ref: '#/components/schemas/AccountName'
+        preset_version_id:
+          $ref: '#/components/schemas/Uuid'
+        firm_platform:
+          $ref: '#/components/schemas/FirmPlatform'
+        firm_name:
+          $ref: '#/components/schemas/ManualText'
+        plan_name:
+          $ref: '#/components/schemas/ManualText'
+        phase:
+          $ref: '#/components/schemas/ManualText'
+        size_amount:
+          $ref: '#/components/schemas/SizeAmount'
+        multiplier:
+          description: Defaults to 1.
+          $ref: '#/components/schemas/Multiplier'
+        max_position_qty:
+          $ref: '#/components/schemas/MaxPositionQty'
+        binding:
+          $ref: '#/components/schemas/PlatformAccountRef'
+        profile_size:
+          description: Real accounts only. The standard size whose default profile is copied, when `size_amount` is a tie
+            (`getNearestProfileSize` returns two candidates). Ignored otherwise.
+          $ref: '#/components/schemas/SizeAmount'
+        opt_ins:
+          $ref: '#/components/schemas/OptInChoices'
+        step_up:
+          description: Required when an `opt_ins` choice is `accepted` (action `account_create_opt_in_accept`, no target).
+          $ref: '#/components/schemas/StepUpProof'
+      allOf:
+      - if:
+          properties:
+            kind:
+              const: real
+        then:
+          required:
+          - size_amount
+          not:
+            anyOf:
+            - required:
+              - preset_version_id
+            - required:
+              - firm_platform
+            - required:
+              - firm_name
+            - required:
+              - plan_name
+            - required:
+              - phase
+            - required:
+              - opt_ins
+        else:
+          not:
+            required:
+            - profile_size
+      - if:
+          properties:
+            kind:
+              const: prop
+          required:
+          - preset_version_id
+        then:
+          not:
+            anyOf:
+            - required:
+              - firm_name
+            - required:
+              - plan_name
+            - required:
+              - phase
+            - required:
+              - size_amount
+      - if:
+          properties:
+            kind:
+              const: prop
+          not:
+            required:
+            - preset_version_id
+        then:
+          required:
+          - firm_name
+          - plan_name
+          - phase
+          - size_amount
+          not:
+            required:
+            - firm_platform
+    AccountUpdateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - row_version
+      - display_name
+      - max_position_qty
+      description: 'Full replacement of the editable fields (`kind` is fixed at creation). The same prop/real rules as
+
+        `AccountCreateRequest`, keyed on the stored `kind`: real → `size_amount`, no prop fields, no
+
+        `opt_ins`; prop → `preset_version_id` (+ `firm_platform`) or the four manual fields. A body that
+
+        does not fit the stored kind gets 400 `common.invalid_request` with the pointer of the first
+
+        offending field. Switching a prop account from a preset to manual fields (or back) is allowed.
+
+        '
+      properties:
+        row_version:
+          type: integer
+          minimum: 1
+        display_name:
+          $ref: '#/components/schemas/AccountName'
+        preset_version_id:
+          $ref: '#/components/schemas/Uuid'
+        firm_platform:
+          $ref: '#/components/schemas/FirmPlatform'
+        firm_name:
+          $ref: '#/components/schemas/ManualText'
+        plan_name:
+          $ref: '#/components/schemas/ManualText'
+        phase:
+          $ref: '#/components/schemas/ManualText'
+        size_amount:
+          $ref: '#/components/schemas/SizeAmount'
+        multiplier:
+          description: Absent means 1.
+          $ref: '#/components/schemas/Multiplier'
+        max_position_qty:
+          $ref: '#/components/schemas/MaxPositionQty'
+        binding:
+          description: The platform account to bind; absent means unbound.
+          $ref: '#/components/schemas/PlatformAccountRef'
+        opt_ins:
+          $ref: '#/components/schemas/OptInChoices'
+        step_up:
+          description: Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`,
+            target = this account).
+          $ref: '#/components/schemas/StepUpProof'
+      allOf:
+      - if:
+          required:
+          - preset_version_id
+        then:
+          not:
+            anyOf:
+            - required:
+              - firm_name
+            - required:
+              - plan_name
+            - required:
+              - phase
+      - if:
+          required:
+          - firm_name
+        then:
+          required:
+          - plan_name
+          - phase
+          - size_amount
+      - if:
+          not:
+            required:
+            - preset_version_id
+        then:
+          not:
+            required:
+            - firm_platform
+    LifecycleRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - state
+      - row_version
+      properties:
+        state:
+          $ref: '#/components/schemas/LifecycleState'
+        row_version:
+          type: integer
+          minimum: 1
+    ArchiveImpact:
+      type: object
+      additionalProperties: false
+      required:
+      - has_open_position
+      - routes
+      - follower_links
+      properties:
+        has_open_position:
+          type: boolean
+          description: When true `archiveAccount` is refused (the dialog shows the explanation instead of a confirmation).
+        routes:
+          type: array
+          description: Routing subscriptions of this account (S7) that archiving removes.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - source_id
+            - source_name
+            properties:
+              source_id:
+                $ref: '#/components/schemas/Uuid'
+              source_name:
+                $ref: '#/components/schemas/DisplayName'
+        follower_links:
+          type: array
+          description: Master/follower relations (S19, V1.1; always empty before it) that archiving removes.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - account_id
+            - display_name
+            - role
+            properties:
+              account_id:
+                $ref: '#/components/schemas/Uuid'
+              display_name:
+                $ref: '#/components/schemas/AccountName'
+              role:
+                type: string
+                enum:
+                - master
+                - follower
+                description: The role of the OTHER account in the relation.
+    OptInKind:
+      type: string
+      enum:
+      - automation
+      - copy
+    FirmStance:
+      type: string
+      enum:
+      - allowed
+      - forbidden
+      - conditional
+      - unknown
+      - not_confirmed
+      description: Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account
+        without a preset (generic rule, provisional Q40), is `unknown`.
+    OptInChoiceRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - choice
+      - rule_version_id
+      properties:
+        choice:
+          type: string
+          enum:
+          - accepted
+          - declined
+        rule_version_id:
+          description: Rule version whose text was displayed (`RuleVersion.id`).
+          $ref: '#/components/schemas/Uuid'
+    OptInChoices:
+      description: 'The `opt_ins` property of `createAccount` / `updateAccount` (atomic create-with-choice). Must
+
+        contain every kind whose choice is required for the account''s rule version and is not already
+
+        `chosen` for that version; otherwise 422 `accounts.opt_in_required` with `pointer`
+
+        `/opt_ins/automation` or `/opt_ins/copy`, and nothing is saved. `copy` is required only when the
+
+        account is a follower (S19), so it is normally absent here. A stale `rule_version_id` gives 409
+
+        `accounts.rule_version_changed`. The step-up (when a choice is `accepted` and changes the stored
+
+        state) happens before the single save, so cancelling it saves nothing.
+
+        '
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        automation:
+          $ref: '#/components/schemas/OptInChoiceRequest'
+        copy:
+          $ref: '#/components/schemas/OptInChoiceRequest'
+    OptInState:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - state
+      properties:
+        kind:
+          $ref: '#/components/schemas/OptInKind'
+        firm_stance:
+          description: Absent only for real accounts.
+          $ref: '#/components/schemas/FirmStance'
+        state:
+          type: string
+          enum:
+          - not_required
+          - chosen
+          - pending_review
+          description: 'not_required = no choice is asked now: real account, the stance is `allowed`, or (`copy`) the
+
+            account is not a follower (Q-S5-8; no card in the UI); chosen = an explicit choice exists for
+
+            the current rule version; pending_review = see `pending_reason`; that kind is suspended until
+
+            the user chooses again (Q26). Routing treats `pending_review` and `declined` as not accepted
+
+            (`routing.automation_not_accepted` / `routing.copy_not_accepted`). There is no "saved without
+
+            a choice" state: first choices are atomic with creation.
+
+            '
+        pending_reason:
+          type: string
+          enum:
+          - stance_changed
+          - text_changed
+          - preset_attached
+          description: 'With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is
+
+            flagged as a material text change (provisional, Q42; `RuleVersion.change` has the reason
+
+            text); `preset_attached` = a preset was attached to an account that had none (provisional, Q41).
+
+            '
+        choice:
+          type: string
+          enum:
+          - accepted
+          - declined
+          description: 'With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in
+
+            force), present only if one was ever made, so the review dialog can show it; it is never
+
+            preselected. Absent with `not_required`.
+
+            '
+        chosen_at:
+          $ref: '#/components/schemas/Timestamp'
+        rule_version_id:
+          description: Rule version the `choice` was made against.
+          $ref: '#/components/schemas/Uuid'
+        current_rule_version_id:
+          description: The rule version in force for this account and kind (fetch its text with `getRuleVersion`). Absent
+            only for real accounts.
+          $ref: '#/components/schemas/Uuid'
+      allOf:
+      - if:
+          properties:
+            state:
+              const: chosen
+        then:
+          required:
+          - firm_stance
+          - choice
+          - chosen_at
+          - rule_version_id
+          - current_rule_version_id
+      - if:
+          properties:
+            state:
+              const: pending_review
+        then:
+          required:
+          - firm_stance
+          - pending_reason
+          - current_rule_version_id
+          dependentRequired:
+            choice:
+            - chosen_at
+            - rule_version_id
+        else:
+          not:
+            required:
+            - pending_reason
+      - if:
+          properties:
+            state:
+              const: not_required
+        then:
+          not:
+            anyOf:
+            - required:
+              - choice
+            - required:
+              - chosen_at
+            - required:
+              - rule_version_id
+    AccountChangedEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - at
+      - account_id
+      description: Any change to an account the caller sees (fields, lifecycle, opt-in state, binding, open position). The
+        client refetches the account (`getAccount`).
+      properties:
+        type:
+          const: account.changed
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+    AccountArchivedEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - at
+      - account_id
+      properties:
+        type:
+          const: account.archived
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+    AuditCategory:
+      type: string
+      enum:
+      - ingress
+      - routing
+      - execution
+      - risk
+      - connection
+      - security
+      - config
+    AuditOutcome:
+      type: string
+      enum:
+      - received
+      - routed
+      - executed
+      - partial
+      - skipped
+      - refused
+      - rejected
+      - expired
+      - unknown
+      - info
+      description: "Final taxonomy (Q-S10-2), set by the Core on every entry, never derived by the client:\n- `received` —\
+        \ instruction accepted at ingress;\n- `routed` — routing decision to send to an account (full quantity);\n- `executed`\
+        \ — an order filled;\n- `partial` — quantity capped at the maximum position, or a partial fill;\n- `skipped` — not\
+        \ sent by a configuration rule (duplicate, signal type not selected, opt-in not\n  accepted, account inactive, no\
+        \ stop/target profile, maximum already reached, nothing to close);\n- `refused` — not sent by a protective gate (out\
+        \ of sync, risk block, position conflict);\n- `rejected` — refused by validation (ingress) or by the platform;\n-\
+        \ `expired` — command TTL exceeded, not executed;\n- `unknown` — the order's state could not be determined after a\
+        \ recovery (the account is\n  flagged out of sync);\n- `info` — everything else (configuration, connection, security,\
+        \ order received/working/cancelled,\n  bracket calculation, command sent). No badge in the UI.\n"
+    AuditSignalType:
+      type: string
+      enum:
+      - trigger
+      - trade_plan
+      - nq_trigger
+      - master_account
+    AuditCode:
+      type: string
+      pattern: ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$
+      maxLength: 96
+      description: 'Stable code; clients translate it (ADR-0001 §9). The set is open: a code the client does not know
+
+        is shown with the fallback text and the technical data. `KnownAuditCode` lists the codes defined
+
+        by the contract so far (the i18n parity check uses it).
+
+        '
+    KnownAuditCode:
+      type: string
+      enum:
+      - ingress.received
+      - ingress.duplicate_ignored
+      - ingress.rejected
+      - ingress.rate_limited
+      - routing.routed
+      - routing.quantity_capped
+      - routing.max_position_reached
+      - routing.signal_type_not_selected
+      - routing.automation_not_accepted
+      - routing.copy_not_accepted
+      - routing.account_inactive
+      - routing.no_bracket_profile
+      - routing.out_of_sync
+      - routing.risk_blocked
+      - routing.position_conflict
+      - routing.nothing_to_close
+      - routing.nothing_to_reduce
+      - routing.no_correlated_order
+      - routing.expired
+      - execution.command_sent
+      - execution.bracket_calculated
+      - execution.order_received
+      - execution.order_working
+      - execution.partially_filled
+      - execution.filled
+      - execution.cancelled
+      - execution.rejected
+      - execution.expired
+      - execution.state_unknown
+      - execution.fill_corrected
+      - connection.status_changed
+      - security.signed_in
+      - security.sign_in_failed
+      - security.code_rate_limited
+      - security.code_delivery_failed
+      - security.new_device_notice_sent
+      - security.step_up_succeeded
+      - security.step_up_failed
+      - security.channel_change_requested
+      - security.channel_change_on_hold
+      - security.channel_change_completed
+      - security.channel_change_cancelled
+      - security.channel_change_not_completed
+      - security.device_forgotten
+      - security.signed_out_everywhere
+      - accounts.created
+      - accounts.updated
+      - accounts.archived
+      - accounts.lifecycle_changed
+      - accounts.opt_in_chosen
+      - accounts.opt_in_suspended
+      - routing.subscription_changed
+      - profiles.default_changed
+      - profiles.account_changed
+      description: 'Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
+
+        auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
+
+        `sync.*` (S11), `risk.*` (S13–S15), `notifications.*` (S18).
+
+        '
+    AuditEntry:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - occurred_at
+      - recorded_at
+      - category
+      - code
+      - outcome
+      - details
+      - safe_to_display
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        recorded_at:
+          $ref: '#/components/schemas/Timestamp'
+        category:
+          $ref: '#/components/schemas/AuditCategory'
+        code:
+          $ref: '#/components/schemas/AuditCode'
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+        is_exit:
+          type: boolean
+          description: With routing and execution entries of an exit action (`close`, reduce, protective modify/cancel), so
+            the text can say "saída".
+        instruction_id:
+          $ref: '#/components/schemas/Uuid'
+        message_id:
+          type: string
+          pattern: ^[A-Za-z0-9._:-]{1,128}$
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        account_name:
+          type: string
+          maxLength: 80
+          description: Snapshot at the time of the entry.
+        account_deleted:
+          type: boolean
+          description: True when the account has been archived since (UI `(excluída)`).
+        source_id:
+          $ref: '#/components/schemas/Uuid'
+        source_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        source_key_id:
+          type: string
+          pattern: ^[A-Za-z0-9]{12}$
+          description: The only part of a source token that may be shown.
+        signal_type:
+          $ref: '#/components/schemas/AuditSignalType'
+        command_id:
+          $ref: '#/components/schemas/Uuid'
+        details:
+          type: object
+          description: 'Typed per code: the schema is `AuditDetailsByCode[code]` (an empty object for codes without
+
+            one). Money, prices and distances are decimal strings. Never holds a secret: the Core redacts
+
+            before writing and storage refuses token-shaped strings.
+
+            '
+        safe_to_display:
+          type: boolean
+          description: True when the raw `details` JSON may be shown in "technical data". The rendered fields of the catalog
+            are always shown.
+      allOf:
+      - if:
+          required:
+          - account_id
+        then:
+          required:
+          - account_name
+          - account_deleted
+      - if:
+          required:
+          - source_id
+        then:
+          required:
+          - source_name
+    ActivityPage:
+      type: object
+      additionalProperties: false
+      required:
+      - entries
+      - retention_months
+      - horizon
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+        next_cursor:
+          type: string
+          description: Absent on the last page.
+        retention_months:
+          type: integer
+          minimum: 1
+          description: Rolling retention of the activity record (24 in V1, configurable by the admin; Q13, Q45).
+        horizon:
+          description: The oldest instant still kept; a `from` before it gets the "only the last n months" line.
+          $ref: '#/components/schemas/Timestamp'
+    ActivityFilterOptions:
+      type: object
+      additionalProperties: false
+      required:
+      - accounts
+      - sources
+      - signal_types
+      properties:
+        accounts:
+          type: array
+          description: Every account that appears in the caller's activity, archived ones included.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - account_id
+            - account_name
+            - account_deleted
+            properties:
+              account_id:
+                $ref: '#/components/schemas/Uuid'
+              account_name:
+                type: string
+                maxLength: 80
+              account_deleted:
+                type: boolean
+        sources:
+          type: array
+          description: Every source, revoked ones included.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - source_id
+            - source_name
+            - revoked
+            properties:
+              source_id:
+                $ref: '#/components/schemas/Uuid'
+              source_name:
+                type: string
+                minLength: 1
+                maxLength: 60
+              revoked:
+                type: boolean
+        signal_types:
+          type: array
+          description: Signal types present in the caller's retained activity (`master_account` only once S19 produces it;
+            Q-S10-7).
+          items:
+            $ref: '#/components/schemas/AuditSignalType'
+    InstructionSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - instruction_id
+      - message_id
+      - source_id
+      - source_name
+      - signal_type
+      - action
+      - instrument_symbol
+      - sent_at
+      - received_at
+      properties:
+        instruction_id:
+          $ref: '#/components/schemas/Uuid'
+        message_id:
+          type: string
+          pattern: ^[A-Za-z0-9._:-]{1,128}$
+        source_id:
+          $ref: '#/components/schemas/Uuid'
+        source_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        source_key_id:
+          type: string
+          pattern: ^[A-Za-z0-9]{12}$
+        signal_type:
+          $ref: '#/components/schemas/AuditSignalType'
+        action:
+          type: string
+          enum:
+          - buy
+          - sell
+          - close
+          - reverse
+          - modify
+          - cancel
+        instrument_symbol:
+          type: string
+          pattern: ^[A-Z0-9]{1,10}$
+        contract_month:
+          type: string
+          pattern: ^[0-9]{4}-[0-9]{2}$
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: Absent for `close` (ignored).
+        sent_at:
+          $ref: '#/components/schemas/Timestamp'
+        received_at:
+          $ref: '#/components/schemas/Timestamp'
+    TimelineAccount:
+      type: object
+      additionalProperties: false
+      required:
+      - account_id
+      - account_name
+      - account_deleted
+      - outcome
+      - final
+      - steps
+      properties:
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        account_name:
+          type: string
+          maxLength: 80
+        account_deleted:
+          type: boolean
+        outcome:
+          description: The account's result so far (the last decisive step).
+          $ref: '#/components/schemas/AuditOutcome'
+        final:
+          type: boolean
+          description: False while commands for this account are still open; the UI announces the outcome once it becomes
+            final.
+        quantity:
+          description: How the quantity was decided (absent when the account was skipped before sizing).
+          $ref: '#/components/schemas/DetailsSizing'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+    InstructionTimeline:
+      type: object
+      additionalProperties: false
+      required:
+      - instruction
+      - status
+      - intake
+      - accounts
+      properties:
+        instruction:
+          $ref: '#/components/schemas/InstructionSummary'
+        status:
+          type: string
+          enum:
+          - in_progress
+          - completed
+          description: '`completed` when every account block is final.'
+        intake:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineAccount'
+    AuditEntryRecordedEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - at
+      - entry_id
+      - category
+      - outcome
+      description: A new entry was recorded for the caller (drives the "n new entries" banner and the live timeline). Carries
+        no details.
+      properties:
+        type:
+          const: audit.entry_recorded
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        entry_id:
+          $ref: '#/components/schemas/Uuid'
+        category:
+          $ref: '#/components/schemas/AuditCategory'
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        instruction_id:
+          $ref: '#/components/schemas/Uuid'
+    Money:
+      type: string
+      pattern: ^-?[0-9]{1,14}(\.[0-9]{1,4})?$
+      description: Money as a decimal string (NUMERIC(18,4)).
+    Price:
+      type: string
+      pattern: ^[0-9]{1,12}(\.[0-9]{1,10})?$
+    DetailsSizing:
+      type: object
+      additionalProperties: false
+      required:
+      - multiplier
+      - max_position_qty
+      properties:
+        instruction_qty:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        multiplier:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        requested_qty:
+          type: integer
+          minimum: 0
+          description: instruction quantity × multiplier.
+        max_position_qty:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        position_before:
+          type: integer
+          description: Signed, the Core's expected position.
+        executed_qty:
+          type: integer
+          minimum: 0
+          description: After the cap.
+        skipped_qty:
+          type: integer
+          minimum: 0
+          description: requested − executed.
+    DetailsIngressReceived:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - instrument_symbol
+      - sent_at
+      properties:
+        action:
+          type: string
+          enum:
+          - buy
+          - sell
+          - close
+          - reverse
+          - modify
+          - cancel
+        instrument_symbol:
+          type: string
+          pattern: ^[A-Z0-9]{1,10}$
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        sent_at:
+          $ref: '#/components/schemas/Timestamp'
+    DetailsIngressDuplicate:
+      type: object
+      additionalProperties: false
+      required:
+      - original_instruction_id
+      properties:
+        original_instruction_id:
+          $ref: '#/components/schemas/Uuid'
+    DetailsIngressRejected:
+      type: object
+      additionalProperties: false
+      required:
+      - error_code
+      - pointer
+      - body_size
+      description: Never the body (Q13 §8).
+      properties:
+        error_code:
+          $ref: '#/components/schemas/ErrorCode'
+        pointer:
+          type: string
+          maxLength: 256
+        body_size:
+          type: integer
+          minimum: 0
+    DetailsIngressRateLimited:
+      type: object
+      additionalProperties: false
+      required:
+      - retry_after_s
+      properties:
+        retry_after_s:
+          type: integer
+          minimum: 1
+    DetailsRoutingDecision:
+      type: object
+      additionalProperties: false
+      description: Every `routing.*` decision code (routed, capped, skipped, refused, expired).
+      properties:
+        sizing:
+          $ref: '#/components/schemas/DetailsSizing'
+        lifecycle_state:
+          type: string
+          enum:
+          - paused
+          - disabled
+        opt_in_state:
+          type: string
+          enum:
+          - declined
+          - pending_review
+        rule_version_id:
+          $ref: '#/components/schemas/Uuid'
+        sync_reasons:
+          type: array
+          items:
+            type: string
+            pattern: ^sync\.[a-z][a-z0-9_]*$
+        position_side:
+          type: string
+          enum:
+          - long
+          - short
+          - flat
+        account_size:
+          $ref: '#/components/schemas/SizeAmount'
+        ttl_ms:
+          type: integer
+          minimum: 1
+        expiry_base:
+          $ref: '#/components/schemas/Timestamp'
+    DetailsCommandSent:
+      type: object
+      additionalProperties: false
+      required:
+      - step
+      - kind
+      properties:
+        step:
+          type: string
+          maxLength: 64
+        kind:
+          type: string
+          enum:
+          - place
+          - modify
+          - cancel
+          - flatten
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+    DetailsBracketCalculated:
+      type: object
+      additionalProperties: false
+      required:
+      - distance_unit
+      - stop_requested
+      - target_requested
+      - stop_ticks
+      - target_ticks
+      - stop_rounded
+      - target_rounded
+      - mode
+      description: 'S6 AC-4: requested distance → whole ticks used → resulting price, per side.'
+      properties:
+        mode:
+          type: string
+          enum:
+          - individual
+          - shared
+        distance_unit:
+          $ref: '#/components/schemas/DistanceUnit'
+        stop_requested:
+          $ref: '#/components/schemas/DistanceValue'
+        target_requested:
+          $ref: '#/components/schemas/DistanceValue'
+        stop_ticks:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        target_ticks:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        stop_rounded:
+          type: boolean
+        target_rounded:
+          type: boolean
+        entry_price:
+          $ref: '#/components/schemas/Price'
+        stop_price:
+          $ref: '#/components/schemas/Price'
+        target_price:
+          $ref: '#/components/schemas/Price'
+    DetailsExecution:
+      type: object
+      additionalProperties: false
+      required:
+      - origin
+      description: Every `execution.order_*`, `execution.filled` … `execution.state_unknown` and `execution.fill_corrected`
+        code.
+      properties:
+        origin:
+          type: string
+          enum:
+          - all_win
+          - local_enforcement
+          - external
+        child_role:
+          type: string
+          enum:
+          - entry
+          - stop
+          - target
+        platform_order_id:
+          type: string
+          maxLength: 128
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        fill_qty:
+          type: integer
+          minimum: 1
+        fill_price:
+          $ref: '#/components/schemas/Price'
+        fill_operation:
+          type: string
+          enum:
+          - add
+          - amend
+          - remove
+        commission:
+          $ref: '#/components/schemas/Money'
+        position_after:
+          type: integer
+        avg_price_after:
+          $ref: '#/components/schemas/Price'
+        platform_reason:
+          $ref: '#/components/schemas/ErrorCode'
+        platform_time:
+          $ref: '#/components/schemas/Timestamp'
+        latency_ms:
+          type: integer
+          minimum: 0
+          description: Instruction receipt → this report (S19 AC-4 for followers).
+    DetailsConnectionStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - connection_id
+      - connection_name
+      - status
+      properties:
+        connection_id:
+          $ref: '#/components/schemas/Uuid'
+        connection_name:
+          type: string
+          maxLength: 60
+        previous_status:
+          type: string
+          enum:
+          - awaiting_pairing
+          - connected
+          - disconnected
+          - outdated
+          - unpaired
+        status:
+          type: string
+          enum:
+          - awaiting_pairing
+          - connected
+          - disconnected
+          - outdated
+          - unpaired
+    FieldChange:
+      type: object
+      additionalProperties: false
+      required:
+      - field
+      description: One changed field; values are strings (money as decimal strings), absent when empty.
+      properties:
+        field:
+          type: string
+          pattern: ^[a-z][a-z0-9_.]*$
+          maxLength: 64
+        old:
+          type: string
+          maxLength: 200
+        new:
+          type: string
+          maxLength: 200
+    DetailsAccountChange:
+      type: object
+      additionalProperties: false
+      required:
+      - changes
+      description: '`accounts.created` / `.updated` / `.archived`. `archived` also lists what was removed.'
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldChange'
+        removed_routes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - source_id
+            - source_name
+            properties:
+              source_id:
+                $ref: '#/components/schemas/Uuid'
+              source_name:
+                type: string
+                minLength: 1
+                maxLength: 60
+        removed_follower_links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Uuid'
+    DetailsLifecycleChanged:
+      type: object
+      additionalProperties: false
+      required:
+      - previous_state
+      - new_state
+      - had_open_position
+      properties:
+        previous_state:
+          $ref: '#/components/schemas/LifecycleState'
+        new_state:
+          $ref: '#/components/schemas/LifecycleState'
+        had_open_position:
+          type: boolean
+    DetailsOptInChosen:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - choice
+      - rule_version_id
+      - firm_stance
+      - sources
+      description: 'S5 AC-8: the choice and the exact rule text version the user saw.'
+      properties:
+        kind:
+          $ref: '#/components/schemas/OptInKind'
+        choice:
+          type: string
+          enum:
+          - accepted
+          - declined
+        previous_choice:
+          type: string
+          enum:
+          - accepted
+          - declined
+        rule_version_id:
+          $ref: '#/components/schemas/Uuid'
+        rule_version_number:
+          type: integer
+          minimum: 1
+        firm_name:
+          type: string
+          maxLength: 120
+        firm_stance:
+          $ref: '#/components/schemas/FirmStance'
+        sources:
+          type: array
+          description: URL and access date of each quote shown (empty for the generic rule).
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - url
+            - accessed_at
+            properties:
+              url:
+                type: string
+                format: uri
+                maxLength: 2048
+                pattern: ^https://
+              accessed_at:
+                type: string
+                format: date
+    DetailsOptInSuspended:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - cause
+      - rule_version_id
+      properties:
+        kind:
+          $ref: '#/components/schemas/OptInKind'
+        cause:
+          type: string
+          enum:
+          - stance_changed
+          - text_changed
+          - preset_attached
+        previous_rule_version_id:
+          $ref: '#/components/schemas/Uuid'
+        rule_version_id:
+          $ref: '#/components/schemas/Uuid'
+        rule_version_number:
+          type: integer
+          minimum: 1
+        firm_name:
+          type: string
+          maxLength: 120
+    DetailsSubscriptionChanged:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - route_id
+      - source_id
+      - source_name
+      properties:
+        action:
+          type: string
+          enum:
+          - created
+          - updated
+          - enabled
+          - disabled
+          - removed
+        route_id:
+          $ref: '#/components/schemas/Uuid'
+        source_id:
+          $ref: '#/components/schemas/Uuid'
+        source_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        previous_signal_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignalType'
+        signal_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignalType'
+        previous_is_enabled:
+          type: boolean
+        is_enabled:
+          type: boolean
+    DetailsProfileChanged:
+      type: object
+      additionalProperties: false
+      required:
+      - instrument_id
+      - new
+      description: '`profiles.default_changed` (with `size_amount`) and `profiles.account_changed` (with `action`).'
+      properties:
+        instrument_id:
+          $ref: '#/components/schemas/Uuid'
+        size_amount:
+          $ref: '#/components/schemas/SizeAmount'
+        action:
+          type: string
+          enum:
+          - initial_copy
+          - edited
+          - restored
+        copied_from_size:
+          $ref: '#/components/schemas/SizeAmount'
+        previous:
+          $ref: '#/components/schemas/DistanceProfile'
+        new:
+          $ref: '#/components/schemas/DistanceProfile'
+    MaskedChannelValue:
+      type: string
+      maxLength: 64
+      pattern: ^[^@\s]*\*[^\s]*$
+      description: 'Masked by the Core: e-mail `j***@d***.com`, number `+55******1234`. Always contains `*`.'
+    DeviceLabel:
+      type: string
+      maxLength: 64
+      description: Coarse browser/OS family (`Device.label`), never a full user agent.
+    DetailsSecuritySignedIn:
+      type: object
+      additionalProperties: false
+      required:
+      - channel
+      - new_device
+      - device_label
+      properties:
+        channel:
+          $ref: '#/components/schemas/CodeChannel'
+        new_device:
+          type: boolean
+        device_label:
+          $ref: '#/components/schemas/DeviceLabel'
+    DetailsSecurityChannel:
+      type: object
+      additionalProperties: false
+      required:
+      - channel
+      description: '`security.sign_in_failed` (registered identifier only; the reason is always code_invalid, never detailed).'
+      properties:
+        channel:
+          $ref: '#/components/schemas/CodeChannel'
+    CodePurpose:
+      type: string
+      enum:
+      - login
+      - signup
+      - step_up
+      - channel_change
+    DetailsSecurityRateLimited:
+      type: object
+      additionalProperties: false
+      required:
+      - purpose
+      properties:
+        purpose:
+          $ref: '#/components/schemas/CodePurpose'
+    DetailsSecurityDeliveryFailed:
+      type: object
+      additionalProperties: false
+      required:
+      - channel
+      - purpose
+      properties:
+        channel:
+          $ref: '#/components/schemas/CodeChannel'
+        purpose:
+          $ref: '#/components/schemas/CodePurpose'
+    DetailsSecurityDevice:
+      type: object
+      additionalProperties: false
+      required:
+      - device_label
+      description: '`security.new_device_notice_sent`; with `device_id` for `security.device_forgotten`.'
+      properties:
+        device_id:
+          $ref: '#/components/schemas/Uuid'
+        device_label:
+          $ref: '#/components/schemas/DeviceLabel'
+    DetailsSecurityStepUp:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      description: '`security.step_up_succeeded`; with `reason` for `security.step_up_failed`.'
+      properties:
+        action:
+          $ref: '#/components/schemas/StepUpAction'
+        target_id:
+          $ref: '#/components/schemas/Uuid'
+        reason:
+          type: string
+          enum:
+          - missing
+          - code_invalid
+    DetailsSecurityChannelChange:
+      type: object
+      additionalProperties: false
+      required:
+      - change_id
+      - channel
+      description: 'Every `security.channel_change_*` code: `requested` adds `masked_new_value`; `on_hold` adds
+
+        `hold_until`; `completed` adds `masked_old_value` and `masked_new_value`; `cancelled` adds `by`;
+
+        `not_completed` adds nothing (expired, or the new value was taken during the hold; the reason is
+
+        never shown, auth policy §3).
+
+        '
+      properties:
+        change_id:
+          $ref: '#/components/schemas/Uuid'
+        channel:
+          $ref: '#/components/schemas/CodeChannel'
+        masked_old_value:
+          $ref: '#/components/schemas/MaskedChannelValue'
+        masked_new_value:
+          $ref: '#/components/schemas/MaskedChannelValue'
+        hold_until:
+          $ref: '#/components/schemas/Timestamp'
+        by:
+          type: string
+          enum:
+          - user
+          - system
+    DetailsEmpty:
+      type: object
+      additionalProperties: false
+      maxProperties: 0
+    AuditDetailsByCode:
+      type: object
+      additionalProperties: false
+      description: 'Type map, not a payload: `details` of an entry with code `<code>` matches property `<code>`.
+
+        Codes not listed have empty `details` (`{}`) unless their own contract adds a schema.
+
+        '
+      properties:
+        ingress.received:
+          $ref: '#/components/schemas/DetailsIngressReceived'
+        ingress.duplicate_ignored:
+          $ref: '#/components/schemas/DetailsIngressDuplicate'
+        ingress.rejected:
+          $ref: '#/components/schemas/DetailsIngressRejected'
+        ingress.rate_limited:
+          $ref: '#/components/schemas/DetailsIngressRateLimited'
+        routing.routed:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.quantity_capped:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.max_position_reached:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.signal_type_not_selected:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.automation_not_accepted:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.copy_not_accepted:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.account_inactive:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.no_bracket_profile:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.out_of_sync:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.risk_blocked:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.position_conflict:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.nothing_to_close:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.nothing_to_reduce:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.no_correlated_order:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.expired:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        execution.command_sent:
+          $ref: '#/components/schemas/DetailsCommandSent'
+        execution.bracket_calculated:
+          $ref: '#/components/schemas/DetailsBracketCalculated'
+        execution.order_received:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.order_working:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.partially_filled:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.filled:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.cancelled:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.rejected:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.expired:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.state_unknown:
+          $ref: '#/components/schemas/DetailsExecution'
+        execution.fill_corrected:
+          $ref: '#/components/schemas/DetailsExecution'
+        connection.status_changed:
+          $ref: '#/components/schemas/DetailsConnectionStatus'
+        security.signed_in:
+          $ref: '#/components/schemas/DetailsSecuritySignedIn'
+        security.sign_in_failed:
+          $ref: '#/components/schemas/DetailsSecurityChannel'
+        security.code_rate_limited:
+          $ref: '#/components/schemas/DetailsSecurityRateLimited'
+        security.code_delivery_failed:
+          $ref: '#/components/schemas/DetailsSecurityDeliveryFailed'
+        security.new_device_notice_sent:
+          $ref: '#/components/schemas/DetailsSecurityDevice'
+        security.step_up_succeeded:
+          $ref: '#/components/schemas/DetailsSecurityStepUp'
+        security.step_up_failed:
+          $ref: '#/components/schemas/DetailsSecurityStepUp'
+        security.channel_change_requested:
+          $ref: '#/components/schemas/DetailsSecurityChannelChange'
+        security.channel_change_on_hold:
+          $ref: '#/components/schemas/DetailsSecurityChannelChange'
+        security.channel_change_completed:
+          $ref: '#/components/schemas/DetailsSecurityChannelChange'
+        security.channel_change_cancelled:
+          $ref: '#/components/schemas/DetailsSecurityChannelChange'
+        security.channel_change_not_completed:
+          $ref: '#/components/schemas/DetailsSecurityChannelChange'
+        security.device_forgotten:
+          $ref: '#/components/schemas/DetailsSecurityDevice'
+        security.signed_out_everywhere:
+          $ref: '#/components/schemas/DetailsEmpty'
+        accounts.created:
+          $ref: '#/components/schemas/DetailsAccountChange'
+        accounts.updated:
+          $ref: '#/components/schemas/DetailsAccountChange'
+        accounts.archived:
+          $ref: '#/components/schemas/DetailsAccountChange'
+        accounts.lifecycle_changed:
+          $ref: '#/components/schemas/DetailsLifecycleChanged'
+        accounts.opt_in_chosen:
+          $ref: '#/components/schemas/DetailsOptInChosen'
+        accounts.opt_in_suspended:
+          $ref: '#/components/schemas/DetailsOptInSuspended'
+        routing.subscription_changed:
+          $ref: '#/components/schemas/DetailsSubscriptionChanged'
+        profiles.default_changed:
+          $ref: '#/components/schemas/DetailsProfileChanged'
+        profiles.account_changed:
+          $ref: '#/components/schemas/DetailsProfileChanged'
+    LocalizedText:
+      type: object
+      additionalProperties: false
+      required:
+      - pt-BR
+      - en
+      description: Text written by the catalog publisher in both UI languages (not firm text; firm text is never translated).
+      properties:
+        pt-BR:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        en:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    RuleQuote:
+      type: object
+      additionalProperties: false
+      required:
+      - text
+      - language
+      - page_title
+      - url
+      - accessed_at
+      description: A verbatim quote of the firm's official text, in the firm's language (never translated).
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        language:
+          type: string
+          pattern: ^[a-z]{2,3}(-[A-Z]{2})?$
+          description: BCP 47, e.g. 'en'.
+        page_title:
+          type: string
+          maxLength: 300
+        section:
+          type: string
+          maxLength: 300
+          description: Heading of the quoted part of the page, if any.
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: ^https://
+        accessed_at:
+          type: string
+          format: date
+          description: Date the page was read (YYYY-MM-DD).
+    RuleVersion:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - kind
+      - firm_stance
+      - is_generic
+      - version_number
+      - published_at
+      - quotes
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        kind:
+          $ref: '#/components/schemas/OptInKind'
+        firm_stance:
+          $ref: '#/components/schemas/FirmStance'
+        is_generic:
+          type: boolean
+          description: True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the
+            UI shows the generic warning).
+        firm_id:
+          $ref: '#/components/schemas/Uuid'
+        firm_name:
+          type: string
+          maxLength: 120
+        version_number:
+          type: integer
+          minimum: 1
+        published_at:
+          $ref: '#/components/schemas/Timestamp'
+        quotes:
+          type: array
+          description: 'Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the
+
+            conflicting quotes, each with its own source and date.
+
+            '
+          items:
+            $ref: '#/components/schemas/RuleQuote'
+        research:
+          type: object
+          additionalProperties: false
+          required:
+          - searched_on
+          - sources
+          description: With `unknown` (not generic) — where the publisher looked and found no rule.
+          properties:
+            searched_on:
+              type: string
+              format: date
+            sources:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - page_title
+                - url
+                properties:
+                  page_title:
+                    type: string
+                    maxLength: 300
+                  url:
+                    type: string
+                    format: uri
+                    maxLength: 2048
+                    pattern: ^https://
+        change:
+          type: object
+          additionalProperties: false
+          required:
+          - previous_rule_version_id
+          - previous_firm_stance
+          - cause
+          description: Present when this version replaced an earlier one for the same preset selection and kind.
+          properties:
+            previous_rule_version_id:
+              $ref: '#/components/schemas/Uuid'
+            previous_firm_stance:
+              $ref: '#/components/schemas/FirmStance'
+            cause:
+              type: string
+              enum:
+              - stance_changed
+              - text_changed
+              - not_material
+              description: '`stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the
+
+                text case is provisional, Q42: the publisher flagged it as material). `not_material` never
+
+                suspends (typo or format fix).
+
+                '
+            reason:
+              description: The publisher's explanation shown to the user; required for `text_changed`.
+              $ref: '#/components/schemas/LocalizedText'
+          allOf:
+          - if:
+              properties:
+                cause:
+                  const: text_changed
+            then:
+              required:
+              - reason
+      allOf:
+      - if:
+          properties:
+            is_generic:
+              const: true
+        then:
+          properties:
+            firm_stance:
+              const: unknown
+            quotes:
+              maxItems: 0
+          not:
+            anyOf:
+            - required:
+              - firm_id
+            - required:
+              - firm_name
+            - required:
+              - research
+        else:
+          required:
+          - firm_id
+          - firm_name
+    OptInRules:
+      type: object
+      additionalProperties: false
+      required:
+      - automation
+      - copy
+      properties:
+        automation:
+          $ref: '#/components/schemas/RuleVersion'
+        copy:
+          $ref: '#/components/schemas/RuleVersion'
+    DecimalString:
+      type: string
+      pattern: ^[0-9]{1,12}(\.[0-9]{1,10})?$
+      description: Exact decimal as a string (no sign, no exponent, no separators).
+    Instrument:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - symbol
+      - name
+      - exchange
+      - currency
+      - tick_size
+      - tick_value
+      - point_value
+      - price_decimals
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        symbol:
+          type: string
+          pattern: ^[A-Z0-9]{1,10}$
+          description: Neutral root, e.g. 'MNQ'.
+        name:
+          type: string
+          maxLength: 120
+        exchange:
+          type: string
+          maxLength: 16
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        tick_size:
+          $ref: '#/components/schemas/DecimalString'
+        tick_value:
+          description: Money per tick (tick_size × point_value, computed by the Core).
+          $ref: '#/components/schemas/DecimalString'
+        point_value:
+          $ref: '#/components/schemas/DecimalString'
+        price_decimals:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: Decimals to display prices and points with.
+    InstrumentList:
+      type: object
+      additionalProperties: false
+      required:
+      - instruments
+      properties:
+        instruments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Instrument'
+    DistanceUnit:
+      type: string
+      enum:
+      - points
+      - ticks
+      - usd
+    DistanceValue:
+      type: string
+      pattern: ^[0-9]{1,8}(\.[0-9]{1,10})?$
+      description: Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).
+    DistanceProfile:
+      type: object
+      additionalProperties: false
+      required:
+      - distance_unit
+      - stop_distance
+      - target_distance
+      description: '`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most
+
+        10 decimals. Each distance must be at least one tick after conversion (422 otherwise).
+
+        '
+      properties:
+        distance_unit:
+          $ref: '#/components/schemas/DistanceUnit'
+        stop_distance:
+          $ref: '#/components/schemas/DistanceValue'
+        target_distance:
+          $ref: '#/components/schemas/DistanceValue'
+      allOf:
+      - $ref: '#/components/schemas/DistanceProfileShape'
+    DistanceEquivalent:
+      type: object
+      additionalProperties: false
+      required:
+      - ticks
+      - points
+      - usd
+      - rounded
+      description: What execution will use for one side. All values computed by the Core.
+      properties:
+        ticks:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        points:
+          $ref: '#/components/schemas/DecimalString'
+        usd:
+          $ref: '#/components/schemas/DecimalString'
+        rounded:
+          type: boolean
+          description: True when the requested distance was not a whole number of ticks and was rounded toward the entry.
+    ProfileEquivalents:
+      type: object
+      additionalProperties: false
+      required:
+      - instrument_id
+      - stop
+      - target
+      properties:
+        instrument_id:
+          $ref: '#/components/schemas/Uuid'
+        stop:
+          $ref: '#/components/schemas/DistanceEquivalent'
+        target:
+          $ref: '#/components/schemas/DistanceEquivalent'
+    NearestProfileSize:
+      type: object
+      additionalProperties: false
+      required:
+      - size_amount
+      - candidates
+      properties:
+        size_amount:
+          $ref: '#/components/schemas/SizeAmount'
+        candidates:
+          type: array
+          minItems: 1
+          maxItems: 2
+          description: Ascending. Two entries only on an exact tie (the user chooses).
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - size_amount
+            - has_default
+            properties:
+              size_amount:
+                $ref: '#/components/schemas/SizeAmount'
+              has_default:
+                type: boolean
+                description: False → the account will start without a profile (Q43).
+    DefaultProfileEntry:
+      type: object
+      additionalProperties: false
+      required:
+      - instrument_id
+      - size_amount
+      properties:
+        instrument_id:
+          $ref: '#/components/schemas/Uuid'
+        size_amount:
+          $ref: '#/components/schemas/SizeAmount'
+        profile:
+          description: Absent when the user has not defined this size.
+          $ref: '#/components/schemas/DistanceProfile'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+      dependentRequired:
+        profile:
+        - updated_at
+    DefaultProfileList:
+      type: object
+      additionalProperties: false
+      required:
+      - instrument_id
+      - defaults
+      properties:
+        instrument_id:
+          $ref: '#/components/schemas/Uuid'
+        defaults:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DefaultProfileEntry'
+    AccountProfileRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - distance_unit
+      - stop_distance
+      - target_distance
+      properties:
+        distance_unit:
+          $ref: '#/components/schemas/DistanceUnit'
+        stop_distance:
+          $ref: '#/components/schemas/DistanceValue'
+        target_distance:
+          $ref: '#/components/schemas/DistanceValue'
+        row_version:
+          type: integer
+          minimum: 1
+      allOf:
+      - $ref: '#/components/schemas/DistanceProfileShape'
+    DistanceProfileShape:
+      description: The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields.
+      allOf:
+      - if:
+          properties:
+            distance_unit:
+              const: ticks
+        then:
+          properties:
+            stop_distance:
+              pattern: ^[0-9]{1,5}$
+            target_distance:
+              pattern: ^[0-9]{1,5}$
+      - if:
+          properties:
+            distance_unit:
+              const: usd
+        then:
+          properties:
+            stop_distance:
+              pattern: ^[0-9]{1,8}(\.[0-9]{1,2})?$
+            target_distance:
+              pattern: ^[0-9]{1,8}(\.[0-9]{1,2})?$
+    AccountProfile:
+      type: object
+      additionalProperties: false
+      required:
+      - account_id
+      - instrument_id
+      - profile
+      - equivalents
+      - origin
+      - customized
+      - row_version
+      - updated_at
+      properties:
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        instrument_id:
+          $ref: '#/components/schemas/Uuid'
+        profile:
+          $ref: '#/components/schemas/DistanceProfile'
+        equivalents:
+          $ref: '#/components/schemas/ProfileEquivalents'
+        origin:
+          type: string
+          enum:
+          - size_default
+          - nearest_size_default
+          - set_by_user
+          description: 'Where the values came from when last copied: the default of the account''s size, the default of
+
+            the nearest standard size (real account of another size, chosen by the Core), or typed by the
+
+            user on an account that had no profile.
+
+            '
+        copied_from_size:
+          description: With `size_default` / `nearest_size_default`.
+          $ref: '#/components/schemas/SizeAmount'
+        copied_at:
+          $ref: '#/components/schemas/Timestamp'
+        customized:
+          type: boolean
+          description: True after the user edited the copy (badge `Personalizado`); false right after a copy or restore; always
+            false with `set_by_user` (nothing to diverge from).
+        default_now:
+          description: The current default of `copied_from_size` (for the "default today" popover); absent if that size has
+            none.
+          $ref: '#/components/schemas/DistanceProfile'
+        row_version:
+          type: integer
+          minimum: 1
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+      allOf:
+      - if:
+          properties:
+            origin:
+              enum:
+              - size_default
+              - nearest_size_default
+        then:
+          required:
+          - copied_from_size
+          - copied_at
+        else:
+          properties:
+            customized:
+              const: false
+          not:
+            anyOf:
+            - required:
+              - copied_from_size
+            - required:
+              - copied_at
+            - required:
+              - default_now
+    AccountProfileList:
+      type: object
+      additionalProperties: false
+      required:
+      - account_id
+      - profiles
+      properties:
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        profiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - instrument_id
+            properties:
+              instrument_id:
+                $ref: '#/components/schemas/Uuid'
+              profile:
+                description: Absent when the account has no profile for the instrument (its size had no default when it was
+                  created; Q43).
+                $ref: '#/components/schemas/AccountProfile'
+    SignalType:
+      type: string
+      enum:
+      - trigger
+      - trade_plan
+      - nq_trigger
+      description: Selectable signal types of a TradingView route (ADR-0003). `master_account` belongs to follower routes
+        (S19) and is not accepted here.
+    SignalTypes:
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        $ref: '#/components/schemas/SignalType'
+      description: At least one (S7 AC-2, Q-S7-1); an empty list gets 400 `common.invalid_request` with pointer `/signal_types`.
+    RouteReasonCode:
+      type: string
+      enum:
+      - routing.account_inactive
+      - routing.source_revoked
+      - routing.platform_unbound
+      - routing.automation_not_accepted
+      - routing.copy_not_accepted
+      - routing.connection_disconnected
+      - routing.out_of_sync
+      - routing.risk_blocked
+      - routing.no_bracket_profile
+      - routing.route_disabled
+      description: 'Why a route does not (fully) receive now. The same codes are used in the audit of each skipped
+
+        instruction (ADR-0003 §4.1), except `routing.source_revoked`, `routing.platform_unbound`,
+
+        `routing.connection_disconnected` and `routing.route_disabled`, which describe configuration or
+
+        connection state (no instruction is routed, so none is skipped per account).
+
+        New codes may be added in a minor version; clients show a generic text for an unknown code.
+
+        '
+    RouteReason:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - blocks
+      properties:
+        code:
+          $ref: '#/components/schemas/RouteReasonCode'
+        blocks:
+          type: string
+          enum:
+          - all_actions
+          - entries_only
+          description: '`entries_only` for out-of-sync, risk blocks and a missing stop/target profile (exits still go
+
+            through, S7 AC-8 / P1; `routing.no_bracket_profile` is provisional, Q43);
+
+            `all_actions` for everything else (a paused or disabled account receives no exit either).
+
+            '
+        lifecycle_state:
+          description: With `routing.account_inactive` (`paused` or `disabled`), so the text can name it.
+          type: string
+          enum:
+          - paused
+          - disabled
+        opt_in_state:
+          description: With `routing.automation_not_accepted` / `routing.copy_not_accepted`, so the UI can say "declined"
+            or "pending".
+          type: string
+          enum:
+          - declined
+          - pending_review
+      allOf:
+      - if:
+          properties:
+            code:
+              const: routing.account_inactive
+        then:
+          required:
+          - lifecycle_state
+        else:
+          not:
+            required:
+            - lifecycle_state
+      - if:
+          properties:
+            code:
+              enum:
+              - routing.automation_not_accepted
+              - routing.copy_not_accepted
+        then:
+          required:
+          - opt_in_state
+        else:
+          not:
+            required:
+            - opt_in_state
+    RouteStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - reasons
+      - computed_at
+      description: Computed by the Core from the account, source, connection, opt-in, sync and risk state; the UI renders
+        it and never re-implements a gate.
+      properties:
+        status:
+          type: string
+          enum:
+          - receiving
+          - exits_only
+          - not_receiving
+          description: '`receiving` = no reason; `exits_only` = only `entries_only` reasons; `not_receiving` = at least
+
+            one `all_actions` reason.
+
+            '
+        reasons:
+          type: array
+          description: Every reason that applies, most severe first (the Core's order follows the UI badge priority); empty
+            with `receiving`.
+          items:
+            $ref: '#/components/schemas/RouteReason'
+        computed_at:
+          $ref: '#/components/schemas/Timestamp'
+    Route:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - source_id
+      - account_id
+      - signal_types
+      - is_enabled
+      - effective
+      - row_version
+      - created_at
+      - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        source_id:
+          $ref: '#/components/schemas/Uuid'
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        signal_types:
+          $ref: '#/components/schemas/SignalTypes'
+        is_enabled:
+          type: boolean
+        effective:
+          $ref: '#/components/schemas/RouteStatus'
+        row_version:
+          type: integer
+          minimum: 1
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+    RouteList:
+      type: object
+      additionalProperties: false
+      required:
+      - routes
+      properties:
+        routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Route'
+    RouteCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - source_id
+      - account_id
+      - signal_types
+      properties:
+        source_id:
+          $ref: '#/components/schemas/Uuid'
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        signal_types:
+          $ref: '#/components/schemas/SignalTypes'
+        is_enabled:
+          type: boolean
+          description: Defaults to true.
+    RouteUpdateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - signal_types
+      - is_enabled
+      - row_version
+      properties:
+        signal_types:
+          $ref: '#/components/schemas/SignalTypes'
+        is_enabled:
+          type: boolean
+        row_version:
+          type: integer
+          minimum: 1
+    RouteCandidate:
+      type: object
+      additionalProperties: false
+      required:
+      - account_id
+      - blocking_reasons
+      - status_if_routed
+      properties:
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        blocking_reasons:
+          type: array
+          description: 'Empty → selectable. Otherwise the option is shown disabled with these reasons, most severe
+
+            first. Only `routing.automation_not_accepted` (automated source) and `routing.platform_unbound`
+
+            (provisional, Q37) block creation; every other reason only affects `status_if_routed`.
+
+            '
+          items:
+            $ref: '#/components/schemas/RouteReason'
+        status_if_routed:
+          description: The status a new enabled route would have now (e.g. `exits_only` for an out-of-sync account).
+          $ref: '#/components/schemas/RouteStatus'
+    RouteCandidates:
+      type: object
+      additionalProperties: false
+      required:
+      - source_id
+      - candidates
+      - manual_only
+      properties:
+        source_id:
+          $ref: '#/components/schemas/Uuid'
+        candidates:
+          type: array
+          description: Sorted by account `display_name`.
+          items:
+            $ref: '#/components/schemas/RouteCandidate'
+        manual_only:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - account_id
+            - reason
+            properties:
+              account_id:
+                $ref: '#/components/schemas/Uuid'
+              reason:
+                description: The preset's own explanation (S16 AC-7); the preset text wins over UI copy.
+                $ref: '#/components/schemas/LocalizedText'
+    RouteChangedEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - at
+      - route_id
+      - source_id
+      - account_id
+      description: A route was created, changed or removed (any tab); the client refetches `listRoutes`. Status changes caused
+        by account or connection state arrive as `account.changed` / `connection.status_changed`.
+      properties:
+        type:
+          const: route.changed
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        route_id:
+          $ref: '#/components/schemas/Uuid'
+        source_id:
+          $ref: '#/components/schemas/Uuid'
+        account_id:
+          $ref: '#/components/schemas/Uuid'

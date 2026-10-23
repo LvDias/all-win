@@ -1,5 +1,21 @@
 # HTTP API — changelog
 
+## 2.4.0 — 2026-10-23 (V1-S10 activity; additive) — notes: docs/architecture/contracts/s10-audit.md
+- Module `audit`: `listActivity` (filters, opaque cursor, `retention_months`, `horizon`), `getActivityFilterOptions`, `getActivityEntry`, `getInstructionTimeline`; SSE `audit.entry_recorded`.
+- Final `AuditOutcome` (10 values, incl. `unknown`), open `AuditCode` + `KnownAuditCode`, typed `details` per code (`AuditDetailsByCode`), `safe_to_display`, `is_exit`; `execution.*` codes; `security.*` codes (S3 AC-16, masked values only).
+
+## 2.3.0 — 2026-10-23 (V1-S6 stop/target profiles; additive) — notes: docs/architecture/contracts/s6-profiles.md
+- Module `profiles`: `listInstruments`, `listDefaultProfiles`, `putDefaultProfile`, `listAccountProfiles`, `putAccountProfile`, `restoreAccountProfile`, `getNearestProfileSize` (Q60 tie, provisional), `previewProfile` (stateless; Core arithmetic, rounding toward the entry).
+- `RouteReasonCode` gains `routing.no_bracket_profile` (Q43, provisional).
+
+## 2.2.0 — 2026-10-23 (V1-S7 routing; additive) — notes: docs/architecture/contracts/s7-routing.md
+- Module `routing`: `listRoutes` (effective status + ordered reason codes), `createRoute`, `updateRoute`, `deleteRoute`, `listRouteCandidates` (blocking reasons, manual-only list); SSE `route.changed`.
+
+## 2.1.0 — 2026-10-23 (V1-S5 accounts) — notes: docs/architecture/contracts/s5-accounts.md
+- Module `accounts`: `listAccounts`, `createAccount` (`Idempotency-Key`, atomic `opt_ins`, step-up `account_create_opt_in_accept`), `getAccount`, `updateAccount` (PUT, full replacement, `row_version`), `archiveAccount`, `getAccountArchiveImpact`, `setAccountLifecycle`; `setAccountOptIn` moved from the root; SSE `account.changed`, `account.archived`.
+- Module `presets` (S5 part of the S16 catalog): `getOptInRules` (incl. the generic rule versions, Q40 provisional), `getRuleVersion` (`change` with cause, material flag reason, Q42 provisional).
+- `OptInKind`, `FirmStance`, `OptInChoiceRequest`, `OptInChoices`, `OptInState` move to `modules/accounts.yaml` (names unchanged). `OptInState`: `firm_stance` / `current_rule_version_id` optional (absent only for real accounts); new `pending_reason` (required with `pending_review`); `copy` is `not_required` for an account that is not a follower (Q-S5-12).
+
 ## 2.0.0 — 2026-10-23 (BREAKING: passwordless sign-in; auth-and-session-policy.md rev. 2)
 - **Versioning:** major bump of the document; paths stay `/api/v1` because no version was ever deployed and there are no external clients. The path major moves only for breaking changes after the first production deploy (Maestro/Architect decision 2026-10-23; ADR-0002 §4).
 - **Removed:** `login`, `verifyLoginTotp`, `verifyLoginRecoveryCode`, `stepUp` (password/TOTP), `acceptInvitation`, `requestPasswordReset`, `confirmPasswordReset`, `startTotpSetup`, `confirmTotpSetup`, `disableTotp`, `regenerateRecoveryCodes`, `changePassword`, `adminCreateResetLink`, `adminResetTotp`; security scheme `pendingSession`; schemas `NewPassword`, `PasswordAndCode`, `RecoveryCodes`; responses `InvalidCredentials`, `PasswordRejected`, `StepUpRequired` (→ `StepUpFailed`); `LoginResult.state`/`pending_expires_at`/`recovery_codes_remaining`; `SecurityState.totp_enabled`/`recovery_codes_remaining`/`session.step_up_valid_until`; `AdminUser.totp_enabled` (→ `whatsapp_verified`).
