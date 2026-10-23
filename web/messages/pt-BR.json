@@ -931,7 +931,9 @@
       "sections": {
         "loss": "Perda e drawdown",
         "target": "Meta de lucro diária",
-        "consistency": "Regra de consistência"
+        "consistency": "Regra de consistência",
+        "commission": "Comissões",
+        "tradingDay": "Dia de trading"
       },
       "fields": {
         "drawdownAmount": "Drawdown, em dólares",
@@ -939,7 +941,9 @@
         "dailyLoss": "Limite de perda diária, em dólares",
         "profitTarget": "Valor da meta, em dólares",
         "onReach": "Ao atingir a meta",
-        "consistency": "Limite de consistência, em %"
+        "consistency": "Limite de consistência, em %",
+        "commission": "Comissão por contrato e lado, em dólares",
+        "resetTime": "Horário do reset do dia ({zone})"
       },
       "tighterNow": "Um limite mais apertado vale na hora.",
       "looserLater": "Um limite mais folgado vale a partir do próximo dia de trading. Se a conta já estiver bloqueada, o bloqueio continua até o reset.",
@@ -971,8 +975,23 @@
         "drawdownTypeRequired": "Escolha o tipo de drawdown.",
         "drawdownAmountRequired": "Informe o valor do drawdown.",
         "consistencyInvalid": "Use um número de 0 a 100 com até uma casa decimal.",
-        "conflict": "Estas regras mudaram em outro lugar."
-      }
+        "conflict": "Estas regras mudaram em outro lugar.",
+        "commissionInvalid": "Use um valor em dólares, com até 4 casas.",
+        "resetInvalid": "Use um horário válido (hh:mm).",
+        "rulesSavedCommissionFailed": "As regras foram salvas, mas a comissão não. Corrija o campo e salve de novo.",
+        "rulesSavedCommissionFailedWith": "As regras foram salvas, mas a comissão não: {message}"
+      },
+      "commission": {
+        "help": "O All Win usa, em cada execução, o maior valor entre a comissão informada pela plataforma e este valor × quantidade. Os limites usam o resultado líquido.",
+        "empty": "Comissão não informada. Sem ela o resultado líquido é igual ao bruto e os limites podem ficar folgados demais.",
+        "lowerLater": "Uma comissão menor vale a partir do próximo dia de trading."
+      },
+      "tradingDay": {
+        "cme": "Reset do dia: fechamento da sessão CME. Contas reais não editam este horário.",
+        "editLater": "Uma mudança no horário vale a partir do próximo dia de trading."
+      },
+      "dailyLossNone": "A firma informa que não há limite de perda diária.",
+      "drawdownOther": "Regra da firma: {description}"
     },
     "loadError": "Não foi possível carregar o risco desta conta.",
     "limits": "Limites",
@@ -1070,7 +1089,6 @@
       "countSince": "Contagem desde {start}. Só entram operações capturadas pelo All Win a partir dessa data, mais o valor informado. Operações lançadas à mão não contam.",
       "countSinceWithBefore": "Contagem desde {start}; inclui {earned} já ganhos antes. Só entram operações capturadas pelo All Win a partir dessa data, mais o valor informado. Operações lançadas à mão não contam.",
       "asOf": "Atualizado às",
-      "commissionUnknown": "Comissão não informada: o acumulado pode estar acima do real.",
       "reachedNotice": "Meta atingida. Nada é fechado nem bloqueado automaticamente.",
       "adjust": "Ajustar contagem",
       "restart": {
@@ -1092,7 +1110,9 @@
           "back": "Voltar",
           "action": "Reiniciar contagem"
         }
-      }
+      },
+      "commissionNone": "Comissão não informada: o acumulado pode estar acima do real.",
+      "commissionEstimated": "Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real."
     }
   }
 }

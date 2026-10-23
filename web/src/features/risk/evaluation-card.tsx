@@ -17,13 +17,16 @@ import { RestartEvaluationDialog } from "./restart-evaluation-dialog";
 export function EvaluationCard({ accountId, risk }: { accountId: string; risk: AccountRisk }) {
   const t = useTranslations("risk.evaluation");
   const { locale, timeZone } = useDisplay();
+  const root = useTranslations();
   const [restarting, setRestarting] = useState(false);
+  const [notApplicable, setNotApplicable] = useState(false);
   const evaluation = risk.evaluation;
   if (!evaluation) return null;
   const reached = evaluation.state === "target_reached";
   const percent = Math.min(100, evaluation.percent);
   const dayLabel = formatDate(`${evaluation.start}T00:00:00Z`, locale, "UTC");
-  const commissionUnknown = risk.commission_source === "none" || risk.commission_source === "configured" || risk.commission_source === "mixed";
+  // `none`: nothing was reported and no floor exists. `configured`/`mixed`: the floor estimated some or all of it (spec §12.1).
+  const commissionNote = risk.commission_source === "none" ? "commissionNone" : risk.commission_source === "configured" || risk.commission_source === "mixed" ? "commissionEstimated" : null;
 
   return (
     <Card aria-labelledby="evaluation-title">
@@ -70,7 +73,8 @@ export function EvaluationCard({ accountId, risk }: { accountId: string; risk: A
         <p className="text-xs text-muted-foreground">
           {t("asOf")} <time dateTime={evaluation.as_of}>{formatDateTime(evaluation.as_of, locale, timeZone, { seconds: true, zone: true })}</time>
         </p>
-        {commissionUnknown ? <Alert tone="info">{t("commissionUnknown")}</Alert> : null}
+        {commissionNote ? <Alert tone="info">{t(commissionNote)}</Alert> : null}
+        {notApplicable ? <Alert tone="info">{root("errors.accounts.evaluation_not_applicable")}</Alert> : null}
         {reached ? (
           <Alert tone="success" role="status">
             <Check aria-hidden="true" />
@@ -83,7 +87,10 @@ export function EvaluationCard({ accountId, risk }: { accountId: string; risk: A
           </Button>
         </div>
       </CardContent>
-      {restarting ? <RestartEvaluationDialog accountId={accountId} currentStart={evaluation.start} currentEarnedBefore={evaluation.earned_before} onClose={() => setRestarting(false)} /> : null}
+      {restarting ? <RestartEvaluationDialog accountId={accountId} currentStart={evaluation.start} currentEarnedBefore={evaluation.earned_before} onClose={(outcome) => {
+        setRestarting(false);
+        if (outcome === "not_applicable") setNotApplicable(true);
+      }} /> : null}
     </Card>
   );
 }

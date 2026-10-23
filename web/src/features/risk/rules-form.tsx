@@ -7,7 +7,7 @@ import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/shared/api/client";
 import { errorMessage } from "@/shared/api/error-message";
-import type { AccountRiskRules, RiskRules, RiskRulesRequest } from "@/shared/api/types";
+import type { Account, AccountRiskRules, RiskRules, RiskRulesRequest } from "@/shared/api/types";
 import { PageHeader } from "@/shared/components/page-header";
 import { parseDecimalInput } from "@/shared/format";
 import { useLocalePath } from "@/shared/i18n/navigation";
@@ -23,12 +23,14 @@ import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Spinner } from "@/shared/ui/spinner";
-import { useAccountRiskRules, usePreviewRiskRules, useSaveRiskRules } from "./api";
+import { canonicalAmount } from "./account-update";
+import { useAccount, useAccountRiskRules, usePreviewRiskRules, useRefreshAfterEdit, useSaveRiskRules, useUpdateCommission } from "./api";
 
-type Field = "drawdownAmount" | "drawdownType" | "dailyLoss" | "profitTarget" | "profitTargetOnReach" | "consistency";
+type Field = "drawdownAmount" | "drawdownType" | "dailyLoss" | "profitTarget" | "profitTargetOnReach" | "consistency" | "commission" | "resetTime";
 type Errors = Partial<Record<Field, string>>;
-type DrawdownType = "trailing_intraday" | "trailing_eod" | "static";
-const drawdownTypes: DrawdownType[] = ["trailing_intraday", "trailing_eod", "static"];
+type DrawdownType = "trailing_intraday" | "trailing_eod" | "static" | "other";
+/** `other` is the firm's own rule: offered only when the account already has it, so it is kept, never newly chosen. */
+const chosenTypes: DrawdownType[] = ["trailing_intraday", "trailing_eod", "static"];
 
 /** JSON pointers the Core answers under `/rules/...` (contract `RiskRulesRejected`) → the field that owns them. */
 const pointerField: Record<string, Field> = {
@@ -41,6 +43,9 @@ const pointerField: Record<string, Field> = {
   "/rules/daily_profit_target/amount": "profitTarget",
   "/rules/profit_target_on_reach": "profitTargetOnReach",
   "/rules/consistency_threshold_pct": "consistency",
+  "/rules/trading_day_reset": "resetTime",
+  "/rules/trading_day_reset/local_time": "resetTime",
+  "/commission_per_contract_side": "commission",
 };
 
 /** S13-02: edit the account's risk rules. Tightening applies at once, loosening from the next trading day (Q48): the Core decides, the form only tells. */
@@ -48,9 +53,10 @@ export function RulesForm({ accountId }: { accountId: string }) {
   const t = useTranslations("risk.edit");
   const root = useTranslations();
   const rules = useAccountRiskRules(accountId);
+  const account = useAccount(accountId);
   const path = useLocalePath();
   const header = <PageHeader title={t("title")} />;
-  if (rules.isPending)
+  if (rules.isPending || account.isPending)
     return (
       <div className="grid gap-4" aria-busy="true">
         {header}
@@ -58,22 +64,28 @@ export function RulesForm({ accountId }: { accountId: string }) {
         <Skeleton className="h-40 w-full max-w-180" />
       </div>
     );
-  if (rules.isError) {
-    const failure = errorMessage(root, rules.error);
+  if (rules.isError || account.isError) {
+    const failure = errorMessage(root, rules.error ?? account.error);
     return (
       <div className="grid gap-4">
         {header}
-        <ErrorState title={t("loadError")} code={failure.code} onRetry={() => void rules.refetch()} />
+        <ErrorState title={t("loadError")} code={failure.code} onRetry={() => {
+            void rules.refetch();
+            void account.refetch();
+          }} />
         <Link href={path(`/accounts/${accountId}/risk`)} className="text-sm underline underline-offset-4">
           {t("back")}
         </Link>
       </div>
     );
   }
-  return <Editor key={rules.data.version} accountId={accountId} current={rules.data} onReload={() => void rules.refetch()} />;
+  return <Editor key={rules.data.version} accountId={accountId} current={rules.data} account={account.data} onReload={() => {
+    void rules.refetch();
+    void account.refetch();
+  }} />;
 }
 
-function Editor({ accountId, current, onReload }: { accountId: string; current: AccountRiskRules; onReload: () => void }) {
+function Editor({ accountId, current, account, onReload }: { accountId: string; current: AccountRiskRules; account: Account; onReload: () => void }) {
   const t = useTranslations("risk.edit");
   const root = useTranslations();
   const router = useRouter();
@@ -81,39 +93,52 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
   const { locale } = useDisplay();
   const preview = usePreviewRiskRules(accountId);
   const save = useSaveRiskRules(accountId);
+  const updateCommission = useUpdateCommission(accountId);
+  const refresh = useRefreshAfterEdit();
   const submitting = useRef(false);
-  const ids = { drawdownAmount: useId(), drawdownType: useId(), dailyLoss: useId(), profitTarget: useId(), consistency: useId() };
+  /** The rules call may succeed and the commission call fail: a retry then only repeats the commission. */
+  const rulesSaved = useRef(false);
+  const ids = { drawdownAmount: useId(), drawdownType: useId(), dailyLoss: useId(), profitTarget: useId(), consistency: useId(), commission: useId(), resetTime: useId() };
   const rules = current.rules;
+  const dailyLossNone = rules.daily_loss_limit?.kind === "none";
+  const drawdownOther = rules.drawdown?.type === "other";
+  const reset = rules.trading_day_reset;
 
   const [drawdownAmount, setDrawdownAmount] = useState(rules.drawdown?.amount ?? "");
-  const [drawdownType, setDrawdownType] = useState<DrawdownType | "">(rules.drawdown && rules.drawdown.type !== "other" ? rules.drawdown.type : "");
+  const [drawdownType, setDrawdownType] = useState<DrawdownType | "">(rules.drawdown?.type ?? "");
   const [dailyLoss, setDailyLoss] = useState(rules.daily_loss_limit?.amount ?? "");
   const [profitTarget, setProfitTarget] = useState(rules.daily_profit_target?.amount ?? "");
   const [onReach, setOnReach] = useState<RiskRules["profit_target_on_reach"]>(rules.profit_target_on_reach);
   const [consistency, setConsistency] = useState(rules.consistency_threshold_pct ?? "");
+  const [commission, setCommission] = useState(account.commission_per_contract_side ?? "");
+  const [resetTime, setResetTime] = useState(reset?.local_time ?? "");
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<{ message: string; reload: boolean } | null>(null);
-  const [confirmReached, setConfirmReached] = useState<RiskRulesRequest | null>(null);
+  const [confirmReached, setConfirmReached] = useState<Pending | null>(null);
   const [pending, setPending] = useState(false);
 
   const backHref = path(`/accounts/${accountId}/risk`);
   const hasConsistency = rules.consistency_threshold_pct !== undefined;
   const flattenAvailable = current.enforcement_enabled;
 
-  function money(text: string): { value?: string; error?: string } {
+  function money(text: string, scale = 2): { value?: string; error?: string } {
     if (text.trim() === "") return {};
-    const parsed = parseDecimalInput(text, locale, { scale: 2 });
+    const parsed = parseDecimalInput(text, locale, { scale });
     return parsed.ok ? { value: parsed.value } : { error: t("errors.amountInvalid") };
   }
 
-  function build(): { body?: RiskRulesRequest; errors: Errors } {
+  function build(): { pending?: Pending; errors: Errors } {
     const found: Errors = {};
-    const dd = money(drawdownAmount);
-    const dl = money(dailyLoss);
-    const pt = money(profitTarget);
+    // A value the user did not change keeps the Core's own text ("2500.00"), so an untouched form is not a change.
+    const same = (original: string | undefined, typed: { value?: string; error?: string }) => (typed.value !== undefined && original !== undefined && canonicalAmount(original) === typed.value ? { value: original } : typed);
+    const dd = same(rules.drawdown?.amount, money(drawdownAmount));
+    const dl = dailyLossNone ? {} : same(rules.daily_loss_limit?.amount, money(dailyLoss));
+    const pt = same(rules.daily_profit_target?.amount, money(profitTarget));
+    const fee = money(commission, 4);
     if (dd.error) found.drawdownAmount = dd.error;
     if (dl.error) found.dailyLoss = dl.error;
     if (pt.error) found.profitTarget = pt.error;
+    if (fee.error) found.commission = t("errors.commissionInvalid");
     // Type and amount are one object: both set or both empty.
     if (dd.value && !drawdownType) found.drawdownType = t("errors.drawdownTypeRequired");
     if (!dd.value && drawdownType && !dd.error) found.drawdownAmount = t("errors.drawdownAmountRequired");
@@ -122,16 +147,25 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
       if (/^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$/.test(consistency.trim())) threshold = consistency.trim();
       else found.consistency = t("errors.consistencyInvalid");
     }
+    if (reset && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(resetTime)) found.resetTime = t("errors.resetInvalid");
     if (Object.keys(found).length > 0) return { errors: found };
+
     const next: RiskRules = {
       ...rules,
       profit_target_on_reach: pt.value ? onReach : "notify",
+      // An "other" drawdown keeps its published description; a "none" daily loss stays "none" (the firm states it).
       drawdown: dd.value && drawdownType ? { ...rules.drawdown, type: drawdownType, amount: dd.value } : undefined,
-      daily_loss_limit: dl.value ? { kind: rules.daily_loss_limit?.kind === "soft_pause" ? "soft_pause" : "hard", amount: dl.value } : undefined,
+      daily_loss_limit: dailyLossNone ? rules.daily_loss_limit : dl.value ? { kind: rules.daily_loss_limit?.kind === "soft_pause" ? "soft_pause" : "hard", amount: dl.value } : undefined,
       daily_profit_target: pt.value ? { amount: pt.value } : undefined,
       consistency_threshold_pct: threshold,
+      trading_day_reset: reset && resetTime !== reset.local_time ? { local_time: resetTime, time_zone: reset.time_zone } : reset,
     };
-    return { body: { version: current.version, rules: dropUndefined(next) }, errors: found };
+    const rulesBody = { version: current.version, rules: dropUndefined(next) };
+    const before = account.commission_per_contract_side;
+    // `undefined` keeps the floor, `null` removes it (contract: absent = unchanged).
+    const commissionChange: string | null | undefined = fee.value === undefined ? (before === undefined ? undefined : null) : before !== undefined && canonicalAmount(before) === fee.value ? undefined : fee.value;
+    const changed = stable(rulesBody.rules) !== stable(dropUndefined(rules));
+    return { pending: { rules: changed ? rulesBody : null, commission: commissionChange }, errors: found };
   }
 
   function mapFailure(error: unknown) {
@@ -139,7 +173,8 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
     const field = error instanceof ApiError && error.pointer ? pointerField[error.pointer] : undefined;
     const message = errorMessage(root, error).message;
     if (field) setErrors({ [field]: message });
-    else setFailure({ message, reload: false });
+    if (rulesSaved.current) setFailure({ message: field ? t("errors.rulesSavedCommissionFailed") : t("errors.rulesSavedCommissionFailedWith", { message }), reload: false });
+    else if (!field) setFailure({ message, reload: false });
   }
 
   async function submit(event: FormEvent) {
@@ -148,13 +183,18 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
     const built = build();
     setErrors(built.errors);
     setFailure(null);
-    if (!built.body) return;
+    if (!built.pending) return;
     submitting.current = true;
     setPending(true);
     try {
-      const effect = await preview.mutateAsync(built.body);
-      if (effect.would_be_reached) setConfirmReached({ ...built.body, acknowledge_reached: true });
-      else await persist(built.body);
+      if (built.pending.rules && !rulesSaved.current) {
+        const effect = await preview.mutateAsync(built.pending.rules);
+        if (effect.would_be_reached) {
+          setConfirmReached({ rules: { ...built.pending.rules, acknowledge_reached: true }, commission: built.pending.commission });
+          return;
+        }
+      }
+      await persist(built.pending);
     } catch (error) {
       mapFailure(error);
     } finally {
@@ -163,8 +203,14 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
     }
   }
 
-  async function persist(body: RiskRulesRequest) {
-    await save.mutateAsync(body);
+  /** Rules first (the commission change bumps the limits version they were read at), then the account's commission floor. */
+  async function persist(work: Pending) {
+    if (work.rules && !rulesSaved.current) {
+      await save.mutateAsync(work.rules);
+      rulesSaved.current = true;
+    }
+    if (work.commission !== undefined) await updateCommission.mutateAsync({ account, commission: work.commission });
+    refresh();
     toast.success(t("saved"));
     router.push(backHref);
   }
@@ -221,17 +267,25 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
                 <SelectValue placeholder={t("choose")} />
               </SelectTrigger>
               <SelectContent>
-                {drawdownTypes.map((type) => (
+                {(drawdownOther ? [...chosenTypes, "other" as const] : chosenTypes).map((type) => (
                   <SelectItem key={type} value={type}>
                     {root(`risk.drawdownType.${type}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {drawdownOther && rules.drawdown?.description ? <p className="text-xs text-muted-foreground">{t("drawdownOther", { description: rules.drawdown.description })}</p> : null}
           </FieldRow>
-          <FieldRow id={ids.dailyLoss} label={t("fields.dailyLoss")} error={errors.dailyLoss} help={t("looserLater")}>
-            <Input id={ids.dailyLoss} inputMode="decimal" value={dailyLoss} onChange={(event) => setDailyLoss(event.target.value)} autoComplete="off" aria-invalid={errors.dailyLoss ? true : undefined} aria-describedby={describedBy(ids.dailyLoss, errors.dailyLoss)} />
-          </FieldRow>
+          {dailyLossNone ? (
+            <div className="grid gap-1">
+              <p className="text-sm font-medium">{t("fields.dailyLoss")}</p>
+              <p className="text-sm text-muted-foreground">{t("dailyLossNone")}</p>
+            </div>
+          ) : (
+            <FieldRow id={ids.dailyLoss} label={t("fields.dailyLoss")} error={errors.dailyLoss} help={t("looserLater")}>
+              <Input id={ids.dailyLoss} inputMode="decimal" value={dailyLoss} onChange={(event) => setDailyLoss(event.target.value)} autoComplete="off" aria-invalid={errors.dailyLoss ? true : undefined} aria-describedby={describedBy(ids.dailyLoss, errors.dailyLoss)} />
+            </FieldRow>
+          )}
         </CardContent>
       </Card>
 
@@ -268,6 +322,34 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
             </RadioGroup>
             {errors.profitTargetOnReach ? <p className="text-sm text-status-danger">{errors.profitTargetOnReach}</p> : null}
           </fieldset>
+        </CardContent>
+      </Card>
+
+      <Card id="commission">
+        <CardHeader>
+          <CardTitle className="text-base">{t("sections.commission")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <FieldRow id={ids.commission} label={t("fields.commission")} error={errors.commission} help={t("commission.help")}>
+            <Input id={ids.commission} inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} autoComplete="off" aria-invalid={errors.commission ? true : undefined} aria-describedby={describedBy(ids.commission, errors.commission)} />
+          </FieldRow>
+          {commission.trim() === "" ? <Alert tone="warning">{t("commission.empty")}</Alert> : null}
+          <p className="text-xs text-muted-foreground">{t("commission.lowerLater")}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("sections.tradingDay")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {reset ? (
+            <FieldRow id={ids.resetTime} label={t("fields.resetTime", { zone: reset.time_zone })} error={errors.resetTime} help={t("tradingDay.editLater")}>
+              <Input id={ids.resetTime} type="time" value={resetTime} onChange={(event) => setResetTime(event.target.value)} aria-invalid={errors.resetTime ? true : undefined} aria-describedby={describedBy(ids.resetTime, errors.resetTime)} />
+            </FieldRow>
+          ) : (
+            <p className="text-sm">{t("tradingDay.cme")}</p>
+          )}
         </CardContent>
       </Card>
 
@@ -319,6 +401,15 @@ function Editor({ accountId, current, onReload }: { accountId: string; current: 
       </AlertDialog>
     </form>
   );
+}
+
+type Pending = { rules: RiskRulesRequest | null; commission: string | null | undefined };
+
+/** JSON with sorted keys, to compare two rule sets regardless of key order. */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value !== null && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${stable(v)}`).join(",")}}`;
+  return JSON.stringify(value);
 }
 
 const describedBy = (id: string, error?: string) => (error ? `${id}-error` : undefined);

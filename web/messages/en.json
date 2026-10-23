@@ -931,7 +931,9 @@
       "sections": {
         "loss": "Loss and drawdown",
         "target": "Daily profit target",
-        "consistency": "Consistency rule"
+        "consistency": "Consistency rule",
+        "commission": "Commissions",
+        "tradingDay": "Trading day"
       },
       "fields": {
         "drawdownAmount": "Drawdown, in dollars",
@@ -939,7 +941,9 @@
         "dailyLoss": "Daily loss limit, in dollars",
         "profitTarget": "Target amount, in dollars",
         "onReach": "When the target is reached",
-        "consistency": "Consistency limit, in %"
+        "consistency": "Consistency limit, in %",
+        "commission": "Commission per contract per side, in dollars",
+        "resetTime": "Daily reset time ({zone})"
       },
       "tighterNow": "A tighter limit applies at once.",
       "looserLater": "A looser limit applies from the next trading day. If the account is already blocked, the block lasts until the reset.",
@@ -971,8 +975,23 @@
         "drawdownTypeRequired": "Choose the drawdown type.",
         "drawdownAmountRequired": "Enter the drawdown amount.",
         "consistencyInvalid": "Use a number from 0 to 100 with at most one decimal.",
-        "conflict": "These rules changed somewhere else."
-      }
+        "conflict": "These rules changed somewhere else.",
+        "commissionInvalid": "Use a dollar amount with up to 4 decimals.",
+        "resetInvalid": "Use a valid time (hh:mm).",
+        "rulesSavedCommissionFailed": "The rules were saved, but the commission was not. Fix the field and save again.",
+        "rulesSavedCommissionFailedWith": "The rules were saved, but the commission was not: {message}"
+      },
+      "commission": {
+        "help": "For each fill, All Win uses the greater of the platform-reported commission and this value × quantity. Limits use the net result.",
+        "empty": "Commission not provided. Without it the net result equals gross and limits may be too loose.",
+        "lowerLater": "A lower commission applies from the next trading day."
+      },
+      "tradingDay": {
+        "cme": "Daily reset: CME session close. Real accounts cannot edit this time.",
+        "editLater": "A change of time applies from the next trading day."
+      },
+      "dailyLossNone": "The firm states there is no daily loss limit.",
+      "drawdownOther": "Firm rule: {description}"
     },
     "loadError": "Could not load this account's risk.",
     "limits": "Limits",
@@ -1070,7 +1089,6 @@
       "countSince": "Counting since {start}. Only trades captured by All Win from that date count, plus the amount you enter. Manually entered trades do not count.",
       "countSinceWithBefore": "Counting since {start}; includes {earned} already earned before. Only trades captured by All Win from that date count, plus the amount you enter. Manually entered trades do not count.",
       "asOf": "Updated at",
-      "commissionUnknown": "Commission not provided: the total may be higher than the real figure.",
       "reachedNotice": "Target reached. Nothing is closed or blocked automatically.",
       "adjust": "Adjust count",
       "restart": {
@@ -1092,7 +1110,9 @@
           "back": "Back",
           "action": "Restart count"
         }
-      }
+      },
+      "commissionNone": "Commission not provided: the total may be higher than the real figure.",
+      "commissionEstimated": "Commission estimated from the configured minimum: the total may be higher than the real figure."
     }
   }
 }

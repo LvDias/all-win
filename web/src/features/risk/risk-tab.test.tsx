@@ -170,4 +170,33 @@ describe("evaluation card (S13b)", () => {
     expect(screen.getByRole("button", { name: "Recarregar" })).toBeInTheDocument();
     expect(within(screen.getByRole("dialog")).getByLabelText("Início da contagem")).toHaveValue("2026-10-15");
   });
+
+  it("says the commission was estimated for configured or mixed sources, and not provided only for none (M3)", async () => {
+    serve(risk({ evaluation: evaluation(), commission_source: "configured" }));
+    const view = renderApp(<RiskTab accountId={accountId} />);
+    expect(await screen.findByText("Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real.")).toBeInTheDocument();
+    expect(screen.queryByText("Comissão não informada: o acumulado pode estar acima do real.")).not.toBeInTheDocument();
+    view.unmount();
+
+    serve(risk({ evaluation: evaluation(), commission_source: "none" }));
+    renderApp(<RiskTab accountId={accountId} />);
+    expect(await screen.findByText("Comissão não informada: o acumulado pode estar acima do real.")).toBeInTheDocument();
+  });
+
+  it("closes the restart dialog with an Alert when the account has no evaluation target (L2)", async () => {
+    serve(risk({ evaluation: evaluation() }));
+    server.use(http.get(`*/api/v1/accounts/${accountId}`, () => HttpResponse.json({ id: accountId, row_version: 7 })));
+    server.use(http.post(`*/api/v1/accounts/${accountId}/evaluation/restart`, () => HttpResponse.json({ error: { code: "accounts.evaluation_not_applicable" } }, { status: 422 })));
+    renderApp(<RiskTab accountId={accountId} />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("button", { name: "Ajustar contagem" }));
+    const dialog = await screen.findByRole("dialog");
+    await person.clear(within(dialog).getByLabelText("Início da contagem"));
+    await person.type(within(dialog).getByLabelText("Início da contagem"), "2026-10-15");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Reiniciar contagem" })).toBeEnabled());
+    await person.click(within(dialog).getByRole("button", { name: "Reiniciar contagem" }));
+    await person.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Reiniciar contagem" }));
+    expect(await screen.findByText("Esta conta não tem meta de avaliação.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
 });

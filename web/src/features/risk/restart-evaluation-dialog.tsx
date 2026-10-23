@@ -16,9 +16,9 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Spinner } from "@/shared/ui/spinner";
 import { isZeroAmount } from "./amounts";
-import { riskQueryKey, useAccountVersion, useRestartEvaluation } from "./api";
+import { riskQueryKey, useAccount, useRestartEvaluation } from "./api";
 
-type Props = { accountId: string; currentStart: string; currentEarnedBefore: string; onClose: () => void };
+type Props = { accountId: string; currentStart: string; currentEarnedBefore: string; onClose: (outcome?: "not_applicable") => void };
 
 /** S13b-02. After creation the start and the amount earned before change only through `restartEvaluation`, so this dialog is a restart. */
 export function RestartEvaluationDialog({ accountId, currentStart, currentEarnedBefore, onClose }: Props) {
@@ -26,7 +26,7 @@ export function RestartEvaluationDialog({ accountId, currentStart, currentEarned
   const root = useTranslations();
   const queryClient = useQueryClient();
   const { locale } = useDisplay();
-  const version = useAccountVersion(accountId, true);
+  const version = useAccount(accountId);
   const restart = useRestartEvaluation(accountId);
   const startId = useId();
   const earnedId = useId();
@@ -64,9 +64,9 @@ export function RestartEvaluationDialog({ accountId, currentStart, currentEarned
       setConfirming(false);
       if (error instanceof ApiError && error.status === 409) setFailure({ message: t("errors.conflict"), reload: true });
       else if (error instanceof ApiError && error.code === "accounts.evaluation_not_applicable") {
-        toast.error(root("errors.accounts.evaluation_not_applicable"));
+        // The card shows the explanation as an Alert (spec §12.2); refetch so it disappears if the target is gone.
         void queryClient.invalidateQueries({ queryKey: riskQueryKey });
-        onClose();
+        onClose("not_applicable");
       } else if (error instanceof ApiError && error.pointer === "/evaluation_start") setFieldErrors({ start: errorMessage(root, error).message });
       else if (error instanceof ApiError && error.pointer === "/evaluation_earned_before") setFieldErrors({ earned: errorMessage(root, error).message });
       else setFailure({ message: errorMessage(root, error).message, reload: false });
@@ -120,7 +120,7 @@ export function RestartEvaluationDialog({ accountId, currentStart, currentEarned
               ) : null}
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={() => onClose()}>
                 {root("common.actions.cancel")}
               </Button>
               <Button type="submit" disabled={!dirty || !version.data}>

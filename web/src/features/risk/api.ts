@@ -2,7 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
+import { accountKeys } from "@/shared/api/account-keys";
 import { segment } from "@/shared/api/ids";
+import { accountUpdateBody } from "./account-update";
 import type { Account, AccountRisk, AccountRiskRules, RiskRulesPreview, RiskRulesRequest, RiskSummaryList } from "@/shared/api/types";
 
 /** Every risk query lives under ["risk"], so one invalidation (SSE `risk.state_changed`, reconnect) refreshes them all. */
@@ -34,18 +36,30 @@ export function useAccountRiskRules(accountId: string) {
 export const usePreviewRiskRules = (accountId: string) =>
   useMutation({ mutationFn: (body: RiskRulesRequest) => apiFetch<RiskRulesPreview>(`/api/v1/accounts/${segment(accountId)}/risk-rules/preview`, { method: "POST", body }) });
 
-export function useSaveRiskRules(accountId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: RiskRulesRequest) => apiFetch<AccountRiskRules>(`/api/v1/accounts/${segment(accountId)}/risk-rules`, { method: "PUT", body }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: riskQueryKey }),
+/** No invalidation here: the form saves rules and commission in two calls and refreshes once both are done. */
+export const useSaveRiskRules = (accountId: string) =>
+  useMutation({ mutationFn: (body: RiskRulesRequest) => apiFetch<AccountRiskRules>(`/api/v1/accounts/${segment(accountId)}/risk-rules`, { method: "PUT", body }) });
+
+/** Changes the commission floor through `updateAccount` (U20 a): a higher floor applies at once, a lower one from the next trading day. */
+export const useUpdateCommission = (accountId: string) =>
+  useMutation({
+    mutationFn: ({ account, commission }: { account: Account; commission: string | null }) =>
+      apiFetch<Account>(`/api/v1/accounts/${segment(accountId)}`, { method: "PUT", body: accountUpdateBody(account, commission) }),
   });
+
+/** Refresh everything that shows risk or the account after the edit. */
+export function useRefreshAfterEdit() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: riskQueryKey });
+    void queryClient.invalidateQueries({ queryKey: accountKeys.all });
+  };
 }
 
-/** The account's `row_version`, needed by `restartEvaluation`. */
-export function useAccountVersion(accountId: string, enabled: boolean) {
+/** The account, for its `row_version` and its commission floor. Shares the one account key family (`accountKeys`). */
+export function useAccount(accountId: string, enabled = true) {
   return useQuery({
-    queryKey: ["accounts", accountId, "version"],
+    queryKey: accountKeys.detail(accountId),
     enabled,
     queryFn: ({ signal }) => apiFetch<Account>(`/api/v1/accounts/${segment(accountId)}`, { signal }),
   });
@@ -58,7 +72,7 @@ export function useRestartEvaluation(accountId: string) {
       apiFetch<Account>(`/api/v1/accounts/${segment(accountId)}/evaluation/restart`, { method: "POST", body }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: riskQueryKey });
-      void queryClient.invalidateQueries({ queryKey: ["accounts", accountId] });
+      void queryClient.invalidateQueries({ queryKey: accountKeys.all });
     },
   });
 }

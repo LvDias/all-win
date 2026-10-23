@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { navigation, renderApp } from "@/test/render";
@@ -15,6 +15,34 @@ const rules = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const account = (overrides: Record<string, unknown> = {}) => ({
+  id: accountId,
+  kind: "prop",
+  display_name: "Apex 50K",
+  firm_name: "Apex",
+  plan_name: "50K",
+  phase: "evaluation",
+  preset_version_id: "00000000-0000-4000-8000-0000000000b1",
+  firm_platform: "rithmic",
+  size_amount: "50000",
+  currency: "USD",
+  multiplier: 2,
+  max_position_qty: 5,
+  lifecycle_state: "active",
+  opt_ins: { automation: { kind: "automation", state: "declined" }, copy: { kind: "copy", state: "declined" } },
+  binding: { connection_id: "00000000-0000-4000-8000-0000000000c1", connection_name: "VPS", connection_status: "connected", platform_account: "Sim101", kind: "simulation", oco_location: "local" },
+  commission_per_contract_side: "0.35",
+  has_open_position: false,
+  row_version: 7,
+  created_at: "2026-10-01T12:00:00Z",
+  updated_at: "2026-10-01T12:00:00Z",
+  ...overrides,
+});
+
+function serveAccount(body: object = account()) {
+  server.use(http.get(`*/api/v1/accounts/${accountId}`, () => HttpResponse.json(body)));
+}
+
 function serve(body: object = rules()) {
   server.use(http.get(`*/api/v1/accounts/${accountId}/risk-rules`, () => HttpResponse.json(body)));
 }
@@ -23,6 +51,7 @@ const preview = (body: object = { changes: [], would_be_reached: false }) => htt
 beforeEach(() => {
   navigation.push.mockClear();
   server.use(http.get("*/api/v1/me", () => HttpResponse.json(user)));
+  serveAccount();
 });
 
 describe("RulesForm", () => {
@@ -52,7 +81,7 @@ describe("RulesForm", () => {
     await person.type(loss, "800,5");
     await person.click(screen.getByRole("button", { name: "Salvar regras" }));
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/pt-BR/accounts/${accountId}/risk`));
-    expect(saved).toEqual([{ version: 4, rules: { drawdown: { type: "trailing_eod", amount: "2500" }, daily_loss_limit: { kind: "hard", amount: "800.5" }, profit_target_on_reach: "notify" } }]);
+    expect(saved).toEqual([{ version: 4, rules: { drawdown: { type: "trailing_eod", amount: "2500.00" }, daily_loss_limit: { kind: "hard", amount: "800.5" }, profit_target_on_reach: "notify" } }]);
   });
 
   it("asks before saving when the new value is already exceeded, and acknowledges it", async () => {
@@ -64,7 +93,10 @@ describe("RulesForm", () => {
     }));
     renderApp(<RulesForm accountId={accountId} />);
     const person = userEvent.setup();
-    await person.click(await screen.findByRole("button", { name: "Salvar regras" }));
+    const loss = await screen.findByLabelText("Limite de perda diária, em dólares");
+    await person.clear(loss);
+    await person.type(loss, "100");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(saved).toHaveLength(0);
     expect(dialog).toHaveTextContent("já passou do limite hoje");
@@ -76,7 +108,9 @@ describe("RulesForm", () => {
     serve(rules({ rules: { profit_target_on_reach: "notify" } }));
     server.use(http.post(`*/api/v1/accounts/${accountId}/risk-rules/preview`, () => HttpResponse.json({ error: { code: "risk.daily_loss_required", pointer: "/rules/daily_loss_limit" } }, { status: 422 })));
     renderApp(<RulesForm accountId={accountId} />);
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Salvar regras" }));
+    const person = userEvent.setup();
+    await person.type(await screen.findByLabelText("Valor da meta, em dólares"), "600");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
     expect(await screen.findByText("Informe o limite de perda diária desta conta.")).toBeInTheDocument();
     expect(screen.getByLabelText("Limite de perda diária, em dólares")).toHaveAttribute("aria-invalid", "true");
   });
@@ -94,5 +128,147 @@ describe("RulesForm", () => {
     await person.click(screen.getByRole("button", { name: "Salvar regras" }));
     expect(await screen.findByText("Estas regras mudaram em outro lugar.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Recarregar" })).toBeInTheDocument();
+  });
+
+  it("keeps a firm's \"no daily loss limit\" read-only and still saves other changes (M1)", async () => {
+    serve(rules({ rules: { drawdown: { type: "static", amount: "2500.00" }, daily_loss_limit: { kind: "none" }, profit_target_on_reach: "notify" } }));
+    const saved: Record<string, unknown>[] = [];
+    server.use(preview(), http.put(`*/api/v1/accounts/${accountId}/risk-rules`, async ({ request }) => {
+      saved.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(rules({ version: 5 }));
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    expect(await screen.findByText("A firma informa que não há limite de perda diária.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Limite de perda diária, em dólares")).not.toBeInTheDocument();
+    await person.type(screen.getByLabelText("Valor da meta, em dólares"), "600");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ rules: { daily_loss_limit: { kind: "none" }, daily_profit_target: { amount: "600" } } });
+  });
+
+  it("keeps a firm's \"other\" drawdown with its description when the user changes something else (M2)", async () => {
+    serve(rules({ rules: { drawdown: { type: "other", amount: "3000.00", description: "Drawdown by closed balance" }, daily_loss_limit: { kind: "hard", amount: "1000.00" }, profit_target_on_reach: "notify" } }));
+    const saved: Record<string, unknown>[] = [];
+    server.use(preview(), http.put(`*/api/v1/accounts/${accountId}/risk-rules`, async ({ request }) => {
+      saved.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(rules({ version: 5 }));
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    expect(await screen.findByText("Regra da firma: Drawdown by closed balance")).toBeInTheDocument();
+    const loss = screen.getByLabelText("Limite de perda diária, em dólares");
+    await person.clear(loss);
+    await person.type(loss, "900");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ rules: { drawdown: { type: "other", amount: "3000.00", description: "Drawdown by closed balance" } } });
+  });
+
+  it("shows the commission prefilled and warns when there is none (H1)", async () => {
+    serve();
+    serveAccount(account({ commission_per_contract_side: undefined }));
+    renderApp(<RulesForm accountId={accountId} />);
+    expect(await screen.findByLabelText("Comissão por contrato e lado, em dólares")).toHaveValue("");
+    expect(screen.getByText(/Comissão não informada\. Sem ela o resultado líquido é igual ao bruto/)).toBeInTheDocument();
+  });
+
+  it("saves a new commission through updateAccount with the stored account unchanged, binding included (H1)", async () => {
+    serve();
+    const rulesCalls: unknown[] = [];
+    const accountBodies: Record<string, unknown>[] = [];
+    server.use(http.put(`*/api/v1/accounts/${accountId}/risk-rules`, async ({ request }) => {
+      rulesCalls.push(await request.json());
+      return HttpResponse.json(rules());
+    }), http.put(`*/api/v1/accounts/${accountId}`, async ({ request }) => {
+      accountBodies.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(account({ row_version: 8 }));
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    const fee = await screen.findByLabelText("Comissão por contrato e lado, em dólares");
+    expect(fee).toHaveValue("0.35");
+    await person.clear(fee);
+    await person.type(fee, "0,5");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/pt-BR/accounts/${accountId}/risk`));
+    expect(rulesCalls).toHaveLength(0);
+    expect(accountBodies).toEqual([
+      {
+        row_version: 7,
+        display_name: "Apex 50K",
+        max_position_qty: 5,
+        multiplier: 2,
+        preset_version_id: "00000000-0000-4000-8000-0000000000b1",
+        firm_platform: "rithmic",
+        binding: { connection_id: "00000000-0000-4000-8000-0000000000c1", platform_account: "Sim101" },
+        commission_per_contract_side: "0.5",
+      },
+    ]);
+  });
+
+  it("clearing the commission sends null and an unchanged one is left out (H1)", async () => {
+    serve();
+    const accountBodies: Record<string, unknown>[] = [];
+    server.use(http.put(`*/api/v1/accounts/${accountId}`, async ({ request }) => {
+      accountBodies.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(account());
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    await person.clear(await screen.findByLabelText("Comissão por contrato e lado, em dólares"));
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(accountBodies).toHaveLength(1));
+    expect(accountBodies[0]).toMatchObject({ commission_per_contract_side: null });
+  });
+
+  it("saves rules and commission in that order, and a commission failure after the rules says the rules were saved (H1)", async () => {
+    serve();
+    const order: string[] = [];
+    server.use(preview(), http.put(`*/api/v1/accounts/${accountId}/risk-rules`, () => {
+      order.push("rules");
+      return HttpResponse.json(rules({ version: 5 }));
+    }), http.put(`*/api/v1/accounts/${accountId}`, () => {
+      order.push("account");
+      return HttpResponse.json({ error: { code: "common.invalid_request", pointer: "/commission_per_contract_side" } }, { status: 400 });
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    const loss = await screen.findByLabelText("Limite de perda diária, em dólares");
+    await person.clear(loss);
+    await person.type(loss, "900");
+    const fee = screen.getByLabelText("Comissão por contrato e lado, em dólares");
+    await person.clear(fee);
+    await person.type(fee, "1");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    expect(await screen.findByText("As regras foram salvas, mas a comissão não. Corrija o campo e salve de novo.")).toBeInTheDocument();
+    expect(order).toEqual(["rules", "account"]);
+    expect(navigation.push).not.toHaveBeenCalled();
+    // Retrying repeats only the commission: the rules are already saved.
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(order).toEqual(["rules", "account", "account"]));
+  });
+
+  it("lets a prop account edit the reset time of its copy and shows the CME close for a real one (H1)", async () => {
+    serve(rules({ rules: { daily_loss_limit: { kind: "hard", amount: "1000.00" }, profit_target_on_reach: "notify", trading_day_reset: { local_time: "17:00", time_zone: "America/New_York" } } }));
+    const saved: Record<string, unknown>[] = [];
+    server.use(preview(), http.put(`*/api/v1/accounts/${accountId}/risk-rules`, async ({ request }) => {
+      saved.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(rules({ version: 5 }));
+    }));
+    const view = renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    const time = await screen.findByLabelText("Horário do reset do dia (America/New_York)");
+    expect(time).toHaveValue("17:00");
+    fireEvent.change(time, { target: { value: "16:00" } });
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ rules: { trading_day_reset: { local_time: "16:00", time_zone: "America/New_York" } } });
+    view.unmount();
+
+    serve();
+    renderApp(<RulesForm accountId={accountId} />);
+    expect(await screen.findByText(/fechamento da sessão CME/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Horário do reset do dia/)).not.toBeInTheDocument();
   });
 });
