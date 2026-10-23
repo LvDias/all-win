@@ -191,7 +191,8 @@ Context (S20): "Earn2Trade identifies the following as prohibited conduct:" ... 
 `vps_allowed: unknown` and `personal_device_required: unknown` for every block. Gap entry in §10 (searched all 94 articles, the terms, the disclaimer, the support policy and the pledge for VPS, VPN, remote, server, device, IP, computer, location).
 
 What is published:
-- Not found: any statement about VPS, VPN, remote desktop, remote server or an order-origin / personal-device requirement.
+- Not found: any statement about VPS, VPN, remote desktop, remote server or an order-origin / personal-device requirement. R4 re-check 2026-10-23: re-fetched the help-center sitemap (202 English URLs) and the terms (https://www.earn2trade.com/terms-and-conditions); zero hits for vps, vpn, remote desktop, own/personal computer, IP address rules.
+- Related, not a device rule (account sharing): "Data credentials, which are provisioned for the sole usage of the Account Holder, shall not be shared with, or used by any other individual or entity. It is explicitly prohibited for any person, other than the Account Holder, to gain access to the evaluation account or to execute trades on behalf of the Account Holder." (terms, accessed 2026-10-23). Also "Trading on behalf of others or sharing incentives through any form of business arrangement." (prohibited conduct, https://help.earn2trade.com/en/articles/9286647-prohibited-conduct-in-earn2trade-evaluations-and-in-the-livesim-live-trading-environment, accessed 2026-10-23). These ban third-party operation of the account, not remote or VPS hosting by the account holder.
 - Related: "Bypassing geographical or other technical restrictions;" is prohibited conduct (S20). It is about geographic restrictions, not hosting.
 - Related: the site requires a Chrome browser for the dashboard (S45: "Google Chrome Browser v63 or better", "currently the system will block any non Chrome browser"), minimum specs "Windows 10 or OSX High Sierra", "Quad core 2.3 Ghz or better", "6 Gigs of RAM or better". These are specs for the dashboard and simulator, not a rule on where orders come from.
 - Related: the clause on software and ultra-fast data entry techniques (§6) could apply to server-side order relays; the page does not say so.
@@ -1272,7 +1273,7 @@ sources:
 | 4 | Daily loss limit behavior on funded accounts (hard vs soft pause) | unknown | Evaluation breach fails the evaluation (S9, S11). Funded: "must not be breached" (S26); the page legend has a "warning" state and a "failed" state with no mapping | S1, S2, S9, S26 |
 | 5 | Explicit automated-trading rule | unknown | Only the "software, artificial intelligence, or ultra-fast data entry techniques" clause (S20). Classified `conditional` from that clause alone | full crawl, S20, S21 |
 | 6 | Webhooks, TradingView alerts, semi-automated trading | not mentioned | — | full crawl |
-| 7 | VPS / VPN / remote server / personal device | unknown | Not mentioned anywhere (searched all articles, terms, disclaimer, support policy, pledge) | full crawl |
+| 7 | VPS / VPN / remote server / personal device | unknown | Not mentioned anywhere (searched all articles, terms, disclaimer, support policy, pledge; re-checked R4 2026-10-23). Related only: credentials not shareable, no trading on behalf of others (§7) | full crawl |
 | 8 | Copying with other firms' accounts | unknown | Not mentioned; copying across own accounts and with others is forbidden | S18, S19, S20, S21 |
 | 9 | Consequence text for trade copiers | note | Terms: "you will receive only one account". Help: "you may be denied your accounts or withdrawals". Same stance, different consequence | S18, S19, S21 |
 | 10 | Values read from images | note | Drawdown tables (S4), Progression Ladder tables (S12, S13), commission charts (S16), account comparison (S28) are images. Values were read visually and agree with the product page text and JS data | S4, S12, S13, S16, S28 |
@@ -1292,3 +1293,4 @@ No conflicts between two official pages were found for the required fields.
 ## 11. Changelog
 
 - 2026-10-23 — initial research (Lupa)
+- 2026-10-23 — rev bump R4: VPS and personal device re-crawled (202 help URLs, terms); still not mentioned, both stay unknown (gap 7); related account-sharing ban recorded in §7; no YAML change (Lupa)

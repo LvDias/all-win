@@ -265,6 +265,8 @@ Summary:
   > "Each individual trader may not use the same device (tablet, phone or computer) as used by another trader. If this is not respected, then it could lead to permanent restrictions from using our services" (https://help.myfundedfutures.com/en/articles/8444599-fair-play-and-prohibited-trading-practices, accessed 2026-10-23)
   > "The use of shared devices is strictly forbidden and may result in a breach and/or account failure. E.g.: using the same PC or Phone as your partner to make use of our services and trading accounts." (https://help.myfundedfutures.com/en/articles/8230018-can-someone-else-trade-my-account, accessed 2026-10-23)
   
+  **R4 re-check (2026-10-23).** The help-center sitemap (77 article pages) and the website Terms (https://myfundedfutures.com/terms) and Privacy Policy were re-fetched with curl and grepped for VPS, VPN, virtual private, remote desktop/access, IP address, proxy, cloud, server, same/own/personal/shared device, on behalf. No text mentions VPS, VPN, IP or remote access, and no text requires the trader's own device or permits other devices. Related text, not a device rule: Terms §23.1.3.2 lists as a violation "operate or trade on behalf of another person's account, or permit another person to operate or trade on your account;" (https://myfundedfutures.com/terms, accessed 2026-10-23), and "Each individual trader may not use the same device (tablet, phone or computer) as used by another trader." (https://help.myfundedfutures.com/en/articles/8444599-fair-play-and-prohibited-trading-practices, accessed 2026-10-23). Both fields stay `unknown`.
+
   `personal_device_required: unknown`. A shared VPS/server used by more than one trader would plausibly fall under "shared devices", but that is an inference, so the user/PO decides. The copy article also endorses "Tradesyncer … the #1 cloud-based futures trading copier", a server-side tool.
 
 ---
@@ -2352,3 +2354,4 @@ None. All pages were read with `curl` (no Cloudflare block). The Rapid plan page
 
 - 2026-10-23 — initial research (Lupa)
 - 2026-10-23 — added VPS/VPN and personal-device fields per format rev. 3 (§7a, YAML `vps_allowed`, `personal_device_required`, gaps 24–25) (Lupa)
+- 2026-10-23 — rev bump R4: VPS and personal-device re-checked on all 77 help-center articles, Terms and Privacy Policy; no explicit text either way, `vps_allowed` and `personal_device_required` stay `unknown`, gaps 24-25 stay open (Lupa)

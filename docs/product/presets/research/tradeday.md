@@ -390,7 +390,7 @@ When the IP check happens:
 
 S-VPS and S-PROHIB word this differently. S-VPS bans VPS use outright ("does not allow the use of virtual private servers"). S-PROHIB bans VPN or VPS use "to mask the location". Both lead to `vps_allowed: no`, so this is recorded as context, not as a conflict.
 
-**Personal device required: `unknown`.** No page requires orders to come from the trader's own device. The firm requires trading from the **registered address/location**. Searched: all 85 help-center articles (grep "device", "VPS", "server", "computer"), the T&C, the homepage and how-it-works. Gap G8.
+**Personal device required: `unknown`.** No page requires orders to come from the trader's own device. The firm requires trading from the **registered address/location**. Searched (R4 re-check 2026-10-23, newest pages): S-VPS, S-TC (Last Modified: August 11, 2026), S-COPY, S-MULTI, S-AUTO, S-PROHIB, S-NET, S-LIVE, homepage and how-it-works, plus the earlier grep of all 85 help-center articles. The only related texts are account sharing ("Access to your Account and the Services is protected by login Data, which you are prohibited from making available to, or sharing with, any third party.", S-TC) and the registered-location rule above. Nothing requires or permits a specific device. Stays `unknown`. Gap G8.
 
 **Impact for All Win:** running NT8 with the All Win plugin on a VPS is **not allowed** at TradeDay.
 
@@ -1637,3 +1637,4 @@ Pages not reachable: none. Every public page tried returned HTTP 200 with `curl`
 
   Sources: tradeday.com homepage, how-it-works, T&C, the TradeDay 2.0 blog post, and all 85 public articles of tradeday.freshdesk.com.
 - 2026-10-23 — structure (Lupa): converted the single YAML list in §8 to one `yaml` block per plan/phase/size (28 blocks, each under its own `####` heading). Values, comments and status unchanged. Checked by parsing the old list and the new blocks and comparing them: identical. Only the section-divider comments were dropped, because each heading now carries that information.
+- 2026-10-23 — rev bump R4: `personal_device_required` re-checked, stays `unknown` (no device text on any newest page); `vps_allowed: no` re-confirmed on S-VPS (Lupa).

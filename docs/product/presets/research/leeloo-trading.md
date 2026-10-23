@@ -98,6 +98,8 @@ Phase `live`: not offered (no live phase published). Step 3 says an account may 
 
 **Device / hosting.** `unknown`. No public page mentions VPS, VPN, remote server, or a requirement that orders come from the trader's own device (gap). Only identity/connection rules: "Make sure you sign up with your full name exactly as it reads on your government issued identification" and "Traders are only allowed one Rithmic ID." The user must run their own platform ("Connect your platform to Rithmic"). Nothing forbids a server-side relay, but nothing allows it either.
 
+**R4 re-check (2026-10-23).** Public pages re-fetched with curl and grepped for vps, vpn, virtual private, remote, cloud, ip address, proxy, own/personal device or computer, account sharing, trading day, session: https://leelootrading.com/, /support, /terms-of-service, /risk-disclosure, /performance-disclosure, /merchant-products, https://support.leelootrading.com/ (home, /news, /kb). No device or hosting rule and no trading-day reset time or timezone is published; KB articles a103 and a190 return the login page. Stays `unknown`/unverified for `vps_allowed`, `personal_device_required` and `trading_day_reset`. Side finding (not changed in YAML, outside this brief): the public news item https://support.leelootrading.com/news/32/restrictions-on-copying-between-performance-accounts.aspx (published 9/26/2024) says "Traders are also restricted from copying more than three accounts, simultaneously." and "Traders are not permitted to manually copy, use copiers or any type of copy software on the following account types: Accelerator Accounts ... Third-party accounts" - so same-person copying is partly regulated publicly (gap row "Same-person copying" needs a PO/Lupa follow-up).
+
 **Other rules (public).**
 
 | Topic | Rule (quote) | Source |
@@ -543,3 +545,4 @@ sources:
 ## 11. Changelog
 
 - 2026-10-23 — initial research (Lupa)
+- 2026-10-23 — rev bump R4: re-checked public pages and the public support news for device/VPS and trading-day reset; nothing published (KB behind login), so `vps_allowed`, `personal_device_required` and `trading_day_reset` stay open. New finding: public news item on copier limits (see §7); YAML `copy_trading_allowed` not changed (Lupa).

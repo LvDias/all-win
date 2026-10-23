@@ -280,6 +280,10 @@ The homepage Test size cards say "Be consistent  No trading bots  No counter pos
   > "We kindly ask all users to ensure that they do not access their accounts from restricted jurisdictions at any time. This includes the use of VPNs, remote connections, or shared networks that may route activity through a restricted country."
 
   A VPS located in, or routed through, a restricted country would therefore be a risk.
+- **R4 re-check, personal device (2026-10-23).** All 88 help-center articles (Zendesk API) and the Terms of Service (https://takeprofittrader.com/terms, read through the portal) were grepped for device, computer, IP address, remote, VPS, virtual private, server, cloud, machine, third party, behalf, share, credentials. No text requires orders to come from the trader's own device or IP, and none permits other or remote devices, so `personal_device_required` stays `unknown`. Related, not a device rule: Universal Trading Policies, https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/34431153546397-TakeProfitTrader-Universal-Trading-Policies-UTP (accessed 2026-10-23), #4:
+  > "Coordinated trading, third-party account management, or participation in structured trading schemes designed to reduce or neutralize risk is prohibited."
+
+  Terms of Service §VII: "all such activity will be treated as the trader’s own execution." (https://takeprofittrader.com/terms, accessed 2026-10-23).
 - **Shared infrastructure as a surveillance signal.** Independent Trade Execution Policy, https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/34431223270557-Independent-Trade-Execution-Policy, verbatim:
   > "Device or infrastructure clustering"
 
@@ -1089,3 +1093,4 @@ sources:
 - 2026-10-23 — initial research (Lupa).
 - 2026-10-23 — format rev. 3: added §7.1 Device / hosting rules, `vps_allowed` / `personal_device_required` in all 20 YAML blocks, gap #14 (Lupa).
 - 2026-10-23 — PRO+ and PRO+ Development marked `excluded: true` in their 10 YAML blocks, per user decision S-4 (relayed by the PO); values and status unchanged, not re-validated (Lupa).
+- 2026-10-23 — rev bump R4: personal_device_required re-checked on all help-center articles and the Terms; no explicit device requirement or permission, stays `unknown`; `vps_allowed` not in scope, unchanged (Lupa)

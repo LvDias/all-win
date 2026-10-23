@@ -6,7 +6,7 @@
 | **Official domains** | `phoenixtraderfunding.com` (main site and Help Center `/faq`; verified: it is the site linked from its own pages, serves the sitemap, terms and billing terms, and its Help Center is a React app) · `server.phoenixtraderfunding.com/public/api/` (the site's own backend; the `/faqs/fetch` and `/packages/fetch` JSON endpoints feed the Help Center and the pricing pages, found in the site's JS bundle) · `thortradecopier.com` (Thor copier, linked from the site, not read) · `phxtf.com` (press, not read) |
 | **Research date** | 2026-10-23 (all URLs below accessed 2026-10-23) |
 | **Researcher** | Lupa (Prop Firm Rules Researcher) |
-| **File status** | `partial`. Verified from the firm's own Help Center: profit targets, drawdown amounts and types, consistency, position limits, commissions, copy trading, automation, VPS, platforms, overnight, news. Not published anywhere found: trading-day reset time and time zone, personal-device rule, live drawdown amounts and live starting size, exchange-fee inclusion in commissions. One conflict: Merit tiers and ES commission on the `/merit-accounts` marketing page vs the Help Center (section 10). |
+| **File status** | `partial`. Verified from the firm's own Help Center: profit targets, drawdown amounts and types, consistency, position limits, commissions, copy trading, automation, VPS, platforms, overnight, news. Not published anywhere found: trading-day reset time and time zone, live drawdown amounts and live starting size, exchange-fee inclusion in commissions. One conflict: Merit tiers and ES commission on the `/merit-accounts` marketing page vs the Help Center (section 10). |
 | **Instruments covered** | MNQ and NQ are in the commission table (CME). Other futures also listed. |
 | **Platforms (for routing)** | Depends on the data feed. **TFeed**: Odin (Phoenix web platform) and Quantower connect directly; NinjaTrader, Tradovate, TradingView and Rithmic-leader platforms connect through Phoenix's copier Thor (a separate "leader" account with market data is required). **dxFeed**: Odin, Atas, Quantower, DeepChart, DeepDom. **Live funded**: Rithmic via EdgeClear. |
 
@@ -243,7 +243,7 @@ Live Funded:
 > "Deliberately hiding or changing your identity results in account termination."
 > (F-vpn-vps, https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps)
 
-Terms of Use: "Your account is personal and cannot be transferred, sold or shared." and "letting another person trade, manage or access your account, or trading on behalf of someone else;" (T-terms). No rule found requiring orders from a personal device or a specific machine; `personal_device_required: unknown` (gap).
+Terms of Use: "Your account is personal and cannot be transferred, sold or shared." and "letting another person trade, manage or access your account, or trading on behalf of someone else;" (T-terms). R4 (2026-10-23): `personal_device_required: no`. The same FAQ (F-vpn-vps) explicitly permits remote and proxied connections: "There is no rule against connecting through a VPN, a VPS or a proxy, and plenty of traders have good reasons to: a VPS for uptime, a VPN on public networks, a proxy at work." No text requires a personal device or own IP; the only identity rule is "One trader, one identity, is the principle it protects." Sharing the account with another person remains prohibited (T-terms).
 
 ### Other rules
 
@@ -304,9 +304,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "Eval profit target and drawdown from the Classic rules article. Drawdown is end-of-day trailing per the Classic payout article. Starting size is the lowest scaling band; the ceiling (1 minis / 15 micros) is the top band. Classic is offered on both TFeed and dxFeed with different commission rates. No daily loss limit."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/what-are-the-rules-of-the-classic-accounts", accessed: "2026-10-23" }
@@ -318,6 +318,7 @@ sources:
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
   - { field: platforms, url: "https://phoenixtraderfunding.com/faq/detail/dont-know-where-to-start/on-which-platforms-can-i-trade", accessed: "2026-10-23" }
   - { field: platforms, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-support-ninjatrader", accessed: "2026-10-23" }
   - { field: packages_cross_check, url: "https://server.phoenixtraderfunding.com/public/api/packages/fetch", accessed: "2026-10-23" }
@@ -345,9 +346,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "Eval profit target and drawdown from the Classic rules article. Drawdown is end-of-day trailing per the Classic payout article. Starting size is the lowest scaling band; the ceiling (3 minis / 30 micros) is the top band. Classic is offered on both TFeed and dxFeed with different commission rates. No daily loss limit."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/what-are-the-rules-of-the-classic-accounts", accessed: "2026-10-23" }
@@ -359,6 +360,7 @@ sources:
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
   - { field: platforms, url: "https://phoenixtraderfunding.com/faq/detail/dont-know-where-to-start/on-which-platforms-can-i-trade", accessed: "2026-10-23" }
   - { field: platforms, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-support-ninjatrader", accessed: "2026-10-23" }
   - { field: packages_cross_check, url: "https://server.phoenixtraderfunding.com/public/api/packages/fetch", accessed: "2026-10-23" }
@@ -386,9 +388,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "Eval profit target and drawdown from the Classic rules article. Drawdown is end-of-day trailing per the Classic payout article. Starting size is the lowest scaling band; the ceiling (6 minis / 60 micros) is the top band. Classic is offered on both TFeed and dxFeed with different commission rates. No daily loss limit."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/what-are-the-rules-of-the-classic-accounts", accessed: "2026-10-23" }
@@ -400,6 +402,7 @@ sources:
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
   - { field: platforms, url: "https://phoenixtraderfunding.com/faq/detail/dont-know-where-to-start/on-which-platforms-can-i-trade", accessed: "2026-10-23" }
   - { field: platforms, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-support-ninjatrader", accessed: "2026-10-23" }
   - { field: packages_cross_check, url: "https://server.phoenixtraderfunding.com/public/api/packages/fetch", accessed: "2026-10-23" }
@@ -427,9 +430,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days"]
 notes: "Pre-funded Classic. Pays weekly, 90% split, first payout after 5 trading days, locked buffer 1500.00, max per payout ($600). Live funding after 4 payouts. Drawdown amount is the package value; funded article restates it only as the locked buffer."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/classic-accounts-payout-rules", accessed: "2026-10-23" }
@@ -438,6 +441,7 @@ sources:
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
 ```
 
 #### Classic — funded (pre-funded) — 50K (Growth)
@@ -462,9 +466,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days"]
 notes: "Pre-funded Classic. Pays weekly, 90% split, first payout after 5 trading days, locked buffer 2000.00, max per payout ($1,000). Live funding after 4 payouts. Drawdown amount is the package value; funded article restates it only as the locked buffer."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/classic-accounts-payout-rules", accessed: "2026-10-23" }
@@ -473,6 +477,7 @@ sources:
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
 ```
 
 #### Classic — funded (pre-funded) — 100K (Scale)
@@ -497,9 +502,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days"]
 notes: "Pre-funded Classic. Pays weekly, 90% split, first payout after 5 trading days, locked buffer 3000.00, max per payout ($2,000). Live funding after 4 payouts. Drawdown amount is the package value; funded article restates it only as the locked buffer."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/classic-accounts-payout-rules", accessed: "2026-10-23" }
@@ -508,6 +513,7 @@ sources:
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
 ```
 
 #### Classic — live — 25K (Starter)
@@ -532,9 +538,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
 notes: "Live funded account with EdgeClear (Rithmic). Live funding amount 1250.00. CME professional market data fees apply and are deducted from the account. Only the overnight/over-week rule survives; the automation prohibition is listed as prohibited on challenges and funded accounts and the live waiver text says every rule except overnight/over-week is waived (ambiguous, see section 10)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/classic-accounts-payout-rules", accessed: "2026-10-23" }
@@ -565,9 +571,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
 notes: "Live funded account with EdgeClear (Rithmic). Live funding amount 2000.00. CME professional market data fees apply and are deducted from the account. Only the overnight/over-week rule survives; the automation prohibition is listed as prohibited on challenges and funded accounts and the live waiver text says every rule except overnight/over-week is waived (ambiguous, see section 10)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/classic-accounts-payout-rules", accessed: "2026-10-23" }
@@ -598,9 +604,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
 notes: "Live funded account with EdgeClear (Rithmic). Live funding amount 3500.00. CME professional market data fees apply and are deducted from the account. Only the overnight/over-week rule survives; the automation prohibition is listed as prohibited on challenges and funded accounts and the live waiver text says every rule except overnight/over-week is waived (ambiguous, see section 10)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/classic-accounts/classic-accounts-payout-rules", accessed: "2026-10-23" }
@@ -631,9 +637,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "TFeed only (not available on dxFeed). Max contracts are alternatives, not a total. LOW PRIORITY (size below 25K)."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/daily-accounts/what-are-the-rules-of-the-daily-accounts", accessed: "2026-10-23" }
@@ -644,6 +650,7 @@ sources:
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
 ```
 
 #### Daily — evaluation — 25K (Starter)
@@ -668,9 +675,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "TFeed only (not available on dxFeed). Max contracts are alternatives, not a total."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/daily-accounts/what-are-the-rules-of-the-daily-accounts", accessed: "2026-10-23" }
@@ -681,6 +688,7 @@ sources:
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
 ```
 
 #### Daily — evaluation — 50K (Growth)
@@ -705,9 +713,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "TFeed only (not available on dxFeed). Max contracts are alternatives, not a total."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/daily-accounts/what-are-the-rules-of-the-daily-accounts", accessed: "2026-10-23" }
@@ -718,6 +726,7 @@ sources:
   - { field: copy_trading_allowed, url: "https://phoenixtraderfunding.com/faq/detail/risk-management/is-copy-trading-allowed", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/are-there-any-forbidden-or-prohibited-strategies", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/do-you-allow-vpn-vps", accessed: "2026-10-23" }
 ```
 
 #### Daily — funded (pre-funded) — 10K (Seed)
@@ -742,9 +751,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days"]
 notes: "Pays daily (cap $200 per day per account, $1,000 per day per trader across all Daily accounts), 80% split, min payout $75, profits mature 3 trading days (5 for a windfall day). Funded drawdown type EOD trailing. LOW PRIORITY (size below 25K)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/daily-accounts/daily-accounts-payout-rules", accessed: "2026-10-23" }
@@ -775,9 +784,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days"]
 notes: "Pays daily (cap $500 per day per account, $1,000 per day per trader across all Daily accounts), 80% split, min payout $75, profits mature 3 trading days (5 for a windfall day). Funded drawdown type EOD trailing."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/daily-accounts/daily-accounts-payout-rules", accessed: "2026-10-23" }
@@ -808,9 +817,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days"]
 notes: "Pays daily (cap $1,000 per day per account, $1,000 per day per trader across all Daily accounts), 80% split, min payout $75, profits mature 3 trading days (5 for a windfall day). Funded drawdown type EOD trailing."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/daily-accounts/daily-accounts-payout-rules", accessed: "2026-10-23" }
@@ -841,9 +850,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract", "live threshold"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract", "live threshold"]
 notes: "Moves to live when lifetime payouts reach a size-specific threshold shown on the dashboard (threshold amount not published in the FAQ) plus risk review; hosted by EdgeClear (Rithmic). LOW PRIORITY (size below 25K)."
 sources:
   - { field: live, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/what-are-the-rules-for-being-live-funded", accessed: "2026-10-23" }
@@ -872,9 +881,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract", "live threshold"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract", "live threshold"]
 notes: "Moves to live when lifetime payouts reach a size-specific threshold shown on the dashboard (threshold amount not published in the FAQ) plus risk review; hosted by EdgeClear (Rithmic)."
 sources:
   - { field: live, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/what-are-the-rules-for-being-live-funded", accessed: "2026-10-23" }
@@ -903,9 +912,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract", "live threshold"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract", "live threshold"]
 notes: "Moves to live when lifetime payouts reach a size-specific threshold shown on the dashboard (threshold amount not published in the FAQ) plus risk review; hosted by EdgeClear (Rithmic)."
 sources:
   - { field: live, url: "https://phoenixtraderfunding.com/faq/detail/most-asked-questions/what-are-the-rules-for-being-live-funded", accessed: "2026-10-23" }
@@ -934,9 +943,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "TFeed only. 1 minimum trading day. Challenge closed after 90 days without a trade. Spark Growth ($50K) is closed to new purchases. LOW PRIORITY (size below 25K)."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/spark-accounts/what-are-the-rules-of-the-spark-accounts", accessed: "2026-10-23" }
@@ -970,9 +979,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes"]
 notes: "TFeed only. 1 minimum trading day. Challenge closed after 90 days without a trade. Spark Growth ($50K) is closed to new purchases."
 sources:
   - { field: profit_target_usd, url: "https://phoenixtraderfunding.com/faq/detail/spark-accounts/what-are-the-rules-of-the-spark-accounts", accessed: "2026-10-23" }
@@ -1006,9 +1015,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days", "drawdown.amount_usd (funded restated?)"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days", "drawdown.amount_usd (funded restated?)"]
 notes: "Funded drawdown trails in real time (funded drawdown amount not restated; package value used). Pays bi-weekly, 90% split, max per payout $300, min payout $30, buffer none. Activation fee applies (only Spark has one; amount $29 in package data). LOW PRIORITY (size below 25K)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/spark-accounts/spark-accounts-payout-rules", accessed: "2026-10-23" }
@@ -1039,9 +1048,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "commission_per_contract.includes", "min_trading_days", "drawdown.amount_usd (funded restated?)"]
+not_confirmed_fields: ["trading_day_reset", "commission_per_contract.includes", "min_trading_days", "drawdown.amount_usd (funded restated?)"]
 notes: "Funded drawdown trails in real time (funded drawdown amount not restated; package value used). Pays bi-weekly, 90% split, max per payout $400, min payout $75, buffer none. Activation fee applies (only Spark has one; amount $29 in package data)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/spark-accounts/spark-accounts-payout-rules", accessed: "2026-10-23" }
@@ -1072,9 +1081,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
 notes: "Live after four payouts; live funding amount $400; EdgeClear (Rithmic). LOW PRIORITY (size below 25K)."
 sources:
   - { field: live, url: "https://phoenixtraderfunding.com/faq/detail/spark-accounts/spark-accounts-payout-rules", accessed: "2026-10-23" }
@@ -1103,9 +1112,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: partial
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
+not_confirmed_fields: ["trading_day_reset", "drawdown.amount_usd", "max_position", "automated_trading_allowed", "commission_per_contract"]
 notes: "Live after four payouts; live funding amount $1,000; EdgeClear (Rithmic)."
 sources:
   - { field: live, url: "https://phoenixtraderfunding.com/faq/detail/spark-accounts/spark-accounts-payout-rules", accessed: "2026-10-23" }
@@ -1134,9 +1143,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: no
 automation_rule_text: "HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: conflict
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "max_position", "drawdown.type (challenge not restated)", "conflict: tiers/commission vs /merit-accounts page"]
+not_confirmed_fields: ["trading_day_reset", "max_position", "drawdown.type (challenge not restated)", "conflict: tiers/commission vs /merit-accounts page"]
 notes: "30 calendar days, no profit target, no minimum days, daily drawdown '25% Dynamic (Soft)', no activation fee, one attempt (cannot be reset), decided by risk review. The /merit-accounts marketing page conflicts with the FAQ on tiers and commission (section 10). LOW PRIORITY (size $2K, below 25K)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/merit-accounts/what-is-a-merit-account-how-do-they-work-what-are-the-rules-for-a-merit-account", accessed: "2026-10-23" }
@@ -1169,9 +1178,9 @@ copy_trading_allowed: yes
 automated_trading_allowed: conditional
 automation_rule_text: "On a Live Funded account, every rule except overnight and over-week is waived. Those two stay. HFT and EA bots. Automated systems that trade without you. Scalp as fast as you like, what we cannot fund is software trading in your place."
 vps_allowed: yes
-personal_device_required: unknown
+personal_device_required: no
 status: conflict
-not_confirmed_fields: ["trading_day_reset", "personal_device_required", "max_position", "automated_trading_allowed", "commission_per_contract"]
+not_confirmed_fields: ["trading_day_reset", "max_position", "automated_trading_allowed", "commission_per_contract"]
 notes: "Straight to live on approval (EdgeClear, Rithmic). No daily drawdown, buffer, withdrawal limits or consistency rule. Adaptive split 50/50 then 80%. Drawdown amount for live not restated (package value used). LOW PRIORITY (size $2K)."
 sources:
   - { field: drawdown, url: "https://phoenixtraderfunding.com/faq/detail/merit-accounts/how-much-money-is-in-the-live-funded-accounts-merit-accounts", accessed: "2026-10-23" }
@@ -1185,7 +1194,7 @@ sources:
 | Item | Status | Detail |
 |---|---|---|
 | Trading-day reset time and time zone | unknown | Not published (section 4). All blocks `trading_day_reset: null`. |
-| Personal device requirement | unknown | No rule found; VPS/VPN/proxy are allowed and monitored. |
+| Personal device requirement | closed R4: no | F-vpn-vps: "There is no rule against connecting through a VPN, a VPS or a proxy"; connections are monitored (one trader, one identity). |
 | Conflict: Merit tiers and live amounts | `conflict` | Help Center (https://phoenixtraderfunding.com/faq/detail/merit-accounts/how-much-money-is-in-the-live-funded-accounts-merit-accounts): "$2,000. Merit comes in a single size, and an approved Merit challenge is funded with $2,000 on the live account." and package data (one $2,000 package, price 69). Marketing page `/merit-accounts` (https://phoenixtraderfunding.com/merit-accounts): the page lists "Merit $10K Tier => $1000", "Merit $50K Tier => $2000" and "Merit $100K Tier => $3500" as live amounts (list items in the page's JS). Both recorded; not resolved. |
 | Conflict: ES commission on the Merit page | `conflict` | Marketing page (HTML link text omitted): "are the same as on other accounts, at 1.99 for an ES contract"; Help Center commission table: ES dxFeed 2.18 per side / 4.36 round turn, TFeed 1.09 / 2.18. MNQ/NQ are not stated on the Merit page, so only ES is in conflict. |
 | Merit profit split (info) | note | Marketing page: "50:50 until we get our money back, then 80:20"; Help Center: 50/50 then 80%. Consistent. |
@@ -1204,3 +1213,4 @@ sources:
 ## 11. Changelog
 
 - 2026-10-23 — initial research (Lupa)
+- 2026-10-23 — rev bump R4: `personal_device_required` closed as `no` (F-vpn-vps explicitly permits VPN/VPS/proxy, re-captured from https://server.phoenixtraderfunding.com/public/api/faqs/fetch); `vps_allowed: yes` re-confirmed unchanged. `trading_day_reset` stays unpublished: searched all FAQ articles via the faqs API and the terms bundle for reset, session, time zone and midnight; only "the limit is recalculated once a day, after the close" and "Every position must be closed before the session ends." and "Only trading days are counted, weekends and market holidays do not move the clock" (payout clock only) (Lupa)

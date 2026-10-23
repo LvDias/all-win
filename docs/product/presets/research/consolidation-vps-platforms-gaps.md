@@ -20,21 +20,21 @@ Reading notes: `no` / `yes` below are the YAML values (PyYAML reads bare `no`/`y
 | BluSky | **conflict** | unk | unk | unk | Rithmic apps, Tradovate/NT/TV, Volumetrica, Tradesea, Tickblaze, BlackArrow | Partial: Rithmic and Tradovate paths only |
 | Bulenox | conditional | conditional (conflict: commercial tools) | unk | unk | Rithmic apps incl. NinjaTrader | Reachable |
 | Earn2Trade | no | conditional (one clause) | unk | unk | Rithmic, BlackArrow, NT via Tradovate, DeepCharts | Partial: not BlackArrow; Rithmic path needs own NT licence |
-| Elite Trader Funding | conditional (approved copiers) | conditional (written authorisation) | no (conflict with copier text) | unk | Tradovate, NinjaTrader, TradingView, Rithmic apps, Tickblaze | Reachable, but policy blocks VPS and bots |
-| Funded Futures Family | conditional (own accounts; ambiguity vs automation ban) | **no, all plans** | conflict | unk | Tradovate, WealthCharts, NinjaTrader, TradingView; Pro = Rithmic | Reachable, policy blocks automated entry |
+| Elite Trader Funding | conditional (approved copiers) | conditional (written authorisation) | **conflict** (ToS and VPN/IP policy ban VPS; copier disclaimer rewards VPN/VPS use "for legitimate and benign reasons") | unk (R4: searched, nothing) | Tradovate, NinjaTrader, TradingView, Rithmic apps, Tickblaze | Reachable, but policy blocks VPS and bots |
+| Funded Futures Family | conditional (own accounts; ambiguity vs automation ban) | **no, all plans** | conflict (bots policy permits VPN/VPS; conduct page: "VPS, proxy and bot hosts are not allowed") | **yes** ("Each trader must use their own device"; R4) | Tradovate, WealthCharts, NinjaTrader, TradingView; Pro = Rithmic | Reachable, policy blocks automated entry |
 | Leeloo | unk (cross-user banned) | unk | unk | unk | Rithmic apps incl. NT7/8 | Reachable; rules behind login |
 | Lucid | conditional | conditional (HFT/microscalping banned) | unk | unk | NinjaTrader, Tradovate, TradingView, Quantower, Tradesea, others | Reachable |
 | MyFundedFutures | conditional | conditional | unk | unk | NinjaTrader, Tradovate, TradingView, Quantower, Volumetrica, others | Reachable |
 | OneUp | conditional | unk | unk | unk | Rithmic only; NT 8.1 preferred | Reachable on desktop; not NT Web/Mobile |
 | Phidias | conditional | conditional (semi-auto allowed if monitored) | unk | unk | Rithmic, NinjaTrader/Tradovate, DeepCharts | Reachable |
-| Phoenix | yes (own accounts, Thor) | no on eval/pre-funded (17), conditional on live (9) | yes ("Connections are monitored.") | unk | Tradovate, Rithmic EdgeClear, dxFeed apps, Odin, Quantower | Partial: TFeed via Tradovate or Thor only; not dxFeed |
+| Phoenix | yes (own accounts, Thor) | no on eval/pre-funded (17), conditional on live (9) | yes ("Connections are monitored."; R4 re-confirmed) | **no** (FAQ: no rule against VPN/VPS/proxy; account sharing still banned; R4) | Tradovate, Rithmic EdgeClear, dxFeed apps, Odin, Quantower | Partial: TFeed via Tradovate or Thor only; not dxFeed |
 | Take Profit Trader | conditional (10 blocks) | no | unk | unk | NinjaTrader, Tradovate, Rithmic, CQG, TradingView, others | Reachable |
-| Top One Futures | conditional | no | conditional | unk | Tradovate/NinjaTrader, BlackArrow, WealthCharts | Via Tradovate only |
+| Top One Futures | conditional | no | conditional | **no** (R4: other devices and static-IP VPS allowed) | Tradovate/NinjaTrader, BlackArrow, WealthCharts | Via Tradovate only |
 | Topstep | conditional (12) / no (3) | conditional (12) / no (3) | no | **yes** | TopstepX, ProjectX API, Quantower | No NinjaTrader listed: unreachable per blocks |
 | TradeDay | conditional | conditional | no | unk | Rithmic, Tradovate | NinjaTrader not named in blocks: confirm in file |
-| Tradeify | conditional | conditional | conditional | unk | NinjaTrader (Tradovate), Quantower, Rithmic apps, Tradesea, TradingView, WealthCharts | Reachable via Tradovate |
+| Tradeify | conditional | conditional | conditional | **no** (R4; open caveat for bots: "live video of you enabling the code on your own PC", VPS status unclear) | NinjaTrader (Tradovate), Quantower, Rithmic apps, Tradesea, TradingView, WealthCharts | Reachable via Tradovate |
 
-Personal-device rule: only Topstep publishes one. The other 17 files carry `unknown`, so All Win cannot tell the user whether orders from a server-side relay are acceptable. The NT8 plugin runs on the user's own PC, which satisfies a personal-device rule by construction.
+Personal-device rule (R4 update 2026-10-23): `yes` for Topstep and FFF; `no` for Phoenix, Top One and Tradeify; still `unknown` for the other 13 firms after a targeted re-check of their newest official pages. The `unknown` firms publish only neighbouring rules (no device sharing, no third-party operation, household limits), which do not say where orders must come from. The NT8 plugin runs on the user's own PC, which satisfies a personal-device rule by construction.
 
 ## 2. Gaps and conflicts per firm
 
@@ -47,7 +47,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | max accounts | 3 vs 5, and 5 total vs 5 per tier | conflict |
 | daily loss limit, drawdown type, min days | some sizes: help vs T&C | conflict |
 | automation, VPS (4 blocks) | unknown | gap |
-| personal device | not mentioned | gap |
+| personal device | unknown (R4 re-check: nothing; VPS `conditional` re-confirmed) | gap |
 
 ### Apex
 | Field | Gap or conflict | Kind |
@@ -55,7 +55,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | copy trading | official pages conflict (24/24 blocks) | conflict |
 | consistency threshold | "<50%" vs example "50% met" | conflict |
 | trailing stop point (8 blocks), scaling level 4 range (2) | unpublished | gap |
-| personal device | unknown | gap |
+| personal device | unknown (R4: only sharing with other traders banned; User Agreement not public, URL 404). VPS `conditional` re-confirmed | gap |
 | automation details | the "User Agreement" is not public | gap |
 
 ### BluSky
@@ -76,7 +76,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | automation, third-party tools | FAQ "only user-built tools" vs Terms "must be reviewed and approved" | conflict |
 | Momentum and Momentum Master rules | stage tables unlabeled or unpublished | gap |
 | Qualification consistency and lock rules | not published | gap |
-| VPS, personal device | not mentioned | gap |
+| VPS, personal device | R4: Terms PDF and 50 help items re-read; nothing (only a household clause) | gap |
 
 ### Earn2Trade
 | Field | Gap or conflict | Kind |
@@ -84,42 +84,45 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | funded daily loss limit | behaviour not published; `kind: unknown` is outside the format set | gap, **PO decision** |
 | MNQ and NQ commission | MNQ not published (images); `null` in 25/25 blocks | gap |
 | automation | one clause on AI / ultra-fast data entry, reading unconfirmed | gap |
-| VPS, personal device | none published | gap |
+| VPS, personal device | R4: 202 help URLs + T&C re-crawled; nothing | gap |
 
 ### Elite Trader Funding
 | Field | Gap or conflict | Kind |
 |---|---|---|
 | news rule, funded | help: no restriction vs ToS: flat 5 min before/after | conflict |
-| VPS wording | ToS bans vs copier text "legitimate VPS" | conflict |
+| VPS wording | ToS clause (l) and VPN/IP policy ban VPS vs copier disclaimer "use VPNs or VPS for legitimate and benign reasons"; R4: unchanged, `vps_allowed: conflict` in all 28 blocks | conflict |
 | 1-Step 250K | listed vs "no longer sold" | conflict |
 | Static 25K floor | $24,100 vs $24,000 | conflict |
 | Direct to Funded target label, DTF 25K existence | tables disagree | conflict |
 | 150K drawdown, target, daily loss limit | unpublished | gap |
-| trading-day reset, personal device | unpublished | gap |
+| trading-day reset | R4: only "Sunday evening and Monday are counted as the same trading day"; no time | gap |
+| personal device | R4: nothing in ToS, VPN/IP policy or other-user policy | gap |
 
 ### Funded Futures Family
 | Field | Gap or conflict | Kind |
 |---|---|---|
-| VPS | "permitted" vs "not allowed" | conflict |
+| VPS | bots policy "VPNs and VPSs are permitted" vs conduct page "VPS, proxy and bot hosts are not allowed. A personal VPN is allowed."; R4: `vps_allowed: conflict` in all 52 blocks | conflict |
+| personal device | **closed R4: yes** ("Each trader must use their own device"). Residual: no text on whether a remote machine counts | closed |
 | Standard S2F consistency | 25% vs 45% | conflict |
 | Velocity funded consistency | 40% vs none | conflict |
 | Pro funded drawdown | EOP vs EOD | conflict |
 | Premier+/S2F 25K max position | funded table vs scaling plan | conflict |
-| commission, trading-day reset, personal device | not published | gap |
+| commission; trading-day reset (R4: only 4:45 pm EST flatten / 6:00 pm EST reopen window, no holiday rule) | not published | gap |
 | copy vs automation ban | copy of own accounts allowed, automated entry banned: ambiguous | conflict |
 
 ### Leeloo
 | Field | Gap or conflict | Kind |
 |---|---|---|
 | everything in the knowledge base | behind login: reset, instruments, commission, automation, VPS, device, trailing lock | gap |
-| own-account copy | not stated (cross-user banned) | gap |
+| own-account copy | not stated in KB. R4: public news item 2024-09-26 limits copying to 3 accounts simultaneously and bars copying on Accelerator, Edge Enhancer and third-party accounts; `copy_trading_allowed` left `unknown` pending PO decision | gap |
+| reset time, device, VPS | R4: public pages and support site searched, nothing; KB articles return login | gap |
 
 ### Lucid
 | Field | Gap or conflict | Kind |
 |---|---|---|
 | daily loss limit (9), consistency (8), drawdown (1) | official pages disagree | conflict |
 | trading-day reset, copy scope | no explicit statement | gap |
-| VPS, personal device | help-center search returned 0 results | gap |
+| VPS, personal device | R4: all 61 help articles + Terms re-read; nothing | gap |
 | webhooks | not found | gap |
 
 ### MyFundedFutures
@@ -127,14 +130,14 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 |---|---|---|
 | daily loss limit (16 blocks), drawdown type (3), min days (5), max position (4), max accounts | articles disagree | conflict |
 | trading-day reset, same-person copy sentence | not explicit | gap |
-| VPS, personal device | not found | gap |
+| VPS, personal device | R4: 77 articles + Terms re-read; only "may not use the same device as another trader" | gap |
 
 ### OneUp
 | Field | Gap or conflict | Kind |
 |---|---|---|
 | balance resets | "unlimited" vs $50 / $100 | conflict |
 | Express min days | 3 vs 5 (old note) | conflict |
-| automation, VPS, personal device | no rule published anywhere found | gap |
+| automation, VPS, personal device | no rule published (R4: 60 articles + terms re-read; homepage "Trade from anywhere" is marketing) | gap |
 | funded scaling and commission tables | images only, not quotable | gap |
 
 ### Phidias
@@ -142,7 +145,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 |---|---|---|
 | per-plan platform matrix | not published | gap |
 | trading-day reset (20 blocks) | unpublished | gap |
-| VPS, personal device | unknown | gap |
+| VPS, personal device | unknown (R4: only an IP-based account-count limit) | gap |
 | Premium blocks | `verified` for rev-2 fields; the two device fields are not confirmed | note |
 
 ### Phoenix
@@ -151,7 +154,8 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | Merit tiers | marketing page $2K only vs help center $10K/50K/100K | conflict |
 | Merit ES commission | 1.99 vs 2.18 / 1.09 | conflict |
 | bot ban on Live | ambiguous | conflict |
-| trading-day reset and timezone, personal device | not published | gap |
+| trading-day reset and timezone | R4: nothing (only "recalculated once a day, after the close") | gap |
+| personal device | **closed R4: no** (FAQ: no rule against VPN/VPS/proxy) | closed |
 | live drawdown amounts and starting size | not published | gap |
 
 ### Take Profit Trader
@@ -160,7 +164,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | PRO+ max position and platform list | not published | gap |
 | PRO+ Development trailing stop point, daily loss limit pause end | not published | gap |
 | timezone label of the trading day | not stated (20 blocks) | gap |
-| VPS, personal device | unknown | gap |
+| VPS, personal device | unknown (R4: 88 articles + Terms; nothing) | gap |
 
 ### Top One Futures
 | Field | Gap or conflict | Kind |
@@ -169,7 +173,8 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | max accounts and size mixing | pages disagree | conflict |
 | 150K daily loss limit | two values | conflict |
 | Ignite flatten time | two values | conflict |
-| per-plan platform list, personal device | not published | gap |
+| per-plan platform list | not published | gap |
+| personal device | **closed R4: no** (other devices and static-IP VPS allowed; sole-trader rule remains) | closed |
 
 ### Topstep
 | Field | Gap or conflict | Kind |
@@ -186,7 +191,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | Fast Pass min days (12 blocks) | pages disagree | conflict |
 | Funded Live drawdown and position limits | pages disagree | conflict |
 | slippage buffer basis | pages disagree | conflict |
-| personal device | unknown | gap |
+| personal device | unknown (R4: nothing; VPS `no` re-confirmed) | gap |
 
 ### Tradeify
 | Field | Gap or conflict | Kind |
@@ -194,7 +199,8 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | Select 25K evaluation max contracts | gap | gap |
 | 300K V2 daily loss limit kind | gap | gap |
 | Elite Live micro limits and platforms | gap | gap |
-| copying to/from other firms, personal device | not stated | gap |
+| copying to/from other firms | not stated | gap |
+| personal device | **closed R4: no** ("Shared households, networks, workplaces, or devices do not, by themselves, establish a violation"). Caveat: bot code enabled on "your own PC" on video; VPS status unclear | closed |
 
 ## 3. NinjaTrader 8 plugin: what it cannot reach, and policy blocks
 
@@ -218,7 +224,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | Topstep | VPS not allowed; personal device required | topstep.md §7 |
 | TradeDay | VPS not allowed | tradeday.md §7 |
 
-**No rule published (ask the firm in writing):** OneUp, BluSky, Leeloo, Earn2Trade (automation); 17 of 18 firms (personal device).
+**No rule published (ask the firm in writing):** OneUp, BluSky, Leeloo, Earn2Trade (automation); 13 of 18 firms (personal device).
 
 ## 4. Decision list for the user (Lupa's proposals, not approved)
 
@@ -228,7 +234,7 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 | D2 | Elite Trader Funding: bots need written authorisation, VPS banned | treat as `conditional` / treat as banned | Treat as `conditional`, default off. The opt-in must tell the user to get the firm's written authorisation first. The plugin runs on the user's PC, so the VPS ban is not triggered by the plugin. |
 | D3 | `unknown` automation (OneUp, BluSky, Leeloo, Earn2Trade's single clause) | allow with warning / block | Allow with a generic "firm rule not published" warning and a suggestion to ask the firm. Do not state a rule the firm has not published. |
 | D4 | VPS-hosting of any All Win component | allow / forbid where `no` or `conflict` / forbid everywhere | Keep the user-PC plugin as the only order path. Show the VPS stance as informational. For `no`/`conflict` firms (Topstep, TradeDay, Elite, FFF) say that the user's PC must not be a VPS. |
-| D5 | Personal-device rule unknown for 17 firms | assume allowed / assume required | Assume nothing; show "not published". The NT8 plugin on the user's own PC is the lowest-risk design under either reading. |
+| D5 | Personal-device rule still unknown for 13 firms (R4 closed 4) | assume allowed / assume required | Assume nothing; show "not published". The NT8 plugin on the user's own PC is the lowest-risk design under either reading. |
 | D6 | Platforms NT8 cannot reach | hide the preset / show with a "not supported by the NT8 plugin" flag | Show, flagged. The preset data stays useful for limits and risk even when the platform is not routable. |
 | D7 | Conflicting fields (`status: conflict`) | use the stricter value / use none | Use the stricter published value in the preset only if the user opts in, and show "unconfirmed". Otherwise leave the field empty. |
 | D8 | Earn2Trade funded daily loss limit `kind: unknown` | add `unknown` to the format set / map to `none` | Add `unknown` to the format set. Mapping to `none` would invent a rule. |
@@ -238,3 +244,4 @@ Each table lists only what changes a preset or an opt-in warning. Full lists: §
 ## 5. Changelog
 
 - 2026-10-23 — initial consolidation (Lupa).
+- 2026-10-23 — R4 update: device closed for FFF (yes), Phoenix, Top One, Tradeify (no); VPS conflicts made explicit for Elite and FFF; Apex `conditional` re-confirmed; no reset time found for Elite, FFF, Phoenix, Leeloo (Lupa).

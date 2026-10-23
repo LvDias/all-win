@@ -235,8 +235,8 @@ Classification: **conditional** (own accounts only; ambiguity with the automatio
 **Conflict (two official pages).**
 - Bots policy (S2, dated September 8, 2026): "VPNs and VPSs are permitted and may be used at the trader’s discretion." (S2)
 - Prohibited Trading Conduct (S3, S3b, "Updated today"): "VPS, proxy and bot hosts are not allowed. A personal VPN is allowed." (S3) Consequence in its table: "Balance reverted; account restrictions or closure may also apply without prior warning." (S3)
-- The Prohibited Trading Conduct article is the newer one and the more specific, but the brief says not to pick. `vps_allowed: unknown` and a conflict entry in `not_confirmed_fields` in all blocks.
-- Personal device: no page requires orders to come from a personal device versus a remote machine. Device sharing between different people is forbidden: "Device sharing is not permitted at Funded Futures Family. Each trader must use their own device to access and trade on their accounts." (S4) / "We use device fingerprints to identify devices associated with user profiles." (S4) `personal_device_required: unknown`.
+- R4 (2026-10-23): both articles re-captured (S2 bots policy and S3 Prohibited Trading Conduct, a second copy of which exists at https://intercom.help/funded-futures-family/en/articles/17708968-prohibited-trading-conduct with the same sentence); texts unchanged. No choice is made between them: `vps_allowed: conflict` and a conflict entry in `not_confirmed_fields` in all blocks. The FFF terms page (https://www.fundedfuturesfamily.com/terms-and-conditions/) contains no VPS, IP or device text.
+- **Personal device (R4, 2026-10-23): `personal_device_required: yes`.** Device Sharing article (S4, https://intercom.help/funded-futures-family/en/articles/17155892-device-sharing): "Device sharing is not permitted at Funded Futures Family. Each trader must use their own device to access and trade on their accounts." Prohibited Trading Conduct (S3): "Account sharing Anyone other than you trading your account or logging in to your dashboard or platform. This includes paid passing services, sharing a trading device with another trader, and buying in someone else's name." Scope of `yes`: the trader's own device, not shared with another trader; no page says the device must be a local (non-VPS) machine, and VPS permission is a separate conflict (above). "We use device fingerprints to identify devices associated with user profiles." (S4)
 - Not an issue for a single machine: "Sharing Wi-Fi, an office network, or an IP address alone does not establish device sharing." (S4)
 - WealthCharts: "For the best experience, avoid logging in on multiple devices at the same time." (S1)
 
@@ -259,7 +259,7 @@ Classification: **conditional** (own accounts only; ambiguity with the automatio
 
 ## 9. Machine-readable blocks
 
-One block per plan, phase and size. Common values in every block: `copy_trading_allowed: conditional`, `automated_trading_allowed: no` with `automation_rule_text` quoted in §6, `vps_allowed: unknown` (conflict, §7), `personal_device_required: unknown`, `trading_day_reset: null` (unpublished), `commission_per_contract: null` (unpublished), `status: conflict`.
+One block per plan, phase and size. Common values in every block: `copy_trading_allowed: conditional`, `automated_trading_allowed: no` with `automation_rule_text` quoted in §6, `vps_allowed: conflict` (§7), `personal_device_required: unknown`, `trading_day_reset: null` (unpublished), `commission_per_contract: null` (unpublished), `status: conflict`.
 
 #### Prime — evaluation — 25K
 
@@ -282,10 +282,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
 notes: "Max position published as \"Standard/Max\" columns, meaning of the two figures not defined. Passing in \"as little as one trading day\" (no minimum-days rule stated). Seven days to activate the funded account after passing. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -328,10 +328,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
 notes: "Max position published as \"Standard/Max\" columns, meaning of the two figures not defined. Passing in \"as little as one trading day\" (no minimum-days rule stated). Seven days to activate the funded account after passing. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -374,10 +374,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
 notes: "Max position published as \"Standard/Max\" columns, meaning of the two figures not defined. Passing in \"as little as one trading day\" (no minimum-days rule stated). Seven days to activate the funded account after passing. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -420,10 +420,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at (evaluation lock not stated separately)", "max_position (Standard vs Max undefined)", "min_trading_days"]
 notes: "Max position published as \"Standard/Max\" columns, meaning of the two figures not defined. Passing in \"as little as one trading day\" (no minimum-days rule stated). Seven days to activate the funded account after passing. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -466,10 +466,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
 notes: "Payouts every 3 trading days, minimum $200 profit per trading day, 90/10 split, buffer = drawdown + $100. Drawdown does not reset after a payout. Max position published as Standard/Max; scaling plan limits are updated at the end of each session."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -512,10 +512,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
 notes: "Payouts every 3 trading days, minimum $200 profit per trading day, 90/10 split, buffer = drawdown + $100. Drawdown does not reset after a payout. Max position published as Standard/Max; scaling plan limits are updated at the end of each session."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -558,10 +558,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
 notes: "Payouts every 3 trading days, minimum $200 profit per trading day, 90/10 split, buffer = drawdown + $100. Drawdown does not reset after a payout. Max position published as Standard/Max; scaling plan limits are updated at the end of each session."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -604,10 +604,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
 notes: "Payouts every 3 trading days, minimum $200 profit per trading day, 90/10 split, buffer = drawdown + $100. Drawdown does not reset after a payout. Max position published as Standard/Max; scaling plan limits are updated at the end of each session."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -650,10 +650,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -696,10 +696,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -742,10 +742,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -788,10 +788,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (150K EOD table inverted)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (150K EOD table inverted)"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee. The EOD table prints \"10 Micros/100 Minis\" for 150K (order inverted); the Intraday table and the funded page say 10 minis/100 micros. Treated as a typo but not confirmed."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -834,10 +834,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -880,10 +880,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -926,10 +926,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -972,10 +972,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Accounts purchased on or after 2026-09-09 (current table). Standard option passes in two days, Fast Pass add-on in one day. Seven days to activate the funded account. No activation fee. The EOD table prints \"10 Micros/100 Minis\" for 150K (order inverted); the Intraday table and the funded page say 10 minis/100 micros. Treated as a typo but not confirmed."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1018,10 +1018,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1065,10 +1065,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1112,10 +1112,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1159,10 +1159,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1206,10 +1206,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1253,10 +1253,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1300,10 +1300,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1347,10 +1347,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position (conflict: funded table vs scaling plan)", "min_trading_days", "drawdown.stops_trailing_at"]
 notes: "Payouts every 5 qualifying trading days, minimum $200 profit per trading day, 90/10 split, max payout 50% of profit up to $1,000 / $2,000 / $2,500 / $3,000. The funded page prints the Intraday amounts as the Max Drawdown column although it also describes an EOD variant; the EOD amounts come from the Premier+ Drawdown page."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1394,10 +1394,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Daily Payout Add-On (+$39 per the home page selector) removes the trading-day requirement and consistency rule for payouts. Seven days to activate the funded account."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1440,10 +1440,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Daily Payout Add-On (+$39 per the home page selector) removes the trading-day requirement and consistency rule for payouts. Seven days to activate the funded account."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1486,10 +1486,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Daily Payout Add-On (+$39 per the home page selector) removes the trading-day requirement and consistency rule for payouts. Seven days to activate the funded account."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1532,10 +1532,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "Daily Payout Add-On (+$39 per the home page selector) removes the trading-day requirement and consistency rule for payouts. Seven days to activate the funded account."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1578,10 +1578,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
 notes: "Minimum 3 trading days to request a payout (none with the Daily Payout Add-On), minimum $200 profit per trading day, profit requirement per payout $1,500 / $3,000 / $6,000 / $9,000, max payout per request (standard) $750 / $1,250 / $2,250 / $3,250, 90/10 split. Funded uses the same intraday trailing drawdown as the evaluation. The home page card says \"No consistency in sim funded\" (with add-on unlocks)."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1625,10 +1625,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
 notes: "Minimum 3 trading days to request a payout (none with the Daily Payout Add-On), minimum $200 profit per trading day, profit requirement per payout $1,500 / $3,000 / $6,000 / $9,000, max payout per request (standard) $750 / $1,250 / $2,250 / $3,250, 90/10 split. Funded uses the same intraday trailing drawdown as the evaluation. The home page card says \"No consistency in sim funded\" (with add-on unlocks)."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1672,10 +1672,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
 notes: "Minimum 3 trading days to request a payout (none with the Daily Payout Add-On), minimum $200 profit per trading day, profit requirement per payout $1,500 / $3,000 / $6,000 / $9,000, max payout per request (standard) $750 / $1,250 / $2,250 / $3,250, 90/10 split. Funded uses the same intraday trailing drawdown as the evaluation. The home page card says \"No consistency in sim funded\" (with add-on unlocks)."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1719,10 +1719,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "consistency_rule (Velocity card on home page says none in sim funded; help center says 40%; add-on removes it)", "min_trading_days"]
 notes: "Minimum 3 trading days to request a payout (none with the Daily Payout Add-On), minimum $200 profit per trading day, profit requirement per payout $1,500 / $3,000 / $6,000 / $9,000, max payout per request (standard) $750 / $1,250 / $2,250 / $3,250, 90/10 split. Funded uses the same intraday trailing drawdown as the evaluation. The home page card says \"No consistency in sim funded\" (with add-on unlocks)."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1766,10 +1766,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)", "max_position (25K: table 1 mini vs scaling plan max 3 minis)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)", "max_position (25K: table 1 mini vs scaling plan max 3 minis)"]
 notes: "No evaluation phase. Payout needs 7 trading days of at least $200 profit, profit goal between payouts $1,500 / $3,000 / $6,000 / $9,000 (payout 1) and $1,000 / $2,000 / $3,000 / $4,500 (payout 2+), max payout per payout $1,000-$3,500 by size, 90/10 split. One-time fee, no resets on S2F accounts. Max 5 active funded accounts."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1816,10 +1816,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)"]
 notes: "No evaluation phase. Payout needs 7 trading days of at least $200 profit, profit goal between payouts $1,500 / $3,000 / $6,000 / $9,000 (payout 1) and $1,000 / $2,000 / $3,000 / $4,500 (payout 2+), max payout per payout $1,000-$3,500 by size, 90/10 split. One-time fee, no resets on S2F accounts. Max 5 active funded accounts."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1866,10 +1866,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)"]
 notes: "No evaluation phase. Payout needs 7 trading days of at least $200 profit, profit goal between payouts $1,500 / $3,000 / $6,000 / $9,000 (payout 1) and $1,000 / $2,000 / $3,000 / $4,500 (payout 2+), max payout per payout $1,000-$3,500 by size, 90/10 split. One-time fee, no resets on S2F accounts. Max 5 active funded accounts."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1916,10 +1916,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "consistency_rule (conflict: 25% help center vs 45% home page)"]
 notes: "No evaluation phase. Payout needs 7 trading days of at least $200 profit, profit goal between payouts $1,500 / $3,000 / $6,000 / $9,000 (payout 1) and $1,000 / $2,000 / $3,000 / $4,500 (payout 2+), max payout per payout $1,000-$3,500 by size, 90/10 split. One-time fee, no resets on S2F accounts. Max 5 active funded accounts."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -1966,10 +1966,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at"]
 notes: "No evaluation. Invite-only per home page card. 5 winning days of $200+ before a payout. Payout profit target per cycle for purchases on or after 2026-10-22: $4,000 (50K), resets after each payout (before that date: none). Payout buffer $52,100, max payouts $1,250 / $1,250 / $1,500, minimum payout $500, 90/10 split. Dates in the rules are 2026-10-22; today is 2026-10-23 so the new terms apply to current purchases."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2013,10 +2013,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)"]
 notes: "Invite-only per home page card. 5 qualifying trading days of $200+. Payout profit target per cycle for purchases on or after 2026-10-22: $2,000. Payout buffer $1,100, maximum payout $500."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2058,10 +2058,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "max_position.scaling (Payday scaling table not published)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "max_position.scaling (Payday scaling table not published)"]
 notes: "7 qualifying trading days of $200+. Profit required between payouts $3,000. Payouts up to $1,000 / $1,000 / $1,250 (#3 and beyond). DLL type published as \"Hard Breach\"."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2102,10 +2102,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "min_trading_days"]
 notes: "Invite-only per home page card. Daily payouts after a $2,500 profit target between payout requests; payouts #1-2 up to $500, #3+ up to $1,000. News restriction: high-impact USD news, must be flat from 1 minute before to 1 minute after, breach otherwise (hard breach). No traditional minimum trading days."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2145,10 +2145,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.stops_trailing_at", "min_trading_days"]
 notes: "Account size is published as $2,000 with a $3,000 profit target and $2,000 loss limit (so the loss limit equals the account size). Equity must stay above the threshold throughout the day including open trades."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2191,10 +2191,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)"]
 notes: "Payouts every trading day once eligible, $500 to $1,000 per payout, balance must stay at or above the $4,000 buffer, at least $1 new net profit between payouts, 90% split. \"No qualifying trading days required.\""
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2238,10 +2238,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
 notes: "Strictly invite-only; traders cannot apply. Passing leads to the Professional Stage (see Pro blocks), no simulated funded payouts. Drawdown type and daily loss limit of the Prestige evaluation are not published."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2282,10 +2282,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
 notes: "Strictly invite-only; traders cannot apply. Passing leads to the Professional Stage (see Pro blocks), no simulated funded payouts. Drawdown type and daily loss limit of the Prestige evaluation are not published."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2326,10 +2326,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
 notes: "Strictly invite-only; traders cannot apply. Passing leads to the Professional Stage (see Pro blocks), no simulated funded payouts. Drawdown type and daily loss limit of the Prestige evaluation are not published."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2370,10 +2370,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit"]
 notes: "Strictly invite-only; traders cannot apply. Passing leads to the Professional Stage (see Pro blocks), no simulated funded payouts. Drawdown type and daily loss limit of the Prestige evaluation are not published."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2414,10 +2414,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.amount_usd", "drawdown.type (conflict: EOP vs EOD)", "daily_loss_limit", "max_position", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.amount_usd", "drawdown.type (conflict: EOP vs EOD)", "daily_loss_limit", "max_position", "min_trading_days"]
 notes: "Live-market program reached after 3 approved payouts or $10,000 in approved simulated payouts, then risk review. Personalized max drawdown assigned per account (amount not published). Daily Loss Limit governed by the scaling plan (amount not published). 80% trader / 20% FFF. The Prestige page calls the Pro funded phase an \"End of Day Drawdown model\", the structure page \"End-of-Position (EOP)\"."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2459,10 +2459,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.amount_usd", "drawdown.type (conflict: EOP vs EOD)", "daily_loss_limit", "max_position", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.amount_usd", "drawdown.type (conflict: EOP vs EOD)", "daily_loss_limit", "max_position", "min_trading_days"]
 notes: "Live-market program reached after 3 approved payouts or $10,000 in approved simulated payouts, then risk review. Personalized max drawdown assigned per account (amount not published). Daily Loss Limit governed by the scaling plan (amount not published). 80% trader / 20% FFF. The Prestige page calls the Pro funded phase an \"End of Day Drawdown model\", the structure page \"End-of-Position (EOP)\"."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2504,10 +2504,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.amount_usd", "drawdown.type (conflict: EOP vs EOD)", "daily_loss_limit", "max_position", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.amount_usd", "drawdown.type (conflict: EOP vs EOD)", "daily_loss_limit", "max_position", "min_trading_days"]
 notes: "Live-market program reached after 3 approved payouts or $10,000 in approved simulated payouts, then risk review. Personalized max drawdown assigned per account (amount not published). Daily Loss Limit governed by the scaling plan (amount not published). 80% trader / 20% FFF. The Prestige page calls the Pro funded phase an \"End of Day Drawdown model\", the structure page \"End-of-Position (EOP)\"."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2549,10 +2549,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit.kind", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit.kind", "min_trading_days"]
 notes: "Execution infrastructure: Rithmic. \"Market Data: Not included; traders must select and subscribe to data services independently\". Reached after $5,000 in approved Professional Stage payouts or an initial Pro payout plus review; documentation and broker processing required. Live is the only phase in which a real-money account exists; the DLL kind and drawdown type are not published."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2592,10 +2592,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit.kind", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit.kind", "min_trading_days"]
 notes: "Execution infrastructure: Rithmic. \"Market Data: Not included; traders must select and subscribe to data services independently\". Reached after $5,000 in approved Professional Stage payouts or an initial Pro payout plus review; documentation and broker processing required. Live is the only phase in which a real-money account exists; the DLL kind and drawdown type are not published."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2635,10 +2635,10 @@ commission_per_contract: { mnq_usd: null, nq_usd: null, basis: null, includes: n
 copy_trading_allowed: conditional
 automated_trading_allowed: no
 automation_rule_text: "At Funded Futures Family, we don’t permit bot or algorithmic trading. / Bots, algorithms, expert advisors and any automated order entry are not allowed."
-vps_allowed: unknown
-personal_device_required: unknown
+vps_allowed: conflict
+personal_device_required: yes
 status: conflict
-not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "personal_device_required", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit.kind", "min_trading_days"]
+not_confirmed_fields: ["commission_per_contract", "trading_day_reset", "vps_allowed (conflict)", "copy_trading_allowed (ambiguity vs automation ban)", "drawdown.type", "drawdown.stops_trailing_at", "daily_loss_limit.kind", "min_trading_days"]
 notes: "Execution infrastructure: Rithmic. \"Market Data: Not included; traders must select and subscribe to data services independently\". Reached after $5,000 in approved Professional Stage payouts or an initial Pro payout plus review; documentation and broker processing required. Live is the only phase in which a real-money account exists; the DLL kind and drawdown type are not published."
 sources:
   - { field: platforms, url: "https://intercom.help/funded-futures-family/en/articles/15656536-connecting-your-trading-platform", accessed: "2026-10-23" }
@@ -2672,7 +2672,7 @@ sources:
 | `trading_day_reset` | all | unpublished | Only a 4:45 pm EST flatten / 6:00 pm EST reopen window (S5) found. Holiday rule unpublished |
 | `commission_per_contract` | all | unpublished | No fee schedule found (§8) |
 | `copy_trading_allowed` | all | ambiguity | S3 allows copying between own accounts but bans "any automated order entry"; no page says whether a copier is exempt |
-| `personal_device_required` | all | unknown | No page requires or forbids a remote machine other than the VPS sentence above |
+| `personal_device_required` | all | closed R4: yes | S4: "Each trader must use their own device to access and trade on their accounts." Residual: nothing says whether a remote machine counts as the trader's own device |
 | `automated_trading_allowed` | Live Stage / Pro | unknown | No Pro/Live-specific automation article; the general ban is in S2/S3 |
 | `drawdown.stops_trailing_at` | Velocity, Accelerate 50K, Premier+ Intraday, Prestige, Base evaluation | unpublished | Lock behaviour not stated (S28/S39 say only "remains locked at that level" after a payout / never moves back down) |
 | `drawdown.amount_usd`, `daily_loss_limit` | Pro funded | unpublished | "Personalized Max Drawdown, assigned per account"; DLL "governed by the Scaling Plan" |
@@ -2686,3 +2686,4 @@ sources:
 ## 11. Changelog
 
 - 2026-10-23 — initial research (Lupa)
+- 2026-10-23 — rev bump R4: `personal_device_required` closed as `yes` (Device Sharing article, verbatim in §7); `vps_allowed` changed from `unknown` to `conflict` (both official texts re-captured, unchanged, none withdrawn). `trading_day_reset` stays unpublished: crawled the help center collections (68 articles) and the terms page; only "All trades must close by 4:45 pm EST, and you can reopen trades at 6:00 pm EST." (https://intercom.help/funded-futures-family/en/articles/15892350-permitted-times-to-trade); no holiday rule (Lupa)

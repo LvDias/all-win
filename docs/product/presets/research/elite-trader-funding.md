@@ -155,8 +155,8 @@ ToS (S2) prohibited conduct (ac), verbatim: "makes use of artificial intelligenc
 
 **Device / hosting (format rev. 3 item 7).**
 - **VPS, VPN, proxy: forbidden** (ToS prohibits users who) "utilize virtual private networks (VPNs), The Onion Router (TOR), virtual private servers (VPS), proxy servers, or any other form of technology or technologies in tandem that in any way hinders our ability to ascertain your IP address, MAC address, or any other identifying information about your device" (S2, clause (l)). Help article (S3): "Connecting to your ETF account through a VPN, VPS, proxy, or any service that hides, changes, or spoofs your real IP address or physical location." is prohibited; "The sole exception is an ETF-approved partner service operating within an approved IP range." (S3, e.g. an approved cloud copier). Penalty: "account reset, forfeiture of profits, account failure, and a permanent ban" (S3).
-- **Wording inconsistency:** the copier disclaimer (S1) says "We will continue to reward skilled traders who genuinely trade their ETF accounts and use VPNs or VPS for legitimate and benign reasons." This reads as tolerance, but no page withdraws the ToS/S3 prohibition. Recorded as a gap in §10; blocks use `vps_allowed: no` with `vps_allowed` listed in `not_confirmed_fields`.
-- **Personal device / orders from own device:** no explicit rule found. Related: "You represent and warrant that you will not share your Account information, User ID, or password with anyone" (S2); remote trading for another user is prohibited (S25); ETF "reserves the right to audit ... IP address logs and device fingerprints" (S2). `personal_device_required: unknown` (gap).
+- **Wording inconsistency:** the copier disclaimer (S1) says "We will continue to reward skilled traders who genuinely trade their ETF accounts and use VPNs or VPS for legitimate and benign reasons." This reads as tolerance, but no page withdraws the ToS/S3 prohibition. Recorded as a gap in §10; R4 (2026-10-23): re-captured S1, S2, S3 and S31; the three texts are unchanged and still disagree, so blocks now use `vps_allowed: conflict` (both texts recorded, no choice made), listed in `not_confirmed_fields`. The ToS and S3 are the binding rules text; S1 is a disclaimer about copiers.
+- **Personal device / orders from own device:** no explicit rule found. Related: "You represent and warrant that you will not share your Account information, User ID, or password with anyone" (S2); remote trading for another user is prohibited (S25); ETF "reserves the right to audit ... IP address logs and device fingerprints" (S2). R4 re-check (2026-10-23, S2, S3, S25): searched the ToS, the VPN/IP policy and the trading-for-another-user policy for device, own computer, remote desktop, shared IP and third-party operation; no text requires or permits a specific device. Silence stays `personal_device_required: unknown`.
 - **Mac/Windows:** NinjaTrader and several Rithmic platforms are Windows only (S19).
 
 **Other rules that affect routing or risk.**
@@ -189,7 +189,7 @@ Basis: `per_side`. Whether the figure includes exchange, NFA and platform fees i
 
 ### 9. Machine-readable blocks
 
-Common to all blocks: `trading_day_reset` is null (not published, §4), `personal_device_required: unknown`, `vps_allowed: no` (with the inconsistency noted in §7), commission MNQ 0.51 / NQ 2.04 per side with `includes: null`. Platforms are the firm-wide list (§2). `status: partial` unless stated. Plan blocks for sizes whose figures are not published carry null values.
+Common to all blocks: `trading_day_reset` is null (not published, §4), `personal_device_required: unknown`, `vps_allowed: conflict` (ToS ban vs copier-disclaimer tolerance, §7), commission MNQ 0.51 / NQ 2.04 per side with `includes: null`. Platforms are the firm-wide list (§2). `status: partial` unless stated. Plan blocks for sizes whose figures are not published carry null values.
 
 #### 1-Step — evaluation — 50K
 
@@ -212,10 +212,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "Live trailing drawdown follows highest unrealized profit. No daily loss limit. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/1-step-evaluation", accessed: "2026-10-23" }
@@ -227,6 +227,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -251,10 +253,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "Live trailing drawdown follows highest unrealized profit. No daily loss limit. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/1-step-evaluation", accessed: "2026-10-23" }
@@ -266,6 +268,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -290,10 +294,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, drawdown.amount_usd, profit_target_usd]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), drawdown.amount_usd, profit_target_usd]
 notes: "Live trailing drawdown follows highest unrealized profit. No daily loss limit. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account. 150K drawdown and profit target are not published on any page read (only position limits in S4, size listed on the evaluations page and the cost calculator)."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/1-step-evaluation", accessed: "2026-10-23" }
@@ -305,6 +309,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -329,10 +335,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, availability (sold vs no longer sold)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), availability (sold vs no longer sold)]
 notes: "Live trailing drawdown follows highest unrealized profit. No daily loss limit. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account. Availability conflict: the 1-Step page and drawdown calculator list 250K, but Contract Limits says '250K Live Trailing Eval (no longer sold, existing accounts only)'."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/1-step-evaluation", accessed: "2026-10-23" }
@@ -344,6 +350,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -368,10 +376,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "Daily loss limit is calculated from the prior day's ending balance; open losses count intraday; breaching either the daily loss limit or max drawdown fails the account. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/end-of-day-evaluation", accessed: "2026-10-23" }
@@ -384,6 +392,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -408,10 +418,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "Daily loss limit is calculated from the prior day's ending balance; open losses count intraday; breaching either the daily loss limit or max drawdown fails the account. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/end-of-day-evaluation", accessed: "2026-10-23" }
@@ -424,6 +434,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -448,10 +460,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, drawdown.amount_usd, daily_loss_limit.amount_usd, profit_target_usd]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), drawdown.amount_usd, daily_loss_limit.amount_usd, profit_target_usd]
 notes: "Daily loss limit is calculated from the prior day's ending balance; open losses count intraday; breaching either the daily loss limit or max drawdown fails the account. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account. 150K: only the position limits are published (S4, evaluations page lists the size); drawdown, daily loss limit and profit target not found. The evaluations page says daily loss limit '$1,100 to $2,200 by size' for 50K/100K/150K."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/end-of-day-evaluation", accessed: "2026-10-23" }
@@ -464,6 +476,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -488,10 +502,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "No daily loss limit, no consistency rule. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/static-drawdown", accessed: "2026-10-23" }
@@ -502,6 +516,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -526,10 +542,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "No daily loss limit, no consistency rule. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/static-drawdown", accessed: "2026-10-23" }
@@ -540,6 +556,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -564,10 +582,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "No daily loss limit, no consistency rule. Must be flat 1 minute before the instrument's close (ToS (ae)); no overnight/weekend holds. Min 5 trading days (One Day to Pass add-on lifts it to 1). Eval reset fee $47, unlimited resets. Elite Sim-Funded: at least one trade per week or the account is closed. 'Trade How You Want' promotion (in effect until ETF ends it) removes the 10-second minimum duration and allows DCA/Martingale on sim accounts. Order sizes: minis and micros are enforced independently by the platform but stacking both is 'not acceptable use' (S4). Entire position limit is hard: exceeding it fails the account. LOW PRIORITY (below 25K)."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/static-drawdown", accessed: "2026-10-23" }
@@ -578,6 +596,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -602,10 +622,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "Only ETF evaluation (with Direct to Funded) that may hold positions overnight and over the weekend. Daily loss limit is a hard breach measured from the prior day's close; open losses count. Single size (100K). Eval reset $47. Weekly trade requirement applies. Tighter position cap (2 minis / 20 micros) than End of Day."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/diamond-hands-evaluation", accessed: "2026-10-23" }
@@ -617,6 +637,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -641,10 +663,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "LOW PRIORITY (10K, below 25K). Variant: EOD. Minimum 3 trading days; the evaluation auto-fails if not passed within 10 calendar days and cannot be reset (Fast Track is not eligible for resets). No daily loss limit."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/fast-track-evaluation", accessed: "2026-10-23" }
@@ -656,6 +678,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -680,10 +704,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict)]
 notes: "LOW PRIORITY (10K, below 25K). Variant: Static. Minimum 3 trading days; the evaluation auto-fails if not passed within 10 calendar days and cannot be reset (Fast Track is not eligible for resets). No daily loss limit."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/fast-track-evaluation", accessed: "2026-10-23" }
@@ -695,6 +719,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -719,10 +745,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "Same contract limits and drawdown as the evaluation continue after funding (S4). Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-1-step-plan-works", accessed: "2026-10-23" }
@@ -732,6 +758,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -756,10 +784,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "Same contract limits and drawdown as the evaluation continue after funding (S4). Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-1-step-plan-works", accessed: "2026-10-23" }
@@ -769,6 +797,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -793,10 +823,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article), drawdown.amount_usd]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article), drawdown.amount_usd]
 notes: "Same contract limits and drawdown as the evaluation continue after funding (S4). 150K drawdown not published. Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-1-step-plan-works", accessed: "2026-10-23" }
@@ -806,6 +836,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -830,10 +862,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "Same contract limits and drawdown as the evaluation continue after funding (S4). 250K marked 'no longer sold, existing accounts only' in Contract Limits. Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-1-step-plan-works", accessed: "2026-10-23" }
@@ -843,6 +875,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -867,10 +901,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "Daily loss limit (hard) is removed once the safety net is reached. Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-end-of-day-plan-works", accessed: "2026-10-23" }
@@ -880,6 +914,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -904,10 +940,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "Daily loss limit (hard) is removed once the safety net is reached. Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-end-of-day-plan-works", accessed: "2026-10-23" }
@@ -917,6 +953,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -941,10 +979,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article), drawdown.amount_usd, daily_loss_limit.amount_usd]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article), drawdown.amount_usd, daily_loss_limit.amount_usd]
 notes: "Daily loss limit (hard) is removed once the safety net is reached. 150K drawdown and daily loss limit not published. Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-end-of-day-plan-works", accessed: "2026-10-23" }
@@ -954,6 +992,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -978,10 +1018,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article), drawdown (min balance 24100 vs 24000)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article), drawdown (min balance 24100 vs 24000)]
 notes: "Fixed minimum balance. CONFLICT: Safety Net table lists 25K Static minimum balance $24,100 while the Static plan page says the floor is $24,000 (25000-1000); drawdown kept as published on the plan page. Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/static-drawdown", accessed: "2026-10-23" }
@@ -991,6 +1031,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1015,10 +1057,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "Fixed minimum balance. Must be flat 1 minute before close (no overnight). Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/static-drawdown", accessed: "2026-10-23" }
@@ -1028,6 +1070,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1052,10 +1096,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "Positions may be held overnight and over the weekend. Overnight and weekend holds allowed on Diamond Hands. Phase 'funded' = Elite Sim-Funded (simulated funded account; real money is paid out from simulated profits). No profit target. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/help/how-the-revamped-diamond-hands-plan-works", accessed: "2026-10-23" }
@@ -1065,6 +1109,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1089,10 +1135,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "No daily loss limit.  Direct to Funded has no evaluation: it starts as an Elite Sim-Funded account, 1 mini = 1 micro for position math, one-time purchase. The page label 'Profit target' on the DTF page is the safety net; the DTF help article says 'DTF accounts have no profit target'. Swing trading allowed (overnight/weekend). Rewards need ATDs (5/10/15/20 by size) and the safety net. LOW PRIORITY (below 25K). Flatten rule does not apply (holds allowed). Major-news flat rule conflicts between pages. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/direct-to-funded", accessed: "2026-10-23" }
@@ -1103,6 +1149,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1127,10 +1175,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "No daily loss limit.  Direct to Funded has no evaluation: it starts as an Elite Sim-Funded account, 1 mini = 1 micro for position math, one-time purchase. The page label 'Profit target' on the DTF page is the safety net; the DTF help article says 'DTF accounts have no profit target'. Swing trading allowed (overnight/weekend). Rewards need ATDs (5/10/15/20 by size) and the safety net. Flatten rule does not apply (holds allowed). Major-news flat rule conflicts between pages. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/direct-to-funded", accessed: "2026-10-23" }
@@ -1141,6 +1189,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1165,10 +1215,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: partial
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, news rule (conflict ToS vs help article)]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), news rule (conflict ToS vs help article)]
 notes: "No daily loss limit.  Direct to Funded has no evaluation: it starts as an Elite Sim-Funded account, 1 mini = 1 micro for position math, one-time purchase. The page label 'Profit target' on the DTF page is the safety net; the DTF help article says 'DTF accounts have no profit target'. Swing trading allowed (overnight/weekend). Rewards need ATDs (5/10/15/20 by size) and the safety net. Flatten rule does not apply (holds allowed). Major-news flat rule conflicts between pages. Rewards require Active Trade Days (8 for cycle 1, 10 for cycles 2-4) and the safety net. After +20% profit, giving back more than 35% of accumulated profit removes the account (loss limit rule). Major-news flat rule conflicts between pages (see notes in section 7). Max 20 active funded accounts."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/direct-to-funded", accessed: "2026-10-23" }
@@ -1179,6 +1229,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1203,10 +1255,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: unverified
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, drawdown.amount_usd, max_position, size availability]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), drawdown.amount_usd, max_position, size availability]
 notes: "UNVERIFIED SIZE: 25K DTF appears in the DTF help article's ATD table (safety net $2,600, End-of-Day) and in LIVE ELITE onboarding balances, but not on the DTF product page (10K/50K/100K) nor in Contract Limits. If safety net = max drawdown + $100, drawdown would be $2,500 (derived, not published). Do not use as a preset without confirmation."
 sources:
   - { field: consistency_rule, url: "https://elitetraderfunding.app/help/how-the-dtf-plan-works", accessed: "2026-10-23" }
@@ -1215,6 +1267,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1239,10 +1293,10 @@ commission_per_contract: { mnq_usd: "0.51", nq_usd: "2.04", basis: per_side, inc
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 automation_rule_text: "If you choose to use a trade copier, AI, bot, EA, algo, or other automated trading tool, you do so entirely at your own risk. The decision and responsibility to use such tools rest solely with the user. AI, bots, EAs, and algos additionally require ETF's written authorization before use. [ToS (ac)] makes use of artificial intelligence (AI), bots, automated trading systems, trade copiers, or other automated trading strategies that are not expressly authorized in writing by ETF."
-vps_allowed: no
+vps_allowed: conflict
 personal_device_required: unknown
 status: unverified
-not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed, drawdown.amount_usd, max_position, platforms (live broker), copy/automation rules for LIVE]
+not_confirmed_fields: [trading_day_reset, personal_device_required, commission_per_contract.includes, vps_allowed (conflict), drawdown.amount_usd, max_position, platforms (live broker), copy/automation rules for LIVE]
 notes: "Not purchasable ('no checkout button'); invitation after sim stage; real capital with starting balances of $1,250-$2,500 (not 25K-300K sizes). 80/20 split, $250 minimum withdrawal, end-of-day drawdown, Level 2 data in a $197 market-data fee, swing trading 'permitted at ETF's discretion'. The trade copier / automation rules for LIVE ELITE are not separately stated; live-account platform/broker not stated. size_usd 0.00 is a placeholder. Record for completeness only."
 sources:
   - { field: drawdown, url: "https://elitetraderfunding.app/live-elite", accessed: "2026-10-23" }
@@ -1251,6 +1305,8 @@ sources:
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: automation_rule_text, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://elitetraderfunding.app/help/vpn-and-ip-masking-policy", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/terms-of-service", accessed: "2026-10-23" }
+  - { field: vps_allowed, url: "https://elitetraderfunding.app/help/trade-copier-disclaimer", accessed: "2026-10-23" }
   - { field: platforms, url: "https://elitetraderfunding.app/help/supported-platforms-and-data-feed", accessed: "2026-10-23" }
 ```
 
@@ -1263,11 +1319,11 @@ sources:
 | 3 | 1 Step 150K | gap | Listed in S4 (18 minis / 180 micros) and S32 but absent from S5 (50K, 100K, 250K); drawdown and profit target not published on any page read |
 | 4 | End of Day 150K | gap | Only position limits (S4) and existence (S32); drawdown, daily loss limit, profit target not published |
 | 5 | Static 25K minimum balance | conflict | S28 and "Elite Minimum Balances": 25K Static $24,100 (10K Static $9,600) vs S6: floor $24,000 on a $1,000 static drawdown. Blocks use the plan-page drawdown |
-| 6 | VPS wording | conflict (wording) | S2 clause (l) and S3 prohibit VPS (exception: approved partner IP range) vs S1: "use VPNs or VPS for legitimate and benign reasons". Blocks use `vps_allowed: no` |
+| 6 | VPS wording | conflict (wording) | S2 clause (l) and S3 prohibit VPS (exception: approved partner IP range) vs S1: "use VPNs or VPS for legitimate and benign reasons". R4: blocks now use `vps_allowed: conflict` (both texts re-captured 2026-10-23, unchanged) |
 | 7 | 25K DTF | unverified | In the DTF ATD table (S15, S17) and LIVE ELITE balances (S30), not on S10 or in S4. Block is `unverified` with nulls |
 | 8 | DTF "Profit target" | conflict (label) | S10 table shows "Profit target $1,600 / $5,100 / $5,100"; S15: "DTF accounts have no profit target" (those figures are the safety nets). Blocks use no profit target |
 | 9 | Trading-day / session reset time | gap | Not published as a reset time (see §4). Closest: ToS Trading Session 6:00 p.m. ET to 5:00 p.m. ET; maintenance 4:00-5:00 PM CST |
-| 10 | Personal device / orders from own device | gap | No explicit rule found; only account-sharing, trading-for-others and VPS/IP rules |
+| 10 | Personal device / orders from own device | gap (R4 re-searched, still unknown) | No explicit rule found in ToS, VPN/IP policy or trading-for-another-user policy; only account-sharing, trading-for-others and VPS/IP rules |
 | 11 | Copying with accounts at other firms | gap | Not mentioned |
 | 12 | Webhooks, alerts, semi-automated | gap | Not mentioned; "automated trading systems" need written authorization; boundary undefined. Contact route: support ticket via the "Boomeo AI chat" or support@elitetraderfunding.com (S4) |
 | 13 | Commission inclusions | gap | Not stated whether $0.51 / $2.04 per side include exchange, NFA, clearing or platform fees |
@@ -1281,3 +1337,4 @@ sources:
 ### 11. Changelog
 
 - 2026-10-23 — initial research (Lupa)
+- 2026-10-23 — rev bump R4: `vps_allowed` set to `conflict` (ToS clause (l) and S3 ban VPS; S1 copier text tolerates "VPNs or VPS for legitimate and benign reasons"; neither withdrawn). `personal_device_required` stays unknown (no text found). `trading_day_reset` stays unknown: searched ToS, End of Day plan article, maintenance article; only "Sunday evening and Monday are counted as the same trading day." and "Can I trade on holidays and during news? Yes, but volatility can be very low or extremely high." (https://elitetraderfunding.app/help/how-the-end-of-day-plan-works) (Lupa)
