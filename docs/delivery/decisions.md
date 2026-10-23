@@ -173,3 +173,12 @@
 - **Presets S-R3-1..5: (a)** — FFF opt-in with the verbatim ban; Phoenix per-platform preset, dxFeed manual-tracking-only; Elite conditional, off by default, written-authorisation warning; NT8-unreachable platforms → preset shown, account manual-tracking-only; Earn2Trade follower opt-in with the text.
 - **2nd Windows VPS:** contract only when V1.1 (S19) tests are near; the Maestro warns the user in advance.
 - **Canonical docs:** slice-plan / presets (PO); ADR-0003/0004 r4 + r5, auth policy rev. 3.2 (Architect); HTTP contracts 5.2.0–5.4.0 (Compasso); data model (Database Architect).
+
+## 2026-10-24 — Q91, Q92 and the S17 Pine signal rules
+- **Q91 (a): risk ACCEPTED by the user.** Shared-browser device cookie (Vigia I11): a previous user of the same browser who also obtains a sign-in code could sign in without the new-device notice / M3. Accepted because the attack already requires access to the user's e-mail.
+- **Q92 (c):** when the plugin cannot establish the trading-day start (NT8 closed at the boundary, no proven reconstruction), new automated entries on that account stay blocked (exits pass) until the user confirms "restart today's count" in the web; the Core sends the re-anchor (day_realized_net_known with watermark) per Esquadro's final rule; the confirmation warns that losses All Win did not see may be left out. Never re-anchored automatically.
+- **S17-a:** trigger setups and NQ Triggers by engulfing → alert at bar close; Trade Plan and Trigger in "touch" mode → intrabar.
+- **S17-b:** one signal per bar / setup / direction.
+- **S17-c:** opening = BUY/SELL; Trade Plan by the target's direction; Bull buys, Bear sells. The indicator's take/stop alerts never become orders (stop/target come from the account profile); they are only recorded. Opposite signal with an open position: ANSWER PENDING.
+- **S17-d:** base quantity 1 for every signal (the account multiplier applies on top).
+- **Canonical docs:** auth policy rev. 3.2 (Q91 risk acceptance, Architect); adapter protocol 1.4 + S13/S15 (Q92, Compasso/Esquadro/Malha); integrations/tradingview guide + Pine (S17, Plugin Engineer); slice-plan (PO).
