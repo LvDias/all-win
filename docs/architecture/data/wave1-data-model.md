@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.13 (590e5bb); **rev. 16.14 proposed** (Esquadro FINAL, duplicate after the purge): `body_sha256` lives only as long as the content; the Q13-b purge clears it and stamps `content_purged_at` in the same batch; a re-send after the purge is `ingress.duplicate_ignored` with `content_not_retained: true`; no HMAC, no per-field hashes (§6.1, §8); the `presets.version_available` UUIDv5 namespace and test vector (§5.7).
+- **Status:** Accepted (2026-10-24), rev. 16.14 (3452f0f); **rev. 16.15 proposed** (Ferro; Esmeril nits on 16.14): the `instruction_purge_receipt_hash` statement trigger clears the receipt hash on every instruction delete (§6.1, §6.5, §8); a duplicated sentence removed.
+- Rev. 16.14 (3452f0f) (Esquadro FINAL, duplicate after the purge): `body_sha256` lives only as long as the content; the Q13-b purge clears it and stamps `content_purged_at` in the same batch; a re-send after the purge is `ingress.duplicate_ignored` with `content_not_retained: true`; no HMAC, no per-field hashes (§6.1, §8); the `presets.version_available` UUIDv5 namespace and test vector (§5.7).
 - Rev. 16.13 (590e5bb) (Esquadro; Esmeril L1/L2 on 16.12): the publish CLI refuses `not_material` releases until the re-point path exists, and the job never skips one silently; the UUIDv5 namespace and name bytes for `presets.version_available` (§5.7).
 - Rev. 16.12 (c2b143a) (S16 job, Torno; Esquadro): #11d `…061730` worker column grant on `accounts.account`; conditional-UPDATE idempotency; `not_material` re-point with `accounts.opt_in_rule_updated`; deterministic outbox id for `presets.version_available` (§5.7, §8).
 - Rev. 16.11 (440b453) (Esquadro M3, Esmeril L1/L2 on 16.10): a deferred `instruction` is never routed late (expired with audit by its consumer); Q13-b erasure includes `gateway.deferred_inbound`, unprocessed rows included; schema-invalid frames are unchanged (§6.3).
@@ -1256,7 +1257,7 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   - **After the purge (rev. 16.14, Esquadro FINAL):** the hash lives only as long as the content. The compared set is small enough to enumerate, so a hash kept forever would be a reversible fingerprint of what Q13-b deletes; per-field hashes are rejected for the same reason. The Q13-b purge job deletes `routing.instruction` and, **in the same batch**, sets `body_sha256 = NULL` and `content_purged_at = now()` on the matching receipts (`allwin_maint` has `UPDATE` on those two columns). Before the purge, a plain sha256 is enough: it is redundant with the stored payload.
   - A re-send after the purge → `200`, nothing executed, audit `ingress.duplicate_ignored` with `content_not_retained: true`; never a conflict, since there is nothing to compare. The key `(user_id, message_id)` stays forever, so it still never executes twice. Accepted cost: an id reused months later shows as an ignored duplicate.
   - Tests: a conflict before the purge → names; after the purge → `duplicate_ignored` with `content_not_retained: true` (Ferro); the purge clears the hash in the same batch, and a receipt with neither hash nor purge stamp is refused (DB test).
-  - A row from before `…061250` has neither: the `NOT VALID` constraint is never validated, and such a duplicate is treated as same-body (DEV data only). Such a duplicate is treated as same-body, which concerns DEV data only. Only accepted messages have a receipt, so a duplicate of a rejected message is a new message.
+  - A row from before `…061250` has neither: the `NOT VALID` constraint is never validated, and such a duplicate is treated as same-body (DEV data only). Only accepted messages have a receipt, so a duplicate of a rejected message is a new message.
 
 ADR-0003 §5 makes `message_id` unique **per user, forever**. Q13 option (b) purges instructions after the retention window. To keep both promises, the dedupe key lives in a slim table that is never purged; it is erased only with the user:
 
@@ -1277,6 +1278,18 @@ ALTER TABLE routing.message_receipt
   ADD CONSTRAINT message_receipt_body_hash_check
     CHECK (body_sha256 IS NOT NULL OR content_purged_at IS NOT NULL) NOT VALID;  -- enforced on every new/updated row
 -- GRANT UPDATE (body_sha256, content_purged_at) ON routing.message_receipt TO allwin_maint;  (the purge)
+-- rev. 16.15 (Ferro; Esmeril nit a): every path that deletes routing.instruction clears the receipt hash in the
+-- same statement. Statement-level, invoker rights: only allwin_maint deletes instructions (BYPASSRLS, and it
+-- has the column UPDATE above); if the receipts are erased first, the UPDATE touches 0 rows.
+CREATE FUNCTION routing.instruction_purge_receipt_hash() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog
+  AS $$ BEGIN
+    UPDATE routing.message_receipt r SET body_sha256 = NULL, content_purged_at = now()
+      FROM old_rows o WHERE r.user_id = o.user_id AND r.message_id = o.message_id AND r.body_sha256 IS NOT NULL;
+    RETURN NULL;
+  END $$;
+CREATE TRIGGER instruction_purge_receipt_hash AFTER DELETE ON routing.instruction
+  REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION routing.instruction_purge_receipt_hash();
+-- Test: after any DELETE of instructions, no receipt keeps a hash without its instruction.
 
 CREATE TABLE routing.instruction (                       -- accepted instructions; purged by retention
   id               uuid PRIMARY KEY,                     -- instruction_id (UUIDv7)
@@ -1771,7 +1784,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | Table | Dedupe key | Partitioned | Retention (Q13 b) |
 |---|---|---|---|
 | `audit.audit_entry` | `(occurred_at, source_event_id)` | monthly | drop partitions older than N months |
-| `routing.instruction`, `routing.routing_decision` | `id`, `(instruction_id, account_id)` | no | batched `DELETE` older than N months |
+| `routing.instruction`, `routing.routing_decision` | `id`, `(instruction_id, account_id)` | no | batched `DELETE` older than N months; the same statement clears the matching receipts' `body_sha256` and stamps `content_purged_at` (trigger, rev. 16.15) |
 | `gateway.command`, `gateway.execution_report` | `id`, `event_id`, `(account_id, fill_id)` | no | batched `DELETE` older than N months, children first |
 | `routing.message_receipt` | `(user_id, message_id)` | no | **kept** until the user is erased |
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
@@ -1967,7 +1980,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 10 | `risk_create_account_limits` (`…061500`, rev. 13/16.6): `account_limits`, `scheduled_limit` (derived), `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block`, with RLS; the rev. 16.6 grants (§5.6) | S13 (Malha) |
 | 10b | `risk_create_applied_fill` (`…061510`, rev. 16.6): `risk.applied_fill` + maint grants (§5.6) | S13 (Malha); after #10 |
-| 6d | `routing_message_receipt_body_hash` (`…061250`, rev. 16.8/16.14): `body_sha256` + `content_purged_at` + `NOT VALID` hash-or-purged `CHECK`, maint column `UPDATE` (§6.1) | Ferro; expand-only |
+| 6d | `routing_message_receipt_body_hash` (`…061250`, rev. 16.8/16.14): `body_sha256` + `content_purged_at` + `NOT VALID` hash-or-purged `CHECK`, maint column `UPDATE`, the `instruction_purge_receipt_hash` statement trigger (rev. 16.15) (§6.1) | Ferro; expand-only |
 | 9b | `gateway_create_deferred_inbound` (`…061610`, rev. 16.10): `gateway.deferred_inbound` (§6.3) | Bigorna; after #9 |
 | 9 | `gateway_create_delivery` (`…061600`, rev. 16.6): `venue_account` (without the binding, rev. 16), `command` (with `frame`, `position_effect`, contract), `execution_report` (with `seq`, contract), `account_sync` (with `version`), `account_sync_reason` (per occurrence), `outbound_message` (with `frame`), `inbound_receipt` | Bigorna (gateway); S2 / M1 |
 | 11 | `catalog_create_presets` (`…061700`, rev. 10/16.8): the §5.7 catalog tables, `publish_seq`, `allwin_publisher` grants; #11b `catalog_opt_in_rule_version_release` (`…061710`) is the forward change on `opt_in_rule_version` | S16 (Torno); after S5 (#5a) |
