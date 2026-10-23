@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.9 (1f15a0f); **rev. 16.10 proposed**: `gateway.deferred_inbound` (#9b `…061610`, Bigorna; Esquadro decision) in §6.3, §6.5 and §8; §6.4 retirement re-check at the next worker startup (Esmeril note on 16.9).
+- **Status:** Accepted (2026-10-24), rev. 16.10 (4c55638); **rev. 16.11 proposed** (Esquadro M3, Esmeril L1/L2 on 16.10): a deferred `instruction` is never routed late (expired with audit by its consumer); Q13-b erasure includes `gateway.deferred_inbound`, unprocessed rows included; schema-invalid frames are unchanged (§6.3).
+- Rev. 16.10 (4c55638): `gateway.deferred_inbound` (#9b `…061610`, Bigorna; Esquadro decision) in §6.3, §6.5 and §8; §6.4 retirement re-check at the next worker startup (Esmeril note on 16.9).
 - Rev. 16.9 (1f15a0f) (Brasa #14 early review, Esquadro B5): the `outbox_notify` statement trigger and its LISTEN rule; worker grants narrowed (no `UPDATE` on `outbox_consumer`, column `UPDATE` on `outbox_delivery`), §6.4 and §8.
 - Rev. 16.8.1 (4fbbda5) (Esmeril L1/L2/N3/N4, Cinzel): body hash without `sent_at` (§6.1); admin self-recovery is always and only break-glass, admin step-up without a session (`admin_recovery` action) (§4); two-key advisory publish lock (§5.7); `routing_decision` `ON CONFLICT` target (§6.2).
 - Rev. 16.8 (208e920): S16 publication (Esquadro (B): `publish_seq`, advisory publish lock, `allwin_publisher`, release-file deltas, cursor table #11c) in §5.7; two-step reverse `leg` on `routing_decision` (§6.2); duplicate-with-different-body hash `…061250` (§6.1); S3 AC-12 admin recovery `…061800` (§4); §8 rows.
@@ -1521,6 +1522,9 @@ CREATE INDEX deferred_inbound_pending_idx ON gateway.deferred_inbound (type, seq
   - Intake inserts `inbound_receipt` and `deferred_inbound` in the same transaction, then acks. The primary key is the same `(connection_id, msg_id)`, so it stays a dedupe barrier after the receipt's 48-h purge, and one user's adapter can never collide with another's.
   - **One consumer per type.** `processed_at` is set by that consumer's slice, in its user-scoped transaction, in `seq` order. A second consumer of a type needs a per-consumer table first (a data model change).
   - **Retention:** processed rows are purged 7 days after `processed_at` (`allwin_maint`). Unprocessed rows are kept, because their consumer slice has not shipped yet. An alert fires on unprocessed rows older than 24 h only for types whose consumer is deployed (the Core's list).
+  - **A deferred `instruction` is never routed late** (rev. 16.11, Esquadro M3; Esmeril L1 on 16.10). An `instruction` frame (master-account input) stored before its consumer slice exists is never routed afterwards. The consumer marks it expired, with audit, by the TTL rule (ADR-0003 §7: `expiry_base = min(sent_at, stored received_at)`), so a frame held for days never executes. Test: an old stored `instruction` is expired by the consumer, not routed.
+  - **Erasure (rev. 16.11, Esmeril L2):** Q13-b erasure deletes the user's `deferred_inbound` rows, **unprocessed ones included**. They hold user payloads (risk events, trade P&L) that would otherwise wait for a consumer slice. `allwin_maint` already has `DELETE`.
+  - A frame that fails the schema stays `protocol.invalid_message`, without ack and without a row. Nothing reaches the user before the consumer slices exist.
   - A new deferred type widens the `type` `CHECK` in a forward migration.
   - Tests: a retransmitted frame is a no-op (receipt and PK); the app cannot `UPDATE payload` or `DELETE`; cross-user reads return 0 rows; the worker reads pending rows and cannot write.
 
