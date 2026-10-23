@@ -1,6 +1,11 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 3. Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1–#3 are written and under DBA review (not yet run against PostgreSQL).
+- **Status:** Accepted (2026-10-23), rev. 7.1; **rev. 8 proposed** (contracts S5 2.1.0, S7 2.2.0, S6 2.3.0 by Compasso; Architect/Code Review pending). Rev. 8 adds:
+  - on `accounts.account`: `firm_name`, `firm_platform`, `*_pending_reason`, the create idempotency key, and the preset-or-manual `CHECK` (§5.2);
+  - `catalog.opt_in_rule_version`, with the generic versions seeded in S5 (§5.1);
+  - `row_version`/`origin`/`copied_at`/`customized` on `account_bracket_profile` (§5.4);
+  - `row_version` on `routing.subscription` (§5.5).
+- Rev. 7.1: step-up `action` = the 8 `StepUpAction` values of HTTP 2.0.0, with `target_id` per action (D1); code-role mapping (D2); shared-browser device rule and `device_key_in_use` (C4). Rev. 7 aligns with HTTP contract 2.0.0: the channel change becomes an entity, `identity.channel_change`, with status, hold and cancellation, and the code roles become `current_value` / `new_value` / `other_channel` (§3, §4.1, §4.3, §6.5, §8, §9). Rev. 6 (Crivo-approved, 539d45e): passwordless sign-in replaces password + TOTP (user requirement change 2026-10-23, Q21/Q22 superseded). It removes `password_hash`, `totp_credential`, `recovery_code` and `password_reset`, and adds verified channels on `app_user`, `signup_code`, `one_time_code`, `code_send_counter` and `known_device` (§3, §4.1, §4.2, §4.3, §6.5, §8, §9). The account is created only when the signup e-mail code is confirmed (S3 AC-2). It ships as a forward migration #2b, `identity_passwordless` (§8). Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
@@ -86,7 +91,7 @@ CREATE POLICY account_owner ON accounts.account
 |---|---|---|
 | `allwin_owner` | `sqlx migrate` | Owns all objects. Never used at runtime |
 | `allwin_app` | Request handlers and per-user work | DML on module tables, `NOBYPASSRLS`. On `audit.audit_entry` only `INSERT`/`SELECT`. No DDL |
-| `allwin_worker` | Loops that must **find** work across users: outbox dispatcher, command delivery, expiry sweeper, adapter session handler | `BYPASSRLS`, limited to `SELECT` + narrow `UPDATE` on queue tables (`app.outbox`, `gateway.command`, `gateway.outbound_message`). Each item's business work then runs on the `allwin_app` pool with that item's `user_id` set |
+| `allwin_worker` | Loops that must **find** work across users: outbox dispatcher, command delivery, expiry sweeper, adapter session handler | `BYPASSRLS`, limited to `SELECT` + narrow `UPDATE` on queue tables (`app.outbox`, `gateway.command`, `gateway.outbound_message`); `SELECT` on `identity.channel_change` to find holds that are due (rev. 7). Each item's business work then runs on the `allwin_app` pool with that item's `user_id` set |
 | `allwin_maint` | Partition creation, retention purge, erasure after account closure | `BYPASSRLS`; partition DDL on `audit.audit_entry`; `DELETE` on activity tables |
 
 - **Pre-authentication lookups** (the user is not known yet) go through `SECURITY DEFINER` functions in `identity`. Each one returns only what its caller needs:
@@ -94,16 +99,17 @@ CREATE POLICY account_owner ON accounts.account
   - `identity.resolve_device_token(key_id)` → `(user_id, connection_id, token_hash, revoked)`
   - `identity.resolve_session(token_hash)`
   - `identity.resolve_invitation(token_hash)`
-  - `identity.resolve_password_reset(token_hash)`
-  - `identity.find_user_for_login(email_normalized)`
+  - `identity.find_user_for_login(email_normalized)` → `(id, status, locale, email, whatsapp_e164)`. The Core answers the same way for an unknown and a non-`active` user and sends nothing, so the login form is not an existence oracle
+  - `identity.device_key_in_use(device_key_hash)` → boolean: a non-revoked `known_device` of any user has it (shared-browser rule, §4.1; rev. 7)
+  - `identity.resolve_one_time_code(id)` → `(user_id, purpose)` only. The code row itself is then read and updated under RLS (§4.3)
   - `identity.email_registered(email_normalized)` → boolean (createInvitation). Gated like `admin_list_users`: it returns false unless `app.current_user_id()` is an active platform admin, so it is never an e-mail existence oracle
-  - `identity.admin_list_users()`: returns rows only when `app.current_user_id()` is an active platform admin
+  - `identity.admin_list_users()`: returns rows only when `app.current_user_id()` is an active platform admin. Rev. 6: `totp_enabled` becomes `whatsapp_verified`, and `last_sign_in_at` is `max(session.login_at)` (no MFA filter) (HTTP contract 2.0.0)
   - `identity.resolve_pairing_code(code_hmacs bytea[])`: read-only, one HMAC per accepted pepper version. Redemption is a conditional `UPDATE … SET used_at = now() WHERE used_at IS NULL AND invalidated_at IS NULL AND expires_at > now()`, run in the user-scoped transaction that records the instance and swaps the device token. A concurrent second redemption updates 0 rows
 
   `allwin_app` may execute these functions but cannot read other users' rows.
 - **FORCE RLS also binds the owner.** So each table read by a `SECURITY DEFINER` function gets a policy `FOR SELECT TO allwin_owner USING (true)`. `allwin_owner` never logs in at runtime, and this is narrower than giving it `BYPASSRLS`. Each function sets `search_path = pg_catalog, pg_temp` and uses schema-qualified names.
 - **Migrations run as `allwin_owner`**, the login used by `sqlx migrate`. The default privileges of #1 apply only to objects that `allwin_owner` creates. A superuser run would leave new tables without the `allwin_app` grants.
-- **Unscoped tables** (no RLS): `catalog.*` (global reference data) and `identity.invitation` (admin data; read only through admin use cases and `resolve_invitation`).
+- **Unscoped tables** (no RLS): `catalog.*` (global reference data), `identity.invitation` and its `identity.signup_code` (admin data; reached only through the invitation token, `resolve_invitation` and admin use cases) and `identity.code_send_counter` (rev. 6; no `user_id`, keyed by identifier HMAC so it covers unregistered identifiers).
 - **CI lint test:** a query on `pg_class`/`pg_policy` asserts that every table with a `user_id` column has `relrowsecurity` and `relforcerowsecurity` set and at least one policy. The X-2 cross-user tests run with RLS on.
 
 ## 4. Identity (S3) and ingress sources (S1)
@@ -112,19 +118,26 @@ CREATE POLICY account_owner ON accounts.account
 
 ```sql
 CREATE TABLE identity.app_user (
-  id                uuid PRIMARY KEY,
-  email             text NOT NULL,                       -- as entered
-  email_normalized  text NOT NULL,                       -- trimmed + lower-cased by the Core
-  password_hash     text NOT NULL,                       -- argon2id PHC string (params inside)
-  locale            text NOT NULL DEFAULT 'pt-BR' CHECK (locale IN ('pt-BR','en')),
-  time_zone         text NOT NULL,                       -- IANA, validated by the Core (Q23)
-  is_platform_admin boolean NOT NULL DEFAULT false,      -- issues invitations (Q19)
-  status            text NOT NULL DEFAULT 'active' CHECK (status IN ('active','closed')),
-  created_at        timestamptz NOT NULL DEFAULT now(),
-  updated_at        timestamptz NOT NULL DEFAULT now(),
-  closed_at         timestamptz,                         -- erase after grace (Q13-b)
-  CONSTRAINT app_user_email_normalized_key UNIQUE (email_normalized)
+  id                   uuid PRIMARY KEY,
+  email                text NOT NULL,                    -- as entered; fixed by the invitation at signup
+  email_normalized     text NOT NULL,                    -- trimmed + lower-cased by the Core
+  email_verified_at    timestamptz NOT NULL,             -- signup e-mail code; set again by an e-mail change
+  whatsapp_e164        text CHECK (whatsapp_e164 ~ '^\+[1-9][0-9]{7,14}$'),  -- verified number only (E.164)
+  whatsapp_verified_at timestamptz,                      -- added after signup by a channel change (S3b; S3 AC-3, Q31)
+  locale               text NOT NULL DEFAULT 'pt-BR' CHECK (locale IN ('pt-BR','en')),
+  time_zone            text NOT NULL,                    -- IANA, validated by the Core (Q23)
+  is_platform_admin    boolean NOT NULL DEFAULT false,   -- issues invitations (Q19)
+  status               text NOT NULL DEFAULT 'active' CHECK (status IN ('active','closed')),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now(),
+  closed_at            timestamptz,                      -- erase after grace (Q13-b)
+  channel_changed_at   timestamptz,                      -- last e-mail/WhatsApp change; next one refused for 24 h (policy §7)
+  CONSTRAINT app_user_email_normalized_key UNIQUE (email_normalized),
+  CONSTRAINT app_user_whatsapp_key UNIQUE (whatsapp_e164),            -- one number, one user (PO Q32, open)
+  CONSTRAINT app_user_whatsapp_check CHECK ((whatsapp_e164 IS NULL) = (whatsapp_verified_at IS NULL))
 );  -- RLS policy: id = app.current_user_id()
+-- No 'pending' status: the row is inserted only when the signup e-mail code is confirmed (S3 AC-2), so an
+-- abandoned or repeated signup leaves no user row behind (§4.3).
 
 CREATE TABLE identity.invitation (                       -- admin data, no RLS
   id               uuid PRIMARY KEY,
@@ -145,54 +158,174 @@ CREATE UNIQUE INDEX invitation_open_email_key ON identity.invitation (email_norm
 -- Re-inviting after expiry sets superseded_at on the expired row in the same transaction, so the admin
 -- list still shows it as expired, not revoked. An unexpired open invitation → 409 invites.email_taken (HTTP 1.1.0).
 
+CREATE TABLE identity.known_device (                     -- browsers the user has signed in from
+  id              uuid PRIMARY KEY,
+  user_id         uuid NOT NULL REFERENCES identity.app_user(id),
+  device_key_hash bytea NOT NULL CHECK (octet_length(device_key_hash) = 32),  -- SHA-256 of a 256-bit device cookie
+  label           text CHECK (char_length(label) <= 120),    -- from the user agent, e.g. "Chrome on Windows"
+  first_seen_at   timestamptz NOT NULL DEFAULT now(),
+  last_seen_at    timestamptz NOT NULL DEFAULT now(),
+  last_ip         inet,
+  revoked_at      timestamptz,                           -- "forget this device": the next sign-in from it is new again
+  UNIQUE (user_id, id),
+  UNIQUE (user_id, device_key_hash)
+);
+-- The device cookie is long-lived, HttpOnly and separate from the session cookie, so logout or session
+-- expiry does not make a known browser "new". At sign-in, with the presented cookie's hash:
+--   * a non-revoked row of THIS user → known device (last_seen_at updated, no notice);
+--   * valid only for ANOTHER user (shared browser, C4) → the value is kept and a row with the same hash is
+--     inserted for this user (UNIQUE (user_id, device_key_hash) allows it);
+--   * absent, unknown to every user, or revoked for this user ("forget device" / "sign out everywhere";
+--     a revoked cookie counts as no cookie) → a NEW random value and a new row. The revoked row is never
+--     reactivated and is kept, so the UNIQUE key holds.
+-- Telling "another user's" from "unknown" crosses users: identity.device_key_in_use(hash) → boolean
+-- (SECURITY DEFINER, §3). It reveals nothing the browser holding the cookie does not already have.
+-- A new row emits the new-device e-mail notice through app.outbox in the same transaction (no secret in it).
+-- Exception: the device created by signup completion sends no notice (S3 AC-9).
+
 CREATE TABLE identity.session (
   id                  uuid PRIMARY KEY,
   user_id             uuid NOT NULL REFERENCES identity.app_user(id),
+  device_id           uuid NOT NULL,
   token_hash          bytea NOT NULL UNIQUE,             -- SHA-256 of the cookie value
   is_persistent       boolean NOT NULL,                  -- "keep me signed in"
-  mfa_state           text NOT NULL CHECK (mfa_state IN ('not_required','pending','verified')),
+  login_channel       text NOT NULL CHECK (login_channel IN ('email','whatsapp')),
   created_at          timestamptz NOT NULL DEFAULT now(),
-  login_at            timestamptz NOT NULL,              -- password sign-in; absolute-timeout base, kept across rotation
-  authenticated_at    timestamptz NOT NULL,              -- last password(+TOTP) proof → 15-min step-up rule
+  login_at            timestamptz NOT NULL,              -- code sign-in; absolute-timeout base, kept across rotation
   last_activity_at    timestamptz NOT NULL,              -- user-initiated requests only (SSE excluded)
   idle_expires_at     timestamptz NOT NULL,
   absolute_expires_at timestamptz NOT NULL,
   ended_at            timestamptz,
-  end_reason          text CHECK (end_reason IN ('logout','expired','password_reset','password_changed','totp_changed','admin_totp_reset','rotated')),
+  end_reason          text CHECK (end_reason IN ('logout','expired','rotated','channel_changed','device_revoked',
+                                                 'signed_out_everywhere')),
   ip_address          inet,                              -- security; same retention as the activity record
-  user_agent          text
+  user_agent          text,
+  UNIQUE (user_id, id),
+  FOREIGN KEY (user_id, device_id) REFERENCES identity.known_device (user_id, id)
 );
 CREATE INDEX session_user_active_idx ON identity.session (user_id) WHERE ended_at IS NULL;
+-- Removed: mfa_state (no second factor) and authenticated_at (the 15-minute step-up window is replaced by
+-- a fresh code per sensitive action, §4.3). End reasons (policy §7): a channel change ends every other session
+-- ('channel_changed') and rotates the current one ('rotated'); "forget device" ends that device's sessions
+-- ('device_revoked'); "sign out everywhere" (S3, Q34) ends all sessions and revokes all devices.
 
-CREATE TABLE identity.totp_credential (
-  user_id          uuid PRIMARY KEY REFERENCES identity.app_user(id),
-  secret_encrypted bytea NOT NULL,                       -- AES-256-GCM: nonce || ciphertext || tag
-  key_version      smallint NOT NULL,                    -- encryption key rotation
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  enabled_at       timestamptz,                          -- NULL until enrolment confirmed
-  last_used_step   bigint                                -- replay protection (security policy §2)
+CREATE TABLE identity.signup_code (                      -- signup challenges; no user exists yet. Admin-side data like invitation: no RLS
+  id                 uuid PRIMARY KEY,                   -- challenge_id; never the code
+  invitation_id      uuid NOT NULL REFERENCES identity.invitation(id),
+  channel            text NOT NULL DEFAULT 'email' CHECK (channel = 'email'),  -- S3: e-mail only (AC-3); S3b/Q31 may widen it
+  code_hmac          bytea NOT NULL CHECK (octet_length(code_hmac) = 32),  -- HMAC-SHA-256(k_code, challenge_id ‖ normalized code)
+  pepper_version     smallint NOT NULL,
+  failed_attempts    smallint NOT NULL DEFAULT 0 CHECK (failed_attempts BETWEEN 0 AND 5),
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  sent_at            timestamptz NOT NULL DEFAULT now(),
+  expires_at         timestamptz NOT NULL,
+  consumed_at        timestamptz,
+  invalidated_at     timestamptz,
+  invalidated_reason text CHECK (invalidated_reason IN ('attempts','invitation_closed')),
+  request_ip         inet,
+  delivery_state     text NOT NULL DEFAULT 'pending' CHECK (delivery_state IN ('pending','sent','failed')),  -- §4.3 Delivery
+  CONSTRAINT signup_code_expiry_check
+    CHECK (sent_at >= created_at AND expires_at > sent_at AND expires_at <= sent_at + interval '10 minutes'),
+  CONSTRAINT signup_code_invalidated_check CHECK ((invalidated_at IS NULL) = (invalidated_reason IS NULL)),
+  CONSTRAINT signup_code_attempts_check CHECK (failed_attempts < 5 OR invalidated_reason = 'attempts'),
+  CONSTRAINT signup_code_final_check CHECK (consumed_at IS NULL OR invalidated_at IS NULL)
 );
+CREATE INDEX signup_code_open_idx ON identity.signup_code (invitation_id, created_at)
+  WHERE consumed_at IS NULL AND invalidated_at IS NULL;
+-- The destination is the invitation's e-mail (Q36 a), so it is not copied here. Same lifecycle as one_time_code.
 
-CREATE TABLE identity.recovery_code (
-  id         uuid PRIMARY KEY,
-  user_id    uuid NOT NULL REFERENCES identity.app_user(id),
-  batch_id   uuid NOT NULL,                              -- regeneration replaces the batch
-  code_hmac  bytea NOT NULL CHECK (octet_length(code_hmac) = 32),  -- HMAC-SHA-256(pepper, normalized code) (ALIGN-4)
-  pepper_version smallint NOT NULL,                      -- codes live for months; survives a pepper rotation
-  created_at timestamptz NOT NULL DEFAULT now(),
-  used_at    timestamptz,
-  UNIQUE (user_id, code_hmac)
+CREATE TABLE identity.channel_change (                   -- one e-mail/WhatsApp change (HTTP 2.0.0 ChannelChange; id = change_id)
+  id                      uuid PRIMARY KEY,
+  user_id                 uuid NOT NULL REFERENCES identity.app_user(id),
+  channel                 text NOT NULL CHECK (channel IN ('email','whatsapp')),
+  new_value               text NOT NULL,                 -- normalized; shown only masked; applied when completed
+  requested_session_id    uuid NOT NULL,                 -- the session that started it (codes are bound to it)
+  status                  text NOT NULL DEFAULT 'awaiting_codes'
+                          CHECK (status IN ('awaiting_codes','on_hold','completed','cancelled','expired')),
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  expires_at              timestamptz NOT NULL,          -- every code confirmed within 10 min (policy §7)
+  hold_until              timestamptz,                   -- on_hold: effective time (policy §9 hold; §7 M2 if adopted)
+  completed_at            timestamptz,
+  cancelled_at            timestamptz,
+  cancelled_by_session_id uuid,                          -- "Cancelar troca"; NULL = cancelled by the Core, generic reason (§4.3)
+  UNIQUE (user_id, id),
+  CONSTRAINT channel_change_whatsapp_check CHECK (channel <> 'whatsapp' OR new_value ~ '^\+[1-9][0-9]{7,14}$'),
+  CONSTRAINT channel_change_expiry_check CHECK (expires_at > created_at AND expires_at <= created_at + interval '10 minutes'),
+  CONSTRAINT channel_change_hold_check CHECK (status <> 'on_hold' OR hold_until IS NOT NULL),
+  CONSTRAINT channel_change_completed_check CHECK ((status = 'completed') = (completed_at IS NOT NULL)),
+  CONSTRAINT channel_change_cancelled_check CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL)),
+  CONSTRAINT channel_change_cancelled_by_check CHECK (cancelled_by_session_id IS NULL OR cancelled_at IS NOT NULL),
+  FOREIGN KEY (user_id, requested_session_id)    REFERENCES identity.session (user_id, id),
+  FOREIGN KEY (user_id, cancelled_by_session_id) REFERENCES identity.session (user_id, id)
 );
+CREATE UNIQUE INDEX channel_change_one_open ON identity.channel_change (user_id)
+  WHERE status IN ('awaiting_codes','on_hold');          -- one pending change per user (SecurityState.pending_channel_change)
+CREATE INDEX channel_change_hold_due_idx ON identity.channel_change (hold_until) WHERE status = 'on_hold';
+-- RLS: owner policy. allwin_worker SELECT only (finds due holds); the effect runs in the user's allwin_app transaction.
 
-CREATE TABLE identity.password_reset (
-  id          uuid PRIMARY KEY,
-  user_id     uuid NOT NULL REFERENCES identity.app_user(id),
-  token_hash  bytea NOT NULL UNIQUE,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  expires_at  timestamptz NOT NULL,                      -- +30 min
-  used_at     timestamptz,
-  invalidated_at timestamptz                             -- a newer request invalidates older ones
+CREATE TABLE identity.one_time_code (                    -- login, step-up and channel-change codes (signup: signup_code)
+  id                 uuid PRIMARY KEY,                   -- uuid inside the sealed challenge_id token (§4.3); never the code
+  user_id            uuid NOT NULL REFERENCES identity.app_user(id),
+  channel_change_id  uuid,                              -- channel_change: the change this code confirms
+  purpose            text NOT NULL CHECK (purpose IN ('login','step_up','channel_change')),
+  channel            text NOT NULL CHECK (channel IN ('email','whatsapp')),  -- delivery channel
+  destination        text NOT NULL,                      -- normalized address the code was sent to; the proof is for this address
+  action             text CHECK (action IN ('source_create','source_rotate','connection_create','pairing_code_new',
+                                        'connection_unpair','account_opt_in_accept','account_create_opt_in_accept',
+                                        'admin_invitation_create')),  -- step_up only; = HTTP 2.0.0 StepUpAction
+  target_id          uuid,                               -- step_up: the source, connection or account acted on (see CHECK)
+  session_id         uuid,                               -- step_up / channel_change: only the requesting session may use the code
+  code_role          text CHECK (code_role IN ('current_value','new_value','other_channel')),  -- channel_change only; = HTTP 2.0.0 role; other_channel is [Proposed] (S3b, policy §7)
+  code_hmac          bytea NOT NULL CHECK (octet_length(code_hmac) = 32),  -- HMAC-SHA-256(k_code, challenge_id ‖ normalized code)
+  pepper_version     smallint NOT NULL,
+  failed_attempts    smallint NOT NULL DEFAULT 0 CHECK (failed_attempts BETWEEN 0 AND 5),
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  sent_at            timestamptz NOT NULL DEFAULT now(),  -- last (re)send; a resend replaces this challenge's code
+  expires_at         timestamptz NOT NULL,
+  consumed_at        timestamptz,
+  invalidated_at     timestamptz,
+  invalidated_reason text CHECK (invalidated_reason IN ('attempts','channel_changed','change_closed','user_closed')),
+  request_ip         inet,                               -- send limits and investigation; same retention as the row
+  delivery_state     text NOT NULL DEFAULT 'pending' CHECK (delivery_state IN ('pending','sent','failed')),  -- §4.3 Delivery
+  CONSTRAINT one_time_code_expiry_check
+    CHECK (sent_at >= created_at AND expires_at > sent_at AND expires_at <= sent_at + interval '10 minutes'),
+  CONSTRAINT one_time_code_invalidated_check CHECK ((invalidated_at IS NULL) = (invalidated_reason IS NULL)),
+  CONSTRAINT one_time_code_attempts_check CHECK (failed_attempts < 5 OR invalidated_reason = 'attempts'),
+  CONSTRAINT one_time_code_final_check CHECK (consumed_at IS NULL OR invalidated_at IS NULL),
+  CONSTRAINT one_time_code_step_up_check
+    CHECK ((purpose = 'step_up') = (action IS NOT NULL)
+           AND (target_id IS NOT NULL) = COALESCE(action IN ('source_rotate','pairing_code_new',
+                                                            'connection_unpair','account_opt_in_accept'), false)),
+  -- Q35 turns each of these actions on or off by Core setting, with no migration. New values (e.g. enforcement-off,
+  -- max-position changes, "added when Q35 decides" per HTTP 2.0.0) would need a contract change and a migration.
+  CONSTRAINT one_time_code_role_check
+    CHECK ((purpose = 'channel_change') = (code_role IS NOT NULL) AND (code_role IS NULL) = (channel_change_id IS NULL)),
+  CONSTRAINT one_time_code_session_check CHECK ((purpose IN ('step_up','channel_change')) = (session_id IS NOT NULL)),
+  CONSTRAINT one_time_code_whatsapp_check CHECK (channel <> 'whatsapp' OR destination ~ '^\+[1-9][0-9]{7,14}$'),
+  FOREIGN KEY (user_id, session_id) REFERENCES identity.session (user_id, id),
+  FOREIGN KEY (user_id, channel_change_id) REFERENCES identity.channel_change (user_id, id)
 );
+CREATE INDEX one_time_code_user_created_idx ON identity.one_time_code (user_id, created_at);
+  -- per-signed-in-user limit on step_up / channel_change sends (policy §4: 10 per hour)
+CREATE UNIQUE INDEX one_time_code_change_role_key ON identity.one_time_code (channel_change_id, code_role)
+  WHERE channel_change_id IS NOT NULL;                   -- one code per role per change (a resend replaces it in place)
+-- No UNIQUE on code_hmac: codes are looked up by id. No cap on open challenges and no eviction (policy §2.2):
+-- a new challenge never invalidates another; the send limits bound how many exist.
+
+CREATE TABLE identity.code_send_counter (              -- durable send limits per identifier (policy §3/§4); no RLS, no user_id
+  identifier_hmac bytea NOT NULL CHECK (octet_length(identifier_hmac) = 32),  -- HMAC-SHA-256(k_ident, normalized e-mail or number)
+  pepper_version  smallint NOT NULL,
+  device_class    text NOT NULL CHECK (device_class IN ('known','unknown')),  -- separate budgets (policy §4)
+  window_seconds  integer NOT NULL CHECK (window_seconds > 0),               -- policy §4: 60 (resend cooldown), 900 (5), 86400 (20)
+  window_start    timestamptz NOT NULL,                  -- aligned to window_seconds by the Core
+  sends           integer NOT NULL CHECK (sends > 0),
+  PRIMARY KEY (identifier_hmac, pepper_version, device_class, window_seconds, window_start)
+);
+-- Counted for EVERY identifier, registered or not, so a 429 never reveals registration. The address itself is
+-- never stored. One statement per window: INSERT … ON CONFLICT DO UPDATE SET sends = sends + 1 RETURNING sends.
+-- Every send and resend counts, for known and unknown identifiers alike. allwin_app: SELECT, INSERT, UPDATE;
+-- allwin_maint: DELETE. Pepper rotation: the Core sums both versions for the 24-h window and writes only the new
+-- one; old-version rows age out with the 24-h purge.
 
 -- Instruction sources: several named sources per user (Q17 recommendation)
 CREATE TABLE identity.source (
@@ -219,7 +352,7 @@ CREATE TABLE identity.source_key (                       -- token awk_<key_id>_<
 CREATE UNIQUE INDEX source_key_one_active ON identity.source_key (source_id) WHERE revoked_at IS NULL;
 -- rotation = revoke + insert in one transaction (immediate, ADR-0001 §5)
 
--- One connection per NinjaTrader instance (S3 AC-4, ADR-0004 §8)
+-- One connection per NinjaTrader instance (S3 AC-15, ADR-0004 §8)
 CREATE TABLE identity.adapter_connection (
   id               uuid PRIMARY KEY,                     -- connection_id (welcome)
   user_id          uuid NOT NULL REFERENCES identity.app_user(id),
@@ -278,20 +411,82 @@ CREATE UNIQUE INDEX device_token_one_active ON identity.device_token (connection
 
 - Token format (ALIGN-3): `awk_<key_id>_<secret>` (webhook) and `awd_<key_id>_<secret>` (device); `key_id` = 12 characters `[A-Za-z0-9]`, `secret` = 43 characters base64url (32 bytes). Only `key_id` and the SHA-256 of the secret are stored. The Core generates `key_id` at random and retries on a unique violation.
 - **Throttling counters live in memory**, which is enough for a single Core instance (ADR-0001 §4):
-  - login (security policy §2);
-  - pairing (ADR-0004 §8): 10 attempts per minute per IP, plus a global limit of 100 failures per 10 minutes that locks the endpoint for 10 minutes and raises an alert.
+  - code sends and code checks per IP and per IP prefix (security policy §3/§4);
+  - pairing (ADR-0004 §8 as amended by U11): 10 attempts per minute per IP and per-/24 (IPv4) or /64 (IPv6) prefix limits. There is no global lock; the global failure threshold only raises an alert.
 
   The pairing request carries only the code, so there is no per-connection counter and no table. A Core restart resets the counters. That is acceptable: the brute-force margin rests on the 40-bit space and the 10-minute code lifetime.
+- **Per-identifier send limits are durable** (`identity.code_send_counter`): keyed by the HMAC of the identifier, existing or not, so a restart does not reset them and a 429 is not an existence oracle. Wrong attempts are counted on the code row itself (`failed_attempts`).
 - The "usual IPs" of a user come from `identity.session.ip_address` over the last 30 days, so no extra table is needed.
 
 ### 4.2 Secret storage
 
 | Secret | Entropy | Stored as |
 |---|---|---|
-| Password | low | argon2id PHC string |
-| Webhook secret, device token, session cookie, invitation/reset token | 256 bits | SHA-256, `bytea(32)`, looked up by `key_id` or hash, compared in constant time |
-| Pairing code (40 bits), recovery codes (50 bits) | low, human-typed | **HMAC-SHA-256 with a server pepper** (environment secret; `pepper_version` stored per row), plus expiry and attempt limits (ALIGN-4, accepted). A plain SHA-256 of 40–50 bits can be brute-forced offline from a database dump, and recovery codes live for months |
-| TOTP seed | must be recoverable | AES-256-GCM, key from the environment, `key_version` for rotation |
+| Webhook secret, device token, session cookie, device cookie, invitation token | 256 bits | SHA-256, `bytea(32)`, looked up by `key_id` or hash, compared in constant time |
+| Pairing code (40 bits), one-time code (8 Crockford Base32 symbols = 40 bits, U16 format 1), identifier for limits | low, human-typed | **HMAC-SHA-256 with keys derived by HKDF from the server pepper** (environment secret): `k_code` (code HMAC over `challenge_id ‖ code`), `k_ident` (identifier HMAC), `k_challenge` (seals the challenge token, Core only) and a pairing key. `pepper_version` stored per row; plus expiry and attempt limits (ALIGN-4, policy rev. 2). A plain SHA-256 of 40 bits can be brute-forced offline from a database dump |
+
+No password, TOTP seed or recovery code is stored (rev. 6). The plaintext one-time code exists only in memory between generation and delivery. It is never written to `app.outbox`, the audit log or logs, so delivery is a direct call after the commit, not an outbox event (§4.3; policy §2.3).
+
+### 4.3 Passwordless sign-in: data flows (rev. 6, proposed)
+
+- **Code format (U16 format 1, policy §2.1)** does not change the schema: only the HMAC is stored. Eight Crockford Base32 symbols (`0–9 A–Z` without `I L O U`, 32 symbols, 40 bits). Before the HMAC, the Core normalizes the input: trim, remove spaces and `-`, upper-case, then `O→0`, `I→1`, `L→1`.
+- **Signup (invitation only; S3 AC-2/AC-3):**
+  1. The invitation token (`resolve_invitation`, open and unexpired) lets the invitee request a `signup_code` to the invited e-mail. No user row exists yet. The lifecycle (10 min, 5 attempts, resend, send limits keyed by the e-mail HMAC) is the same as `one_time_code`. WhatsApp is not part of S3 signup; it is added later as a channel change (S3b, Q31).
+  2. On a matching code, one transaction locks the invitation (`SELECT … FOR UPDATE`) and checks it is still open. Then it inserts `app_user` (`email_verified_at = now()`) and marks the code consumed and the invitation accepted (`accepted_user_id`). It also creates the first session and device (policy §5.2, §10). A concurrent second confirmation finds the invitation accepted and fails with `auth.code_invalid`.
+  3. **Repeated or abandoned signup:** there is no pending row to reuse or clean. A new request on the same open invitation is just another `signup_code` challenge. An abandoned one leaves the invitation usable until it expires (policy §10). Expired, revoking or superseding the invitation invalidates its open codes (`invitation_closed`). Rows are purged like `one_time_code` (§6.5).
+- **Login:**
+  1. Email + chosen channel → `find_user_for_login`, then the device class: `known` only when the device cookie maps to a non-revoked `known_device` of that user, so an unknown identifier is always `unknown`. Then the `code_send_counter` upserts for `(identifier_hmac, device_class)` (every identifier). All of this is inside the same equal-statement sequence. The answer is always 202 with a **sealed `challenge_id`** built by the Core: uuid ‖ identifier HMAC ‖ device class ‖ issued_at, MACed with `k_challenge`. The database stores only the uuid, as `one_time_code.id`, and only for a registered, `active` user with that channel. For anyone else, the Core runs an equivalent statement that writes nothing, so statements and timing match up to the commit (policy §3).
+  2. **No cap, no eviction** (policy §2.2): a new challenge never invalidates another. Open challenges are bounded by the send limits per `(identifier_hmac, device_class)`: 5 per 15 min and 20 per 24 h, each living 10 min.
+  3. **Resend** (the token says which identifier and device class):
+     - the 60-s cooldown is a `code_send_counter` window keyed by `(identifier_hmac, device_class)`, not by the code row, so it is identical for unknown identifiers;
+     - every resend counts in the counter;
+     - with no row (unknown identifier) nothing is sent;
+     - for an open, unexpired row the same transaction replaces `code_hmac`, `pepper_version`, `sent_at` and `expires_at`, and keeps `failed_attempts`, since resetting it would grant 5 more guesses per resend;
+     - a closed row is never reopened and nothing is sent. The answer is always 202.
+  4. **Verification:** the Core opens the token (bad MAC → `auth.code_invalid`). Then `resolve_one_time_code(uuid)` gives `user_id`; no row → `auth.code_invalid`. In that user's transaction, the Core runs `SELECT … FOR UPDATE` on the row and checks it is open and unexpired. Then it checks the destination per purpose (policy rev. 2):
+     - `login`, `step_up`: `destination` is still a current confirmed value of the user;
+     - `channel_change`, `current_value` / `other_channel`: `destination` is still a current confirmed value (of the changed channel / of the other channel), and the change is `awaiting_codes`;
+     - `channel_change`, `new_value`: `destination` equals `channel_change.new_value` of a change still `awaiting_codes`;
+     - signup (`signup_code`): the invited e-mail of a still-open invitation.
+  5. It compares the HMAC in constant time.
+     - On a mismatch: `failed_attempts + 1`, and at 5 `invalidated_reason = 'attempts'`. The failure is **committed**, even though the request fails.
+     - On a match: `consumed_at`, plus the session, plus the known-device check, in the same transaction.
+  6. `FOR UPDATE` serializes concurrent guesses, so 5 is a hard limit.
+  7. **One error for every failure** (policy §3): a wrong code, expired, used, attempts exhausted, another session or an unknown challenge all return `auth.code_invalid`. Only the row keeps the internal reason.
+- **Delivery (policy §2.3/§3):** the code is sent after the commit, by a task detached from the request, so the HTTP response time does not depend on whether a code was sent. A lost send is not retried; the user asks for a resend.
+  - `delivery_state` on `signup_code` and `one_time_code` (all purposes) starts `pending`. A resend sets it back to `pending`. The detached task sets `sent` or `failed`.
+  - A send suppressed by a channel clash is set to `sent` and writes no `auth.code_delivery_failed`, so a clash and a free value end in the same state.
+  - Signup, step-up and channel-change clients read it per challenge. Login never exposes it: an unknown identifier has no row, so for login the column only drives the audit.
+  - A failed send of a registered user also writes an `auth.code_delivery_failed` audit row.
+- **Step-up** (the 8 HTTP 2.0.0 `StepUpAction` values, each on or off by Core setting per Q35; a channel change uses its own codes):
+  1. A `step_up` code is bound to `session_id`, `action` and, for the four targeted actions, `target_id`. Sends count against the per-user hourly limit (`one_time_code_user_created_idx`).
+  2. The action request carries the challenge and code. The Core consumes it in the same transaction as the action, so no "elevated" state is stored.
+  3. A channel change uses `purpose = 'channel_change'` instead, and its old-channel code is the step-up.
+- **Channel change / adding WhatsApp later** (HTTP 2.0.0 `ChannelChange`):
+  1. Refused while `channel_changed_at` is less than 24 h old (policy §7) or while another change is open (`channel_change_one_open`), checked under the user-row lock. Under the same lock, the start path first expires the user's stale `awaiting_codes` row (past `expires_at`), so it never blocks `channel_change_one_open` until the sweeper runs.
+  2. Insert `channel_change` (`awaiting_codes`, `expires_at` = +10 min), then its codes, all bound to the requesting session:
+     - `current_value` to the current value;
+     - `new_value` to the new value;
+     - `other_channel` to the other confirmed channel when the user has two (policy §7, [Proposed]).
+     Adding WhatsApp later works the same way: `current_value` goes to the e-mail and `new_value` to the number.
+  3. **Channel clash** (policy §3): if the new value belongs to another account, the change proceeds and the `new_value` row exists, but nothing is sent to it. Its `delivery_state` still ends `sent`, and its confirmation fails with `auth.code_invalid`. `app_user_email_normalized_key` / `app_user_whatsapp_key` are the backstop.
+  4. When every code of the change is consumed:
+     - **without a hold**, one transaction:
+       - sets `completed` and updates the address, its `*_verified_at` and `channel_changed_at`;
+       - invalidates the user's other open codes (`channel_changed`);
+       - ends every other session (`channel_changed`) and rotates the current one;
+     - **with a hold** (policy §9; §7 M2 if adopted), the change becomes `on_hold` with `hold_until`, and the address stays as it is. A worker finds due rows (`channel_change_hold_due_idx`) and applies them in the user's transaction:
+       - it re-checks the 24-h `channel_changed_at` rule and that the new value is free; if either fails, it is a Core cancel (step 5);
+       - it updates the address, `*_verified_at` and `channel_changed_at`;
+       - it invalidates the user's open codes;
+       - there is no current session to rotate, so **every** session ends (`channel_changed`);
+       - for the policy §9 admin recovery, every device is also revoked;
+       - for an M2 hold, whether devices are revoked as well is decided with M2 (policy).
+  5. **Cancel ("Cancelar troca")**: `cancelled`, with `cancelled_at` and `cancelled_by_session_id`. The change's open codes are invalidated (`change_closed`). It is allowed from any session of the user while `awaiting_codes` or `on_hold`. If the new value has meanwhile been taken by another account when a hold ends, the Core cancels it with `cancelled_by_session_id` NULL. The clash is not revealed (policy §3): the user-visible audit row and the notice carry the same generic reason as any change that could not be completed (`me.channel_change_not_completed`). The real reason goes only to the internal/admin log.
+  6. `expired`: an `awaiting_codes` change past `expires_at`, set lazily on the next read, by the start path (step 1) or by the expiry sweeper. Its open codes are invalidated (`change_closed`).
+- **Not modelled yet (user decision pending):** a hold on a channel change requested from a new device, and an e-mail step-up for persistence from a new device. If approved, they need only `known_device.first_seen_at` (already there; device age < 7 days) and the `on_hold` state of `channel_change` (rev. 7; already modelled).
+- **Sign out everywhere** (S3, Q34): one transaction ends every session (`signed_out_everywhere`) and sets `revoked_at` on every device.
+- **Admin-assisted recovery** when a user loses access to every channel is **not modelled until the user decides Q28**. The Architect's recommendation is: an admin sets a new e-mail, confirmed by code, with a 72-h hold, cancellable, and notices to the old channels. It would likely add a pending-change row with `effective_at`/`cancelled_at`.
 
 ## 5. Accounts core (S5–S7)
 
@@ -326,6 +521,41 @@ CREATE TABLE catalog.standard_account_size (             -- 25k, 50k, 100k, 150k
 
 Prop firm presets (`catalog.prop_firm`, `catalog.preset`, `catalog.preset_version`) come with S16 (Wave 2), shaped by the R1 research format. Accounts reserve nullable `firm_id` and `preset_version_id` for them.
 
+**Opt-in rule versions (rev. 8; S5 contract §5.5).** The table exists from S5, because a prop account without a preset chooses against a **generic** version per kind (Q40, provisional). S16 fixes the non-generic shape and adds the foreign keys to firm and preset.
+
+```sql
+CREATE TABLE catalog.opt_in_rule_version (               -- global, no RLS; append-only (published text the user saw)
+  id                uuid PRIMARY KEY,
+  kind              text NOT NULL CHECK (kind IN ('automation','copy')),
+  firm_stance       text NOT NULL CHECK (firm_stance IN ('allowed','forbidden','conditional','unknown','not_confirmed')),
+  is_generic        boolean NOT NULL,
+  firm_id           uuid,                                -- S16: FK to catalog.prop_firm
+  preset_version_id uuid,                                -- S16: FK to catalog.preset_version
+  firm_platform     text CHECK (firm_platform ~ '^[a-z][a-z0-9_]{0,31}$'),  -- when the rule is platform-specific
+  version_number    integer NOT NULL CHECK (version_number >= 1),
+  published_at      timestamptz NOT NULL DEFAULT now(),
+  quotes            jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(quotes) = 'array'),   -- RuleQuote[], validated by the Core
+  research          jsonb CHECK (research IS NULL OR jsonb_typeof(research) = 'object'), -- unknown, not generic
+  change_cause      text CHECK (change_cause IN ('stance_changed','text_changed','not_material')),
+  change_reason     jsonb CHECK (change_reason IS NULL OR jsonb_typeof(change_reason) = 'object'),  -- {"pt-BR": …, "en": …}
+  previous_id       uuid REFERENCES catalog.opt_in_rule_version(id),
+  UNIQUE (id, kind),
+  CONSTRAINT rule_version_generic_check CHECK (NOT is_generic OR (firm_stance = 'unknown' AND quotes = '[]'::jsonb
+             AND research IS NULL AND firm_id IS NULL AND preset_version_id IS NULL AND firm_platform IS NULL)),
+  CONSTRAINT rule_version_firm_check CHECK (is_generic OR firm_id IS NOT NULL),
+  CONSTRAINT rule_version_change_check CHECK ((previous_id IS NULL) = (change_cause IS NULL)),
+  CONSTRAINT rule_version_reason_check CHECK (change_cause IS DISTINCT FROM 'text_changed' OR change_reason IS NOT NULL)
+);
+CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_version (kind, version_number) WHERE is_generic;
+-- Non-generic numbering (per preset selection and kind) gets its unique key in S16.
+-- Grants: allwin_app SELECT, INSERT (publishing goes through the admin use case); no UPDATE/DELETE for anyone at
+-- runtime, so a published text cannot change under a recorded choice. A correction is a new version (change_cause).
+-- The current version of a selection is the highest version_number.
+```
+
+- **S5 seeds** two generic rows, `automation` and `copy`, at version 1, inside migration #5. They hold no text: no quotes, and the UI shows its own generic warning. So the seed has no product content to wait for.
+- `account.automation_rule_version_id` / `copy_rule_version_id` reference this table. A cross-module foreign key to `catalog` is allowed, like `instrument`. That the referenced row has the matching `kind` is a Core rule plus a §9 test; a composite FK would need constant generated columns on `account` for little gain.
+
 ### 5.2 Trading accounts
 
 ```sql
@@ -334,10 +564,12 @@ CREATE TABLE accounts.account (
   user_id           uuid NOT NULL REFERENCES identity.app_user(id),
   display_name      text NOT NULL,
   kind              text NOT NULL CHECK (kind IN ('prop','real')),
-  firm_id           uuid,                                -- prop only; catalog (S16)
-  plan_name         text,
-  phase             text,                                -- [Q-A3] open: list from preset research
+  firm_id           uuid,                                -- prop with a preset; catalog (S16)
+  firm_name         text CHECK (char_length(firm_name) BETWEEN 1 AND 80),  -- prop, manual mode (rev. 8)
+  plan_name         text CHECK (char_length(plan_name) BETWEEN 1 AND 80),  -- manual mode
+  phase             text CHECK (char_length(phase) BETWEEN 1 AND 80),      -- manual mode; [Q-A3] open
   preset_version_id uuid,                                -- S16
+  firm_platform     text CHECK (firm_platform ~ '^[a-z][a-z0-9_]{0,31}$'),  -- with a preset only (rev. 8)
   size_amount       NUMERIC(18,4) NOT NULL CHECK (size_amount > 0),   -- real: any size (Q12)
   currency          char(3) NOT NULL DEFAULT 'USD',
   multiplier        integer NOT NULL DEFAULT 1 CHECK (multiplier BETWEEN 1 AND 1000),
@@ -348,19 +580,33 @@ CREATE TABLE accounts.account (
   automation_state  text NOT NULL DEFAULT 'not_required'
                     CHECK (automation_state IN ('not_required','chosen','pending_review')),  -- opt-in (decision 2026-10-23, A)
   automation_choice text CHECK (automation_choice IN ('accepted','declined')),  -- no default: NULL until the user chooses
-  automation_rule_version_id uuid,                       -- preset version whose rule text the user saw (S16)
+  automation_rule_version_id uuid REFERENCES catalog.opt_in_rule_version(id),  -- the rule text the user saw
+  automation_pending_reason text CHECK (automation_pending_reason IN ('stance_changed','text_changed','preset_attached')),
   automation_chosen_at timestamptz,
   copy_state        text NOT NULL DEFAULT 'not_required'
                     CHECK (copy_state IN ('not_required','chosen','pending_review')),  -- copy opt-in (Q24, approved)
   copy_choice       text CHECK (copy_choice IN ('accepted','declined')),
-  copy_rule_version_id uuid,
+  copy_rule_version_id uuid REFERENCES catalog.opt_in_rule_version(id),
+  copy_pending_reason text CHECK (copy_pending_reason IN ('stance_changed','text_changed','preset_attached')),
   copy_chosen_at    timestamptz,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
   archived_at       timestamptz,                         -- "deleted" (S5 AC-6); history keeps the id
   row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
+  create_idempotency_key uuid,                           -- Idempotency-Key of the create (rev. 8)
+  create_request_hash    bytea CHECK (octet_length(create_request_hash) = 32),  -- SHA-256 of the canonical body, step_up excluded
   UNIQUE (user_id, id),
-  CHECK (kind = 'prop' OR (firm_id IS NULL AND plan_name IS NULL AND phase IS NULL AND preset_version_id IS NULL)),
+  CONSTRAINT account_create_key UNIQUE (user_id, create_idempotency_key),
+  CHECK ((create_idempotency_key IS NULL) = (create_request_hash IS NULL)),
+  CHECK (kind = 'prop' OR (firm_id IS NULL AND firm_name IS NULL AND plan_name IS NULL AND phase IS NULL
+                           AND preset_version_id IS NULL AND firm_platform IS NULL)),
+  -- prop: a preset XOR the three manual fields (S5 contract §2.4); with a preset they come from the catalog
+  CHECK (kind = 'real'
+         OR (preset_version_id IS NOT NULL AND firm_name IS NULL AND plan_name IS NULL AND phase IS NULL)
+         OR (preset_version_id IS NULL AND firm_id IS NULL AND firm_platform IS NULL
+             AND firm_name IS NOT NULL AND plan_name IS NOT NULL AND phase IS NOT NULL)),
+  CHECK ((automation_state = 'pending_review') = (automation_pending_reason IS NOT NULL)),
+  CHECK ((copy_state = 'pending_review') = (copy_pending_reason IS NOT NULL)),
   CHECK (kind = 'prop' OR (automation_state = 'not_required' AND copy_state = 'not_required')),
   -- OptInState: chosen → choice + time set; pending_review → previous choice kept (shown, never preselected)
   -- or NULL if never chosen; not_required → all NULL. choice and chosen_at are set together.
@@ -378,7 +624,13 @@ CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_
 ```
 
 - The bounds `multiplier ≤ 1000` and `max_position_qty ≤ 10000` mirror the structural caps in the contracts (instruction `quantity` ≤ 1000, command `quantity` ≤ 10000). The business limit is the user's value.
-- `firm_id` / `phase` become mandatory for `prop` once S16 exists. Until then a prop account can be saved without a preset, so no `CHECK` yet.
+- **Prop selection (rev. 8):** a preset (`preset_version_id`, with `firm_id` and optional `firm_platform`) **or** the manual `firm_name` / `plan_name` / `phase`, never both. Manual mode covers the time before S16 (Q40) and plans excluded from presets (S16 AC-9). With a preset, firm, plan and phase are read from the catalog, not copied. `size_amount` is always stored, since risk reads it.
+- **Create idempotency (rev. 8):**
+  - The key and request hash stay on the row; there is no separate table. Only a successful create stores them.
+  - A concurrent second request with the same key hits `account_create_key`. The Core then re-reads the row: the same hash replays 200, a different hash gets 409 `accounts.idempotency_key_reused`.
+  - The 24-h window is checked against `created_at`. **To align with the contract:** after 24 h the key is still taken (the UNIQUE never expires), so a late replay gets 409 and never creates a second account. A replay for an account archived since then returns it as it is.
+- **`*_pending_reason`** (Q26, Q41, Q42) is set exactly with `pending_review` and cleared on the next choice.
+- **Generic rule version (Q40):** a manual-mode prop account whose choice is required names the generic version of its kind, so "a choice always names the rule seen" holds before S16.
 - "Max position cannot exceed the preset's" (S5 AC-3) is a domain rule checked against the preset version.
 - **Automation opt-in** (decision 2026-10-23, option A; ADR-0003 §4.1 gate `routing.automation_not_accepted`):
   - Routing reads it through the `accounts` query port. An account accepts automated sources only when `automation_state = 'not_required'`, or when `automation_state = 'chosen'` and `automation_choice = 'accepted'`. A `declined` or `pending_review` account is skipped and audited.
@@ -450,13 +702,27 @@ CREATE TABLE accounts.account_bracket_profile (          -- the account's own co
   stop_distance    NUMERIC(22,10) NOT NULL CHECK (stop_distance > 0),
   target_distance  NUMERIC(22,10) NOT NULL CHECK (target_distance > 0),
   copied_from_size NUMERIC(18,4),                        -- provenance (nearest standard size for real accounts)
+  origin           text NOT NULL CHECK (origin IN ('size_default','nearest_size_default','set_by_user')),  -- rev. 8 (S6 2.3.0)
+  copied_at        timestamptz,                          -- initial copy or last restore
+  customized       boolean NOT NULL DEFAULT false,       -- edited after the copy; false again on restore
+  row_version      integer NOT NULL DEFAULT 1,           -- optimistic concurrency (putAccountProfile)
   updated_at       timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id, instrument_id),
+  CHECK ((origin = 'set_by_user') = (copied_from_size IS NULL)),
+  CHECK ((copied_from_size IS NULL) = (copied_at IS NULL)),
   FOREIGN KEY (user_id, account_id) REFERENCES accounts.account (user_id, id),
   CHECK (distance_unit <> 'ticks' OR (stop_distance = trunc(stop_distance) AND target_distance = trunc(target_distance))),
   CHECK (distance_unit <> 'usd'   OR (stop_distance = round(stop_distance, 4) AND target_distance = round(target_distance, 4)))
 );
 ```
+
+- **Provenance (rev. 8, S6 contract §4):**
+  - A copy (`size_default`, `nearest_size_default`) carries `copied_from_size` and `copied_at`, and `set_by_user` carries neither, matching the contract's `if/then`.
+  - `default_now` is derived, not stored: it is the current `default_bracket_profile` of `copied_from_size`.
+  - Restore sets `copied_at = now()` and `customized = false`. An edit sets `customized = true` and keeps the origin.
+  - **To align:** may a `set_by_user` profile be `customized`? The model allows it; the contract does not say.
+- **No profile (Q43, provisional):** an account created while its size had no default has no row, and routing skips its entries with `routing.no_bracket_profile`. The nearest-size tie rule (Q-S6-7) is a Core/PO rule with no schema impact.
+- USD distances: the contract takes 2 decimals and the `CHECK` keeps 4 as headroom (Q-S6-6).
 
 ### 5.5 Routing configuration (S7)
 
@@ -470,6 +736,7 @@ CREATE TABLE routing.subscription (                      -- source → account, 
                  cardinality(signal_types) >= 1
                  AND signal_types <@ ARRAY['trigger','trade_plan','nq_trigger','master_account']::text[]),
   is_enabled   boolean NOT NULL DEFAULT true,
+  row_version  integer NOT NULL DEFAULT 1 CHECK (row_version >= 1),  -- optimistic concurrency (updateRoute; rev. 8)
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now(),
   UNIQUE (user_id, source_id, account_id)
@@ -478,6 +745,7 @@ CREATE INDEX subscription_source_idx ON routing.subscription (user_id, source_id
 ```
 
 - **Signal filter per (source, account)** (Q-A4 decided, ALIGN-5 accepted; ADR-0003 §4.1 gate `routing.signal_type_not_selected`). Per-account behavior is the special case where the user sets the same filter on every source.
+- The S7 route endpoints accept only `trigger`, `trade_plan` and `nq_trigger`; `master_account` stays in the `CHECK` for S19 follower subscriptions (S7 contract §5). This is a Core validation, with no schema change.
 - Multiplier and max position are read from `accounts` at routing time. Every routing decision **snapshots** the values it used (§6), so the audit trail stays explainable after an edit.
 
 ### 5.6 Risk core (preview for S13–S15; only `max_position_qty` is needed by S5–S7)
@@ -724,10 +992,20 @@ CREATE TABLE app.outbox (                                -- domain events, writt
   event_type   text NOT NULL,                            -- 'routing.decision_made', …
   occurred_at  timestamptz NOT NULL,
   payload      jsonb NOT NULL,
-  published_at timestamptz
+  published_at timestamptz,
+  attempts         integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),          -- delivery retries (#1b)
+  last_error       text CHECK (char_length(last_error) <= 500),               -- consumer + error, never payload
+  next_attempt_at  timestamptz NOT NULL DEFAULT now(),                        -- backoff 2^n s, max 600 s
+  dead_lettered_at timestamptz,                                               -- after 20 attempts; kept, alerted
+  CONSTRAINT outbox_last_error_no_token CHECK (last_error !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
 );
-CREATE INDEX outbox_unpublished_idx ON app.outbox (occurred_at) WHERE published_at IS NULL;
--- dispatcher (allwin_worker) delivers at least once; published rows purged after 7 days
+CREATE INDEX outbox_due_idx ON app.outbox (next_attempt_at, occurred_at)
+  WHERE published_at IS NULL AND dead_lettered_at IS NULL;
+-- dispatcher (allwin_worker) delivers due, live events at least once; a failure sets attempts+1,
+-- last_error, next_attempt_at, so it never blocks the head of the queue. allwin_worker has
+-- UPDATE (published_at) from #1 and UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at) from #1b.
+-- Published rows are purged after 7 days; dead-lettered rows are never purged automatically: they are
+-- an operational alert (a lost audit entry would break X-5) and are replayed or closed by an operator.
 
 CREATE TABLE audit.audit_entry (
   id              uuid NOT NULL,
@@ -757,6 +1035,16 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 ```
 
 - **Filters (S10 AC-2):** date, account, source, signal type and outcome are served by the user/time and user/account indexes, with the rest filtered inside the user's time range. No further index is added until measured (no speculative indexes).
+- **Dispatcher rules** (Architect decision (A), 2026-10-23; replaces rev. 4 "marked published on the first pass"):
+  1. **An event is never marked published unless it was consumed.**
+     - Consumers are registered before start.
+     - Startup **fails** when an event type that a module emits has no consumer.
+     - Events whose type has no registered consumer are not fetched (`event_type = ANY(<registered types>)`). They stay visible and are counted by a metric and alert: unpublished, not dead-lettered, older than N minutes. That catches, for example, a type retired by a deploy.
+  2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event). `published_at` keeps meaning "every registered consumer has consumed it".
+  3. **Each consumer declares a start policy at registration:**
+     - `from_now`: cursor at the registration instant, no backfill. This is the default for consumers that **act** (routing, commands).
+     - `backfill`: from the oldest unconsumed event. Consumers that **record** (audit) use it, so the user-visible log never misses an entry (X-5).
+  4. **"Never execute late" is enforced at the point of action**, not by the dispatcher. Late entries never execute (they expire by `expiry_base` + the account's TTL; ADR-0003 §7, ADR-0004 §5). Late exits may execute and are audited as late, per T1 (pending the user's decision on the `position_ref` proposal).
 - **Durability of audit:** ADR-0001 §4 publishes events "in-process, after commit". A crash between commit and handler would lose the audit entry, which breaks X-5. The outbox above closes that gap (ALIGN-2, accepted: at-least-once dispatcher, consumers dedupe; audit on `source_event_id`).
 
 ### 6.5 Activity record, retention and volume
@@ -770,6 +1058,11 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
 | `app.outbox` (published), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days / 48 h / 7 days |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
+| `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
+| `identity.channel_change` (completed, cancelled or expired) | `id` | no | 30 days after its end, after its codes; it holds the new value (the audit keeps the masked values) |
+| `identity.known_device` | `(user_id, device_key_hash)` | no | deleted 30 days after `revoked_at`, or when unseen for 13 months (accepted; cookie Max-Age 400 days) |
+| `identity.code_send_counter` | primary key | no | deleted when `window_start + window_seconds` is older than 24 h |
+| `identity.signup_code` (consumed, expired or invalidated) | `id` | no | 30 days |
 
 Nightly maintenance (`allwin_maint`, outside trading hours):
 1. create the next 3 partitions;
@@ -818,12 +1111,14 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | # | Migration | Slice |
 |---|---|---|
 | 1 | `app_bootstrap`: schemas, `app.current_user_id()`, default privileges, `app.outbox` | S1 (Ferro); merged alone and first, since S1 and S3 both build on it |
-| 2 | `identity_create_users_sessions`: `app_user`, `invitation`, `session`, `password_reset`, `totp_credential`, `recovery_code`, `resolve_*` / `find_user_for_login` | S3 |
+| 1b | `app_outbox_delivery_attempts`: outbox retry/backoff/dead-letter columns, `outbox_due_idx`, `GRANT UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at)` to `allwin_worker` (expand only) | S1 (Ferro); depends only on #1; version re-stamped after the latest merged migration |
+| 2 | `identity_create_users_sessions`: `app_user`, `invitation`, `session`, `password_reset`, `totp_credential`, `recovery_code`, `resolve_*` / `find_user_for_login` (on `main`; never edited) | S3 |
+| 2b | `identity_passwordless` (rev. 6): drops the password/TOTP/recovery/reset objects and adds channels, `known_device`, `signup_code`, `channel_change`, `one_time_code`, `code_send_counter` and the new session columns; see below | S3 (Brasa); version stamped after the latest merged migration |
 | 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
-| 5 | `accounts_create_account`: `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6) | before M1, so seeds use real tables |
+| 5 | `accounts_create_account`: `catalog.opt_in_rule_version` + the 2 generic seed rows, `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6). Rev. 8 columns go in directly, since #5 is not written yet | before M1, so seeds use real tables |
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
-| 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` | M1 / S7 |
+| 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` (with `row_version`, rev. 8) | M1 / S7 |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
@@ -836,6 +1131,27 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 - So #2 and #3 (S3, Brasa) merge before #6 and #7. Until then the S1 branch builds on the S3 branch.
 - No branch writes its own copy of another module's table.
 - Provisional versions: `20261023060000` #1, `…060100`/`…060200` #2/#3, `…060300` #4, `…060400` #5, `…060500` #6, `…060600` #7. Final versions are assigned at integration.
+
+**Passwordless change (rev. 6): forward migration #2b `identity_passwordless`** (Architect decision; `20261023060100` is not rewritten, because rewriting would break the sqlx checksum of every database that already applied it).
+- Order inside the file:
+  1. `DROP FUNCTION` `resolve_password_reset`, `find_user_for_login`, `resolve_session` and `admin_list_users`, since their return types change, and re-`CREATE` the last three with owner and grants.
+  2. `DROP TABLE` `recovery_code`, `totp_credential` and `password_reset`.
+  3. `ALTER TABLE app_user`:
+     - `DROP COLUMN password_hash`;
+     - add the channel columns and `channel_changed_at`;
+     - backfill the existing rows (dev seeds only) with `email_verified_at = created_at`, then `SET NOT NULL`;
+     - then add the constraints.
+  4. `CREATE` `known_device`, `code_send_counter` and `signup_code`.
+  5. Sessions (needs `known_device`):
+     - `DELETE FROM identity.session`: password sessions are void, and no production data exists;
+     - `DROP COLUMN mfa_state, authenticated_at`;
+     - add `device_id`, `login_channel` and `UNIQUE (user_id, id)` with its FK;
+     - replace the `end_reason` CHECK.
+  6. `CREATE` `channel_change`, then `one_time_code`: both reference `session (user_id, id)`.
+  6b. `CREATE FUNCTION identity.device_key_in_use(bytea)` and `identity.resolve_one_time_code(uuid)`: owner `allwin_owner`, `EXECUTE` to `allwin_app`, owner-read policies on `known_device` and `one_time_code`.
+  7. Steps 4 and 6 also cover RLS, the owner-read policy where needed, and grants.
+- **Destructive changes need explicit user authorization** (DBA rule): the `DROP` statements and the session `DELETE`. There is nothing to lose: no production deploy, dev data only.
+- Ferro updates `core/crates/app/src/dev.rs`, whose seed inserts `password_hash`, and the matching `core/.sqlx` query in the same change. No database recreation is needed.
 
 ## 9. Validation plan (once PostgreSQL is provisioned)
 
@@ -858,7 +1174,31 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - opt-in (`automation_*` and `copy_*`): `chosen` with no choice fails; `not_required` with a choice fails; `pending_review` keeping the previous choice passes; a choice without `chosen_at` fails; a real account with `pending_review` fails;
    - `adapter_connection`: a second live connection named `Desk A`/`desk a` fails; reusing the name of an unpaired one passes; `status = 'unpaired'` without `archived_at` fails; after a simulated Core restart, rows left `connected`/`outdated` become `disconnected` with a new `status_changed_at` and an audit entry, before any adapter can connect;
    - `email_registered` and `admin_list_users` return false / no rows for a non-admin `app.user_id`;
+   - `one_time_code` (rev. 6): `expires_at` beyond 10 minutes fails; `failed_attempts = 5` without `invalidated_reason = 'attempts'` fails; consumed and invalidated together fails; `step_up` without `action`, `source_rotate` without `target_id`, `source_create` with a `target_id`, `login` with `session_id` and `channel_change` without `code_role` fail; a second `new_value` code in one change fails; a `new_value` code whose destination is not yet the user's address is accepted; a resend moves `expires_at` to at most `sent_at + 10 min` and keeps `failed_attempts`; 3 logins from an unknown browser do not invalidate the user's open challenge; the 60-s resend cooldown and the send budgets are identical for a registered and an unregistered identifier (counter rows, no code row needed); a `new_value` code is refused once its change is no longer `awaiting_codes`; two concurrent wrong guesses on a code at 4 failures leave it invalidated at 5, never 6; another user's challenge id resolves but its row is invisible under RLS;
+   - `app_user` (rev. 6): no `email_verified_at` fails; a second channel change within 24 h of `channel_changed_at` is refused; `whatsapp_e164` without `whatsapp_verified_at` fails; a second user with the same number fails;
+   - `known_device` (rev. 6/7): a cookie valid for another user is kept and a second row with the same hash is inserted for this user; after "forget device" or "sign out everywhere", the next sign-in from that browser gets a new cookie and a new row (no unique violation) and a new-device notice; signup completion creates a device without a notice;
+   - `signup_code` (rev. 6): an abandoned signup leaves no `app_user` row; two concurrent confirmations on one invitation create exactly one user; a code on a revoked or expired invitation fails; `channel` other than `email` fails;
+   - `channel_change` (rev. 7): a second open change for the user fails; `on_hold` without `hold_until` fails; `cancelled` without `cancelled_at` fails; a code with `code_role` and no `channel_change_id` fails; a second `new_value` code for one change fails; a `new_value` code is refused once its change is cancelled or expired; an `on_hold` change does not alter the address until a worker applies it after `hold_until`; a cancel or an expiry leaves the change's open codes invalidated with `change_closed`; a stale `awaiting_codes` row does not block a new start; a hold applied by the worker ends every session of the user; a cancel from another session of the same user works, and one from another user is invisible under RLS;
+   - `delivery_state` (rev. 6): a channel-change send suppressed by a clash and one to a free value both end `sent`, and the clash writes no `auth.code_delivery_failed`; a resend resets it to `pending`; a failed send of a registered user writes `auth.code_delivery_failed`;
+   - `code_send_counter` (rev. 6): a registered and an unregistered identifier hit the limit at the same count; concurrent upserts never lose a send; no column holds the address;
    - a choice without `*_rule_version_id` fails;
+   - rev. 8, `account`:
+     - a prop account with a preset and `firm_name`, a prop account with neither, and a manual one missing `phase` all fail;
+     - a real account with `firm_platform` fails;
+     - `pending_review` without `*_pending_reason`, and a reason with `chosen`, fail;
+     - the same `create_idempotency_key` twice for one user fails, and for two users passes;
+     - a key without a hash fails;
+   - rev. 8, `opt_in_rule_version`:
+     - a generic row with quotes, a firm or a non-`unknown` stance fails;
+     - a second generic version 1 of the same kind fails;
+     - `text_changed` without `change_reason` fails;
+     - `allwin_app` cannot `UPDATE` or `DELETE`;
+     - an account's `automation_rule_version_id` pointing to a `copy` row is rejected by the Core;
+   - rev. 8, `account_bracket_profile`:
+     - `set_by_user` with `copied_from_size` fails;
+     - a copy without `copied_at` fails;
+     - a stale `row_version` updates 0 rows;
+   - rev. 8, `subscription`: a stale `row_version` updates 0 rows;
    - decimal round-trip at maximum scale (`NUMERIC(22,10)`, `NUMERIC(18,4)`) through sqlx `rust_decimal`.
 3. The RLS lint test (§3) runs in CI.
 4. The Q13 §9 size measurement on 1 M synthetic audit rows.
@@ -872,7 +1212,7 @@ ALIGN-1…8 were accepted on 2026-10-23 and are reflected in ADR-0003/0004 and t
 | ALIGN-1 | Money on the wire | `$defs/money` / `non_negative_money`, ≤ 14 integer + ≤ 4 fraction digits, for commission, limits, `risk_event` value/limit and `risk_state`. Prices and `price_delta` keep ≤ 10 fraction digits | §2: `NUMERIC(18,4)` |
 | ALIGN-2 | Durable domain events | Transactional `app.outbox` + at-least-once dispatcher; consumers dedupe (audit on `source_event_id`) | §6.4 |
 | ALIGN-3 | Token format | `key_id` = 12 `[A-Za-z0-9]`; secret = 43 base64url (32 bytes); `^aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$`. Store `key_id` + SHA-256 of the secret only | §4.1 `CHECK`s; §6.1/§6.4 no-token `CHECK`s (unanchored) |
-| ALIGN-4 | Low-entropy codes | HMAC-SHA-256 with a server pepper for pairing and recovery codes. Pairing limits: 10 attempts/min per IP; 100 failures per 10 min globally → endpoint locked 10 min + alert. No per-connection counter | §4.1, §4.2 |
+| ALIGN-4 | Low-entropy codes | HMAC-SHA-256 with a server pepper for pairing and recovery codes. Pairing limits: 10 attempts/min per IP; 100 failures per 10 min globally → endpoint locked 10 min + alert (superseded by U11: per-IP and per-prefix limits, global threshold alert only). No per-connection counter | §4.1, §4.2 |
 | ALIGN-5 | Signal-type filter | `routing.subscription` per (source, account) | §5.5 |
 | ALIGN-6 | `command.step` codes | `place`, `flatten`, `modify:<n>`, `cancel:<n>`; `<n>` = zero-based ordinal of that kind in the routing plan of the (instruction, account) pair; reverse = `flatten` + `place`; reduce = `place` | §6.3 `CHECK`s |
 | ALIGN-7 | `message_id` unique forever vs. retention | `routing.message_receipt` is never purged; erased only with the user | §6.1 |
@@ -896,4 +1236,7 @@ Adapter-protocol 1.0 acceptance deltas applied in rev. 2:
 | Q-A4 | Signal-type filter per account, or per (source, account)? | Per (source, account) |
 | Q-A5 | Contract rollover: global (admin) or per user? | Global catalog maintained by the admin, with an advance warning |
 | Q-N1 | A dollar distance that is not a whole number of ticks: round which way? | Toward the entry (the tighter distance); the adjustment is shown in the audit |
+| Q32 (PO) | (rev. 6, open) One account per e-mail and per WhatsApp number? The model says yes (`app_user_whatsapp_key`, like e-mail) | **Open**, user; dropping the constraint is the only change if not |
+| Q35 (PO) | (rev. 6, open) Which step-up actions are on (source token create/rotate, pairing code, admin actions…) | **Open**, user. No schema impact for the 8 current HTTP 2.0.0 `StepUpAction` values (rev. 7.1): Q35 switches Core settings. New actions it may add (enforcement-off, max-position changes) need a contract change and a migration extending the `action` CHECK |
+| Q28 (PO) | (rev. 6, open) Admin-assisted recovery when every channel is lost | **Open**, user; not modelled until decided (§4.3) |
 | Q-O1 | (ADR-0004, open) Double fill of a local bracket while NT8 was down: (a) alert and wait, (b) flatten the orphan position | **Open**, user. The schema already supports (b) (ALIGN-8); nothing changes if the user picks (a) |
