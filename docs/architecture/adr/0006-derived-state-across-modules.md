@@ -1,0 +1,46 @@
+# ADR-0006 — Derived state across modules: versioned events and a staleness gate
+
+- **Status:** Accepted (2026-10-23), Architect decision within ADR-0001 §4. First use: account rule values → risk limits (S16 → S13).
+- **Owner:** Software Architect
+- **Asked by:** Compasso (HTTP contract 2.5.0, S16 §5) and Lastro (data model rev. 10 §5.7).
+- **Depends on:** [ADR-0001](0001-technology-stack.md) §4 (modules talk only through events and query ports), ADR-0003 §4.1 (account gates, P1), outbox dispatcher rules (data model §6.4, decision A).
+
+## 1. Context
+
+The `accounts` module owns an account and every input of its limits: the maximum position, the preset version and firm platform, and the account's own rule values. The `risk` module owns `risk.account_limits`, which it derives from those values and enforces (S13), and which it sends to the plugin (`limits`, ADR-0004 §7). An account create, update or preset apply must never let routing act on limits that do not match the account.
+
+## 2. Options
+
+| Option | How | Trade-off |
+|---|---|---|
+| (A) Command port | `accounts` calls a `risk` command port inside its own DB transaction | Always consistent, but it is a cross-module **command** dependency, which ADR-0001 §4 excludes. It also couples the two modules' schemas in one transaction |
+| **(B) Versioned event + staleness gate** | `accounts` bumps `account.limits_version` and writes `account.limits_changed` to `app.outbox` in the same transaction. `risk` consumes it and upserts `risk.account_limits` with `derived_from_version`, idempotently (only a newer version wins). Routing reads both versions through query ports and gates entries while they differ | One writer per schema; crash-safe through the outbox; staleness is a checkable fact, not a timing assumption |
+
+## 3. Decision
+
+**(B).** Rules:
+
+1. **Producer:** **any write that changes an input of the derived limits** increments `account.limits_version`, sets `limits_changed_at`, and emits `account.limits_changed { account_id, limits_version }` in the **same transaction** as the change. Inputs include at least:
+   - `max_position_qty`;
+   - the account's own rule values (`updateAccount.rule_values`, a conflict resolution `chosen_from_conflict`, `restorePresetValue`);
+   - the preset version or firm platform (create, firm/plan/phase/size/platform change, preset apply, a new rule version adopted).
+2. **Consumer:** `risk` reads the inputs **together with their `limits_version` in one consistent read** from the `accounts` query port, recomputes the limits, and upserts them with `derived_from_version` = **that read's version**, never the event's (only a newer one wins). An event whose version is not newer than the stored one is ignored, and a redelivery is harmless. Dispatcher rule (A) applies: never marked published without being consumed, and `risk` starts `from_now` with a startup reconciliation. The `accounts` query port `list_limits_versions() → [(account_id, limits_version)]` is compared with risk's own `derived_from_version`, and every account that differs is derived through the same path as the consumer. No cross-schema SQL.
+3. **Gate (routing):** before routing a **position-increasing** action, routing compares `account.limits_version` (accounts query port) with `derived_from_version` (risk query port). If no limits row exists, or the row is older, the action is skipped with **`routing.limits_pending`**, audited, with no alert. **Exits continue** (ADR-0003 P1: refusing an exit never reduces exposure).
+   - An action that cannot be clearly classified as entry or exit counts as **position-increasing** (fail closed).
+   - The versions are read once per instruction, at the decision. The two reads are separate query-port reads, not atomic. That is acceptable: an instruction routed just before an account change commits is ordered before that change.
+   - **The gate ships together with the `risk` consumer (S13), never before.** Otherwise "no limits row" would block every entry.
+4. **Plugin barrier:** `risk` sends the new `limits` to the adapter only after the upsert. Until then the plugin keeps enforcing the previous limits. That is safe, because the Core gate already stops new entries.
+5. **Monitoring:** a periodic worker job (every 30 s) runs the same comparison as the reconciliation and raises an operational alert when a gap is older than 60 s (measured from `limits_changed_at`). It **only alerts** and never derives outside the consumer path. It is never a silent state.
+6. **General rule:** any future state that one module derives from another's data follows the same pattern (versioned event, idempotent upsert with `derived_from_*`, a staleness gate at the point of action). A command port across modules needs its own ADR.
+
+## 4. Consequences
+
+- **Positive:** the module boundaries of ADR-0001 hold; no distributed transaction; staleness can be tested and audited; crash-safe.
+- **Negative:** a short window, normally milliseconds, in which entries for a just-changed account are skipped as `routing.limits_pending`. This is visible in the audit, and an instruction arriving in that window is not executed (never execute late).
+- **Tests:**
+  - an entry routed between the change and the derivation is skipped with `routing.limits_pending`, while an exit in the same window executes;
+  - a redelivered or out-of-order event never downgrades the limits;
+  - after a crash between the commit and consumption, startup reconciliation closes the gap;
+  - the plugin receives `limits` only after the upsert;
+  - an update that commits during a derivation never leaves `derived_from_version == limits_version` with stale inputs.
+- **Owners:** Database Architect (columns `limits_version`, `derived_from_version`; data model §5.7), Backend (producer, consumer, gate, reconciliation), Software Architect (ADR-0003 code `routing.limits_pending` in the next ADR-0003 delta; HTTP audit code via Compasso).
