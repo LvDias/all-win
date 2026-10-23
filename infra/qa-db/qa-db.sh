@@ -45,10 +45,15 @@ exists() { docker inspect --format '{{index .Config.Labels "allwin.qa-db"}}' "$(
 check_env_target() {
   local p="$1" d; d="$(dirname "$p")"
   case "$p" in */) die "--env-file must be a file path" ;; esac
-  mkdir -p "$d"
+  # New directories are 711, not 700 (umask 077): an --owner account must be able to reach the file.
+  [ -d "$d" ] || install -d -m 711 -- "$d"
   [ ! -L "$d" ] || die "env file directory is a symlink: $d"
   if [ -L "$p" ]; then die "env file path is a symlink: $p"; fi
   if [ -e "$p" ] && [ ! -f "$p" ]; then die "env file path is not a regular file: $p"; fi
+  # Absolute path from here on, so the git checks and the final rename see the same file.
+  d="$(cd "$d" && pwd -P)"
+  env_file="$d/$(basename "$p")"
+  p="$env_file"
   if top="$(git -C "$d" rev-parse --show-toplevel 2>/dev/null)"; then
     git -C "$d" ls-files --error-unmatch -- "$p" >/dev/null 2>&1 && die "env file is tracked by git: $p"
     git -C "$d" check-ignore -q -- "$p" || die "env file inside a git worktree must be git-ignored: $p"
