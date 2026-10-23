@@ -85,6 +85,8 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 | `buy`/`sell`, `open` | opposite direction | **Rejected and notified:** `routing.position_conflict` (Q1-a). The source must send `close` or `reverse` explicitly |
 | `buy`/`sell`, `reduce` | opposite direction | Reduce by `min(Q, abs(P))`. **Never flips.** Protective orders are resized to the remaining position, oldest entries first in individual mode (P2, FIFO); at flat, orphan-order protection cancels the rest |
 | `buy`/`sell`, `reduce` | flat or same direction | Skipped: `routing.nothing_to_reduce` |
+| `buy`/`sell`, `reduce` | opposite direction, but the Core holds no All Win identity for the position (opened externally, or identity lost) | Skipped: `routing.position_unknown`, audited. The reduce carries `refs.position_ref`; the adapter executes it only against that position (ADR-0004 §5 position-identity guard, U13) |
+| `buy`/`sell`, `reduce` | account's connection negotiated adapter protocol < 1.2 | Skipped: `routing.adapter_protocol_outdated`, audited, alert (a reduce never runs without the guard; ADR-0004 §9) |
 | `close` | any non-flat | **Flatten the whole position** in that contract and cancel all its stops/targets (Q1). `quantity`, if present, is ignored and the audit records `quantity_ignored`. A misconfigured close template must never leave a position open |
 | `close` | flat | No-op, audited: `routing.nothing_to_close` |
 | `reverse`, `side` = X | opposite to X | Flatten, cancel protections, then open X with `min(Q, M)` and profile stop/target |
