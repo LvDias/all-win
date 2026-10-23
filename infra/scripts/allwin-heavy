@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Run a heavy command (full test suite, clippy --all-targets, e2e stack, full vitest) under a host-wide
-# 2-slot semaphore, a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
+# Run a heavy command (cargo build/test/clippy, dotnet build/test, pnpm build, full vitest, playwright, e2e stack)
+# under a host-wide 3-slot semaphore, a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
 #   allwin-heavy cargo test --workspace
 #   allwin-heavy --fresh-target cargo test --workspace   (QA verdict run: private target per SHA, removed after)
 set -euo pipefail
 
-SLOTS="${ALLWIN_HEAVY_SLOTS:-2}"
+SLOTS="${ALLWIN_HEAVY_SLOTS:-3}"
 LOCK_DIR="${ALLWIN_HEAVY_LOCK_DIR:-/srv/www/allwin.worktrees/.heavy-locks}"
 CPU_QUOTA="${ALLWIN_HEAVY_CPU_QUOTA:-200%}"
 WAIT_MAX="${ALLWIN_HEAVY_WAIT_S:-1800}"   # seconds to wait for a slot
@@ -43,6 +43,7 @@ while [ -z "$held" ]; do
 done
 
 # Defaults that keep the build small; the caller can override any of them.
+umask 002   # files created under the shared toolchain and caches stay group-writable (group devs)
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 TARGET_ROOT="${ALLWIN_HEAVY_TARGET_ROOT:-$HOME/.cache/allwin/cargo-target}"
 if [ "$FRESH" = 1 ]; then
@@ -68,6 +69,24 @@ if [ -z "${PLAYWRIGHT_PORT:-}" ]; then
   export PLAYWRIGHT_PORT
 fi
 export PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://localhost:$PLAYWRIGHT_PORT}"
+# Same toolchain for every account (rustc 1.99.1 under /opt/rust), so compile-cache keys match across accounts.
+if [ -z "${RUSTUP_HOME:-}" ] && [ -d /opt/rust/rustup ]; then
+  export RUSTUP_HOME=/opt/rust/rustup CARGO_HOME="${CARGO_HOME:-/opt/rust/cargo}"
+  case ":$PATH:" in *":/opt/rust/cargo/bin:"*) ;; *) export PATH="/opt/rust/cargo/bin:$PATH" ;; esac
+fi
+
+# Shared compile cache (sccache, group-devs directory). No daemon: a background server would inherit the slot.
+# Incremental compilation is off because sccache cannot cache it. ALLWIN_HEAVY_NO_SCCACHE=1 disables the cache.
+SCCACHE_BIN="${ALLWIN_HEAVY_SCCACHE:-/opt/rust/cargo/bin/sccache}"
+if [ "${ALLWIN_HEAVY_NO_SCCACHE:-0}" != 1 ] && [ -x "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER:-}" ]; then
+  export SCCACHE_DIR="${SCCACHE_DIR:-/srv/www/allwin.worktrees/.sccache}"
+  export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-30G}" SCCACHE_NO_DAEMON=1 CARGO_INCREMENTAL=0
+  mkdir -p -- "$SCCACHE_DIR" 2>/dev/null || true
+  if [ -d "$SCCACHE_DIR" ] && [ -w "$SCCACHE_DIR" ]; then export RUSTC_WRAPPER="$SCCACHE_BIN"; fi
+fi
+
+# dotnet: no resident MSBuild nodes or build servers holding memory (and the slot) after the command.
+export MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_CLI_USE_MSBUILD_SERVER=0
 export RUST_TEST_THREADS="${RUST_TEST_THREADS:-2}"
 
 # --scope runs in the foreground (cwd, env, tty and exit code pass through) and keeps the slot fd.
