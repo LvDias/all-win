@@ -131,22 +131,29 @@ pub async fn user(owner: &PgPool) -> UserId {
         .execute(&mut *tx)
         .await
         .unwrap();
-    // Any NOT NULL credential column of the identity schema in force gets a placeholder.
-    let has_password: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.columns
-           WHERE table_schema = 'identity' AND table_name = 'app_user' AND column_name = 'password_hash')",
+    // Fill whichever of these columns the identity schema in force has (S3's passwordless
+    // 060800 drops password_hash and makes email_verified_at NOT NULL; F-W-1).
+    let columns: Vec<String> = sqlx::query_scalar(
+        "SELECT column_name::text FROM information_schema.columns
+          WHERE table_schema = 'identity' AND table_name = 'app_user'
+            AND column_name IN ('password_hash', 'email_verified_at')",
     )
-    .fetch_one(&mut *tx)
+    .fetch_all(&mut *tx)
     .await
     .unwrap();
-    let sql = if has_password {
-        "INSERT INTO identity.app_user (id, email, email_normalized, password_hash, time_zone)
-         VALUES ($1, $2, $2, 'x', 'UTC')"
-    } else {
-        "INSERT INTO identity.app_user (id, email, email_normalized, email_verified_at, time_zone)
-         VALUES ($1, $2, $2, now(), 'UTC')"
-    };
-    sqlx::query(sql)
+    let has = |c: &str| columns.iter().any(|x| x == c);
+    let mut names = String::from("id, email, email_normalized, time_zone");
+    let mut values = String::from("$1, $2, $2, 'UTC'");
+    if has("password_hash") {
+        names.push_str(", password_hash");
+        values.push_str(", 'x'");
+    }
+    if has("email_verified_at") {
+        names.push_str(", email_verified_at");
+        values.push_str(", now()");
+    }
+    let sql = format!("INSERT INTO identity.app_user ({names}) VALUES ({values})");
+    sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(id.as_uuid())
         .bind(format!("{}@test.invalid", id.as_uuid()))
         .execute(&mut *tx)

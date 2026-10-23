@@ -68,6 +68,7 @@ fn decision(user: UserId, instruction: InstructionId, account: AccountId) -> Dec
         decided_at: Utc.with_ymd_and_hms(2026, 10, 23, 12, 0, 1).unwrap(),
         leg: Leg::Whole,
         gates_unknown: false,
+        expected_flat: false,
         audit: Some((
             "routing.out_of_sync",
             json!({"actor":"system","details":{"reverse_closed_qty":3},

@@ -177,6 +177,9 @@ pub struct DecisionRecord {
     pub leg: Leg,
     /// Decided after the TTL without answers from gates 6–9 (Architect, N1).
     pub gates_unknown: bool,
+    /// Q75: a flatten sent against a flat expected position on an out-of-sync account. Like
+    /// `gates_unknown`, it reaches the details (`expected_flat`) with HTTP 5.2.0.
+    pub expected_flat: bool,
     /// The audit code (`reason_code`, or `routing.routed`) and envelope `{actor, details,
     /// refs}`. A `close` leg has none: the pair gets its one decision entry with the opening
     /// (Compasso, 2026-10-23).
@@ -253,10 +256,41 @@ pub enum DecideError {
     /// `routing.instrument_unavailable` ships with HTTP 5.2.0.
     #[error("no active contract for the instrument")]
     NoActiveContract,
-    /// Some accounts' entries wait for the entry gates; what could be decided (exits, close
-    /// legs) is committed, and the delivery is retried.
-    #[error("entry gates unavailable: {0}")]
-    GatesUnavailable(PortError),
+    /// Some accounts wait for a gate that did not answer; what could be decided (exits, close
+    /// legs) is committed, and the delivery is retried. The text names the instruction, each
+    /// waiting account and why, so the dead-letter alert says what is stuck (Esmeril, 5.2.0).
+    #[error("instruction {instruction} waiting ({cause}): {}", waiting_list(.accounts))]
+    GatesUnavailable {
+        instruction: InstructionId,
+        accounts: Vec<(AccountId, Waiting)>,
+        cause: PortError,
+    },
+}
+
+/// Why one account of an instruction is not decided yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Waiting {
+    /// A close against a flat expected position needs gate 6 (Q75); exits never expire.
+    CloseForSyncState,
+    /// An entry (or the opening of a reverse) needs gates 6–9; it expires by its TTL.
+    EntryForGates,
+}
+
+impl Waiting {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CloseForSyncState => "close waiting for sync state",
+            Self::EntryForGates => "entry waiting for gates 6-9",
+        }
+    }
+}
+
+fn waiting_list(accounts: &[(AccountId, Waiting)]) -> String {
+    accounts
+        .iter()
+        .map(|(a, w)| format!("account {} {}", a.as_uuid(), w.as_str()))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 #[derive(Clone)]
@@ -396,10 +430,34 @@ impl DecideInstruction {
             None
         };
         let answers = gates.as_ref().and_then(|g| g.as_ref().ok());
+        // A close against a flat expected position reads gate 6 alone (Q75, ADR-0003 r4): in
+        // sync it is nothing to close, out of sync a flatten. Without the answer it waits; a
+        // close against a non-flat position never asks.
+        let flat_closes: Vec<AccountId> = match action {
+            Action::Close => ids
+                .iter()
+                .copied()
+                .filter(|a| positions[a].0 == 0)
+                .collect(),
+            _ => Vec::new(),
+        };
+        let flat_sync = if flat_closes.is_empty() {
+            None
+        } else {
+            ask(
+                &*d.gates.out_of_sync,
+                "out_of_sync",
+                user,
+                &contract,
+                &flat_closes,
+            )
+            .await
+            .ok()
+        };
 
         let now = d.clock.now();
         let mut out = Vec::with_capacity(targets.len());
-        let mut waiting = false;
+        let mut waiting: Vec<(AccountId, Waiting)> = Vec::new();
         for (account, signal_types) in targets {
             let (position, has_close_leg) = positions[&account.id];
             let ttl_ms = account.sizing.command_ttl_ms;
@@ -427,6 +485,16 @@ impl DecideInstruction {
                 max_position: account.sizing.max_position_qty,
                 position,
             };
+            let mut facts = facts;
+            if action == Action::Close && position == 0 {
+                match flat_sync.as_ref().and_then(|m| m.get(&account.id)) {
+                    Some(out_of_sync) => facts.out_of_sync = *out_of_sync,
+                    None => {
+                        waiting.push((account.id, Waiting::CloseForSyncState));
+                        continue;
+                    }
+                }
+            }
             // Entry gates asked but not answered (an exit never asks).
             let unanswered = gates.is_some() && answers.is_none();
             if unanswered && !expired {
@@ -446,7 +514,7 @@ impl DecideInstruction {
                         Leg::Close,
                     ));
                 }
-                waiting = true;
+                waiting.push((account.id, Waiting::EntryForGates));
                 continue;
             }
             let leg = if has_close_leg { Leg::Open } else { Leg::Whole };
@@ -471,12 +539,16 @@ impl DecideInstruction {
             out.push(row);
         }
         d.store.record(user, &out).await?;
-        if waiting {
+        if !waiting.is_empty() {
             let cause = match gates {
                 Some(Err(e)) => e,
-                _ => PortError("entry gates unavailable".into()),
+                _ => PortError("gate 6 (sync state) unavailable".into()),
             };
-            return Err(DecideError::GatesUnavailable(cause));
+            return Err(DecideError::GatesUnavailable {
+                instruction: instruction_id,
+                accounts: waiting,
+                cause,
+            });
         }
         Ok(out)
     }
@@ -584,6 +656,7 @@ fn record(
         decided_at: now,
         leg,
         gates_unknown: false,
+        expected_flat: d.expected_flat,
         audit: (leg != Leg::Close).then_some((code, payload)),
     }
 }

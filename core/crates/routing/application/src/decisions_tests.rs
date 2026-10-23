@@ -568,7 +568,7 @@ async fn an_entry_waits_while_a_gate_cannot_answer() {
                 .await
                 .unwrap_err();
             assert!(
-                matches!(err, DecideError::GatesUnavailable(_)),
+                matches!(err, DecideError::GatesUnavailable { .. }),
                 "gate {n} {action}"
             );
             assert!(w.store.legs().is_empty());
@@ -682,7 +682,7 @@ async fn a_reverse_closes_at_once_and_opens_when_the_gates_answer() {
         .handle(w.user, w.instruction)
         .await
         .unwrap_err();
-    assert!(matches!(err, DecideError::GatesUnavailable(_)));
+    assert!(matches!(err, DecideError::GatesUnavailable { .. }));
     assert_eq!(w.store.legs(), [Leg::Close]);
     assert!(w.store.events.lock().unwrap().is_empty());
     // A redelivery while still down adds nothing and does not read the position again.
@@ -798,6 +798,75 @@ async fn exits_and_close_legs_commit_while_entries_wait() {
     let rows = w.store.rows.lock().unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows.values().next().unwrap().account_id, w.account);
+}
+
+/// Q75 (ADR-0003 r4; Crivo C1): a close against a FLAT expected position needs gate 6 alone.
+#[tokio::test]
+async fn a_flat_close_waits_for_gate_6_and_then_trusts_it_only_in_sync() {
+    // Sync port down → the close waits (exits never expire); the other gates are not asked.
+    let w = world();
+    w.set_instruction("close", None, None);
+    *w.gates.0[0].unavailable.lock().unwrap() = true;
+    let err = w
+        .use_case()
+        .handle(w.user, w.instruction)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DecideError::GatesUnavailable { .. }));
+    // The error (the outbox's last_error, shown by the dead-letter alert) names what is stuck.
+    let text = err.to_string();
+    assert!(
+        text.contains(&w.instruction.as_uuid().to_string()),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!(
+            "account {} close waiting for sync state",
+            w.account.as_uuid()
+        )),
+        "{text}"
+    );
+    assert!(w.store.legs().is_empty());
+    for g in &w.gates.0[1..] {
+        assert!(g.seen.lock().unwrap().is_empty());
+    }
+
+    // In sync → nothing to close, whatever the other gates would say.
+    let w = world();
+    w.set_instruction("close", None, None);
+    for g in &w.gates.0[1..] {
+        *g.unavailable.lock().unwrap() = true;
+    }
+    let (code, p) = w.only_event().await;
+    assert_eq!(code, "routing.nothing_to_close");
+    assert_eq!(p["refs"]["is_exit"], true);
+
+    // Out of sync → a flatten anyway, decision routed.
+    let w = world();
+    w.set_instruction("close", None, None);
+    w.bar(0);
+    let d = w.decide().await;
+    assert_eq!((d[0].outcome, d[0].reason_code), (Outcome::Routed, None));
+    assert!(d[0].expected_flat);
+}
+
+/// Q75-2: a reverse on a flat expected position of an out-of-sync account closes whatever the
+/// account really holds and never opens.
+#[tokio::test]
+async fn a_flat_reverse_out_of_sync_flattens_and_never_opens() {
+    let w = world();
+    w.set_instruction("reverse", Some("long"), Some(1));
+    w.bar(0);
+    let d = w.decide().await;
+    assert_eq!(
+        (d[0].outcome, d[0].reason_code),
+        (Outcome::Capped, Some("routing.out_of_sync"))
+    );
+    assert_eq!(d[0].executed_qty, Some(0));
+    assert!(d[0].expected_flat);
+    let p = &w.store.events.lock().unwrap()[0].1;
+    assert_eq!(p["refs"]["outcome"], "partial");
+    assert!(p["details"].get("reverse_closed_qty").is_none());
 }
 
 /// The retry after a gate outage decides with the clock of the retry: a late entry expires

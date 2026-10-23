@@ -164,6 +164,10 @@ pub struct Decision {
     /// with `reason_code` (audit `reverse_closed_qty`; notification `routing.reverse_close_only`).
     pub reverse_closed_qty: Option<u32>,
     pub steps: Vec<Step>,
+    /// Q75 (ADR-0003 r4): a flatten sent while the expected position is flat, because the
+    /// account is out of sync and its flat view is not trusted for exits (audit
+    /// `expected_flat`; the gateway notifies `routing.out_of_sync_flatten` when it ends).
+    pub expected_flat: bool,
 }
 
 impl Decision {
@@ -184,6 +188,7 @@ impl Decision {
             requested_qty: requested,
             executed_qty: requested.map(|_| 0),
             reverse_closed_qty: None,
+            expected_flat: false,
             steps: Vec::new(),
         }
     }
@@ -221,7 +226,19 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
         // An exit: no entry gate and no expiry (P1; ADR-0004 T1).
         Action::Close => {
             if f.position == 0 {
-                return skip("routing.nothing_to_close");
+                // Q75: a flat view is trusted for exits only in sync (this reads gate 6).
+                if !f.out_of_sync {
+                    return skip("routing.nothing_to_close");
+                }
+                return Decision {
+                    outcome: Outcome::Routed,
+                    reason_code: None,
+                    requested_qty: None,
+                    executed_qty: None,
+                    reverse_closed_qty: None,
+                    steps: vec![Step::Flatten],
+                    expected_flat: true,
+                };
             }
             Decision {
                 outcome: Outcome::Routed,
@@ -229,6 +246,7 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
                 requested_qty: None,
                 executed_qty: None,
                 reverse_closed_qty: None,
+                expected_flat: false,
                 steps: vec![Step::Flatten],
             }
         }
@@ -301,6 +319,7 @@ pub fn reverse_close_leg(
         requested_qty: Some(quantity.saturating_mul(f.multiplier)),
         executed_qty: None,
         reverse_closed_qty: None,
+        expected_flat: false,
         steps: vec![Step::Flatten],
     })
 }
@@ -396,6 +415,19 @@ fn not_sent(code: &'static str) -> Outcome {
 /// position is opposite (decision `capped`, audit `partial`), and is skipped when flat.
 fn close_only(f: &DecisionFacts, code: &'static str, requested: Option<u32>) -> Decision {
     if f.position == 0 {
+        // Q75: out of sync, the flat view is not trusted: the closing leg is sent as a flatten
+        // and the opening is never created (closed quantity unknown until the flatten ends).
+        if code == "routing.out_of_sync" {
+            return Decision {
+                outcome: Outcome::Capped,
+                reason_code: Some(code),
+                requested_qty: requested,
+                executed_qty: Some(0),
+                reverse_closed_qty: None,
+                steps: vec![Step::Flatten],
+                expected_flat: true,
+            };
+        }
         return Decision::not_executed(not_sent(code), code, requested);
     }
     Decision {
@@ -404,6 +436,7 @@ fn close_only(f: &DecisionFacts, code: &'static str, requested: Option<u32>) -> 
         requested_qty: requested,
         executed_qty: Some(0),
         reverse_closed_qty: Some(u32::try_from(f.position.unsigned_abs()).unwrap_or(u32::MAX)),
+        expected_flat: false,
         steps: vec![Step::Flatten],
     }
 }
@@ -424,6 +457,7 @@ fn place(side: Side, q: i64, room: i64, requested: Option<u32>, first: Option<St
         requested_qty: requested,
         executed_qty: Some(quantity),
         reverse_closed_qty: None,
+        expected_flat: false,
         steps,
     }
 }
@@ -703,12 +737,21 @@ mod tests {
                 Some("routing.reverse_close_only"),
                 "{code}"
             );
-            // Flat: nothing to close, not sent with the code.
+            // Flat: nothing to close, not sent with the code — except out of sync (Q75), where
+            // the flat view is not trusted and the closing leg goes as a flatten.
             f.position = 0;
             let d = decide(T, rev, &f);
             assert_eq!(d.reason_code, Some(code), "{code}");
-            assert_eq!(d.outcome, not_sent(code), "{code}");
-            assert!(d.steps.is_empty(), "{code}");
+            if code == "routing.out_of_sync" {
+                assert_eq!(d.outcome, Outcome::Capped);
+                assert_eq!(d.steps, [Step::Flatten]);
+                assert_eq!(d.executed_qty, Some(0));
+                assert!(d.expected_flat);
+            } else {
+                assert_eq!(d.outcome, not_sent(code), "{code}");
+                assert!(d.steps.is_empty(), "{code}");
+                assert!(!d.expected_flat);
+            }
             assert_eq!(d.reverse_closed_qty, None, "{code}");
             assert_eq!(d.notification_code(), None, "{code}");
             // Already on the reverse side: a conflict, never a flatten.
@@ -847,6 +890,24 @@ mod tests {
             decide_expired_unanswered(T, BUY_2, &f).reason_code,
             Some("routing.account_inactive")
         );
+    }
+
+    /// Q75 (ADR-0003 r4 §4.2): a close against a flat expected position reads gate 6 — in
+    /// sync it is nothing to close, out of sync it is sent as a flatten anyway.
+    #[test]
+    fn a_flat_close_trusts_the_flat_view_only_in_sync() {
+        let mut f = facts();
+        let d = decide(T, Action::Close, &f);
+        assert_eq!(d.reason_code, Some("routing.nothing_to_close"));
+        assert!(d.steps.is_empty() && !d.expected_flat);
+        f.out_of_sync = true;
+        let d = decide(T, Action::Close, &f);
+        assert_eq!((d.outcome, d.reason_code), (Outcome::Routed, None));
+        assert_eq!(d.steps, [Step::Flatten]);
+        assert!(d.expected_flat);
+        // A non-flat close never depends on the sync state.
+        f.position = 2;
+        assert!(!decide(T, Action::Close, &f).expected_flat);
     }
 
     #[test]
