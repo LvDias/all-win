@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 5.1.1
+  version: 5.4.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -462,12 +462,13 @@ paths:
         carries `step_up: { challenge_id, code }` in its body (schema `StepUpProof`); the code authorizes that\none action\
         \ only (Q30 a: every action asks a new code).\n- `target_id` is **required** for `source_rotate`, `pairing_code_new`,\
         \ `connection_unpair`,\n  `account_opt_in_accept`, `route_enable` and `account_binding_change`, and **forbidden**\
-        \ for the other\n  actions; a violation → 400\n  `common.invalid_request` with pointer `/target_id`.\n- A target that\
-        \ does not exist or belongs to another user → 404 `common.not_found`; no code is sent and\n  nothing is counted against\
-        \ the user's send limit.\n- `admin_invitation_create` from a non-admin → 403 `auth.forbidden`, no code sent (same\
-        \ precedence as\n  admin operations).\n- 422 `auth.channel_unavailable`: the user has no confirmed value for `channel`.\n\
-        - 422 `auth.step_up_channel_not_allowed`: the policy requires another channel for this action on this\n  device (auth\
-        \ policy §6.2 M3, if adopted; the client then offers e-mail).\n"
+        \ for the other\n  actions; a violation → 400\n  `common.invalid_request` with pointer `/target_id`.\n- `admin_recovery`\
+        \ is never accepted here: 400 `common.invalid_request` with pointer `/action`. It exists\n  only for the operator\
+        \ command and its audit (5.4.0).\n- A target that does not exist or belongs to another user → 404 `common.not_found`;\
+        \ no code is sent and\n  nothing is counted against the user's send limit.\n- `admin_invitation_create` from a non-admin\
+        \ → 403 `auth.forbidden`, no code sent (same precedence as\n  admin operations).\n- 422 `auth.channel_unavailable`:\
+        \ the user has no confirmed value for `channel`.\n- 422 `auth.step_up_channel_not_allowed`: the policy requires another\
+        \ channel for this action on this\n  device (auth policy §6.2 M3, if adopted; the client then offers e-mail).\n"
       requestBody:
         required: true
         content:
@@ -1951,17 +1952,20 @@ paths:
       - accounts
       operationId: restartEvaluation
       summary: Restart the evaluation count of a prop account (S13b; Q69 a)
-      description: 'Sets a new `evaluation_start` (and optionally `evaluation_earned_before`); the progress toward
-
-        `evaluation_profit_target` restarts from there. A Sim / Playback reset is a discontinuity (S11
-
-        AC-6) and never restarts the count by itself. `row_version` as in `updateAccount`. Bumps the
-
-        account''s limits version. Audited as `accounts.evaluation_restarted` (old and new start and
-
-        earned-before). An account without an evaluation target gets 422 `accounts.evaluation_not_applicable`.
-
-        '
+      description: "Sets `evaluation_start` and optionally `evaluation_earned_before`. The audit names the effect\n(S13b AC-4,\
+        \ Q-S13b-3; PO):\n- **a changed start is a restart.** The progress toward `evaluation_profit_target` restarts from\n\
+        \  the new start. Audited as `accounts.evaluation_restarted` (old and new start and earned-before).\n- **the same\
+        \ start is a correction** of the earned amount (the UI's \"Salvar\"). The count does not\n  restart and nothing is\
+        \ lost: risk re-derives progress, high water and the drawdown floor from\n  `evaluation_start` + `evaluation_earned_before`\
+        \ + the trading-day aggregates since the start\n  (Esquadro; equity is derived from size + realized since `evaluation_start`).\
+        \ Those aggregates\n  are never purged while they are on or after `evaluation_start`. Audited as\n  `accounts.evaluation_corrected`\
+        \ (old and new earned-before), never as a restart.\n- **the same start and the same earned-before** change nothing:\
+        \ 200, not audited, `limits_version`\n  unchanged.\nEither change bumps the account's limits version (the baseline\
+        \ is a rule input, ADR-0006 §3.1).\nOmitting `evaluation_earned_before`:\n- with the same start, it keeps the stored\
+        \ value, so the request changes nothing;\n- with a new start, the account has no earned-before amount: the count starts\
+        \ from 0, not from\n  the old value.\nTo correct the amount to zero, send `\"0\"` (Crivo L2). A Sim / Playback reset\
+        \ is a discontinuity (S11 AC-6) and never\nrestarts the count by itself. `row_version` as in `updateAccount`. An account\
+        \ without an\nevaluation target gets 422 `accounts.evaluation_not_applicable`.\n"
       parameters:
       - $ref: '#/components/parameters/AccountId'
       requestBody:
@@ -2007,6 +2011,74 @@ paths:
         '422':
           description: '`accounts.evaluation_not_applicable` (no evaluation target) or `accounts.evaluation_start_invalid`
             (`/evaluation_start` in the future); nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/commission:
+    put:
+      tags:
+      - accounts
+      operationId: setAccountCommission
+      summary: Set or remove the account's commission floor alone (S13 AC-11; 5.4.0)
+      description: 'A narrow write for the Risk tab, so the web never rebuilds the whole `updateAccount` body to
+
+        change one field (where an absent `binding` unbinds and an absent `multiplier` resets it).
+
+        `commission_per_contract_side` is USD per contract and side, ≥ 0, or `null` to remove the floor.
+
+        It has the same effect and rules as the field in `updateAccount`: a higher floor applies at once,
+
+        a lower one or a removal from the next trading day (`AccountRisk.pending_commission_change`;
+
+        ADR-0006 §3.7). Any change bumps the account''s limits version and `row_version`; `putAccountRiskRules`
+
+        bumps only the limits version, so call it first when saving both. The same value
+
+        is a no-op: 200, not audited. Otherwise audited as `accounts.updated` (field
+
+        `commission_per_contract_side`, old and new). No step-up.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - commission_per_contract_side
+              - row_version
+              properties:
+                commission_per_contract_side:
+                  oneOf:
+                  - $ref: '#/components/schemas/MoneyAmount'
+                  - type: 'null'
+                row_version:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Saved (or unchanged).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`common.version_conflict` (stale `row_version`); nothing changed.'
           content:
             application/json:
               schema:
@@ -3459,7 +3531,15 @@ paths:
 
         `restorePresetValue`, a preset re-selection in `updateAccount`) bumps the version, so a form
 
-        opened before it gets 409 `common.version_conflict`.
+        opened before it gets 409 `common.version_conflict`. This operation bumps ONLY the limits
+
+        `version`, never `Account.row_version` (5.4.0, Grosa): the account form''s concurrency is separate.
+
+        A screen that saves the rules and the commission floor together calls this operation first, then
+
+        `setAccountCommission` with the `row_version` it holds. The commission write bumps both versions,
+
+        so the reverse order gets 409 here.
 
         When the new rules would already be reached today, the body must carry `acknowledge_reached: true`
 
@@ -3750,7 +3830,11 @@ paths:
 
         platform trades; `source_id` selects routed trades of those sources. Trades of archived accounts
 
-        stay listed (`account_deleted`); trades are kept for the life of the user account (S10 AC-3).
+        are kept for the life of the user account (S10 AC-3; Q79 a). From 5.4.0 they are HIDDEN unless
+
+        `include_archived=true` (the "Arquivadas" filter); when shown, they carry `account_deleted`. The
+
+        filter is applied by the Core, so paging, `getTradesSummary` and S22 totals always match the list.
 
         `next_cursor` is opaque, authenticated by the Core (MAC) and bound to the filters and the sort
 
@@ -3767,6 +3851,7 @@ paths:
       - $ref: '#/components/parameters/TradeOrigins'
       - $ref: '#/components/parameters/TradeSignalTypes'
       - $ref: '#/components/parameters/TradeRecordedBefore'
+      - $ref: '#/components/parameters/TradeIncludeArchived'
       - name: sort
         in: query
         required: false
@@ -3893,6 +3978,7 @@ paths:
       - $ref: '#/components/parameters/TradeSourceIds'
       - $ref: '#/components/parameters/TradeOrigins'
       - $ref: '#/components/parameters/TradeSignalTypes'
+      - $ref: '#/components/parameters/TradeIncludeArchived'
       - $ref: '#/components/parameters/TradeRecordedBefore'
       responses:
         '200':
@@ -4135,6 +4221,7 @@ paths:
       - $ref: '#/components/parameters/TradeFrom'
       - $ref: '#/components/parameters/TradeTo'
       - $ref: '#/components/parameters/TradeAccountIds'
+      - $ref: '#/components/parameters/TradeIncludeArchived'
       - name: group_by
         in: query
         required: false
@@ -4321,11 +4408,22 @@ components:
       description: Exit time at or after this instant (Q53).
       schema:
         $ref: '#/components/schemas/Timestamp'
+    TradeIncludeArchived:
+      name: include_archived
+      in: query
+      required: false
+      description: 'Q79 (a), 5.4.0: include the trades of archived accounts (filter "Arquivadas"). Default false = hidden.
+        With false, an archived id in `account_id` matches nothing. Part of the cursor binding.'
+      schema:
+        type: boolean
+        default: false
     TradeTo:
       name: to
       in: query
       required: false
-      description: Exit time before this instant.
+      description: 'Exit time strictly before this instant (exclusive: `exit_time < to`). With `from`, the interval is half-open
+        [from, to). For a custom period ending on day D in the profile''s time zone, send D + 1 at 00:00 in that zone, converted
+        to UTC.'
       schema:
         $ref: '#/components/schemas/Timestamp'
     TradeAccountIds:
@@ -4491,7 +4589,10 @@ components:
         - `accounts.platform_account_taken` — `/binding` (already bound to another of the caller's\n  accounts; a platform\
         \ account of another user is never reported as taken, see 422);\n- `accounts.binding_open_position` — `/binding` (update;\
         \ Q38);\n- `accounts.rule_version_changed` — `error.current_rule_version_id` (an `opt_ins` choice names a\n  rule\
-        \ version that is no longer the one in force for the selection).\n"
+        \ version that is no longer the one in force for the selection);\n- `accounts.bracket_mode_open_position` — `/bracket_mode`\
+        \ (update; Q86 b, user 2026-10-24): the\n  mode changes while the account has an open position or working All Win\
+        \ orders. It is refused\n  until the account is flat with no working orders, because the shared mode recalculates\
+        \ protection\n  from the average price.\n"
       content:
         application/json:
           schema:
@@ -4778,7 +4879,12 @@ components:
         \ (no\n  target; S5 create with an accepted opt-in), `admin_invitation_create`.\n- `route_enable` (target = account;\
         \ createRoute/updateRoute enabling an automated-source route to an account\n  whose automation was not accepted with\
         \ step-up: a real account or opt-in not_required).\n- `account_binding_change` (target = account; updateAccount changing\
-        \ the platform binding of an account that\n  receives automation: opt-in accepted or an active automated route).\n"
+        \ the platform binding of an account that\n  receives automation: opt-in accepted or an active automated route).\n\
+        - `admin_recovery` (5.4.0, S3 AC-12; Esquadro): the platform admin's own step-up for the operator command\n  (never\
+        \ HTTP), a new one for each of these steps:\n  - `admin recovery start`: target = the target user's id (the change\
+        \ does not exist yet);\n  - `confirm` and `cancel`: target = the channel change id.\n  Audited as `security.step_up_succeeded`\
+        \ / `_failed` in the admin's trail. `requestStepUp` refuses\n  `admin_recovery` with 400 `common.invalid_request`\
+        \ and pointer `/action` (operator command only).\n"
       enum:
       - source_create
       - source_rotate
@@ -4790,6 +4896,7 @@ components:
       - admin_invitation_create
       - route_enable
       - account_binding_change
+      - admin_recovery
     StepUpProof:
       type: object
       additionalProperties: false
@@ -4837,6 +4944,7 @@ components:
       additionalProperties: false
       required:
       - id
+      - kind
       - channel
       - status
       - masked_new_value
@@ -4845,6 +4953,22 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/Uuid'
+        kind:
+          type: string
+          enum:
+          - user_change
+          - admin_recovery
+          description: '5.4.0 (S3 AC-12). `user_change` is the user''s own flow; every change before 5.4.0 is one.
+
+            `admin_recovery` is a recovery started and confirmed by a platform admin with the operator
+
+            command `allwin-core admin recovery start|confirm|status|cancel` (never HTTP; Esquadro). The
+
+            user''s session sees it with `codes` empty, because only the admin confirms. The user can still
+
+            cancel it with `cancelChannelChange` during the hold.
+
+            '
         channel:
           $ref: '#/components/schemas/CodeChannel'
         status:
@@ -4893,6 +5017,18 @@ components:
         then:
           required:
           - hold_until
+      - if:
+          properties:
+            kind:
+              const: admin_recovery
+        then:
+          properties:
+            codes:
+              maxItems: 0
+        else:
+          properties:
+            codes:
+              minItems: 1
     SecurityState:
       type: object
       additionalProperties: false
@@ -5285,6 +5421,15 @@ components:
       type: string
       description: 'Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.'
       pattern: ^([1-9][0-9]{0,11}(\.[0-9]{1,2})?|0\.([1-9][0-9]?|0[1-9]))$
+    BracketMode:
+      type: string
+      enum:
+      - individual
+      - shared
+      description: "Stop/target mode of an account (S8 AC-5; Q-S8-3):\n- `individual`: each entry has its own stop and target\
+        \ from its own fill price, and partial exits\n  reduce the oldest entries first (FIFO, P2);\n- `shared`: the position\
+        \ has one stop and one target, recalculated from the average price after\n  each fill with the account profile distances.\n\
+        The same values as `DetailsBracketCalculated.mode`. It only matters where All Win places stop and\ntarget.\n"
     MaxPositionQty:
       type: integer
       minimum: 1
@@ -5329,6 +5474,7 @@ components:
       - platform_account
       - kind
       - oco_location
+      - activation
       description: The bound platform account, as last reported by the plugin. `oco_location` `unknown` is treated as `local`
         (S9 AC-4).
       properties:
@@ -5362,6 +5508,26 @@ components:
           - unknown
         bound_at:
           $ref: '#/components/schemas/Timestamp'
+        activation:
+          type: string
+          enum:
+          - active
+          - pending_handshake
+          description: '5.4.0 (Esquadro X2, S2 gateway). The value is `pending_handshake` when the binding was made or
+
+            changed after that connection''s last handshake (`welcome`). It takes effect only at the next
+
+            handshake: commands for the account stay pending meanwhile, entries expire by TTL and exits
+
+            wait. With the connection `connected`, the Web shows "Vale quando o plugin reconectar." The value
+
+            is `active` once a handshake has included the binding. An unbind needs no field: routing stops
+
+            creating commands at once (gate `platform_unbound`), and the adapter ignores the account until
+
+            its next `welcome`.
+
+            '
     AccountOptIns:
       type: object
       additionalProperties: false
@@ -5384,6 +5550,7 @@ components:
       - currency
       - multiplier
       - max_position_qty
+      - bracket_mode
       - lifecycle_state
       - opt_ins
       - has_open_position
@@ -5432,6 +5599,8 @@ components:
           $ref: '#/components/schemas/Multiplier'
         max_position_qty:
           $ref: '#/components/schemas/MaxPositionQty'
+        bracket_mode:
+          $ref: '#/components/schemas/BracketMode'
         lifecycle_state:
           $ref: '#/components/schemas/LifecycleState'
         binding:
@@ -5535,6 +5704,9 @@ components:
           $ref: '#/components/schemas/Multiplier'
         max_position_qty:
           $ref: '#/components/schemas/MaxPositionQty'
+        bracket_mode:
+          description: Defaults to `individual` (S8).
+          $ref: '#/components/schemas/BracketMode'
         commission_per_contract_side:
           description: 'USD per contract and side, ≥ 0 (U20 a): the floor of each fill''s commission (effective = max(platform,
 
@@ -5675,6 +5847,17 @@ components:
           $ref: '#/components/schemas/Multiplier'
         max_position_qty:
           $ref: '#/components/schemas/MaxPositionQty'
+        bracket_mode:
+          description: 'S8. An exception to the full replacement, like `commission_per_contract_side`: absent means
+
+            unchanged, so a form that does not show the mode never resets it. A change is audited as
+
+            `accounts.updated` (field `bracket_mode`, old and new values). With an open position or working
+
+            All Win orders it gets 409 `accounts.bracket_mode_open_position` (Q86 b).
+
+            '
+          $ref: '#/components/schemas/BracketMode'
         commission_per_contract_side:
           description: 'USD per contract and side, ≥ 0 (U20 a): the floor of each fill''s commission. Exception to the
 
@@ -6061,6 +6244,7 @@ components:
       enum:
       - ingress.received
       - ingress.duplicate_ignored
+      - ingress.duplicate_conflict
       - ingress.rejected
       - ingress.rate_limited
       - routing.routed
@@ -6125,6 +6309,7 @@ components:
       - accounts.lifecycle_changed
       - accounts.opt_in_chosen
       - accounts.opt_in_suspended
+      - accounts.opt_in_rule_updated
       - routing.subscription_changed
       - profiles.default_changed
       - profiles.account_changed
@@ -6137,6 +6322,7 @@ components:
       - risk.consistency_warning
       - risk.evaluation_target_reached
       - accounts.evaluation_restarted
+      - accounts.evaluation_corrected
       - trades.captured
       - trades.manual_created
       - trades.manual_changed
@@ -6550,6 +6736,69 @@ components:
       properties:
         original_instruction_id:
           $ref: '#/components/schemas/Uuid'
+        content_not_retained:
+          type: boolean
+          description: '5.4.0 (Esquadro): true when the first instruction''s content was already purged (Q13-b), so the repeat
+            could not be compared. It is still a duplicate: 200, nothing executes. Absent otherwise.'
+    DetailsIngressDuplicateConflict:
+      type: object
+      additionalProperties: false
+      required:
+      - source_name
+      - message_id
+      - original_instruction_id
+      - first_received_at
+      - second_received_at
+      - differing_fields
+      description: "`ingress.duplicate_conflict` (5.4.0, Esquadro): the same `message_id` arrived again and differs in\nat\
+        \ least one COMPARED field. The answer is still 200 and nothing is executed; this entry makes it\nvisible (category\
+        \ ingress, actor system, outcome `info`, `safe_to_display` true). Expiry and\neverything else keep coming from the\
+        \ FIRST receipt.\n- Compared (closed list): `source`, `signal_type`, `action`, `position_effect`, `side`,\n  `instrument`,\
+        \ `quantity`, `order`, `changes`, `refs`. The receipt keeps the sha256 of the canonical\n  parsed JSON of these fields\
+        \ only (absent ≠ null, as in the schema), and only while the content\n  itself is kept.\n- Not compared: `message_id`\
+        \ (the key), `sent_at` (changes on every re-send), `reference_price`\n  (changes on a re-send of the same bar), `details`\
+        \ (free text, never used by routing) and\n  `schema_version`.\n- Same compared fields → `ingress.duplicate_ignored`\
+        \ (200, no warning).\n- Emitted only while the first content exists. The purge job (Q13-b) deletes the instruction\
+        \ and,\n  in the same batch, sets the receipt's `body_sha256` to NULL and `content_purged_at`. A re-send of\n  the\
+        \ id after the purge is a plain `ingress.duplicate_ignored` with `content_not_retained: true`\n  (200, nothing executes),\
+        \ never this code (Esquadro, final).\nA new instruction field joins the list only by an explicit contract change,\
+        \ here and in\n`contracts/instruction/v1/README.md`. Never a body value: only the names of the compared fields that\n\
+        differ.\n"
+      properties:
+        source_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        message_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9._:-]+$
+          description: As received; the Core refuses token-shaped ids at ingress.
+        original_instruction_id:
+          $ref: '#/components/schemas/Uuid'
+        first_received_at:
+          $ref: '#/components/schemas/Timestamp'
+        second_received_at:
+          $ref: '#/components/schemas/Timestamp'
+        differing_fields:
+          type: array
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - source
+            - signal_type
+            - action
+            - position_effect
+            - side
+            - instrument
+            - quantity
+            - order
+            - changes
+            - refs
     DetailsIngressRejected:
       type: object
       additionalProperties: false
@@ -6692,10 +6941,7 @@ components:
       description: 'S6 AC-4: requested distance → whole ticks used → resulting price, per side.'
       properties:
         mode:
-          type: string
-          enum:
-          - individual
-          - shared
+          $ref: '#/components/schemas/BracketMode'
         distance_unit:
           $ref: '#/components/schemas/DistanceUnit'
         stop_requested:
@@ -7104,18 +7350,38 @@ components:
       required:
       - change_id
       - channel
-      description: 'Every `security.channel_change_*` code: `requested` adds `masked_new_value`; `on_hold` adds
-
-        `hold_until`; `completed` adds `masked_old_value` and `masked_new_value`; `cancelled` adds `by`;
-
-        `not_completed` adds nothing (expired, or the new value was taken during the hold; the reason is
-
-        never shown, auth policy §3).
-
-        '
+      description: "Every `security.channel_change_*` code: `requested` adds `masked_new_value`; `on_hold` adds\n`hold_until`;\
+        \ `completed` adds `masked_old_value` and `masked_new_value`; `cancelled` adds `by`;\n`not_completed` adds nothing\
+        \ (expired, or the new value was taken during the hold; the reason is\nnever shown, auth policy §3).\n`kind` (5.4.0,\
+        \ S3 AC-12) is written on every entry from 5.4.0; on older entries it is absent, which means `user_change`. With `admin_recovery`:\n\
+        - the entry's actor is `platform_admin` (no new actor);\n- every entry carries `verified_by` and may carry `break_glass`\
+        \ (true when the admin used the\n  break-glass path);\n- `verification_ref` appears only on `requested` and `on_hold`;\n\
+        - `cancelled.by` stays `user` or `system`. An admin cancel from the CLI is `system`, with actor\n  `platform_admin`.\n\
+        The admin's identity is never in the user's trail. It is in the operator log and in the admin's own\nstep-up entries\
+        \ (`StepUpAction` `admin_recovery`).\n"
       properties:
         change_id:
           $ref: '#/components/schemas/Uuid'
+        kind:
+          type: string
+          enum:
+          - user_change
+          - admin_recovery
+        verified_by:
+          type: string
+          enum:
+          - video_call
+          - phone_known_number
+          - in_person
+          - other
+          description: How the admin verified the user's identity (admin_recovery).
+        verification_ref:
+          type: string
+          maxLength: 200
+          description: The admin's reference for the verification (e.g. a ticket number). Plain text; the Core refuses control
+            characters and token-shaped parts, and never stores personal documents here.
+        break_glass:
+          type: boolean
         channel:
           $ref: '#/components/schemas/CodeChannel'
         masked_old_value:
@@ -7129,6 +7395,25 @@ components:
           enum:
           - user
           - system
+      allOf:
+      - if:
+          properties:
+            kind:
+              const: admin_recovery
+          required:
+          - kind
+        then:
+          required:
+          - verified_by
+        else:
+          not:
+            anyOf:
+            - required:
+              - verified_by
+            - required:
+              - verification_ref
+            - required:
+              - break_glass
     DetailsEmpty:
       type: object
       additionalProperties: false
@@ -7398,6 +7683,57 @@ components:
           $ref: '#/components/schemas/Money'
         profit_target:
           $ref: '#/components/schemas/Money'
+    DetailsEvaluationCorrected:
+      type: object
+      additionalProperties: false
+      required:
+      - start
+      - profit_target
+      description: '`accounts.evaluation_corrected` (5.4.0, Q-S13b-3): the earned-before amount changed with the same start;
+        the count did not restart. Old and new earned-before (absent = none), the unchanged start and the target in force.'
+      properties:
+        start:
+          type: string
+          format: date
+        earned_before:
+          $ref: '#/components/schemas/Money'
+        previous_earned_before:
+          $ref: '#/components/schemas/Money'
+        profit_target:
+          $ref: '#/components/schemas/Money'
+    DetailsOptInRuleUpdated:
+      type: object
+      additionalProperties: false
+      required:
+      - account_id
+      - kind
+      - previous_rule_version_id
+      - rule_version_id
+      - cause
+      description: '`accounts.opt_in_rule_updated` (5.4.0, Esquadro; S16): a newer rule version with `change.cause:
+
+        not_material` (a typo or format fix) was published. The Core moved the account''s `chosen` /
+
+        `accepted` opt-in to it automatically, keeping the same choice and `chosen_at`. It is an automatic
+
+        action on consent, so it is always audited (category config, actor system, outcome `info`); it is
+
+        not notified. A `stance_changed` or `text_changed` version never re-points: it suspends
+
+        (`accounts.opt_in_suspended`, Q26).
+
+        '
+      properties:
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        kind:
+          $ref: '#/components/schemas/OptInKind'
+        previous_rule_version_id:
+          $ref: '#/components/schemas/Uuid'
+        rule_version_id:
+          $ref: '#/components/schemas/Uuid'
+        cause:
+          const: not_material
     DetailsSecurityInvitation:
       type: object
       additionalProperties: false
@@ -7431,6 +7767,8 @@ components:
           $ref: '#/components/schemas/DetailsIngressReceived'
         ingress.duplicate_ignored:
           $ref: '#/components/schemas/DetailsIngressDuplicate'
+        ingress.duplicate_conflict:
+          $ref: '#/components/schemas/DetailsIngressDuplicateConflict'
         ingress.rejected:
           $ref: '#/components/schemas/DetailsIngressRejected'
         ingress.rate_limited:
@@ -7557,6 +7895,8 @@ components:
           $ref: '#/components/schemas/DetailsLifecycleChanged'
         accounts.opt_in_chosen:
           $ref: '#/components/schemas/DetailsOptInChosen'
+        accounts.opt_in_rule_updated:
+          $ref: '#/components/schemas/DetailsOptInRuleUpdated'
         accounts.opt_in_suspended:
           $ref: '#/components/schemas/DetailsOptInSuspended'
         routing.subscription_changed:
@@ -7583,6 +7923,8 @@ components:
           $ref: '#/components/schemas/DetailsEvaluation'
         accounts.evaluation_restarted:
           $ref: '#/components/schemas/DetailsEvaluationRestarted'
+        accounts.evaluation_corrected:
+          $ref: '#/components/schemas/DetailsEvaluationCorrected'
         trades.captured:
           $ref: '#/components/schemas/DetailsTrade'
         trades.manual_created:
@@ -7677,8 +8019,9 @@ components:
         count:
           type: integer
           minimum: 1
-          description: Occurrences grouped into this item (same code + account + trading day; registry `grouping`, and `reopen_on_occurrence`
-            for whether a new occurrence marks it unread). The audit keeps one entry per occurrence.
+          description: Occurrences grouped into this item (same code + account + trading day, or + source + trading day for
+            `source_trading_day`; registry `grouping`, and `reopen_on_occurrence` for whether a new occurrence marks it unread).
+            The audit keeps one entry per occurrence.
         source_event_ids:
           type: array
           maxItems: 50
@@ -7913,6 +8256,8 @@ components:
           $ref: '#/components/schemas/ParamsOptInSuspendedByFirm'
         presets.new_version:
           $ref: '#/components/schemas/ParamsPresetNewVersion'
+        ingress.duplicate_conflict:
+          $ref: '#/components/schemas/DetailsIngressDuplicateConflict'
     NotificationCreatedEvent:
       type: object
       additionalProperties: false
@@ -8027,6 +8372,10 @@ components:
         avg_pnl:
           description: Net average per trade.
           $ref: '#/components/schemas/Money'
+        avg_gross_pnl:
+          description: 'Gross average per trade, shown beside the net average (S22 AC-3: "totals and averages of P&L use net
+            P&L with gross beside it"; 5.4.0). Same rounding as `avg_pnl`.'
+          $ref: '#/components/schemas/Money'
         win_rate:
           $ref: '#/components/schemas/WinRate'
         avg_duration_seconds:
@@ -8053,12 +8402,15 @@ components:
             - required:
               - avg_pnl
             - required:
+              - avg_gross_pnl
+            - required:
               - win_rate
             - required:
               - avg_duration_seconds
         else:
           required:
           - avg_pnl
+          - avg_gross_pnl
           - win_rate
           - avg_duration_seconds
       - if:
@@ -8257,21 +8609,10 @@ components:
               format: date
             sources:
               type: array
+              description: 5.4.0 (Torno) — the same `SourceRef` as `StanceInfo.research` and the release file (`page_title`
+                optional, `accessed_at` required).
               items:
-                type: object
-                additionalProperties: false
-                required:
-                - page_title
-                - url
-                properties:
-                  page_title:
-                    type: string
-                    maxLength: 300
-                  url:
-                    type: string
-                    format: uri
-                    maxLength: 2048
-                    pattern: ^https://
+                $ref: '#/components/schemas/SourceRef'
         change:
           type: object
           additionalProperties: false
@@ -8909,7 +9250,9 @@ components:
 
         forbidden / conditional / unknown / not_confirmed; `personal_device` ∈ required / not_required /
 
-        unknown (Q-S16-2).
+        unknown / not_confirmed (Q-S16-2; `not_confirmed` from 5.4.0, S16 AC-5, Q-S16-7: the firm''s pages
+
+        disagree, so at least 2 quotes and nothing is prefilled).
 
         '
       properties:
@@ -8943,6 +9286,7 @@ components:
                 - required
                 - not_required
                 - unknown
+                - not_confirmed
     ManualOnly:
       type: object
       additionalProperties: false
@@ -9007,9 +9351,12 @@ components:
               - required
               - not_required
               - unknown
+              - not_confirmed
         not_confirmed_count:
           type: integer
           minimum: 0
+          description: The sum of `PresetOption.not_confirmed_count` over the presets of the current release. Stances are
+            shown separately and are not counted.
         release:
           $ref: '#/components/schemas/FirmReleaseRef'
     StanceSummary:
@@ -9076,6 +9423,9 @@ components:
         not_confirmed_count:
           type: integer
           minimum: 0
+          description: The number of DISTINCT rule fields (`RuleField`) with status `not_confirmed` in any of the preset's
+            rule sets. A field that is not confirmed on two platforms counts once. `stored_only` data and stances are not
+            counted (5.4.0, Torno).
     FirmDetail:
       type: object
       additionalProperties: false
@@ -9105,8 +9455,15 @@ components:
                 type: string
                 maxLength: 60
                 description: Product name, e.g. "Rithmic" (not translated).
+              manual_only:
+                description: '5.4.0 (S-R3-2/S-R3-4, data from the preset release): this firm platform cannot be reached by
+                  any V1 output. An account with this `firm_platform` is manual only (routing `routing.account_manual_only`,
+                  listed in `listRouteCandidates.manual_only`), like a firm-level `manual_only`.'
+                $ref: '#/components/schemas/ManualOnly'
         plans:
           type: array
+          description: Plans and their phases in the release file's order; sizes inside a phase ascending by `size_amount`
+            (5.4.0, Torno).
           items:
             type: object
             additionalProperties: false
@@ -9190,6 +9547,11 @@ components:
           $ref: '#/components/schemas/RuleField'
         preset_id:
           $ref: '#/components/schemas/Uuid'
+        firm_platform:
+          description: '5.4.0 (preset release diff, Torno): set when the change concerns one firm platform. For `rule_value_changed`
+            of a preset with per-platform rules there is one entry per platform; for a per-platform automation/copy text it
+            names the platform.'
+          $ref: '#/components/schemas/FirmPlatform'
       allOf:
       - if:
           properties:
@@ -9354,6 +9716,7 @@ components:
         not_confirmed_count:
           type: integer
           minimum: 0
+          description: As `PresetOption.not_confirmed_count`.
     AccountRuleField:
       type: object
       additionalProperties: false
@@ -10039,7 +10402,8 @@ components:
         consistency_threshold_pct:
           type: string
           pattern: ^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$
-          description: Prop with a consistency rule only; the tracked threshold, 0–100 with at most one decimal (Q-S13-7).
+          description: Prop with a consistency rule only; the tracked threshold, greater than 0 and at most 100, with at most
+            one decimal (Q-S13-7). `0` / `0.0` → 422 `risk.amount_invalid` (no divisor for the meter; Malha / Agulha, 5.4.0).
             Never enforced (S13 AC-6).
         trading_day_reset:
           description: Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the
@@ -10187,6 +10551,13 @@ components:
       - pending_changes
       - pnl_basis
       - commission_source
+      dependentRequired:
+        net_pnl_today:
+        - gross_pnl_today
+        - commissions_today
+        gross_pnl_today:
+        - net_pnl_today
+        - commissions_today
       properties:
         account_id:
           $ref: '#/components/schemas/Uuid'
@@ -10273,6 +10644,16 @@ components:
           $ref: '#/components/schemas/CommissionSource'
         commissions_today:
           $ref: '#/components/schemas/MoneyString'
+        net_pnl_today:
+          description: '5.4.0 (PO, S13 AC-11, Q54 exception): the trading day''s net P&L (realized, after commissions) for
+            the summary line "P&L do dia: líquido X · bruto Y · comissões Z". Present together with `gross_pnl_today` and
+            `commissions_today`. The browser never derives one from the others.'
+          $ref: '#/components/schemas/Money'
+        gross_pnl_today:
+          description: The same day's gross P&L, shown beside the net figure ONLY in the summary line. The limit meters (daily
+            loss, drawdown, profit target, floor) and the S13b evaluation card stay net only, labelled "líquido". The plugin
+            shows no gross in V1.
+          $ref: '#/components/schemas/Money'
         pending_commission_change:
           type: object
           additionalProperties: false
@@ -10297,6 +10678,18 @@ components:
               enum:
               - commission_floor_lowered
               - commission_floor_removed
+        evaluation_target_status:
+          type: string
+          enum:
+          - set
+          - not_confirmed
+          - absent
+          description: "5.4.0 (S13 §12.1, AC-3). Present for an account with an evaluation target, or whose preset\nphase\
+            \ is `evaluation`; absent otherwise. A manual prop account has a free-text phase, so it\nhas the field only when\
+            \ it has a target.\n- `set`: the account has a target, so `evaluation` is present.\n- `not_confirmed`: the preset's\
+            \ target is not confirmed and the account has not resolved it\n  (S16 AC-6). There is no `evaluation`; the card\
+            \ asks the user to choose or type the target.\n- `absent`: an evaluation phase whose preset publishes no target.\
+            \ There is no `evaluation`;\n  the card says the firm publishes none, and the user may type one.\n"
         evaluation:
           type: object
           additionalProperties: false

@@ -27,6 +27,7 @@ paths:
         - $ref: 'trades.yaml#/components/parameters/TradeFrom'
         - $ref: 'trades.yaml#/components/parameters/TradeTo'
         - $ref: 'trades.yaml#/components/parameters/TradeAccountIds'
+        - $ref: 'trades.yaml#/components/parameters/TradeIncludeArchived'
         - name: group_by
           in: query
           required: false
@@ -77,6 +78,9 @@ components:
         avg_pnl:
           description: Net average per trade.
           $ref: 'audit.yaml#/components/schemas/Money'
+        avg_gross_pnl:
+          description: 'Gross average per trade, shown beside the net average (S22 AC-3: "totals and averages of P&L use net P&L with gross beside it"; 5.4.0). Same rounding as `avg_pnl`.'
+          $ref: 'audit.yaml#/components/schemas/Money'
         win_rate: { $ref: '#/components/schemas/WinRate' }
         avg_duration_seconds: { type: integer, minimum: 0 }
         avg_mae: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
@@ -85,8 +89,8 @@ components:
         mfe_sample_count: { type: integer, minimum: 0 }
       allOf:
         - if: { properties: { trade_count: { const: 0 } } }
-          then: { not: { anyOf: [{ required: [avg_pnl] }, { required: [win_rate] }, { required: [avg_duration_seconds] }] } }
-          else: { required: [avg_pnl, win_rate, avg_duration_seconds] }
+          then: { not: { anyOf: [{ required: [avg_pnl] }, { required: [avg_gross_pnl] }, { required: [win_rate] }, { required: [avg_duration_seconds] }] } }
+          else: { required: [avg_pnl, avg_gross_pnl, win_rate, avg_duration_seconds] }
         - if: { properties: { mae_sample_count: { const: 0 } } }
           then: { not: { required: [avg_mae] } }
           else: { required: [avg_mae] }

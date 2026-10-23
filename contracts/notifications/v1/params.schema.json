@@ -73,6 +73,63 @@
         }
       }
     },
+    "DetailsIngressDuplicateConflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_name",
+        "message_id",
+        "original_instruction_id",
+        "first_received_at",
+        "second_received_at",
+        "differing_fields"
+      ],
+      "description": "`ingress.duplicate_conflict` (5.4.0, Esquadro): the same `message_id` arrived again and differs in\nat least one COMPARED field. The answer is still 200 and nothing is executed; this entry makes it\nvisible (category ingress, actor system, outcome `info`, `safe_to_display` true). Expiry and\neverything else keep coming from the FIRST receipt.\n- Compared (closed list): `source`, `signal_type`, `action`, `position_effect`, `side`,\n  `instrument`, `quantity`, `order`, `changes`, `refs`. The receipt keeps the sha256 of the canonical\n  parsed JSON of these fields only (absent ≠ null, as in the schema), and only while the content\n  itself is kept.\n- Not compared: `message_id` (the key), `sent_at` (changes on every re-send), `reference_price`\n  (changes on a re-send of the same bar), `details` (free text, never used by routing) and\n  `schema_version`.\n- Same compared fields → `ingress.duplicate_ignored` (200, no warning).\n- Emitted only while the first content exists. The purge job (Q13-b) deletes the instruction and,\n  in the same batch, sets the receipt's `body_sha256` to NULL and `content_purged_at`. A re-send of\n  the id after the purge is a plain `ingress.duplicate_ignored` with `content_not_retained: true`\n  (200, nothing executes), never this code (Esquadro, final).\nA new instruction field joins the list only by an explicit contract change, here and in\n`contracts/instruction/v1/README.md`. Never a body value: only the names of the compared fields that\ndiffer.\n",
+      "properties": {
+        "source_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "message_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "description": "As received; the Core refuses token-shaped ids at ingress."
+        },
+        "original_instruction_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "first_received_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "second_received_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "differing_fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "source",
+              "signal_type",
+              "action",
+              "position_effect",
+              "side",
+              "instrument",
+              "quantity",
+              "order",
+              "changes",
+              "refs"
+            ]
+          }
+        }
+      }
+    },
     "DetailsRiskState": {
       "type": "object",
       "additionalProperties": false,

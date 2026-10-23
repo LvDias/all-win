@@ -249,11 +249,26 @@ paths:
       operationId: restartEvaluation
       summary: Restart the evaluation count of a prop account (S13b; Q69 a)
       description: |
-        Sets a new `evaluation_start` (and optionally `evaluation_earned_before`); the progress toward
-        `evaluation_profit_target` restarts from there. A Sim / Playback reset is a discontinuity (S11
-        AC-6) and never restarts the count by itself. `row_version` as in `updateAccount`. Bumps the
-        account's limits version. Audited as `accounts.evaluation_restarted` (old and new start and
-        earned-before). An account without an evaluation target gets 422 `accounts.evaluation_not_applicable`.
+        Sets `evaluation_start` and optionally `evaluation_earned_before`. The audit names the effect
+        (S13b AC-4, Q-S13b-3; PO):
+        - **a changed start is a restart.** The progress toward `evaluation_profit_target` restarts from
+          the new start. Audited as `accounts.evaluation_restarted` (old and new start and earned-before).
+        - **the same start is a correction** of the earned amount (the UI's "Salvar"). The count does not
+          restart and nothing is lost: risk re-derives progress, high water and the drawdown floor from
+          `evaluation_start` + `evaluation_earned_before` + the trading-day aggregates since the start
+          (Esquadro; equity is derived from size + realized since `evaluation_start`). Those aggregates
+          are never purged while they are on or after `evaluation_start`. Audited as
+          `accounts.evaluation_corrected` (old and new earned-before), never as a restart.
+        - **the same start and the same earned-before** change nothing: 200, not audited, `limits_version`
+          unchanged.
+        Either change bumps the account's limits version (the baseline is a rule input, ADR-0006 §3.1).
+        Omitting `evaluation_earned_before`:
+        - with the same start, it keeps the stored value, so the request changes nothing;
+        - with a new start, the account has no earned-before amount: the count starts from 0, not from
+          the old value.
+        To correct the amount to zero, send `"0"` (Crivo L2). A Sim / Playback reset is a discontinuity (S11 AC-6) and never
+        restarts the count by itself. `row_version` as in `updateAccount`. An account without an
+        evaluation target gets 422 `accounts.evaluation_not_applicable`.
       parameters:
         - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
       requestBody:
@@ -285,6 +300,54 @@ paths:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
         '422':
           description: '`accounts.evaluation_not_applicable` (no evaluation target) or `accounts.evaluation_start_invalid` (`/evaluation_start` in the future); nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/commission:
+    put:
+      tags: [accounts]
+      operationId: setAccountCommission
+      summary: Set or remove the account's commission floor alone (S13 AC-11; 5.4.0)
+      description: |
+        A narrow write for the Risk tab, so the web never rebuilds the whole `updateAccount` body to
+        change one field (where an absent `binding` unbinds and an absent `multiplier` resets it).
+        `commission_per_contract_side` is USD per contract and side, ≥ 0, or `null` to remove the floor.
+        It has the same effect and rules as the field in `updateAccount`: a higher floor applies at once,
+        a lower one or a removal from the next trading day (`AccountRisk.pending_commission_change`;
+        ADR-0006 §3.7). Any change bumps the account's limits version and `row_version`; `putAccountRiskRules`
+        bumps only the limits version, so call it first when saving both. The same value
+        is a no-op: 200, not audited. Otherwise audited as `accounts.updated` (field
+        `commission_per_contract_side`, old and new). No step-up.
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [commission_per_contract_side, row_version]
+              properties:
+                commission_per_contract_side:
+                  oneOf:
+                    - { $ref: 'presets.yaml#/components/schemas/MoneyAmount' }
+                    - { type: 'null' }
+                row_version: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Saved (or unchanged).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`common.version_conflict` (stale `row_version`); nothing changed.'
           content:
             application/json:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -379,7 +442,11 @@ components:
           accounts; a platform account of another user is never reported as taken, see 422);
         - `accounts.binding_open_position` — `/binding` (update; Q38);
         - `accounts.rule_version_changed` — `error.current_rule_version_id` (an `opt_ins` choice names a
-          rule version that is no longer the one in force for the selection).
+          rule version that is no longer the one in force for the selection);
+        - `accounts.bracket_mode_open_position` — `/bracket_mode` (update; Q86 b, user 2026-10-24): the
+          mode changes while the account has an open position or working All Win orders. It is refused
+          until the account is flat with no working orders, because the shared mode recalculates protection
+          from the average price.
       content:
         application/json:
           schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -437,6 +504,17 @@ components:
       type: string
       description: 'Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.'
       pattern: '^([1-9][0-9]{0,11}(\.[0-9]{1,2})?|0\.([1-9][0-9]?|0[1-9]))$'
+    BracketMode:
+      type: string
+      enum: [individual, shared]
+      description: |
+        Stop/target mode of an account (S8 AC-5; Q-S8-3):
+        - `individual`: each entry has its own stop and target from its own fill price, and partial exits
+          reduce the oldest entries first (FIFO, P2);
+        - `shared`: the position has one stop and one target, recalculated from the average price after
+          each fill with the account profile distances.
+        The same values as `DetailsBracketCalculated.mode`. It only matters where All Win places stop and
+        target.
     MaxPositionQty:
       type: integer
       minimum: 1
@@ -467,7 +545,7 @@ components:
     AccountBinding:
       type: object
       additionalProperties: false
-      required: [connection_id, connection_name, connection_status, platform_account, kind, oco_location]
+      required: [connection_id, connection_name, connection_status, platform_account, kind, oco_location, activation]
       description: The bound platform account, as last reported by the plugin. `oco_location` `unknown` is treated as `local` (S9 AC-4).
       properties:
         connection_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
@@ -479,6 +557,17 @@ components:
         kind: { type: string, enum: [simulation, playback, live, unknown] }
         oco_location: { type: string, enum: [local, server, unknown] }
         bound_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        activation:
+          type: string
+          enum: [active, pending_handshake]
+          description: |
+            5.4.0 (Esquadro X2, S2 gateway). The value is `pending_handshake` when the binding was made or
+            changed after that connection's last handshake (`welcome`). It takes effect only at the next
+            handshake: commands for the account stay pending meanwhile, entries expire by TTL and exits
+            wait. With the connection `connected`, the Web shows "Vale quando o plugin reconectar." The value
+            is `active` once a handshake has included the binding. An unbind needs no field: routing stops
+            creating commands at once (gate `platform_unbound`), and the adapter ignores the account until
+            its next `welcome`.
     AccountOptIns:
       type: object
       additionalProperties: false
@@ -489,7 +578,7 @@ components:
     Account:
       type: object
       additionalProperties: false
-      required: [id, kind, display_name, size_amount, currency, multiplier, max_position_qty, lifecycle_state, opt_ins, has_open_position, row_version, created_at, updated_at]
+      required: [id, kind, display_name, size_amount, currency, multiplier, max_position_qty, bracket_mode, lifecycle_state, opt_ins, has_open_position, row_version, created_at, updated_at]
       properties:
         id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         kind: { $ref: '#/components/schemas/AccountKind' }
@@ -514,6 +603,7 @@ components:
         currency: { type: string, pattern: '^[A-Z]{3}$', description: "ISO 4217; 'USD' in V1." }
         multiplier: { $ref: '#/components/schemas/Multiplier' }
         max_position_qty: { $ref: '#/components/schemas/MaxPositionQty' }
+        bracket_mode: { $ref: '#/components/schemas/BracketMode' }
         lifecycle_state: { $ref: '#/components/schemas/LifecycleState' }
         binding:
           description: Absent when the account is not bound; an unbound account is never routed (Q37).
@@ -567,6 +657,9 @@ components:
           description: Defaults to 1.
           $ref: '#/components/schemas/Multiplier'
         max_position_qty: { $ref: '#/components/schemas/MaxPositionQty' }
+        bracket_mode:
+          description: Defaults to `individual` (S8).
+          $ref: '#/components/schemas/BracketMode'
         commission_per_contract_side:
           description: |
             USD per contract and side, ≥ 0 (U20 a): the floor of each fill's commission (effective = max(platform,
@@ -627,6 +720,13 @@ components:
           description: Absent means 1.
           $ref: '#/components/schemas/Multiplier'
         max_position_qty: { $ref: '#/components/schemas/MaxPositionQty' }
+        bracket_mode:
+          description: |
+            S8. An exception to the full replacement, like `commission_per_contract_side`: absent means
+            unchanged, so a form that does not show the mode never resets it. A change is audited as
+            `accounts.updated` (field `bracket_mode`, old and new values). With an open position or working
+            All Win orders it gets 409 `accounts.bracket_mode_open_position` (Q86 b).
+          $ref: '#/components/schemas/BracketMode'
         commission_per_contract_side:
           description: |
             USD per contract and side, ≥ 0 (U20 a): the floor of each fill's commission. Exception to the

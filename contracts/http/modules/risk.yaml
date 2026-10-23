@@ -72,7 +72,11 @@ paths:
         `pending_changes` until it applies. The latest save of a rule wins over an earlier pending value
         (ADR-0006 §3.7). Any write of the account's limits (this operation, `applyPresetVersion`,
         `restorePresetValue`, a preset re-selection in `updateAccount`) bumps the version, so a form
-        opened before it gets 409 `common.version_conflict`.
+        opened before it gets 409 `common.version_conflict`. This operation bumps ONLY the limits
+        `version`, never `Account.row_version` (5.4.0, Grosa): the account form's concurrency is separate.
+        A screen that saves the rules and the commission floor together calls this operation first, then
+        `setAccountCommission` with the `row_version` it holds. The commission write bumps both versions,
+        so the reverse order gets 409 here.
         When the new rules would already be reached today, the body must carry `acknowledge_reached: true`
         (the dialog of the edit form; `previewAccountRiskRules` tells beforehand), else 409
         `risk.reached_not_acknowledged` and nothing is saved. The rule values belong to the account
@@ -194,7 +198,7 @@ components:
         consistency_threshold_pct:
           type: string
           pattern: '^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$'
-          description: Prop with a consistency rule only; the tracked threshold, 0–100 with at most one decimal (Q-S13-7). Never enforced (S13 AC-6).
+          description: 'Prop with a consistency rule only; the tracked threshold, greater than 0 and at most 100, with at most one decimal (Q-S13-7). `0` / `0.0` → 422 `risk.amount_invalid` (no divisor for the meter; Malha / Agulha, 5.4.0). Never enforced (S13 AC-6).'
         trading_day_reset:
           description: Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the CME session close.
           $ref: 'presets.yaml#/components/schemas/TradingDayResetValue'
@@ -271,6 +275,9 @@ components:
       type: object
       additionalProperties: false
       required: [account_id, as_of, stale, state, trading_day, meters, unset_rules, untracked_rules, enforcement_enabled, limits_pending, pending_changes, pnl_basis, commission_source]
+      dependentRequired:
+        net_pnl_today: [gross_pnl_today, commissions_today]
+        gross_pnl_today: [net_pnl_today, commissions_today]
       properties:
         account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
@@ -321,6 +328,12 @@ components:
           description: How today's commissions were obtained (`none` → the UI shows "comissão não informada; os limites podem estar folgados demais", a notice, not a block).
           $ref: 'trades.yaml#/components/schemas/CommissionSource'
         commissions_today: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        net_pnl_today:
+          description: '5.4.0 (PO, S13 AC-11, Q54 exception): the trading day''s net P&L (realized, after commissions) for the summary line "P&L do dia: líquido X · bruto Y · comissões Z". Present together with `gross_pnl_today` and `commissions_today`. The browser never derives one from the others.'
+          $ref: 'audit.yaml#/components/schemas/Money'
+        gross_pnl_today:
+          description: 'The same day''s gross P&L, shown beside the net figure ONLY in the summary line. The limit meters (daily loss, drawdown, profit target, floor) and the S13b evaluation card stay net only, labelled "líquido". The plugin shows no gross in V1.'
+          $ref: 'audit.yaml#/components/schemas/Money'
         pending_commission_change:
           type: object
           additionalProperties: false
@@ -335,6 +348,18 @@ components:
               description: The new floor; absent when the floor is being removed.
               $ref: 'presets.yaml#/components/schemas/MoneyAmount'
             change: { type: string, enum: [commission_floor_lowered, commission_floor_removed] }
+        evaluation_target_status:
+          type: string
+          enum: [set, not_confirmed, absent]
+          description: |
+            5.4.0 (S13 §12.1, AC-3). Present for an account with an evaluation target, or whose preset
+            phase is `evaluation`; absent otherwise. A manual prop account has a free-text phase, so it
+            has the field only when it has a target.
+            - `set`: the account has a target, so `evaluation` is present.
+            - `not_confirmed`: the preset's target is not confirmed and the account has not resolved it
+              (S16 AC-6). There is no `evaluation`; the card asks the user to choose or type the target.
+            - `absent`: an evaluation phase whose preset publishes no target. There is no `evaluation`;
+              the card says the firm publishes none, and the user may type one.
         evaluation:
           type: object
           additionalProperties: false

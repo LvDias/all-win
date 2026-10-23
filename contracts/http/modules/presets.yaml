@@ -375,13 +375,8 @@ components:
             searched_on: { type: string, format: date }
             sources:
               type: array
-              items:
-                type: object
-                additionalProperties: false
-                required: [page_title, url]
-                properties:
-                  page_title: { type: string, maxLength: 300 }
-                  url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
+              description: 5.4.0 (Torno) — the same `SourceRef` as `StanceInfo.research` and the release file (`page_title` optional, `accessed_at` required).
+              items: { $ref: '#/components/schemas/SourceRef' }
         change:
           type: object
           additionalProperties: false
@@ -730,7 +725,8 @@ components:
         `automation` / `copy` are the rule versions of the opt-ins: one entry without `firm_platform` when
         the stance is the same on every platform, otherwise one entry per firm platform. `vps` ∈ allowed /
         forbidden / conditional / unknown / not_confirmed; `personal_device` ∈ required / not_required /
-        unknown (Q-S16-2).
+        unknown / not_confirmed (Q-S16-2; `not_confirmed` from 5.4.0, S16 AC-5, Q-S16-7: the firm's pages
+        disagree, so at least 2 quotes and nothing is prefilled).
       properties:
         automation: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
         copy: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
@@ -741,7 +737,7 @@ components:
         personal_device:
           allOf:
             - $ref: '#/components/schemas/StanceInfo'
-            - properties: { value: { enum: [required, not_required, unknown] } }
+            - properties: { value: { enum: [required, not_required, unknown, not_confirmed] } }
     ManualOnly:
       type: object
       additionalProperties: false
@@ -767,8 +763,8 @@ components:
             automation: { $ref: '#/components/schemas/StanceSummary' }
             copy: { $ref: '#/components/schemas/StanceSummary' }
             vps: { type: string, enum: [allowed, forbidden, conditional, unknown, not_confirmed] }
-            personal_device: { type: string, enum: [required, not_required, unknown] }
-        not_confirmed_count: { type: integer, minimum: 0 }
+            personal_device: { type: string, enum: [required, not_required, unknown, not_confirmed] }
+        not_confirmed_count: { type: integer, minimum: 0, description: 'The sum of `PresetOption.not_confirmed_count` over the presets of the current release. Stances are shown separately and are not counted.' }
         release: { $ref: '#/components/schemas/FirmReleaseRef' }
     StanceSummary:
       type: string
@@ -799,7 +795,7 @@ components:
         size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
         size_label: { type: string, maxLength: 32, description: 'As published, e.g. "50K".' }
         platform_specific: { type: boolean, description: True → the account must choose `firm_platform`. }
-        not_confirmed_count: { type: integer, minimum: 0 }
+        not_confirmed_count: { type: integer, minimum: 0, description: 'The number of DISTINCT rule fields (`RuleField`) with status `not_confirmed` in any of the preset''s rule sets. A field that is not confirmed on two platforms counts once. `stored_only` data and stances are not counted (5.4.0, Torno).' }
     FirmDetail:
       type: object
       additionalProperties: false
@@ -816,8 +812,12 @@ components:
             properties:
               code: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
               label: { type: string, maxLength: 60, description: 'Product name, e.g. "Rithmic" (not translated).' }
+              manual_only:
+                description: '5.4.0 (S-R3-2/S-R3-4, data from the preset release): this firm platform cannot be reached by any V1 output. An account with this `firm_platform` is manual only (routing `routing.account_manual_only`, listed in `listRouteCandidates.manual_only`), like a firm-level `manual_only`.'
+                $ref: '#/components/schemas/ManualOnly'
         plans:
           type: array
+          description: 'Plans and their phases in the release file''s order; sizes inside a phase ascending by `size_amount` (5.4.0, Torno).'
           items:
             type: object
             additionalProperties: false
@@ -857,6 +857,9 @@ components:
         reason: { $ref: '#/components/schemas/LocalizedText' }
         field: { $ref: '#/components/schemas/RuleField' }
         preset_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        firm_platform:
+          description: '5.4.0 (preset release diff, Torno): set when the change concerns one firm platform. For `rule_value_changed` of a preset with per-platform rules there is one entry per platform; for a per-platform automation/copy text it names the platform.'
+          $ref: 'accounts.yaml#/components/schemas/FirmPlatform'
       allOf:
         - if: { properties: { kind: { enum: [stance_changed, stance_text_changed] } } }
           then: { required: [stance] }
@@ -927,7 +930,7 @@ components:
             properties:
               firm_platform: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
               rules: { $ref: '#/components/schemas/PresetRules' }
-        not_confirmed_count: { type: integer, minimum: 0 }
+        not_confirmed_count: { type: integer, minimum: 0, description: As `PresetOption.not_confirmed_count`. }
     AccountRuleField:
       type: object
       additionalProperties: false

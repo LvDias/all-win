@@ -12,7 +12,9 @@ paths:
         on the **exit time** (Q53); both are instants and optional (absent = unbounded);
         `from` after `to` gets 400 (pointer `/query/from`). `origin` selects routed / master / manual /
         platform trades; `source_id` selects routed trades of those sources. Trades of archived accounts
-        stay listed (`account_deleted`); trades are kept for the life of the user account (S10 AC-3).
+        are kept for the life of the user account (S10 AC-3; Q79 a). From 5.4.0 they are HIDDEN unless
+        `include_archived=true` (the "Arquivadas" filter); when shown, they carry `account_deleted`. The
+        filter is applied by the Core, so paging, `getTradesSummary` and S22 totals always match the list.
         `next_cursor` is opaque, authenticated by the Core (MAC) and bound to the filters and the sort
         (tamper or mismatch → 400, pointer `/query/cursor`). Ties are broken by `trade_id`.
         `getTradesSummary` with the same filters gives the count and total P&L of the whole set.
@@ -24,6 +26,7 @@ paths:
         - $ref: '#/components/parameters/TradeOrigins'
         - $ref: '#/components/parameters/TradeSignalTypes'
         - $ref: '#/components/parameters/TradeRecordedBefore'
+        - $ref: '#/components/parameters/TradeIncludeArchived'
         - name: sort
           in: query
           required: false
@@ -112,6 +115,7 @@ paths:
         - $ref: '#/components/parameters/TradeSourceIds'
         - $ref: '#/components/parameters/TradeOrigins'
         - $ref: '#/components/parameters/TradeSignalTypes'
+        - $ref: '#/components/parameters/TradeIncludeArchived'
         - $ref: '#/components/parameters/TradeRecordedBefore'
       responses:
         '200':
@@ -244,11 +248,17 @@ components:
       required: false
       description: Exit time at or after this instant (Q53).
       schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    TradeIncludeArchived:
+      name: include_archived
+      in: query
+      required: false
+      description: 'Q79 (a), 5.4.0: include the trades of archived accounts (filter "Arquivadas"). Default false = hidden. With false, an archived id in `account_id` matches nothing. Part of the cursor binding.'
+      schema: { type: boolean, default: false }
     TradeTo:
       name: to
       in: query
       required: false
-      description: Exit time before this instant.
+      description: 'Exit time strictly before this instant (exclusive: `exit_time < to`). With `from`, the interval is half-open [from, to). For a custom period ending on day D in the profile''s time zone, send D + 1 at 00:00 in that zone, converted to UTC.'
       schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
     TradeAccountIds:
       name: account_id

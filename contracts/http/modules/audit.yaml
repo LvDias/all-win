@@ -185,6 +185,7 @@ components:
       enum:
         - ingress.received
         - ingress.duplicate_ignored
+        - ingress.duplicate_conflict
         - ingress.rejected
         - ingress.rate_limited
         - routing.routed
@@ -249,6 +250,7 @@ components:
         - accounts.lifecycle_changed
         - accounts.opt_in_chosen
         - accounts.opt_in_suspended
+        - accounts.opt_in_rule_updated
         - routing.subscription_changed
         - profiles.default_changed
         - profiles.account_changed
@@ -261,6 +263,7 @@ components:
         - risk.consistency_warning
         - risk.evaluation_target_reached
         - accounts.evaluation_restarted
+        - accounts.evaluation_corrected
         - trades.captured
         - trades.manual_created
         - trades.manual_changed
@@ -474,6 +477,43 @@ components:
       required: [original_instruction_id]
       properties:
         original_instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        content_not_retained: { type: boolean, description: '5.4.0 (Esquadro): true when the first instruction''s content was already purged (Q13-b), so the repeat could not be compared. It is still a duplicate: 200, nothing executes. Absent otherwise.' }
+    DetailsIngressDuplicateConflict:
+      type: object
+      additionalProperties: false
+      required: [source_name, message_id, original_instruction_id, first_received_at, second_received_at, differing_fields]
+      description: |
+        `ingress.duplicate_conflict` (5.4.0, Esquadro): the same `message_id` arrived again and differs in
+        at least one COMPARED field. The answer is still 200 and nothing is executed; this entry makes it
+        visible (category ingress, actor system, outcome `info`, `safe_to_display` true). Expiry and
+        everything else keep coming from the FIRST receipt.
+        - Compared (closed list): `source`, `signal_type`, `action`, `position_effect`, `side`,
+          `instrument`, `quantity`, `order`, `changes`, `refs`. The receipt keeps the sha256 of the canonical
+          parsed JSON of these fields only (absent ≠ null, as in the schema), and only while the content
+          itself is kept.
+        - Not compared: `message_id` (the key), `sent_at` (changes on every re-send), `reference_price`
+          (changes on a re-send of the same bar), `details` (free text, never used by routing) and
+          `schema_version`.
+        - Same compared fields → `ingress.duplicate_ignored` (200, no warning).
+        - Emitted only while the first content exists. The purge job (Q13-b) deletes the instruction and,
+          in the same batch, sets the receipt's `body_sha256` to NULL and `content_purged_at`. A re-send of
+          the id after the purge is a plain `ingress.duplicate_ignored` with `content_not_retained: true`
+          (200, nothing executes), never this code (Esquadro, final).
+        A new instruction field joins the list only by an explicit contract change, here and in
+        `contracts/instruction/v1/README.md`. Never a body value: only the names of the compared fields that
+        differ.
+      properties:
+        source_name: { type: string, minLength: 1, maxLength: 60 }
+        message_id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$', description: 'As received; the Core refuses token-shaped ids at ingress.' }
+        original_instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        first_received_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        second_received_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        differing_fields:
+          type: array
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items: { type: string, enum: [source, signal_type, action, position_effect, side, instrument, quantity, order, changes, refs] }
     DetailsIngressRejected:
       type: object
       additionalProperties: false
@@ -536,7 +576,7 @@ components:
       required: [distance_unit, stop_requested, target_requested, stop_ticks, target_ticks, stop_rounded, target_rounded, mode]
       description: 'S6 AC-4: requested distance → whole ticks used → resulting price, per side.'
       properties:
-        mode: { type: string, enum: [individual, shared] }
+        mode: { $ref: 'accounts.yaml#/components/schemas/BracketMode' }
         distance_unit: { $ref: 'profiles.yaml#/components/schemas/DistanceUnit' }
         stop_requested: { $ref: 'profiles.yaml#/components/schemas/DistanceValue' }
         target_requested: { $ref: 'profiles.yaml#/components/schemas/DistanceValue' }
@@ -746,13 +786,30 @@ components:
         `hold_until`; `completed` adds `masked_old_value` and `masked_new_value`; `cancelled` adds `by`;
         `not_completed` adds nothing (expired, or the new value was taken during the hold; the reason is
         never shown, auth policy §3).
+        `kind` (5.4.0, S3 AC-12) is written on every entry from 5.4.0; on older entries it is absent, which means `user_change`. With `admin_recovery`:
+        - the entry's actor is `platform_admin` (no new actor);
+        - every entry carries `verified_by` and may carry `break_glass` (true when the admin used the
+          break-glass path);
+        - `verification_ref` appears only on `requested` and `on_hold`;
+        - `cancelled.by` stays `user` or `system`. An admin cancel from the CLI is `system`, with actor
+          `platform_admin`.
+        The admin's identity is never in the user's trail. It is in the operator log and in the admin's own
+        step-up entries (`StepUpAction` `admin_recovery`).
       properties:
         change_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        kind: { type: string, enum: [user_change, admin_recovery] }
+        verified_by: { type: string, enum: [video_call, phone_known_number, in_person, other], description: How the admin verified the user's identity (admin_recovery). }
+        verification_ref: { type: string, maxLength: 200, description: 'The admin''s reference for the verification (e.g. a ticket number). Plain text; the Core refuses control characters and token-shaped parts, and never stores personal documents here.' }
+        break_glass: { type: boolean }
         channel: { $ref: '../openapi.yaml#/components/schemas/CodeChannel' }
         masked_old_value: { $ref: '#/components/schemas/MaskedChannelValue' }
         masked_new_value: { $ref: '#/components/schemas/MaskedChannelValue' }
         hold_until: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         by: { type: string, enum: [user, system] }
+      allOf:
+        - if: { properties: { kind: { const: admin_recovery } }, required: [kind] }
+          then: { required: [verified_by] }
+          else: { not: { anyOf: [{ required: [verified_by] }, { required: [verification_ref] }, { required: [break_glass] }] } }
     DetailsEmpty:
       type: object
       additionalProperties: false
@@ -888,6 +945,33 @@ components:
         earned_before: { $ref: '#/components/schemas/Money' }
         previous_earned_before: { $ref: '#/components/schemas/Money' }
         profit_target: { $ref: '#/components/schemas/Money' }
+    DetailsEvaluationCorrected:
+      type: object
+      additionalProperties: false
+      required: [start, profit_target]
+      description: '`accounts.evaluation_corrected` (5.4.0, Q-S13b-3): the earned-before amount changed with the same start; the count did not restart. Old and new earned-before (absent = none), the unchanged start and the target in force.'
+      properties:
+        start: { type: string, format: date }
+        earned_before: { $ref: '#/components/schemas/Money' }
+        previous_earned_before: { $ref: '#/components/schemas/Money' }
+        profit_target: { $ref: '#/components/schemas/Money' }
+    DetailsOptInRuleUpdated:
+      type: object
+      additionalProperties: false
+      required: [account_id, kind, previous_rule_version_id, rule_version_id, cause]
+      description: |
+        `accounts.opt_in_rule_updated` (5.4.0, Esquadro; S16): a newer rule version with `change.cause:
+        not_material` (a typo or format fix) was published. The Core moved the account's `chosen` /
+        `accepted` opt-in to it automatically, keeping the same choice and `chosen_at`. It is an automatic
+        action on consent, so it is always audited (category config, actor system, outcome `info`); it is
+        not notified. A `stance_changed` or `text_changed` version never re-points: it suspends
+        (`accounts.opt_in_suspended`, Q26).
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
+        previous_rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        cause: { const: not_material }
     DetailsSecurityInvitation:
       type: object
       additionalProperties: false
@@ -909,6 +993,7 @@ components:
       properties:
         ingress.received: { $ref: '#/components/schemas/DetailsIngressReceived' }
         ingress.duplicate_ignored: { $ref: '#/components/schemas/DetailsIngressDuplicate' }
+        ingress.duplicate_conflict: { $ref: '#/components/schemas/DetailsIngressDuplicateConflict' }
         ingress.rejected: { $ref: '#/components/schemas/DetailsIngressRejected' }
         ingress.rate_limited: { $ref: '#/components/schemas/DetailsIngressRateLimited' }
         routing.routed: { $ref: '#/components/schemas/DetailsRoutingDecision' }
@@ -972,6 +1057,7 @@ components:
         accounts.archived: { $ref: '#/components/schemas/DetailsAccountChange' }
         accounts.lifecycle_changed: { $ref: '#/components/schemas/DetailsLifecycleChanged' }
         accounts.opt_in_chosen: { $ref: '#/components/schemas/DetailsOptInChosen' }
+        accounts.opt_in_rule_updated: { $ref: '#/components/schemas/DetailsOptInRuleUpdated' }
         accounts.opt_in_suspended: { $ref: '#/components/schemas/DetailsOptInSuspended' }
         routing.subscription_changed: { $ref: '#/components/schemas/DetailsSubscriptionChanged' }
         profiles.default_changed: { $ref: '#/components/schemas/DetailsProfileChanged' }
@@ -985,6 +1071,7 @@ components:
         risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.evaluation_target_reached: { $ref: '#/components/schemas/DetailsEvaluation' }
         accounts.evaluation_restarted: { $ref: '#/components/schemas/DetailsEvaluationRestarted' }
+        accounts.evaluation_corrected: { $ref: '#/components/schemas/DetailsEvaluationCorrected' }
         trades.captured: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_created: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_changed: { $ref: '#/components/schemas/DetailsTradeChanged' }

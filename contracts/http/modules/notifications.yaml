@@ -170,7 +170,7 @@ components:
         count:
           type: integer
           minimum: 1
-          description: Occurrences grouped into this item (same code + account + trading day; registry `grouping`, and `reopen_on_occurrence` for whether a new occurrence marks it unread). The audit keeps one entry per occurrence.
+          description: Occurrences grouped into this item (same code + account + trading day, or + source + trading day for `source_trading_day`; registry `grouping`, and `reopen_on_occurrence` for whether a new occurrence marks it unread). The audit keeps one entry per occurrence.
         source_event_ids:
           type: array
           maxItems: 50
@@ -295,6 +295,7 @@ components:
         connection.status_changed: { $ref: 'audit.yaml#/components/schemas/DetailsConnectionStatus' }
         accounts.opt_in_suspended: { $ref: '#/components/schemas/ParamsOptInSuspendedByFirm' }
         presets.new_version: { $ref: '#/components/schemas/ParamsPresetNewVersion' }
+        ingress.duplicate_conflict: { $ref: 'audit.yaml#/components/schemas/DetailsIngressDuplicateConflict' }
 
     NotificationCreatedEvent:
       type: object

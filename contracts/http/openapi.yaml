@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 5.1.1
+  version: 5.4.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
@@ -372,6 +372,8 @@ paths:
           `account_opt_in_accept`, `route_enable` and `account_binding_change`, and **forbidden** for the other
           actions; a violation → 400
           `common.invalid_request` with pointer `/target_id`.
+        - `admin_recovery` is never accepted here: 400 `common.invalid_request` with pointer `/action`. It exists
+          only for the operator command and its audit (5.4.0).
         - A target that does not exist or belongs to another user → 404 `common.not_found`; no code is sent and
           nothing is counted against the user's send limit.
         - `admin_invitation_create` from a non-admin → 403 `auth.forbidden`, no code sent (same precedence as
@@ -1204,6 +1206,7 @@ paths:
   /api/v1/accounts/{account_id}/archive-impact: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1archive-impact' }
   /api/v1/accounts/{account_id}/lifecycle: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1lifecycle' }
   /api/v1/accounts/{account_id}/evaluation/restart: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1evaluation~1restart' }
+  /api/v1/accounts/{account_id}/commission: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1commission' }
   /api/v1/accounts/{account_id}/opt-ins/{kind}: { $ref: 'modules/accounts.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1opt-ins~1{kind}' }
   /api/v1/opt-in-rules: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1opt-in-rules' }
   /api/v1/rule-versions/{rule_version_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1rule-versions~1{rule_version_id}' }
@@ -1497,7 +1500,13 @@ components:
           whose automation was not accepted with step-up: a real account or opt-in not_required).
         - `account_binding_change` (target = account; updateAccount changing the platform binding of an account that
           receives automation: opt-in accepted or an active automated route).
-      enum: [source_create, source_rotate, connection_create, pairing_code_new, connection_unpair, account_opt_in_accept, account_create_opt_in_accept, admin_invitation_create, route_enable, account_binding_change]
+        - `admin_recovery` (5.4.0, S3 AC-12; Esquadro): the platform admin's own step-up for the operator command
+          (never HTTP), a new one for each of these steps:
+          - `admin recovery start`: target = the target user's id (the change does not exist yet);
+          - `confirm` and `cancel`: target = the channel change id.
+          Audited as `security.step_up_succeeded` / `_failed` in the admin's trail. `requestStepUp` refuses
+          `admin_recovery` with 400 `common.invalid_request` and pointer `/action` (operator command only).
+      enum: [source_create, source_rotate, connection_create, pairing_code_new, connection_unpair, account_opt_in_accept, account_create_opt_in_accept, admin_invitation_create, route_enable, account_binding_change, admin_recovery]
     StepUpProof:
       type: object
       additionalProperties: false
@@ -1525,9 +1534,18 @@ components:
     ChannelChange:
       type: object
       additionalProperties: false
-      required: [id, channel, status, masked_new_value, codes, expires_at]
+      required: [id, kind, channel, status, masked_new_value, codes, expires_at]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
+        kind:
+          type: string
+          enum: [user_change, admin_recovery]
+          description: |
+            5.4.0 (S3 AC-12). `user_change` is the user's own flow; every change before 5.4.0 is one.
+            `admin_recovery` is a recovery started and confirmed by a platform admin with the operator
+            command `allwin-core admin recovery start|confirm|status|cancel` (never HTTP; Esquadro). The
+            user's session sees it with `codes` empty, because only the admin confirms. The user can still
+            cancel it with `cancelChannelChange` during the hold.
         channel: { $ref: '#/components/schemas/CodeChannel' }
         status:
           type: string
@@ -1550,6 +1568,9 @@ components:
       allOf:
         - if: { properties: { status: { const: on_hold } } }
           then: { required: [hold_until] }
+        - if: { properties: { kind: { const: admin_recovery } } }
+          then: { properties: { codes: { maxItems: 0 } } }
+          else: { properties: { codes: { minItems: 1 } } }
     SecurityState:
       type: object
       additionalProperties: false
