@@ -148,10 +148,41 @@ pub struct DecisionRecord {
     pub requested_qty: Option<u32>,
     pub executed_qty: Option<u32>,
     pub decided_at: DateTime<Utc>,
-    /// The audit code (`reason_code`, or `routing.routed`).
-    pub event_type: &'static str,
-    /// The audit envelope `{actor, details, refs}`.
-    pub payload: Value,
+    pub leg: Leg,
+    /// The audit code (`reason_code`, or `routing.routed`) and envelope `{actor, details,
+    /// refs}`. A `close` leg has none: the pair gets its one decision entry with the opening
+    /// (Compasso, 2026-10-23).
+    pub audit: Option<(&'static str, Value)>,
+}
+
+/// Which part of a decision a row holds (`routing_decision.leg`; ADR-0003 §4.1 r4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Leg {
+    /// The whole decision, in one step.
+    Whole,
+    /// Step 1 of a `reverse` against an opposite position: the flatten, decided without the
+    /// entry gates.
+    Close,
+    /// Step 2: the opening, decided when the entry gates answer or the TTL passes.
+    Open,
+}
+
+impl Leg {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Whole => "whole",
+            Self::Close => "close",
+            Self::Open => "open",
+        }
+    }
+}
+
+/// A row already stored for the instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecidedLeg {
+    pub account_id: AccountId,
+    pub leg: Leg,
+    pub position_before: i64,
 }
 
 #[async_trait]
@@ -163,9 +194,17 @@ pub trait DecisionStore: Send + Sync {
         id: InstructionId,
     ) -> Result<Option<InstructionToRoute>, PortError>;
 
-    /// In one user-scoped transaction, inserts each decision once per (instruction, account)
-    /// and appends its audit event only when the row is new, so a redelivery never audits
-    /// twice. Returns how many were new.
+    /// The rows already stored for the instruction.
+    async fn decided(
+        &self,
+        user: UserId,
+        instruction: InstructionId,
+    ) -> Result<Vec<DecidedLeg>, PortError>;
+
+    /// In one user-scoped transaction, inserts each row once (`whole` or `close`, then at
+    /// most one `open`, and an `open` only after a `close` of the same pair) and appends its
+    /// audit event only when the row is new, so a redelivery never audits twice. Returns how
+    /// many were new.
     async fn record(&self, user: UserId, decisions: &[DecisionRecord]) -> Result<usize, PortError>;
 }
 
@@ -182,6 +221,10 @@ pub enum DecideError {
     NotRoutable,
     #[error(transparent)]
     Port(#[from] PortError),
+    /// Some accounts' entries wait for the entry gates; what could be decided (exits, close
+    /// legs) is committed, and the delivery is retried.
+    #[error("entry gates unavailable: {0}")]
+    GatesUnavailable(PortError),
 }
 
 #[derive(Clone)]
@@ -262,54 +305,131 @@ impl DecideInstruction {
         if targets.is_empty() {
             return Ok(Vec::new());
         }
+        // What a redelivery already decided stands; a close leg keeps the position it read.
+        let decided = d.store.decided(user, instruction_id).await?;
+        let done =
+            |a: AccountId, leg: Leg| decided.iter().any(|x| x.account_id == a && x.leg == leg);
+        let targets: Vec<_> = targets
+            .into_iter()
+            .filter(|(a, _)| !done(a.id, Leg::Whole) && !done(a.id, Leg::Open))
+            .collect();
+        if targets.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // The expected position decides what is an exit, so the whole instruction waits for
+        // it (no partial commit); a close leg already stored keeps its own.
+        let mut positions = HashMap::new();
+        for (account, _) in &targets {
+            let stored = decided
+                .iter()
+                .find(|x| x.account_id == account.id && x.leg == Leg::Close)
+                .map(|x| x.position_before);
+            let position = match stored {
+                Some(p) => p,
+                None => {
+                    d.positions
+                        .position(user, account.id, &i.instrument_symbol)
+                        .await?
+                        .quantity
+                }
+            };
+            positions.insert(account.id, (position, stored.is_some()));
+        }
+
+        // Exits never consult the entry gates (P1). For entries, an outage is remembered and
+        // only what does not need the answer is decided: close legs at once, and anything
+        // whose TTL has passed (never executes late, whatever the gates would say).
         let ids: Vec<AccountId> = targets.iter().map(|(a, _)| a.id).collect();
-        // Any error from here on returns before the store: nothing of this instruction is
-        // committed, and the outbox delivery retries it. An exit never consults the entry
-        // gates (P1), so their outage never delays it; a `reverse` needs their answer to choose
-        // between close-only and flatten + open, so it waits whole.
         let gates = if action.increases_position() {
-            Some(entry_gates(&d.gates, user, &i.instrument_symbol, &ids).await?)
+            Some(entry_gates(&d.gates, user, &i.instrument_symbol, &ids).await)
         } else {
             None
         };
-        // Unread (exit) or unanswered: barred.
-        let barred = |n: usize, a: &AccountId| {
-            gates
-                .as_ref()
-                .and_then(|g| g[n].get(a).copied())
-                .unwrap_or(true)
-        };
+        let answers = gates.as_ref().and_then(|g| g.as_ref().ok());
 
         let now = d.clock.now();
         let mut out = Vec::with_capacity(targets.len());
+        let mut waiting = false;
         for (account, signal_types) in targets {
-            let position = d
-                .positions
-                .position(user, account.id, &i.instrument_symbol)
-                .await?;
+            let (position, has_close_leg) = positions[&account.id];
             let ttl_ms = account.sizing.command_ttl_ms;
             let expires_at = i.expiry_base + Duration::milliseconds(i64::from(ttl_ms));
-            let facts = DecisionFacts {
+            let expired = now >= expires_at;
+            // Without an answer a gate reads as barred: an exit and a close leg never look at
+            // it, and the expired case below overrides it explicitly.
+            let barred = |n: usize| {
+                answers
+                    .and_then(|g| g[n].get(&account.id).copied())
+                    .unwrap_or(true)
+            };
+            let mut facts = DecisionFacts {
                 account_active: account.lifecycle.is_none(),
                 platform_bound: account.platform_bound,
                 automation_not_accepted: source.automated
                     && account.automation.not_accepted().is_some(),
                 signal_types: signal_types.clone(),
-                out_of_sync: barred(0, &account.id),
-                risk_blocked: barred(1, &account.id),
-                expired: now >= expires_at,
-                limits_pending: barred(2, &account.id),
-                has_bracket_profile: !barred(3, &account.id),
+                out_of_sync: barred(0),
+                risk_blocked: barred(1),
+                expired,
+                limits_pending: barred(2),
+                has_bracket_profile: !barred(3),
                 multiplier: account.sizing.multiplier,
                 max_position: account.sizing.max_position_qty,
-                position: position.quantity,
+                position,
             };
-            let decision = decision::decide(signal_type, action, &facts);
+            let leg = match (answers.is_some() || gates.is_none(), expired, has_close_leg) {
+                // Answers (or an exit): decide in full.
+                (true, _, false) => Leg::Whole,
+                (true, _, true) => Leg::Open,
+                // No answers, TTL passed: no rule can send an entry any more, so decide with
+                // the gates read as clear (the expiry is the code) — never routes late.
+                (false, true, close) => {
+                    facts.out_of_sync = false;
+                    facts.risk_blocked = false;
+                    facts.limits_pending = false;
+                    facts.has_bracket_profile = true;
+                    if close { Leg::Open } else { Leg::Whole }
+                }
+                // No answers yet: only the close leg of a reverse can go now.
+                (false, false, true) => {
+                    waiting = true;
+                    continue;
+                }
+                (false, false, false) => {
+                    if let Some(close) = decision::reverse_close_leg(signal_type, action, &facts) {
+                        out.push(record(
+                            user,
+                            &i,
+                            &source,
+                            account,
+                            action,
+                            &facts,
+                            &close,
+                            now,
+                            Leg::Close,
+                        ));
+                    }
+                    waiting = true;
+                    continue;
+                }
+            };
+            let decision = match leg {
+                Leg::Open => decision::reverse_open_leg(signal_type, action, &facts),
+                _ => decision::decide(signal_type, action, &facts),
+            };
             out.push(record(
-                user, &i, &source, account, action, &facts, &decision, now,
+                user, &i, &source, account, action, &facts, &decision, now, leg,
             ));
         }
         d.store.record(user, &out).await?;
+        if waiting {
+            let cause = match gates {
+                Some(Err(e)) => e,
+                _ => PortError("entry gates unavailable".into()),
+            };
+            return Err(DecideError::GatesUnavailable(cause));
+        }
         Ok(out)
     }
 }
@@ -327,6 +447,7 @@ fn record(
     f: &DecisionFacts,
     d: &Decision,
     now: DateTime<Utc>,
+    leg: Leg,
 ) -> DecisionRecord {
     let code = d.reason_code.unwrap_or("routing.routed");
     let outcome = match d.outcome {
@@ -413,8 +534,8 @@ fn record(
         requested_qty: d.requested_qty,
         executed_qty: d.executed_qty,
         decided_at: now,
-        event_type: code,
-        payload,
+        leg,
+        audit: (leg != Leg::Close).then_some((code, payload)),
     }
 }
 

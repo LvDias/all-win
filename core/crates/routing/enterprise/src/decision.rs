@@ -212,18 +212,8 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
     let skip = |code| Decision::not_executed(not_sent(code), code, requested);
     let conflict = || skip("routing.position_conflict");
 
-    // Gates for every action.
-    if !f.account_active {
-        return skip("routing.account_inactive");
-    }
-    if !f.platform_bound {
-        return skip("routing.platform_unbound");
-    }
-    if f.automation_not_accepted {
-        return skip("routing.automation_not_accepted");
-    }
-    if !f.signal_types.contains(signal_type) {
-        return skip("routing.signal_type_not_selected");
+    if let Some(code) = common_gate(signal_type, f) {
+        return skip(code);
     }
 
     let max = i64::from(f.max_position);
@@ -286,6 +276,60 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
                 }
             }
         }
+    }
+}
+
+/// Step 1 of a `reverse` decided in two legs (ADR-0003 §4.1 r4; Architect, 2026-10-23): an
+/// exit never waits for the entry gates, so against an opposite position the close leg
+/// (flatten + cancel protections) is decided at once from gates 1–5 and the position alone.
+/// `None` when there is no such leg (flat, already on the reverse side, or a gate for every
+/// action fails): the whole reverse then waits for the entry gates. Never reads gates 6–9.
+pub fn reverse_close_leg(
+    signal_type: RouteSignalType,
+    action: Action,
+    f: &DecisionFacts,
+) -> Option<Decision> {
+    let Action::Reverse { side, quantity } = action else {
+        return None;
+    };
+    if common_gate(signal_type, f).is_some() || f.position.signum() != -side.sign() {
+        return None;
+    }
+    Some(Decision {
+        outcome: Outcome::Routed,
+        reason_code: None,
+        requested_qty: Some(quantity.saturating_mul(f.multiplier)),
+        executed_qty: None,
+        reverse_closed_qty: None,
+        steps: vec![Step::Flatten],
+    })
+}
+
+/// Step 2: the opening of a `reverse` whose close leg was decided in step 1, with the position
+/// read then (`f.position`). The same rules as [`decide`], without the flatten that already
+/// left: it opens (after the flatten) or closes only with the barring code.
+pub fn reverse_open_leg(
+    signal_type: RouteSignalType,
+    action: Action,
+    f: &DecisionFacts,
+) -> Decision {
+    let mut d = decide(signal_type, action, f);
+    d.steps.retain(|s| *s != Step::Flatten);
+    d
+}
+
+/// Gates for every action (1–5), in ADR-0003 §4.1 order.
+fn common_gate(signal_type: RouteSignalType, f: &DecisionFacts) -> Option<&'static str> {
+    if !f.account_active {
+        Some("routing.account_inactive")
+    } else if !f.platform_bound {
+        Some("routing.platform_unbound")
+    } else if f.automation_not_accepted {
+        Some("routing.automation_not_accepted")
+    } else if !f.signal_types.contains(signal_type) {
+        Some("routing.signal_type_not_selected")
+    } else {
+        None
     }
 }
 
@@ -644,6 +688,90 @@ mod tests {
                 "{code}"
             );
             assert!(d.steps.is_empty(), "{code}");
+        }
+    }
+
+    #[test]
+    fn a_reverse_against_an_opposite_position_closes_first_without_entry_gates() {
+        let rev = Action::Reverse {
+            side: Side::Long,
+            quantity: 1,
+        };
+        let mut f = facts();
+        // Entry gates are not read for the close leg.
+        f.out_of_sync = true;
+        f.risk_blocked = true;
+        f.position = -3;
+        let close = reverse_close_leg(T, rev, &f).unwrap();
+        assert_eq!(close.steps, [Step::Flatten]);
+        assert_eq!(close.outcome, Outcome::Routed);
+        // No close leg: flat, already long, a gate for every action, or not a reverse.
+        f.position = 0;
+        assert_eq!(reverse_close_leg(T, rev, &f), None);
+        f.position = 2;
+        assert_eq!(reverse_close_leg(T, rev, &f), None);
+        f.position = -3;
+        f.account_active = false;
+        assert_eq!(reverse_close_leg(T, rev, &f), None);
+        f.account_active = true;
+        assert_eq!(reverse_close_leg(T, Action::Close, &f), None);
+        assert_eq!(reverse_close_leg(T, BUY_2, &f), None);
+
+        // Step 2 with the answers: barred → close only, nothing more to send.
+        let open = reverse_open_leg(T, rev, &f);
+        assert_eq!(
+            (open.outcome, open.reason_code),
+            (Outcome::Capped, Some("routing.out_of_sync"))
+        );
+        assert!(open.steps.is_empty());
+        assert_eq!(open.reverse_closed_qty, Some(3));
+        // Clear → only the opening is left to send.
+        f.out_of_sync = false;
+        f.risk_blocked = false;
+        let open = reverse_open_leg(T, rev, &f);
+        assert_eq!(open.outcome, Outcome::Routed);
+        assert_eq!(
+            open.steps,
+            [Step::Place {
+                side: Side::Long,
+                quantity: 2
+            }]
+        );
+        // TTL passed before the answers → expired, close only.
+        f.expired = true;
+        let open = reverse_open_leg(T, rev, &f);
+        assert_eq!(
+            (open.outcome, open.reason_code),
+            (Outcome::Capped, Some("routing.expired"))
+        );
+        assert!(open.steps.is_empty());
+    }
+
+    /// With the TTL passed, no rule ever sends an entry, whatever the entry gates say: the use
+    /// case may then decide without their answers (never execute late).
+    #[test]
+    fn an_expired_entry_never_places() {
+        let mut f = facts();
+        f.expired = true;
+        for position in [-2, 0, 2] {
+            f.position = position;
+            for action in [
+                BUY_2,
+                Action::Reverse {
+                    side: Side::Long,
+                    quantity: 1,
+                },
+                Action::Reverse {
+                    side: Side::Short,
+                    quantity: 1,
+                },
+            ] {
+                let d = decide(T, action, &f);
+                assert!(
+                    d.steps.iter().all(|s| *s == Step::Flatten),
+                    "{action:?} at {position}: {d:?}"
+                );
+            }
         }
     }
 

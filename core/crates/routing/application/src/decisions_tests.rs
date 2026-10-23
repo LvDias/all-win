@@ -17,9 +17,16 @@ fn at(ms: i64) -> DateTime<Utc> {
 #[derive(Default)]
 struct Store {
     instructions: Mutex<HashMap<(UserId, InstructionId), InstructionToRoute>>,
-    /// (instruction, account) → the stored decision; first one wins.
-    rows: Mutex<BTreeMap<(Uuid, Uuid), DecisionRecord>>,
+    /// (instruction, account, "first" | "open") → the stored row; first one wins, as the
+    /// unique index `routing_decision_leg_key`.
+    rows: Mutex<BTreeMap<(Uuid, Uuid, &'static str), DecisionRecord>>,
     events: Mutex<Vec<(&'static str, Value)>>,
+}
+
+impl Store {
+    fn legs(&self) -> Vec<Leg> {
+        self.rows.lock().unwrap().values().map(|r| r.leg).collect()
+    }
 }
 
 #[async_trait]
@@ -32,19 +39,41 @@ impl DecisionStore for Store {
         Ok(self.instructions.lock().unwrap().get(&(user, id)).cloned())
     }
 
+    async fn decided(
+        &self,
+        user: UserId,
+        instruction: InstructionId,
+    ) -> Result<Vec<DecidedLeg>, PortError> {
+        Ok(self
+            .rows
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.user_id == user && r.instruction_id == instruction)
+            .map(|r| DecidedLeg {
+                account_id: r.account_id,
+                leg: r.leg,
+                position_before: r.position_before,
+            })
+            .collect())
+    }
+
     async fn record(&self, _: UserId, decisions: &[DecisionRecord]) -> Result<usize, PortError> {
         let mut rows = self.rows.lock().unwrap();
         let mut new = 0;
         for d in decisions {
-            let key = (d.instruction_id.as_uuid(), d.account_id.as_uuid());
-            if rows.contains_key(&key) {
+            let (i, a) = (d.instruction_id.as_uuid(), d.account_id.as_uuid());
+            let slot = if d.leg == Leg::Open { "open" } else { "first" };
+            if rows.contains_key(&(i, a, slot)) {
                 continue;
             }
-            rows.insert(key, d.clone());
-            self.events
-                .lock()
-                .unwrap()
-                .push((d.event_type, d.payload.clone()));
+            if d.leg == Leg::Open && rows.get(&(i, a, "first")).map(|r| r.leg) != Some(Leg::Close) {
+                return Err(PortError("open leg without a close leg".into()));
+            }
+            rows.insert((i, a, slot), d.clone());
+            if let Some((code, payload)) = &d.audit {
+                self.events.lock().unwrap().push((code, payload.clone()));
+            }
             new += 1;
         }
         Ok(new)
@@ -90,6 +119,7 @@ struct Facts {
     sources: Mutex<HashMap<(UserId, SourceId), SourceFacts>>,
     positions: Mutex<HashMap<AccountId, i64>>,
     position_reads: Mutex<Vec<(UserId, AccountId, String)>>,
+    positions_down: Mutex<bool>,
 }
 
 #[async_trait]
@@ -124,6 +154,9 @@ impl PositionFor for Facts {
             .lock()
             .unwrap()
             .push((user, account, symbol.into()));
+        if *self.positions_down.lock().unwrap() {
+            return Err(PortError("unavailable".into()));
+        }
         Ok(ExpectedPosition {
             quantity: self
                 .positions
@@ -492,16 +525,15 @@ async fn each_entry_gate_bars_with_its_code() {
 }
 
 /// Fail closed (Architect, 2026-10-23): a gate that cannot answer, for the whole call or for
-/// one account, stops the instruction's decision. Nothing is stored or audited, so the
-/// outbox delivery retries it; an exit of the same instruction waits too.
+/// one account, keeps an entry undecided (nothing stored or audited) and the delivery is
+/// retried. A flat `reverse` waits the same way (Q75: no close leg without the answer).
 #[tokio::test]
-async fn a_gate_that_cannot_answer_decides_nothing() {
+async fn an_entry_waits_while_a_gate_cannot_answer() {
     for n in 0..4 {
         for (action, side, quantity) in
             [("buy", None, Some(1)), ("reverse", Some("short"), Some(1))]
         {
             let w = world();
-            w.set_position(1);
             w.set_instruction(action, side, quantity);
             *w.gates.0[n].unavailable.lock().unwrap() = true;
             let err = w
@@ -509,32 +541,163 @@ async fn a_gate_that_cannot_answer_decides_nothing() {
                 .handle(w.user, w.instruction)
                 .await
                 .unwrap_err();
-            assert!(matches!(err, DecideError::Port(_)), "gate {n} {action}");
-            assert!(w.store.rows.lock().unwrap().is_empty());
+            assert!(
+                matches!(err, DecideError::GatesUnavailable(_)),
+                "gate {n} {action}"
+            );
+            assert!(w.store.legs().is_empty());
             assert!(w.store.events.lock().unwrap().is_empty());
 
             // An answer missing for one account is the same as no answer.
             let w = world();
+            w.set_instruction(action, side, quantity);
             *w.gates.0[n].silent_for.lock().unwrap() = Some(w.account);
             assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
-            assert!(w.store.events.lock().unwrap().is_empty());
+            assert!(w.store.legs().is_empty());
         }
     }
 }
 
-/// Esmeril (P1 review): an exit never consults the entry gates, so their outage never delays
-/// it.
+/// Esmeril D1: a redelivery of an instruction already decided for every account succeeds
+/// without calling the ports, even while they are down, so it never dead-letters.
 #[tokio::test]
-async fn an_exit_is_decided_while_the_entry_gates_are_down() {
+async fn a_decided_instruction_is_redelivered_without_the_ports() {
     let w = world();
-    w.set_position(2);
-    w.set_instruction("close", None, None);
+    w.decide().await;
     for g in &w.gates.0 {
         *g.unavailable.lock().unwrap() = true;
     }
+    *w.facts.positions_down.lock().unwrap() = true;
+    let reads = w.facts.position_reads.lock().unwrap().len();
+    assert!(w.decide().await.is_empty());
+    assert_eq!(w.facts.position_reads.lock().unwrap().len(), reads);
+    assert_eq!(w.store.events.lock().unwrap().len(), 1);
+}
+
+/// The expected position decides what is an exit: without it the whole instruction waits.
+#[tokio::test]
+async fn nothing_is_decided_without_the_expected_position() {
+    for action in ["buy", "close"] {
+        let w = world();
+        w.set_instruction(action, None, (action == "buy").then_some(1));
+        *w.facts.positions_down.lock().unwrap() = true;
+        let err = w
+            .use_case()
+            .handle(w.user, w.instruction)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DecideError::Port(_)), "{action}");
+        assert!(w.store.legs().is_empty());
+    }
+}
+
+/// ADR-0003 §4.1 r4: against an opposite position the flatten is committed at once, without
+/// the entry gates; the opening is decided when they answer, with the position read then, and
+/// the pair gets its one decision entry at that point (Compasso, option 1).
+#[tokio::test]
+async fn a_reverse_closes_at_once_and_opens_when_the_gates_answer() {
+    let w = world();
+    w.set_instruction("reverse", Some("short"), Some(1));
+    w.set_position(3);
+    for g in &w.gates.0 {
+        *g.unavailable.lock().unwrap() = true;
+    }
+    let err = w
+        .use_case()
+        .handle(w.user, w.instruction)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DecideError::GatesUnavailable(_)));
+    assert_eq!(w.store.legs(), [Leg::Close]);
+    assert!(w.store.events.lock().unwrap().is_empty());
+    // A redelivery while still down adds nothing and does not read the position again.
+    let reads = w.facts.position_reads.lock().unwrap().len();
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    assert_eq!(w.store.legs(), [Leg::Close]);
+    assert_eq!(w.facts.position_reads.lock().unwrap().len(), reads);
+
+    // The gates answer; the position changed meanwhile, but the opening uses the one read
+    // by the close leg.
+    for g in &w.gates.0 {
+        *g.unavailable.lock().unwrap() = false;
+    }
+    w.set_position(0);
+    let d = w.decide().await;
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].leg, Leg::Open);
+    assert_eq!(d[0].position_before, 3);
+    assert_eq!(w.store.legs(), [Leg::Close, Leg::Open]);
+    let events = w.store.events.lock().unwrap().clone();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].0, "routing.routed");
+    assert_eq!(events[0].1["details"]["sizing"]["position_before"], 3);
+    // Done: a later redelivery decides nothing more.
+    assert!(w.decide().await.is_empty());
+    assert_eq!(w.store.events.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_reverse_opening_barred_when_the_gates_answer_closes_only() {
+    let w = world();
+    w.set_instruction("reverse", Some("short"), Some(1));
+    w.set_position(3);
+    *w.gates.0[1].unavailable.lock().unwrap() = true;
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    *w.gates.0[1].unavailable.lock().unwrap() = false;
+    w.bar(1);
     let (code, p) = w.only_event().await;
-    assert_eq!(code, "routing.routed");
-    assert_eq!(p["refs"]["is_exit"], true);
+    assert_eq!(code, "routing.risk_blocked");
+    assert_eq!(p["refs"]["outcome"], "partial");
+    assert_eq!(p["details"]["reverse_closed_qty"], 3);
+}
+
+#[tokio::test]
+async fn a_reverse_opening_still_unanswered_at_its_ttl_expires_close_only() {
+    let mut w = world();
+    w.set_instruction("reverse", Some("short"), Some(1));
+    w.set_position(3);
+    *w.gates.0[0].unavailable.lock().unwrap() = true;
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    w.now_ms = 5000;
+    let (code, p) = w.only_event().await;
+    assert_eq!(code, "routing.expired");
+    assert_eq!(p["refs"]["outcome"], "partial");
+    assert_eq!(p["details"]["reverse_closed_qty"], 3);
+    assert_eq!(w.store.legs(), [Leg::Close, Leg::Open]);
+}
+
+#[tokio::test]
+async fn an_entry_still_unanswered_at_its_ttl_expires() {
+    let mut w = world();
+    *w.gates.0[2].unavailable.lock().unwrap() = true;
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    w.now_ms = 5000;
+    let (code, p) = w.only_event().await;
+    assert_eq!(code, "routing.expired");
+    assert_eq!(p["refs"]["outcome"], "expired");
+    assert_eq!(w.store.legs(), [Leg::Whole]);
+}
+
+/// With several accounts, what can be decided is committed and the rest waits.
+#[tokio::test]
+async fn exits_and_close_legs_commit_while_entries_wait() {
+    let w = world();
+    w.set_instruction("reverse", Some("short"), Some(1));
+    let flat = AccountId::new_v7();
+    w.facts
+        .accounts
+        .lock()
+        .unwrap()
+        .get_mut(&w.user)
+        .unwrap()
+        .push(account(flat, "Flat"));
+    w.add_route(flat, true);
+    w.set_position(2); // the first account is long: close leg now
+    *w.gates.0[3].unavailable.lock().unwrap() = true;
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    let rows = w.store.rows.lock().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows.values().next().unwrap().account_id, w.account);
 }
 
 /// The retry after a gate outage decides with the clock of the retry: a late entry expires

@@ -10,7 +10,7 @@
 )]
 
 use chrono::{TimeZone, Utc};
-use routing_application::decisions::{DecisionRecord, DecisionStore};
+use routing_application::decisions::{DecisionRecord, DecisionStore, Leg};
 use routing_application::enterprise::decision::Outcome;
 use routing_application::enterprise::{AccountId, InstructionId, SourceId};
 use routing_infra::PgDecisionStore;
@@ -66,10 +66,22 @@ fn decision(user: UserId, instruction: InstructionId, account: AccountId) -> Dec
         requested_qty: Some(2),
         executed_qty: Some(0),
         decided_at: Utc.with_ymd_and_hms(2026, 10, 23, 12, 0, 1).unwrap(),
-        event_type: "routing.out_of_sync",
-        payload: json!({"actor":"system","details":{"reverse_closed_qty":3},
-                        "refs":{"outcome":"partial","account_id":account,"account_name":"Apex 50k"}}),
+        leg: Leg::Whole,
+        audit: Some((
+            "routing.out_of_sync",
+            json!({"actor":"system","details":{"reverse_closed_qty":3},
+                   "refs":{"outcome":"partial","account_id":account,"account_name":"Apex 50k"}}),
+        )),
     }
+}
+
+fn leg(user: UserId, i: InstructionId, a: AccountId, leg: Leg) -> DecisionRecord {
+    let mut d = decision(user, i, a);
+    d.leg = leg;
+    if leg == Leg::Close {
+        d.audit = None;
+    }
+    d
 }
 
 #[tokio::test]
@@ -204,4 +216,92 @@ async fn futures_sum(
         total += h.await.unwrap();
     }
     total
+}
+
+/// The two-step `reverse` (ADR-0003 §4.1 r4; Lastro's tests): `whole` and `close` exclude each
+/// other, an `open` only follows a `close`, at most one `open`, and a step-2 redelivery is a
+/// no-op. Only the rows with an audit event reach the outbox.
+#[tokio::test]
+async fn reverse_legs_follow_the_two_step_rules() {
+    let Some((owner, app)) = app_pool().await else {
+        return;
+    };
+    let store = PgDecisionStore::new(app);
+    let u = user(&owner).await;
+    let iid = instruction(&owner, u, SourceId::new_v7()).await;
+
+    // whole, then close for the same pair: the close is not stored.
+    let a = AccountId::new_v7();
+    assert_eq!(
+        store
+            .record(u, &[leg(u, iid, a, Leg::Whole)])
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .record(u, &[leg(u, iid, a, Leg::Close)])
+            .await
+            .unwrap(),
+        0
+    );
+    // An open without its close is refused.
+    let b = AccountId::new_v7();
+    assert!(store.record(u, &[leg(u, iid, b, Leg::Open)]).await.is_err());
+    // close then open; a second open (redelivery) does nothing.
+    assert_eq!(
+        store
+            .record(u, &[leg(u, iid, b, Leg::Close)])
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store.record(u, &[leg(u, iid, b, Leg::Open)]).await.unwrap(),
+        1
+    );
+    assert_eq!(
+        store.record(u, &[leg(u, iid, b, Leg::Open)]).await.unwrap(),
+        0
+    );
+
+    let mut legs: Vec<(AccountId, Leg, i64)> = store
+        .decided(u, iid)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|d| (d.account_id, d.leg, d.position_before))
+        .collect();
+    legs.sort_by_key(|(acc, l, _)| (acc.as_uuid(), l.as_str()));
+    let mut want = vec![(a, Leg::Whole, 3), (b, Leg::Close, 3), (b, Leg::Open, 3)];
+    want.sort_by_key(|(acc, l, _)| (acc.as_uuid(), l.as_str()));
+    assert_eq!(legs, want);
+    // whole and open audit; the close leg does not.
+    assert_eq!(events(&owner, u).await.len(), 2);
+
+    // The database enforces the pair rules on its own too.
+    let mut tx = owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(u.as_uuid().to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let insert = |leg: &'static str, account: AccountId| {
+        sqlx::query(
+            "INSERT INTO routing.routing_decision (id, user_id, instruction_id, account_id,
+               account_name, outcome, multiplier, max_position_qty, decided_at, leg)
+             VALUES ($1, $2, $3, $4, 'A', 'routed', 1, 1, now(), $5)",
+        )
+        .bind(uuid::Uuid::now_v7())
+        .bind(u.as_uuid())
+        .bind(iid.as_uuid())
+        .bind(account.as_uuid())
+        .bind(leg)
+    };
+    let err = insert("close", a).execute(&mut *tx).await.unwrap_err();
+    assert!(
+        err.to_string().contains("routing_decision_leg_key"),
+        "{err}"
+    );
 }

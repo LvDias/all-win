@@ -1,9 +1,12 @@
 //! Routing decisions (`routing.routing_decision`, wave1-data-model §6.2): append-only, one row
-//! per (instruction, account), written with its audit event in one user-scoped transaction.
+//! per (instruction, account), or a `close` then an `open` row for a two-step `reverse`
+//! (ADR-0003 §4.1 r4), written with its audit event in one user-scoped transaction.
 
 use async_trait::async_trait;
-use routing_application::decisions::{DecisionRecord, DecisionStore, InstructionToRoute};
-use routing_application::enterprise::{InstructionId, SourceId};
+use routing_application::decisions::{
+    DecidedLeg, DecisionRecord, DecisionStore, InstructionToRoute, Leg,
+};
+use routing_application::enterprise::{AccountId, InstructionId, SourceId};
 use routing_application::routes::PortError;
 use shared_kernel::UserId;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -70,19 +73,70 @@ impl DecisionStore for PgDecisionStore {
         }))
     }
 
+    async fn decided(
+        &self,
+        user: UserId,
+        instruction: InstructionId,
+    ) -> Result<Vec<DecidedLeg>, PortError> {
+        let mut tx = self.begin_for(user).await?;
+        let rows = sqlx::query!(
+            r#"SELECT account_id, leg, position_before FROM routing.routing_decision
+                WHERE user_id = $1 AND instruction_id = $2"#,
+            user.as_uuid(),
+            instruction.as_uuid(),
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(port_error)?;
+        tx.commit().await.map_err(port_error)?;
+        rows.into_iter()
+            .map(|r| {
+                Ok(DecidedLeg {
+                    account_id: AccountId::from_uuid(r.account_id),
+                    leg: match r.leg.as_str() {
+                        "whole" => Leg::Whole,
+                        "close" => Leg::Close,
+                        "open" => Leg::Open,
+                        _ => return Err(PortError("unknown decision leg".into())),
+                    },
+                    position_before: r.position_before.map_or(0, i64::from),
+                })
+            })
+            .collect()
+    }
+
     async fn record(&self, user: UserId, decisions: &[DecisionRecord]) -> Result<usize, PortError> {
         let mut tx = self.begin_for(user).await?;
         let mut new = 0;
         for d in decisions {
-            // A concurrent redelivery blocks on the unique entry and then takes DO NOTHING,
-            // so exactly one transaction audits each decision.
+            // Core rule (a CHECK cannot see the other row): an opening only follows its close
+            // leg, read in this transaction.
+            if d.leg == Leg::Open {
+                let close = sqlx::query_scalar!(
+                    r#"SELECT EXISTS (SELECT 1 FROM routing.routing_decision
+                        WHERE user_id = $1 AND instruction_id = $2 AND account_id = $3
+                          AND leg = 'close') AS "close!""#,
+                    user.as_uuid(),
+                    d.instruction_id.as_uuid(),
+                    d.account_id.as_uuid(),
+                )
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(port_error)?;
+                if !close {
+                    return Err(PortError("an open leg needs its close leg".into()));
+                }
+            }
+            // A concurrent redelivery blocks on the unique index (`routing_decision_leg_key`)
+            // and then takes DO NOTHING, so exactly one transaction audits each decision.
             let inserted = sqlx::query_scalar!(
                 r#"INSERT INTO routing.routing_decision (
                      id, user_id, instruction_id, account_id, account_name, outcome, reason_code,
                      multiplier, max_position_qty, position_before, requested_qty, executed_qty,
-                     decided_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                   ON CONFLICT (instruction_id, account_id) DO NOTHING
+                     decided_at, leg)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                   ON CONFLICT (instruction_id, account_id,
+                                (CASE leg WHEN 'open' THEN 'open' ELSE 'first' END)) DO NOTHING
                    RETURNING id"#,
                 d.id,
                 user.as_uuid(),
@@ -98,6 +152,7 @@ impl DecisionStore for PgDecisionStore {
                 d.requested_qty.map(int).transpose()?,
                 d.executed_qty.map(int).transpose()?,
                 d.decided_at,
+                d.leg.as_str(),
             )
             .fetch_optional(&mut *tx)
             .await
@@ -105,19 +160,22 @@ impl DecisionStore for PgDecisionStore {
             if inserted.is_none() {
                 continue;
             }
+            new += 1;
+            let Some((event_type, payload)) = &d.audit else {
+                continue;
+            };
             sqlx::query!(
                 r#"INSERT INTO app.outbox (id, user_id, event_type, occurred_at, payload)
                    VALUES ($1, $2, $3, $4, $5)"#,
                 Uuid::now_v7(),
                 user.as_uuid(),
-                d.event_type,
+                event_type,
                 d.decided_at,
-                d.payload,
+                payload,
             )
             .execute(&mut *tx)
             .await
             .map_err(port_error)?;
-            new += 1;
         }
         tx.commit().await.map_err(port_error)?;
         Ok(new)
