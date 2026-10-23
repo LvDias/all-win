@@ -2,12 +2,17 @@
 # Run a heavy command (full test suite, clippy --all-targets, e2e stack, full vitest) under a host-wide
 # 2-slot semaphore, a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
 #   allwin-heavy cargo test --workspace
+#   allwin-heavy --fresh-target cargo test --workspace   (QA verdict run: private target per SHA, removed after)
 set -euo pipefail
 
 SLOTS="${ALLWIN_HEAVY_SLOTS:-2}"
 LOCK_DIR="${ALLWIN_HEAVY_LOCK_DIR:-/srv/www/allwin.worktrees/.heavy-locks}"
 CPU_QUOTA="${ALLWIN_HEAVY_CPU_QUOTA:-200%}"
 WAIT_MAX="${ALLWIN_HEAVY_WAIT_S:-1800}"   # seconds to wait for a slot
+
+FRESH=0
+if [ "${1:-}" = "--fresh-target" ]; then FRESH=1; shift; fi
+[ "${ALLWIN_HEAVY_FRESH_TARGET:-0}" = 1 ] && FRESH=1
 
 [ $# -gt 0 ] || { echo "usage: allwin-heavy <command> [args...]" >&2; exit 2; }
 [[ "$SLOTS" =~ ^[1-9][0-9]?$ ]] || { echo "allwin-heavy: ALLWIN_HEAVY_SLOTS must be 1..99" >&2; exit 2; }
@@ -39,17 +44,37 @@ done
 
 # Defaults that keep the build small; the caller can override any of them.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/allwin/cargo-target}"
+TARGET_ROOT="${ALLWIN_HEAVY_TARGET_ROOT:-$HOME/.cache/allwin/cargo-target}"
+if [ "$FRESH" = 1 ]; then
+  # A snapshot of another SHA must never see this one's artifacts (same layout, same metadata hash):
+  # verdict runs get a target of their own, named by the commit, and remove it afterwards.
+  sha="$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)"
+  git diff --quiet HEAD 2>/dev/null || sha="$sha-dirty"
+  export CARGO_TARGET_DIR="$TARGET_ROOT/verify-$sha-$$"
+else
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$TARGET_ROOT}"
+fi
 mkdir -p -- "$CARGO_TARGET_DIR"
-
 export RUST_TEST_THREADS="${RUST_TEST_THREADS:-2}"
 
 # --scope runs in the foreground (cwd, env, tty and exit code pass through) and keeps the slot fd.
 # Docker containers run under dockerd, so the quota caps only the client/build side.
 run=(ionice -c2 -n7 "$@")
 if systemd-run --user --scope --quiet --collect -p "CPUQuota=$CPU_QUOTA" -- true >/dev/null 2>&1; then
-  exec systemd-run --user --scope --quiet --collect -p "CPUQuota=$CPU_QUOTA" -p CPUWeight=20 \
-    -p MemoryHigh="${ALLWIN_HEAVY_MEMORY_HIGH:-8G}" --nice=10 -- "${run[@]}"
+  run=(systemd-run --user --scope --quiet --collect -p "CPUQuota=$CPU_QUOTA" -p CPUWeight=20
+       -p MemoryHigh="${ALLWIN_HEAVY_MEMORY_HIGH:-8G}" --nice=10 -- "${run[@]}")
+else
+  echo "allwin-heavy: no usable systemd --user scope; running with nice only (no CPU quota)" >&2
+  run=(nice -n 10 "${run[@]}")
 fi
-echo "allwin-heavy: no usable systemd --user scope; running with nice only (no CPU quota)" >&2
-exec nice -n 10 "${run[@]}"
+
+if [ "$FRESH" != 1 ]; then exec "${run[@]}"; fi
+
+# Fresh target: keep the wrapper alive to remove the directory (the slot stays held until then).
+case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/verify-*) ;; *) echo "allwin-heavy: unexpected target dir" >&2; exit 1 ;; esac
+cleanup() { [ "${ALLWIN_HEAVY_KEEP_TARGET:-0}" = 1 ] || rm -rf -- "$CARGO_TARGET_DIR"; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+rc=0
+"${run[@]}" || rc=$?
+exit "$rc"
