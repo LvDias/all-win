@@ -28,7 +28,7 @@ Cada conta escolhe quais tipos aceita (tela de roteamento).
 
 ## 3. Campos por ação
 
-Sempre: `schema_version` = `"1.0"`, `message_id` (gerado pelo indicador: `tv-<Source name>-MNQ-<tipo>-<setup>-<ação>-<ticker do gráfico>-<timeframe>-<hora da barra em ms>`), `sent_at` (UTC, termina em `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (o **futuro operado** na V1; `QQQ`/`SPY` são só referência).
+Sempre: `schema_version` = `"1.0"`, `message_id` (gerado pelo indicador: `tv-<Source name>-MNQ-<tipo>-<setup>-<ação[_lado]>-<ticker do gráfico>-<timeframe>-<hora da barra em ms>`), `sent_at` (UTC, termina em `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (o **futuro operado** na V1; `QQQ`/`SPY` são só referência).
 
 **Não envie `contract_month`:** o All Win usa o contrato ativo do catálogo e faz a rolagem na data configurada pelo administrador. Um mês digitado no Pine fica velho na rolagem e operaria o contrato errado.
 

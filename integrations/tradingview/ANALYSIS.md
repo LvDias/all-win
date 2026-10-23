@@ -39,7 +39,7 @@ Other ingress rules the Pine must respect:
 
 ## 3. message_id uniqueness (S1 idempotency)
 
-**Core semantics (verified in code):** `INSERT … ON CONFLICT (user_id, message_id) DO NOTHING`. Scope is the **user** (not the source/token), forever. A repeated id gets 200 `duplicate` with the first `instruction_id`; **the body is not compared** — a different instruction that reuses an id is silently dropped (first wins). Allowed: `[A-Za-z0-9._:-]`, 1–128 chars.
+**Core semantics (verified in code):** `INSERT … ON CONFLICT (user_id, message_id) DO NOTHING`. Scope is the **user** (not the source/token), forever. A repeated id gets 200 `duplicate` with the first `instruction_id`; **the body is not compared** — a different instruction that reuses an id is dropped (first wins). Allowed: `[A-Za-z0-9._:-]`, 1–128 chars.
 
 So the id must be (1) identical when the *same event* re-fires (protection against double execution), and (2) different for any *distinct* signal, across all charts/alerts of the user, forever.
 
@@ -90,4 +90,5 @@ The Pine function writes every message to **Pine Logs** (`log.info`), so the use
 - ~~Q-S17-f~~ already decided: V1 trades MNQ only (vision §4).
 - **Q-S17-g** Pine source: to integrate the function into the indicator (and keep it in `integrations/tradingview/`), the user must hand over the source (Q7). Until then the function is paste-in.
 - **Q-S17-b** PO recommends one signal (consistent with "never execute twice"); user to confirm.
-- **Esquadro:** a different body reusing a `message_id` is silently answered `duplicate` (first wins) — under review.
+- **Same `message_id`, different body** — Architect decision (Esquadro, 2026-10-23), implementation pending: still 200 and nothing executed, but the Core writes the audit entry `ingress.duplicate_conflict` (user-visible warning, grouped by source; details: source name, `message_id`, both `received_at`, names of the differing fields, never the raw body). Comparison uses a sha256 of the canonical parsed JSON. Owners: Lastro (column in `routing.message_receipt`), Compasso (audit/notification code), Ferro (Core). With the deterministic Pine id, such a conflict means a broken template, which is what the user needs to see. No change to the Pine or the guides.
+  - **Open point (Vela → Esquadro):** a legitimate re-fire of the same event (alert restarted, two alert instances) carries the same id but a new `sent_at` (`timenow`). If the hash covers `sent_at`, every such re-fire raises a false `ingress.duplicate_conflict`. Proposal: exclude `sent_at` from the compared canonical body.

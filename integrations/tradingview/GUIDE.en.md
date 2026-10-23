@@ -28,7 +28,7 @@ Each account chooses which types it takes (routing screen).
 
 ## 3. Fields per action
 
-Always: `schema_version` = `"1.0"`, `message_id` (built by the indicator: `tv-<Source name>-MNQ-<kind>-<setup>-<action>-<chart ticker>-<timeframe>-<bar time ms>`), `sent_at` (UTC, ends with `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (the **traded future** in V1; `QQQ`/`SPY` are references only).
+Always: `schema_version` = `"1.0"`, `message_id` (built by the indicator: `tv-<Source name>-MNQ-<kind>-<setup>-<action[_side]>-<chart ticker>-<timeframe>-<bar time ms>`), `sent_at` (UTC, ends with `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (the **traded future** in V1; `QQQ`/`SPY` are references only).
 
 **Do not send `contract_month`:** All Win uses the catalog's active contract and rolls it on the date the admin configures. A month typed in the Pine goes stale at the roll and would trade the wrong contract.
 
