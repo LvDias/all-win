@@ -47,7 +47,7 @@ impl DecisionStore for PgDecisionStore {
         // RLS scopes the read; the explicit user_id is defence in depth.
         let row = sqlx::query!(
             r#"SELECT id, source_id, message_id, signal_type, action, instrument_symbol, quantity,
-                      expiry_base,
+                      expiry_base, to_char(contract_month, 'YYYY-MM') AS contract_month,
                       payload->>'position_effect' AS position_effect,
                       payload->>'side' AS side
                  FROM routing.instruction
@@ -68,6 +68,7 @@ impl DecisionStore for PgDecisionStore {
             position_effect: r.position_effect,
             side: r.side,
             instrument_symbol: r.instrument_symbol,
+            contract_month: r.contract_month,
             quantity: r.quantity,
             expiry_base: r.expiry_base,
         }))

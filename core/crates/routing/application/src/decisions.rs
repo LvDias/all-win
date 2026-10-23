@@ -27,7 +27,24 @@ use crate::routes::{
 // Ports
 // ---------------------------------------------------------------------------------------------
 
-/// The Core's expected position of one account in one instrument (gateway).
+/// The contract a decision is about, resolved once per instruction (Esquadro D2): the
+/// instruction's month, or else the rollover catalog's active contract (P5). Every port and
+/// command uses it, as the gateway's key (data model 16.6 G3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Contract {
+    pub symbol: String,
+    /// `YYYY-MM`.
+    pub month: String,
+}
+
+/// The rollover catalog (P5): the active contract month of a symbol at an instant; `None`
+/// when the instrument has no active contract then. The adapter lives in `crates/app`.
+#[async_trait]
+pub trait ActiveContract: Send + Sync {
+    async fn active(&self, symbol: &str, at: DateTime<Utc>) -> Result<Option<String>, PortError>;
+}
+
+/// The Core's expected position of one account in one contract (gateway).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedPosition {
     /// Signed quantity: positive long, negative short, 0 flat.
@@ -43,7 +60,7 @@ pub trait PositionFor: Send + Sync {
         &self,
         user: UserId,
         account: AccountId,
-        instrument_symbol: &str,
+        contract: &Contract,
     ) -> Result<ExpectedPosition, PortError>;
 }
 
@@ -57,7 +74,7 @@ pub trait EntryGate: Send + Sync {
     async fn barred(
         &self,
         user: UserId,
-        instrument_symbol: &str,
+        contract: &Contract,
         accounts: &[AccountId],
     ) -> Result<HashMap<AccountId, bool>, PortError>;
 }
@@ -80,18 +97,25 @@ pub struct EntryGatePorts {
 async fn entry_gates(
     g: &EntryGatePorts,
     user: UserId,
-    symbol: &str,
+    contract: &Contract,
     accounts: &[AccountId],
 ) -> Result<[HashMap<AccountId, bool>; 4], PortError> {
     Ok([
-        ask(&*g.out_of_sync, "out_of_sync", user, symbol, accounts).await?,
-        ask(&*g.risk_blocked, "risk_blocked", user, symbol, accounts).await?,
-        ask(&*g.limits_pending, "limits_pending", user, symbol, accounts).await?,
+        ask(&*g.out_of_sync, "out_of_sync", user, contract, accounts).await?,
+        ask(&*g.risk_blocked, "risk_blocked", user, contract, accounts).await?,
+        ask(
+            &*g.limits_pending,
+            "limits_pending",
+            user,
+            contract,
+            accounts,
+        )
+        .await?,
         ask(
             &*g.no_bracket_profile,
             "no_bracket_profile",
             user,
-            symbol,
+            contract,
             accounts,
         )
         .await?,
@@ -103,10 +127,10 @@ async fn ask(
     gate: &dyn EntryGate,
     name: &str,
     user: UserId,
-    symbol: &str,
+    contract: &Contract,
     accounts: &[AccountId],
 ) -> Result<HashMap<AccountId, bool>, PortError> {
-    let answers = gate.barred(user, symbol, accounts).await?;
+    let answers = gate.barred(user, contract, accounts).await?;
     if accounts.iter().all(|a| answers.contains_key(a)) {
         Ok(answers)
     } else {
@@ -127,6 +151,8 @@ pub struct InstructionToRoute {
     pub position_effect: Option<String>,
     pub side: Option<String>,
     pub instrument_symbol: String,
+    /// `YYYY-MM`, when the instruction names its contract.
+    pub contract_month: Option<String>,
     pub quantity: Option<i32>,
     /// `min(sent_at, received_at)` (ADR-0003 §7).
     pub expiry_base: DateTime<Utc>,
@@ -149,6 +175,8 @@ pub struct DecisionRecord {
     pub executed_qty: Option<u32>,
     pub decided_at: DateTime<Utc>,
     pub leg: Leg,
+    /// Decided after the TTL without answers from gates 6–9 (Architect, N1).
+    pub gates_unknown: bool,
     /// The audit code (`reason_code`, or `routing.routed`) and envelope `{actor, details,
     /// refs}`. A `close` leg has none: the pair gets its one decision entry with the opening
     /// (Compasso, 2026-10-23).
@@ -221,6 +249,10 @@ pub enum DecideError {
     NotRoutable,
     #[error(transparent)]
     Port(#[from] PortError),
+    /// The instrument has no active contract: the instruction waits (fail closed) until
+    /// `routing.instrument_unavailable` ships with HTTP 5.2.0.
+    #[error("no active contract for the instrument")]
+    NoActiveContract,
     /// Some accounts' entries wait for the entry gates; what could be decided (exits, close
     /// legs) is committed, and the delivery is retried.
     #[error("entry gates unavailable: {0}")]
@@ -234,6 +266,7 @@ pub struct DecisionDeps {
     pub accounts: Arc<dyn AccountDirectory>,
     pub sources: Arc<dyn SourceDirectory>,
     pub positions: Arc<dyn PositionFor>,
+    pub contracts: Arc<dyn ActiveContract>,
     pub gates: EntryGatePorts,
     pub clock: Arc<dyn Clock>,
 }
@@ -317,6 +350,22 @@ impl DecideInstruction {
             return Ok(Vec::new());
         }
 
+        // One contract for the whole decision (D2). The instant is the instruction's expiry
+        // base, not the retry's clock, so every attempt and both legs of a reverse resolve the
+        // same contract across a roll.
+        let month = match &i.contract_month {
+            Some(m) => m.clone(),
+            None => d
+                .contracts
+                .active(&i.instrument_symbol, i.expiry_base)
+                .await?
+                .ok_or(DecideError::NoActiveContract)?,
+        };
+        let contract = Contract {
+            symbol: i.instrument_symbol.clone(),
+            month,
+        };
+
         // The expected position decides what is an exit, so the whole instruction waits for
         // it (no partial commit); a close leg already stored keeps its own.
         let mut positions = HashMap::new();
@@ -329,7 +378,7 @@ impl DecideInstruction {
                 Some(p) => p,
                 None => {
                     d.positions
-                        .position(user, account.id, &i.instrument_symbol)
+                        .position(user, account.id, &contract)
                         .await?
                         .quantity
                 }
@@ -342,7 +391,7 @@ impl DecideInstruction {
         // whose TTL has passed (never executes late, whatever the gates would say).
         let ids: Vec<AccountId> = targets.iter().map(|(a, _)| a.id).collect();
         let gates = if action.increases_position() {
-            Some(entry_gates(&d.gates, user, &i.instrument_symbol, &ids).await)
+            Some(entry_gates(&d.gates, user, &contract, &ids).await)
         } else {
             None
         };
@@ -363,7 +412,7 @@ impl DecideInstruction {
                     .and_then(|g| g[n].get(&account.id).copied())
                     .unwrap_or(true)
             };
-            let mut facts = DecisionFacts {
+            let facts = DecisionFacts {
                 account_active: account.lifecycle.is_none(),
                 platform_bound: account.platform_bound,
                 automation_not_accepted: source.automated
@@ -378,49 +427,48 @@ impl DecideInstruction {
                 max_position: account.sizing.max_position_qty,
                 position,
             };
-            let leg = match (answers.is_some() || gates.is_none(), expired, has_close_leg) {
-                // Answers (or an exit): decide in full.
-                (true, _, false) => Leg::Whole,
-                (true, _, true) => Leg::Open,
-                // No answers, TTL passed: no rule can send an entry any more, so decide with
-                // the gates read as clear (the expiry is the code) — never routes late.
-                (false, true, close) => {
-                    facts.out_of_sync = false;
-                    facts.risk_blocked = false;
-                    facts.limits_pending = false;
-                    facts.has_bracket_profile = true;
-                    if close { Leg::Open } else { Leg::Whole }
+            // Entry gates asked but not answered (an exit never asks).
+            let unanswered = gates.is_some() && answers.is_none();
+            if unanswered && !expired {
+                // Only the close leg of a reverse can go now; the rest waits.
+                if !has_close_leg
+                    && let Some(close) = decision::reverse_close_leg(signal_type, action, &facts)
+                {
+                    out.push(record(
+                        user,
+                        &i,
+                        &source,
+                        account,
+                        action,
+                        &facts,
+                        &close,
+                        now,
+                        Leg::Close,
+                    ));
                 }
-                // No answers yet: only the close leg of a reverse can go now.
-                (false, false, true) => {
-                    waiting = true;
-                    continue;
-                }
-                (false, false, false) => {
-                    if let Some(close) = decision::reverse_close_leg(signal_type, action, &facts) {
-                        out.push(record(
-                            user,
-                            &i,
-                            &source,
-                            account,
-                            action,
-                            &facts,
-                            &close,
-                            now,
-                            Leg::Close,
-                        ));
-                    }
-                    waiting = true;
-                    continue;
-                }
+                waiting = true;
+                continue;
+            }
+            let leg = if has_close_leg { Leg::Open } else { Leg::Whole };
+            let mut decision = if unanswered {
+                // TTL passed without answers (N1): never names a gate that did not answer and
+                // never places — never routes late.
+                decision::decide_expired_unanswered(signal_type, action, &facts)
+            } else if has_close_leg {
+                decision::reverse_open_leg(signal_type, action, &facts)
+            } else {
+                decision::decide(signal_type, action, &facts)
             };
-            let decision = match leg {
-                Leg::Open => decision::reverse_open_leg(signal_type, action, &facts),
-                _ => decision::decide(signal_type, action, &facts),
-            };
-            out.push(record(
+            if has_close_leg {
+                decision.steps.retain(|s| *s != decision::Step::Flatten);
+            }
+            let mut row = record(
                 user, &i, &source, account, action, &facts, &decision, now, leg,
-            ));
+            );
+            // `DetailsRoutingDecision.gates_unknown` (HTTP 5.2.0 draft) is emitted once the
+            // branch carries that contract; the closed 5.1.1 schema has no such field yet.
+            row.gates_unknown = unanswered;
+            out.push(row);
         }
         d.store.record(user, &out).await?;
         if waiting {
@@ -535,6 +583,7 @@ fn record(
         executed_qty: d.executed_qty,
         decided_at: now,
         leg,
+        gates_unknown: false,
         audit: (leg != Leg::Close).then_some((code, payload)),
     }
 }

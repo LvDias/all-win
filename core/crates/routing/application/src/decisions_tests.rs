@@ -118,7 +118,10 @@ struct Facts {
     accounts: Mutex<HashMap<UserId, Vec<AccountFacts>>>,
     sources: Mutex<HashMap<(UserId, SourceId), SourceFacts>>,
     positions: Mutex<HashMap<AccountId, i64>>,
-    position_reads: Mutex<Vec<(UserId, AccountId, String)>>,
+    position_reads: Mutex<Vec<(UserId, AccountId, Contract)>>,
+    /// symbol → active month (rollover catalog); MNQ → 2026-12 in `world()`.
+    active: Mutex<HashMap<String, String>>,
+    active_calls: Mutex<Vec<(String, DateTime<Utc>)>>,
     positions_down: Mutex<bool>,
 }
 
@@ -143,17 +146,25 @@ impl SourceDirectory for Facts {
 }
 
 #[async_trait]
+impl ActiveContract for Facts {
+    async fn active(&self, symbol: &str, at: DateTime<Utc>) -> Result<Option<String>, PortError> {
+        self.active_calls.lock().unwrap().push((symbol.into(), at));
+        Ok(self.active.lock().unwrap().get(symbol).cloned())
+    }
+}
+
+#[async_trait]
 impl PositionFor for Facts {
     async fn position(
         &self,
         user: UserId,
         account: AccountId,
-        symbol: &str,
+        contract: &Contract,
     ) -> Result<ExpectedPosition, PortError> {
         self.position_reads
             .lock()
             .unwrap()
-            .push((user, account, symbol.into()));
+            .push((user, account, contract.clone()));
         if *self.positions_down.lock().unwrap() {
             return Err(PortError("unavailable".into()));
         }
@@ -177,6 +188,7 @@ struct Gate {
     barred: Mutex<HashMap<AccountId, bool>>,
     unavailable: Mutex<bool>,
     silent_for: Mutex<Option<AccountId>>,
+    seen: Mutex<Vec<Contract>>,
 }
 
 #[async_trait]
@@ -184,10 +196,10 @@ impl EntryGate for Gate {
     async fn barred(
         &self,
         _: UserId,
-        symbol: &str,
+        contract: &Contract,
         accounts: &[AccountId],
     ) -> Result<HashMap<AccountId, bool>, PortError> {
-        assert_eq!(symbol, "MNQ");
+        self.seen.lock().unwrap().push(contract.clone());
         if *self.unavailable.lock().unwrap() {
             return Err(PortError("unavailable".into()));
         }
@@ -271,9 +283,21 @@ fn world() -> World {
             name: "TV main".into(),
         },
     );
+    w.facts
+        .active
+        .lock()
+        .unwrap()
+        .insert("MNQ".into(), "2026-12".into());
     w.add_route(w.account, true);
     w.set_instruction("buy", None, Some(1));
     w
+}
+
+fn mnq(month: &str) -> Contract {
+    Contract {
+        symbol: "MNQ".into(),
+        month: month.into(),
+    }
 }
 
 impl World {
@@ -303,6 +327,7 @@ impl World {
                 position_effect: None,
                 side: side.map(Into::into),
                 instrument_symbol: "MNQ".into(),
+                contract_month: None,
                 quantity,
                 expiry_base: at(0),
             },
@@ -337,6 +362,7 @@ impl World {
             accounts: self.facts.clone(),
             sources: self.facts.clone(),
             positions: self.facts.clone(),
+            contracts: self.facts.clone(),
             gates: self.gates.ports(),
             clock: Arc::new(FixedClock(at(self.now_ms))),
         })
@@ -391,7 +417,7 @@ async fn an_entry_is_routed_with_the_multiplier_and_audited() {
     // The position is read once, for this user, account and instrument.
     assert_eq!(
         *w.facts.position_reads.lock().unwrap(),
-        [(w.user, w.account, "MNQ".to_owned())]
+        [(w.user, w.account, mnq("2026-12"))]
     );
 }
 
@@ -574,6 +600,55 @@ async fn a_decided_instruction_is_redelivered_without_the_ports() {
     assert_eq!(w.store.events.lock().unwrap().len(), 1);
 }
 
+/// Esquadro D2: one contract per decision, from the rollover catalog at the instruction's
+/// expiry base (not the retry's clock), passed to the position and to every gate.
+#[tokio::test]
+async fn the_catalog_contract_goes_to_every_port() {
+    let mut w = world();
+    w.now_ms = 1200;
+    w.decide().await;
+    assert_eq!(
+        *w.facts.active_calls.lock().unwrap(),
+        [("MNQ".to_owned(), at(0))]
+    );
+    assert_eq!(w.facts.position_reads.lock().unwrap()[0].2, mnq("2026-12"));
+    for g in &w.gates.0 {
+        assert_eq!(*g.seen.lock().unwrap(), [mnq("2026-12")]);
+    }
+}
+
+#[tokio::test]
+async fn the_instruction_month_wins_over_the_catalog() {
+    let w = world();
+    w.store
+        .instructions
+        .lock()
+        .unwrap()
+        .get_mut(&(w.user, w.instruction))
+        .unwrap()
+        .contract_month = Some("2027-03".into());
+    w.decide().await;
+    assert!(w.facts.active_calls.lock().unwrap().is_empty());
+    assert_eq!(w.facts.position_reads.lock().unwrap()[0].2, mnq("2027-03"));
+    assert_eq!(*w.gates.0[0].seen.lock().unwrap(), [mnq("2027-03")]);
+}
+
+/// Interim until `routing.instrument_unavailable` (HTTP 5.2.0): no active contract → the
+/// instruction is not decided and waits (fail closed).
+#[tokio::test]
+async fn without_an_active_contract_nothing_is_decided() {
+    let w = world();
+    w.facts.active.lock().unwrap().clear();
+    let err = w
+        .use_case()
+        .handle(w.user, w.instruction)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DecideError::NoActiveContract));
+    assert!(w.store.legs().is_empty());
+    assert!(w.facts.position_reads.lock().unwrap().is_empty());
+}
+
 /// The expected position decides what is an exit: without it the whole instruction waits.
 #[tokio::test]
 async fn nothing_is_decided_without_the_expected_position() {
@@ -676,6 +751,31 @@ async fn an_entry_still_unanswered_at_its_ttl_expires() {
     assert_eq!(code, "routing.expired");
     assert_eq!(p["refs"]["outcome"], "expired");
     assert_eq!(w.store.legs(), [Leg::Whole]);
+}
+
+/// N1 (Architect): out of sync + opposite position + gates down past the TTL → the decision
+/// names only what it knows (position_conflict), marks the gates unknown, and sends nothing.
+#[tokio::test]
+async fn past_the_ttl_without_answers_no_gate_is_named() {
+    let mut w = world();
+    w.set_position(-1);
+    w.bar(0);
+    *w.gates.0[0].unavailable.lock().unwrap() = true;
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    w.now_ms = 5000;
+    let d = w.decide().await;
+    assert_eq!(d[0].reason_code, Some("routing.position_conflict"));
+    assert_eq!(d[0].outcome, Outcome::Refused);
+    assert!(d[0].gates_unknown);
+    assert_eq!(d[0].executed_qty, Some(0));
+
+    // With answers, the gate is named and nothing is unknown.
+    let w = world();
+    w.set_position(-1);
+    w.bar(0);
+    let d = w.decide().await;
+    assert_eq!(d[0].reason_code, Some("routing.out_of_sync"));
+    assert!(!d[0].gates_unknown);
 }
 
 /// With several accounts, what can be decided is committed and the rest waits.

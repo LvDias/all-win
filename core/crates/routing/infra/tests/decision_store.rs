@@ -34,9 +34,9 @@ async fn instruction(owner: &PgPool, user: UserId, source: SourceId) -> Instruct
     sqlx::query(
         "INSERT INTO routing.instruction (id, user_id, source_id, source_type, message_id,
            schema_version, signal_type, action, instrument_symbol, quantity, sent_at, received_at,
-           expiry_base, payload)
+           expiry_base, payload, contract_month)
          VALUES ($1, $2, $3, 'tradingview', $4, '1.0', 'trigger', 'reverse', 'MNQ', 2, $5, $5, $5,
-           $6)",
+           $6, '2026-12-01')",
     )
     .bind(id.as_uuid())
     .bind(user.as_uuid())
@@ -67,6 +67,7 @@ fn decision(user: UserId, instruction: InstructionId, account: AccountId) -> Dec
         executed_qty: Some(0),
         decided_at: Utc.with_ymd_and_hms(2026, 10, 23, 12, 0, 1).unwrap(),
         leg: Leg::Whole,
+        gates_unknown: false,
         audit: Some((
             "routing.out_of_sync",
             json!({"actor":"system","details":{"reverse_closed_qty":3},
@@ -102,6 +103,7 @@ async fn decisions_are_stored_once_with_their_audit_event_and_isolated() {
         ("reverse", Some("short"))
     );
     assert_eq!((i.position_effect, i.quantity), (None, Some(2)));
+    assert_eq!(i.contract_month.as_deref(), Some("2026-12"));
     assert_eq!(
         i.expiry_base,
         Utc.with_ymd_and_hms(2026, 10, 23, 12, 0, 0).unwrap()

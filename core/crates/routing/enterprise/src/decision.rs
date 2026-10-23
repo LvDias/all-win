@@ -318,6 +318,38 @@ pub fn reverse_open_leg(
     d
 }
 
+/// An entry whose TTL passed before gates 6–9 answered (Architect, N1): only what does not
+/// depend on those gates is named — gates 1–5, `position_conflict` — and otherwise it is
+/// `routing.expired` (a reverse against an opposite position: close only). It never names a
+/// gate that did not answer and never places. Exits never get here (they do not read 6–9).
+pub fn decide_expired_unanswered(
+    signal_type: RouteSignalType,
+    action: Action,
+    f: &DecisionFacts,
+) -> Decision {
+    let requested = match action {
+        Action::Open { quantity, .. } | Action::Reverse { quantity, .. } => {
+            Some(quantity.saturating_mul(f.multiplier))
+        }
+        Action::Close => None,
+    };
+    let not = |code| Decision::not_executed(not_sent(code), code, requested);
+    if let Some(code) = common_gate(signal_type, f) {
+        return not(code);
+    }
+    match action {
+        Action::Close => decide(signal_type, action, f),
+        Action::Open { side, .. } if f.position.signum() == -side.sign() => {
+            not("routing.position_conflict")
+        }
+        Action::Reverse { side, .. } if f.position.signum() == side.sign() => {
+            not("routing.position_conflict")
+        }
+        Action::Open { .. } => not("routing.expired"),
+        Action::Reverse { .. } => close_only(f, "routing.expired", requested),
+    }
+}
+
 /// Gates for every action (1–5), in ADR-0003 §4.1 order.
 fn common_gate(signal_type: RouteSignalType, f: &DecisionFacts) -> Option<&'static str> {
     if !f.account_active {
@@ -773,6 +805,48 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn an_unanswered_expired_entry_never_names_a_gate() {
+        let mut f = facts();
+        f.expired = true;
+        // Whatever the (unknown) entry gates hold, they are not read.
+        f.out_of_sync = true;
+        f.position = -1;
+        let d = decide_expired_unanswered(T, BUY_2, &f);
+        assert_eq!(
+            (d.outcome, d.reason_code),
+            (Outcome::Refused, Some("routing.position_conflict"))
+        );
+        f.position = 0;
+        let d = decide_expired_unanswered(T, BUY_2, &f);
+        assert_eq!(
+            (d.outcome, d.reason_code),
+            (Outcome::Expired, Some("routing.expired"))
+        );
+        let rev = Action::Reverse {
+            side: Side::Long,
+            quantity: 1,
+        };
+        f.position = -2;
+        let d = decide_expired_unanswered(T, rev, &f);
+        assert_eq!(
+            (d.outcome, d.reason_code, d.reverse_closed_qty),
+            (Outcome::Capped, Some("routing.expired"), Some(2))
+        );
+        assert_eq!(d.steps, [Step::Flatten]);
+        f.position = 1;
+        assert_eq!(
+            decide_expired_unanswered(T, rev, &f).reason_code,
+            Some("routing.position_conflict")
+        );
+        // Gates 1–5 are known and still come first.
+        f.account_active = false;
+        assert_eq!(
+            decide_expired_unanswered(T, BUY_2, &f).reason_code,
+            Some("routing.account_inactive")
+        );
     }
 
     #[test]

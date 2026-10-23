@@ -180,24 +180,6 @@ pub fn rule_for(code: &str) -> Option<CodeRule> {
         | "accounts.evaluation_restarted" => rule(Info, true),
         // No producer (and no producer test) yet: fail-closed.
         "accounts.opt_in_suspended" => rule(Info, false),
-        // S2 gateway (Bigorna): outcomes per s10 §2.1 (execution_report.status mapping) and the
-        // 5.3.0 draft; safe, with the gateway's producer test (each emitted `details` validated
-        // against `AuditDetailsByCode`, closed schemas, protocol codes only, never platform text).
-        "execution.command_sent"
-        | "execution.order_received"
-        | "execution.order_working"
-        | "execution.cancelled"
-        | "execution.fill_corrected"
-        | "execution.unbound_activity"
-        | "connection.account_kind_changed"
-        | "sync.flagged"
-        | "sync.reason_resolved" => rule(Info, true),
-        "execution.partially_filled" => rule(Partial, true),
-        "execution.filled" => rule(Executed, true),
-        "execution.rejected" => rule(Rejected, true),
-        "execution.expired" => rule(Expired, true),
-        // No ack within 72 h: the outcome is unknown, not "not executed" (Esquadro C-a).
-        "execution.state_unknown" | "execution.undelivered" => rule(Unknown, true),
         _ => None,
     }
 }
@@ -300,36 +282,6 @@ mod tests {
             occurred_at: Utc::now(),
             event_seq: 42,
             payload,
-        }
-    }
-
-    #[test]
-    fn gateway_codes_have_rules_and_categories() {
-        use Outcome::*;
-        for (code, outcome) in [
-            ("execution.command_sent", Info),
-            ("execution.order_received", Info),
-            ("execution.order_working", Info),
-            ("execution.partially_filled", Partial),
-            ("execution.filled", Executed),
-            ("execution.cancelled", Info),
-            ("execution.rejected", Rejected),
-            ("execution.expired", Expired),
-            ("execution.state_unknown", Unknown),
-            ("execution.fill_corrected", Info),
-            ("execution.undelivered", Unknown),
-            ("execution.unbound_activity", Info),
-            ("connection.account_kind_changed", Info),
-            ("sync.flagged", Info),
-            ("sync.reason_resolved", Info),
-        ] {
-            let r = rule_for(code).unwrap_or_else(|| panic!("{code}"));
-            assert_eq!(
-                (r.outcome, r.safe_to_display),
-                (OutcomeRule::Fixed(outcome), true),
-                "{code}"
-            );
-            assert!(Category::of_code(code).is_some(), "{code}");
         }
     }
 
@@ -587,15 +539,9 @@ mod tests {
             ),
             ("ingress.received", json!("x"), "payload is not an object"),
             (
-                "unknown.code",
-                json!({"actor":"system","details":{}}),
-                "no category",
-            ),
-            // `sync.*` has a category; `sync.cleared` gets its rule with its producer (S11).
-            (
                 "sync.cleared",
                 json!({"actor":"system","details":{}}),
-                "no rule",
+                "no category",
             ),
             (
                 "routing.not_a_code",
