@@ -39,7 +39,7 @@ export function stepSchemas(locale: Locale, current: { automationRuleId: string 
     type: z.object({ kind: z.enum(["prop", "real"], { message: formErrorKeys.required }) }),
     firm: z.object({ firmName: requiredText, planName: requiredText, phase: requiredText }),
     data: z
-      .object({ displayName: requiredText, size: z.string(), maxPosition: z.string(), multiplier: z.string() })
+      .object({ displayName: requiredText, size: z.string(), maxPosition: z.string(), multiplier: z.string(), profileSize: z.string() })
       .superRefine((v, ctx) => refineData(v, locale, issueFailer(ctx))),
     platform: z.object({ binding: z.string() }),
     optIn: z
@@ -71,6 +71,7 @@ export function accountFormSchema(locale: Locale, opts: { kind: AccountKind; opt
       automationAck: z.boolean(),
       /** Rule version the choice was made against; compared with the version now shown. */
       automationRuleId: z.string(),
+      profileSize: z.string(),
     })
     .superRefine((v, ctx) => {
       const fail = issueFailer(ctx);
@@ -99,6 +100,7 @@ export const emptyAccountForm: AccountFormValues = {
   automationChoice: "",
   automationAck: false,
   automationRuleId: "",
+  profileSize: "",
 };
 
 export function bindingToValue(b: { connection_id: string; platform_account: string } | undefined): string {
@@ -149,6 +151,8 @@ export function fieldFromPointer(pointer: string | undefined): keyof AccountForm
       return "multiplier";
     case "/size_amount":
       return "size";
+    case "/profile_size":
+      return "profileSize";
     case "/binding":
       return "binding";
     case "/firm_name":

@@ -22,6 +22,7 @@ import { PlatformAccountText, useAccountSummary } from "./account-summary";
 import { useAccounts } from "./api/use-accounts";
 import type { Account } from "./api/types";
 import { hasPendingChoice } from "./lib/opt-in";
+import { PageHeader } from "@/shared/components/page-header";
 
 type Filters = { q: string; type: string; state: string };
 const stateValues = ["all", "active", "paused", "disabled", "choice_pending"] as const;
@@ -62,10 +63,7 @@ export function AccountsList() {
 
   const newHref = withLocale(locale, "/accounts/new");
   const header = (
-    <div className="flex items-center justify-between gap-3">
-      <h1 className="text-xl font-semibold md:text-2xl">{t("list.title")}</h1>
-      <Link className={buttonVariants()} href={newHref}><Plus aria-hidden />{t("list.new")}</Link>
-    </div>
+    <PageHeader title={t("list.title")} actions={<Link className={buttonVariants()} href={newHref}><Plus aria-hidden />{t("list.new")}</Link>} />
   );
 
   if (accounts.isPending)

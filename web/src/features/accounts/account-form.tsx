@@ -23,6 +23,7 @@ import { OptInFormSection } from "./opt-in-form-section";
 import { accountFormSchema, bindingToValue, emptyAccountForm, fieldFromPointer, toUpdateBody, toWriteBody, type AccountFormValues } from "./lib/account-form";
 import { needsStepUp } from "./lib/opt-in";
 import { useStepUpRunner, type StepUpRunner } from "./lib/use-step-up";
+import { PageHeader } from "@/shared/components/page-header";
 
 /** Edit page: the same fields as "Nova conta", as sections on one page (F§10.1: edit is not a stepper). */
 export function AccountFormPage({ accountId, stepUp }: { accountId: string; stepUp?: StepUpRunner }) {
@@ -147,7 +148,7 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
         void form.handleSubmit(submit)(event);
       }}
     >
-      <h1 className="text-xl font-semibold md:text-2xl">{t("accounts.form.titleEdit")}</h1>
+      <PageHeader title={t("accounts.form.titleEdit")} />
       {submitted && errorCount >= 3 ? <Alert tone="danger">{t("accounts.form.errors.summary")}</Alert> : null}
       {conflict ? (
         <Alert tone="warning" className="items-center justify-between">

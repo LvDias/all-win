@@ -1,11 +1,14 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
+import { formatMoney } from "@/shared/format";
+import { defaultLocale, isLocale } from "@/shared/i18n/config";
 import { Alert } from "@/shared/ui/alert";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { useAccounts } from "./api/use-accounts";
 import { useConnections } from "./api/use-connections";
@@ -60,13 +63,44 @@ export function FirmFields({ form, formId }: { form: Form; formId: string }) {
   );
 }
 
-export function DataFields({ form, formId, editing, withFirm }: { form: Form; formId: string; editing: boolean; withFirm: boolean }) {
+/** The user picks which standard size an in-between account size copies its profile from (Q60). */
+export function ProfileSizeField({ form, formId, candidates }: { form: Form; formId: string; candidates: string[] }) {
+  const t = useTranslations("accounts.form.profileSize");
+  const raw = useLocale();
+  const locale = isLocale(raw) ? raw : defaultLocale;
+  const error = useFieldError(form)("profileSize");
+  const id = `${formId}-profileSize`;
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="text-sm font-medium">{t("label")}</legend>
+      <p id={`${id}-help`} className="text-sm text-muted-foreground">{t("help")}</p>
+      <Controller
+        control={form.control}
+        name="profileSize"
+        render={({ field }) => (
+          <RadioGroup aria-describedby={describedBy(id, true, !!error)} aria-invalid={error ? true : undefined} value={field.value} onValueChange={field.onChange}>
+            {candidates.map((size) => (
+              <Label key={size} htmlFor={`${id}-${size}`} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
+                <RadioGroupItem id={`${id}-${size}`} value={size} />
+                {formatMoney(size, locale)}
+              </Label>
+            ))}
+          </RadioGroup>
+        )}
+      />
+      {error ? <p id={`${id}-error`} className="text-sm text-destructive">{error}</p> : null}
+    </fieldset>
+  );
+}
+
+export function DataFields({ form, formId, editing, withFirm, profileSizeCandidates }: { form: Form; formId: string; editing: boolean; withFirm: boolean; profileSizeCandidates?: string[] }) {
   const t = useTranslations("accounts.form.fields");
   return (
     <>
       <TextField form={form} formId={formId} name="displayName" label={t("name")} maxLength={80} />
       {withFirm ? <FirmFields form={form} formId={formId} /> : null}
       <TextField form={form} formId={formId} name="size" label={t("size")} inputMode="decimal" />
+      {profileSizeCandidates ? <ProfileSizeField form={form} formId={formId} candidates={profileSizeCandidates} /> : null}
       <TextField form={form} formId={formId} name="maxPosition" label={t("maxPosition")} help={t("maxPositionHelp")} inputMode="numeric" trailing={editing ? <p className="text-sm text-muted-foreground">{t("maxPositionShrink")}</p> : undefined} />
       <TextField form={form} formId={formId} name="multiplier" label={t("multiplier")} help={t("multiplierHelp")} inputMode="numeric" />
     </>

@@ -18,11 +18,13 @@ import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { BindingField, DataFields, FirmFields, useFieldError } from "./account-fields";
 import { useConnections } from "./api/use-connections";
+import { getNearestProfileSizeCandidates } from "./api/accounts-api";
 import { useCreateAccount, useOptInRules } from "./api/use-accounts";
 import type { AccountKind } from "./api/types";
 import { OptInFormSection } from "./opt-in-form-section";
 import { emptyAccountForm, formErrorKeys, fieldFromPointer, stepSchemas, toWriteBody, type AccountFormValues } from "./lib/account-form";
 import { useStepUpRunner, type StepUpRunner } from "./lib/use-step-up";
+import { PageHeader } from "@/shared/components/page-header";
 
 /**
  * "Nova conta" as a step-by-step flow (S5 rev. 4 §4.0, F§10.1). Prop: Tipo → Firma e plano → Dados da conta →
@@ -41,8 +43,17 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
   const connections = useConnections();
   const interim = useStepUpRunner();
   const runStepUp = stepUp ?? interim;
-  const idempotencyKey = useRef(crypto.randomUUID());
+  // One key per distinct body: the Core answers 409 when a key is reused with other data. A step-up retry keeps the body, so it keeps the key.
+  const idempotency = useRef<{ key: string; body: string } | null>(null);
+  const keyFor = (body: object) => {
+    const fingerprint = JSON.stringify(body);
+    if (idempotency.current?.body !== fingerprint) idempotency.current = { key: crypto.randomUUID(), body: fingerprint };
+    return idempotency.current.key;
+  };
   const [staleNotice, setStaleNotice] = useState(false);
+  // Set when the Core says the size is exactly between two standard sizes; only valid for the size it was asked about.
+  const [tie, setTie] = useState<{ size: string; candidates: string[] } | null>(null);
+  const profileSizeCandidates = tie && tie.size === values.size ? tie.candidates : undefined;
 
   const kind: AccountKind | null = values.kind === "" ? null : values.kind;
   const firmFilled = values.firmName.trim() !== "" && values.planName.trim() !== "" && values.phase.trim() !== "";
@@ -100,12 +111,13 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
     {
       id: "data",
       label: t("accounts.form.sections.data"),
-      fields: ["displayName", "size", "maxPosition", "multiplier"],
+      fields: ["displayName", "size", "profileSize", "maxPosition", "multiplier"],
       schema: schemas.data,
-      content: <DataFields form={form} formId={formId} editing={false} withFirm={false} />,
+      content: <DataFields form={form} formId={formId} editing={false} withFirm={false} profileSizeCandidates={profileSizeCandidates} />,
       review: (v) => [
         { label: t("accounts.form.fields.name"), value: v.displayName },
         { label: t("accounts.form.fields.size"), value: v.size.trim() === "" ? null : formatMoney(v.size.replace(",", "."), locale) },
+        ...(profileSizeCandidates && v.profileSize !== "" ? [{ label: t("accounts.form.profileSize.label"), value: formatMoney(v.profileSize, locale) }] : []),
         { label: t("accounts.form.fields.maxPosition"), value: v.maxPosition },
         { label: t("accounts.form.fields.multiplier"), value: `${v.multiplier.trim() === "" ? 1 : v.multiplier}×` },
       ],
@@ -145,8 +157,10 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
     if (kind === null) return;
     const withChoice = optInApplies && v.automationChoice !== "";
     const body = toWriteBody({ ...v, automationChoice: optInApplies ? v.automationChoice : "" }, { kind, locale, automationRuleVersionId: rule?.id });
+    const payload = { ...body, kind, ...(profileSizeCandidates && v.profileSize !== "" ? { profile_size: v.profileSize } : {}) };
+    const idempotencyKey = keyFor(payload);
     const send = (proof?: { challenge_id: string; code: string }) =>
-      create.mutateAsync({ body: { ...body, kind, ...(proof ? { step_up: proof } : {}) }, idempotencyKey: idempotencyKey.current });
+      create.mutateAsync({ body: { ...payload, ...(proof ? { step_up: proof } : {}) }, idempotencyKey });
     try {
       const saved =
         withChoice && v.automationChoice === "accepted"
@@ -164,6 +178,16 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
         void rules.refetch();
         return [{ pointer: "/automationChoice", message: formErrorKeys.optInRequired }];
       }
+      if (error instanceof ApiError && (error.code === "accounts.profile_size_required" || error.code === "accounts.profile_size_invalid")) {
+        form.setValue("profileSize", "");
+        try {
+          const candidates = await getNearestProfileSizeCandidates(body.size_amount ?? v.size);
+          setTie({ size: v.size, candidates });
+        } catch {
+          return [{ message: t("common.errors.failed") }];
+        }
+        return [{ pointer: "/profileSize", message: errorMessage(t, error).message }];
+      }
       if (error instanceof ApiError && error.code === "accounts.opt_in_not_applicable") {
         void rules.refetch();
         return [];
@@ -175,7 +199,7 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
 
   return (
     <div className="mx-auto max-w-[720px] space-y-6">
-      <h1 className="text-xl font-semibold md:text-2xl">{t("accounts.form.titleNew")}</h1>
+      <PageHeader title={t("accounts.form.titleNew")} />
       <FormStepper form={form} steps={steps} onSubmit={onSubmit} submitLabel={t("accounts.form.save")} onCancel={() => router.back()} />
     </div>
   );

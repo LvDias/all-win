@@ -99,9 +99,9 @@ test("a prop account cannot be saved without an explicit automation choice", asy
   await page.goto("/pt-BR/accounts/new");
   await page.getByRole("radio", { name: "Conta de prop firm" }).click();
   await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByLabel("Firma").fill("Apex");
-  await page.getByLabel("Plano").fill("50K");
-  await page.getByLabel("Fase").fill("Avaliação");
+  await page.getByRole("textbox", { name: "Firma" }).fill("Apex");
+  await page.getByRole("textbox", { name: "Plano" }).fill("50K");
+  await page.getByRole("textbox", { name: "Fase" }).fill("Avaliação");
   await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByLabel("Nome", { exact: true }).fill("Apex 1");
   await page.getByLabel("Tamanho (USD)").fill("50000");

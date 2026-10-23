@@ -25,6 +25,7 @@ import { visibleOptInCards } from "./lib/opt-in";
 import { OptInReviewDialog } from "./opt-in-review-dialog";
 import { useRuleVersion } from "./api/use-accounts";
 import type { StepUpRunner } from "./lib/use-step-up";
+import { PageHeader } from "@/shared/components/page-header";
 
 function OptInCard({ account, state, onReview }: { account: Account; state: OptInState; onReview: (kind: OptInKind) => void }) {
   const t = useTranslations("accounts.detail");
@@ -105,13 +106,12 @@ export function AccountDetail({ accountId, stepUp }: { accountId: string; stepUp
   const inactive = a.lifecycle_state !== "active";
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold md:text-2xl">{a.display_name}</h1>
-          <p className="text-sm text-muted-foreground">{`${t(`accounts.type.${a.kind}`)} · ${summary(a)}`}</p>
-          <AccountStateBadges account={a} max={4} />
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title={a.display_name}
+        description={`${t(`accounts.type.${a.kind}`)} · ${summary(a)}`}
+        toggle={<AccountStateBadges account={a} max={4} />}
+        actions={
+          <>
           <Link className={buttonVariants({ variant: "outline" })} href={withLocale(locale, `/accounts/${a.id}/edit`)}><Pencil aria-hidden />{t("accounts.actions.edit")}</Link>
           {inactive ? (
             <Button type="button" disabled={quick.pending} onClick={() => quick.run(a)}>
@@ -119,8 +119,9 @@ export function AccountDetail({ accountId, stepUp }: { accountId: string; stepUp
             </Button>
           ) : null}
           <AccountActions account={a} showView={false} onDeleted={() => router.push(listHref)} />
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {inactive ? <Alert tone="info">{t(a.lifecycle_state === "paused" ? "accounts.detail.pausedNote" : "accounts.detail.disabledNote")}</Alert> : null}
 

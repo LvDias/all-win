@@ -50,3 +50,16 @@ export function getOptInRules(params: { presetVersionId: string | null; firmPlat
 }
 
 export const getRuleVersion = (id: string, signal?: AbortSignal) => apiFetch<RuleVersion>(`/api/v1/rule-versions/${id}`, { signal });
+
+/**
+ * The standard size(s) a non-standard account size copies its profile from (S6 read). The candidates depend on the size
+ * only; the instrument just decides `has_default`, so the first catalog instrument is enough here.
+ */
+export async function getNearestProfileSizeCandidates(sizeAmount: string, signal?: AbortSignal) {
+  const { instruments } = await apiFetch<{ instruments: { id: string }[] }>("/api/v1/instruments", { signal });
+  const first = instruments[0];
+  if (!first) return [];
+  const query = new URLSearchParams({ size_amount: sizeAmount, instrument_id: first.id });
+  const result = await apiFetch<{ candidates: { size_amount: string }[] }>(`/api/v1/profile-sizes/nearest?${query.toString()}`, { signal });
+  return result.candidates.map((c) => c.size_amount);
+}

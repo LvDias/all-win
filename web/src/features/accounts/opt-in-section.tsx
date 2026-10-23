@@ -8,7 +8,8 @@ import { Checkbox } from "@/shared/ui/checkbox";
 import { Label } from "@/shared/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import type { OptInChoice, OptInKind, RuleVersion } from "./api/types";
-import { RuleQuoteBlock } from "./rule-quote";
+import { FirmRuleQuote } from "@/shared/components/firm-rule-quote";
+import type { RuleQuote } from "./api/types";
 
 export type OptInValue = { choice: OptInChoice | ""; ack: boolean };
 
@@ -46,7 +47,7 @@ export function OptInSection({ kind, rule, value, onChange, choiceError, ackErro
     <fieldset className="space-y-4" aria-describedby={choiceError ? errorId : undefined}>
       <legend className="text-base font-semibold">{t("legend")}</legend>
       {kind === "automation" ? <p className="text-sm text-muted-foreground">{t("help")}</p> : null}
-      {notice ? <Alert tone="info">{notice}</Alert> : null}
+      {notice ? <Alert tone="warning" role="status">{notice}</Alert> : null}
 
       {stance === null ? (
         <p className="text-sm">{t("allowed", { firm })}</p>
@@ -57,7 +58,7 @@ export function OptInSection({ kind, rule, value, onChange, choiceError, ackErro
             <p>{`${t(`stance.${stance}`, { firm })} ${t("stanceSecond")}`}</p>
           </div>
           {stance === "not_confirmed" ? <p className="text-sm font-medium">{tc("conflicting")}</p> : null}
-          {rule.quotes.map((q) => <RuleQuoteBlock key={q.url + q.accessed_at + q.text.slice(0, 20)} quote={q} firmName={firm} />)}
+          {rule.quotes.map((q) => <RuleQuoteItem key={q.url + q.accessed_at + q.text.slice(0, 20)} quote={q} firm={firm} />)}
           {stance === "unknown" && rule.research ? (
             <div className="space-y-1 text-sm">
               <p>{tc("researched", { date: formatDate(`${rule.research.searched_on}T00:00:00Z`, locale, "UTC") })}</p>
@@ -74,7 +75,7 @@ export function OptInSection({ kind, rule, value, onChange, choiceError, ackErro
             <details className="text-sm">
               <summary className="min-h-11 cursor-pointer">{previous.label}</summary>
               <div className="space-y-2 pt-2">
-                {previous.rule.quotes.map((q) => <RuleQuoteBlock key={q.url + q.accessed_at} quote={q} firmName={previous.rule.firm_name ?? firm} />)}
+                {previous.rule.quotes.map((q) => <RuleQuoteItem key={q.url + q.accessed_at} quote={q} firm={previous.rule.firm_name ?? firm} />)}
               </div>
             </details>
           ) : null}
@@ -121,4 +122,9 @@ export function OptInSection({ kind, rule, value, onChange, choiceError, ackErro
       )}
     </fieldset>
   );
+}
+
+/** Plain text only: the firm's wording is never HTML and never translated. Noon UTC keeps the date-only day stable in any time zone. */
+function RuleQuoteItem({ quote, firm }: { quote: RuleQuote; firm: string }) {
+  return <FirmRuleQuote firm={firm} pageTitle={[quote.page_title, quote.section].filter(Boolean).join(" · ")} accessedAt={`${quote.accessed_at}T12:00:00Z`} url={quote.url} text={quote.text} lang={quote.language} />;
 }
