@@ -627,8 +627,11 @@ CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_
 - **Prop selection (rev. 8):** a preset (`preset_version_id`, with `firm_id` and optional `firm_platform`) **or** the manual `firm_name` / `plan_name` / `phase`, never both. Manual mode covers the time before S16 (Q40) and plans excluded from presets (S16 AC-9). With a preset, firm, plan and phase are read from the catalog, not copied. `size_amount` is always stored, since risk reads it.
 - **Create idempotency (rev. 8):**
   - The key and request hash stay on the row; there is no separate table. Only a successful create stores them.
-  - A concurrent second request with the same key hits `account_create_key`. The Core then re-reads the row: the same hash replays 200, a different hash gets 409 `accounts.idempotency_key_reused`.
-  - The 24-h window is checked against `created_at`. **To align with the contract:** after 24 h the key is still taken (the UNIQUE never expires), so a late replay gets 409 and never creates a second account. A replay for an account archived since then returns it as it is.
+  - A concurrent second request with the same key hits `account_create_key`. The Core then re-reads the row: the same hash within 24 h replays 200, otherwise 409.
+  - The key is never released (contract `createAccount`, s5 §2.2):
+    - the same key and body within 24 h of `created_at` → 200 with the account as it is, with `archived_at` if it was archived since. That is the only read that shows an archived account;
+    - a different body, or any reuse after 24 h → 409 `accounts.idempotency_key_reused`;
+    - never a second account.
 - **`*_pending_reason`** (Q26, Q41, Q42) is set exactly with `pending_review` and cleared on the next choice.
 - **Generic rule version (Q40):** a manual-mode prop account whose choice is required names the generic version of its kind, so "a choice always names the rule seen" holds before S16.
 - "Max position cannot exceed the preset's" (S5 AC-3) is a domain rule checked against the preset version.
@@ -705,11 +708,12 @@ CREATE TABLE accounts.account_bracket_profile (          -- the account's own co
   origin           text NOT NULL CHECK (origin IN ('size_default','nearest_size_default','set_by_user')),  -- rev. 8 (S6 2.3.0)
   copied_at        timestamptz,                          -- initial copy or last restore
   customized       boolean NOT NULL DEFAULT false,       -- edited after the copy; false again on restore
-  row_version      integer NOT NULL DEFAULT 1,           -- optimistic concurrency (putAccountProfile)
+  row_version      integer NOT NULL DEFAULT 1 CHECK (row_version >= 1),  -- optimistic concurrency (putAccountProfile)
   updated_at       timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id, instrument_id),
   CHECK ((origin = 'set_by_user') = (copied_from_size IS NULL)),
   CHECK ((copied_from_size IS NULL) = (copied_at IS NULL)),
+  CHECK (origin <> 'set_by_user' OR NOT customized),     -- nothing copied to diverge from (Compasso, N3)
   FOREIGN KEY (user_id, account_id) REFERENCES accounts.account (user_id, id),
   CHECK (distance_unit <> 'ticks' OR (stop_distance = trunc(stop_distance) AND target_distance = trunc(target_distance))),
   CHECK (distance_unit <> 'usd'   OR (stop_distance = round(stop_distance, 4) AND target_distance = round(target_distance, 4)))
@@ -719,8 +723,8 @@ CREATE TABLE accounts.account_bracket_profile (          -- the account's own co
 - **Provenance (rev. 8, S6 contract §4):**
   - A copy (`size_default`, `nearest_size_default`) carries `copied_from_size` and `copied_at`, and `set_by_user` carries neither, matching the contract's `if/then`.
   - `default_now` is derived, not stored: it is the current `default_bracket_profile` of `copied_from_size`.
-  - Restore sets `copied_at = now()` and `customized = false`. An edit sets `customized = true` and keeps the origin.
-  - **To align:** may a `set_by_user` profile be `customized`? The model allows it; the contract does not say.
+  - Restore sets `copied_at = now()` and `customized = false`. Editing a copy sets `customized = true` and keeps the origin. A `set_by_user` profile is never `customized` (`CHECK`; contract `AccountProfile`).
+  - **Exact tie between two standard sizes for a real account (Q60, provisional c):** the user picks the size at create (`createAccount.profile_size`). The copy is still `nearest_size_default` + `copied_from_size`, so there is no new column.
 - **No profile (Q43, provisional):** an account created while its size had no default has no row, and routing skips its entries with `routing.no_bracket_profile`. The nearest-size tie rule (Q-S6-7) is a Core/PO rule with no schema impact.
 - USD distances: the contract takes 2 decimals and the `CHECK` keeps 4 as headroom (Q-S6-6).
 
@@ -1116,7 +1120,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 2b | `identity_passwordless` (rev. 6): drops the password/TOTP/recovery/reset objects and adds channels, `known_device`, `signup_code`, `channel_change`, `one_time_code`, `code_send_counter` and the new session columns; see below | S3 (Brasa); version stamped after the latest merged migration |
 | 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
-| 5 | `accounts_create_account`: `catalog.opt_in_rule_version` + the 2 generic seed rows, `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6). Rev. 8 columns go in directly, since #5 is not written yet | before M1, so seeds use real tables |
+| 5 | `accounts_create_account`: `catalog.opt_in_rule_version` + the 2 generic seed rows, `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6). Rev. 8 columns go in directly, since #5 is not written yet. The generic rows use fixed literal UUIDs in the migration (no DB default, §1), so the Core and tests can name them | before M1, so seeds use real tables |
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
 | 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` (with `row_version`, rev. 8) | M1 / S7 |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
@@ -1195,7 +1199,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - `allwin_app` cannot `UPDATE` or `DELETE`;
      - an account's `automation_rule_version_id` pointing to a `copy` row is rejected by the Core;
    - rev. 8, `account_bracket_profile`:
-     - `set_by_user` with `copied_from_size` fails;
+     - `set_by_user` with `copied_from_size` fails, and so does `set_by_user` with `customized = true`;
      - a copy without `copied_at` fails;
      - a stale `row_version` updates 0 rows;
    - rev. 8, `subscription`: a stale `row_version` updates 0 rows;
