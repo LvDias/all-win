@@ -5,7 +5,8 @@
   - `routing.platform_unbound` ([ADR-0008](0008-account-platform-binding.md));
   - `routing.no_bracket_profile` (Q43);
   - Q74, a reverse on an account barred for entries (user decision);
-  - §4.2, a reverse when the maximum position is 0.
+  - §4.2, a reverse when the maximum position is 0;
+  - (second delta) a reverse whose opening leg expires at routing (Crivo note; HTTP 5.1.0).
 
   Acceptance deltas: §4.1 automation and copy opt-in gates (option A, Q24–Q26) and per-(source, account) signal filter; §7 token format; §5 command step codes
 - **Owner:** Software Architect
@@ -100,6 +101,13 @@ Gates are evaluated **in the order of this table**. The first gate that fails gi
 > - **P already X:** rejected and notified with `routing.position_conflict`, exactly as on an account without a bar. It is never flattened.
 >
 > Tests cover the three cases for each of the four entry gates. They also check that a late `close` and a late Q74 closing leg still execute and are audited as late.
+>
+> **The opening leg expires at routing (gate 10)** when the routing decision itself sees the TTL exceeded, for example a late webhook, on an account without a bar. The same per-position rule applies:
+> - P opposite: the closing leg executes and the opening leg is skipped with `routing.expired`; outcome `capped`, notified;
+> - P flat: outcome `expired`;
+> - P already X: `routing.position_conflict`.
+>
+> An opening leg that expires later, in the delivery queue, is not a routing decision; ADR-0004 §5 applies.
 
 ### 4.2 Actions
 
