@@ -1,112 +1,198 @@
 # NinjaTrader 8 spike plan and Windows build/test access (Q15)
 
-- **Status:** Proposed (2026-10-23). The user chooses the Windows access option (§5) before providing the machine.
-- **Owner:** Software Architect (plan). Execution: Plugin Engineer, with the Plugin Researcher for platform facts and DevOps for the Windows host setup script.
+- **Status:** rev. 3 (2026-10-23).
+  - User decisions: W1 reverse tunnel accepted, W3 accepted, W2 changed to a Contabo Windows VPS without GPU, and remote access to go over Tailscale with RDP never exposed to the internet.
+  - rev. 3 revises W1 for Tailscale (§6.2, Proposed: the user approves T1 and the dev-server join) and gives the setup checklist (§6.5).
+- **Owner:** Software Architect (plan). Execution:
+  - Plugin Engineer runs the spike.
+  - Plugin Researcher (Trilha) supplies platform facts.
+  - DevOps provides the Windows host setup script and the dev-host tunnel account.
 - **Inputs:**
-  - [ADR-0001 §7](../adr/0001-technology-stack.md) (plugin architecture);
-  - [ADR-0004](../adr/0004-adapter-protocol-v1.md) (protocol, enforcement, pairing);
-  - slice-plan V1-S2/S15/M1;
-  - the user's conditions of 2026-10-23: firewall ports need explicit authorization; the build/test approach must be defined before the machine is provided; Maestri over SSH needs bash/curl and may not work on Windows.
-- **Fact status:** platform facts marked **(unverified)** come from general knowledge and must be confirmed by the Plugin Researcher's platform profile (requested from "Trilha" on 2026-10-23, still pending) or by the spike itself. This plan will be revised when the profile arrives.
+  - [NT8 platform profile](../platforms/ninjatrader8-profile.md): facts, §13 Q15 options, §15 experiments E1–E10. **Facts below cite it; this plan does not repeat its sources.**
+  - [ADR-0001 §7](../adr/0001-technology-stack.md) and [ADR-0004](../adr/0004-adapter-protocol-v1.md) (including §6.1 bracket integrity).
+  - [ADR-0005](../adr/0005-nt8-plugin-implementation.md) (plugin implementation decisions).
+  - User conditions of 2026-10-23: no port opened without authorization; agents use simulation only.
+- **rev. 2 changes:**
+  - Facts reconciled with the profile.
+  - rev. 2 merged my option O1 with Trilha's option B (reverse SSH tunnel); the user accepted B. **rev. 3 recommends T1 (Tailscale for RDP and agent SSH)**, after the user's Tailscale proposal for RDP (§6.2). B remains the fallback.
+  - Spike questions mapped to experiments E1–E10.
 
 ## 1. Goal and timebox
 
-Retire the plugin risks before V1-S2 is implemented, and leave a working, repeatable build-deploy-test loop on the Windows machine. The spike code is throwaway, kept on its own branch (`s/v1-spike-nt8--plugin`) under `plugins/ninjatrader8/spike/` for reference, and is never merged as product code. Timebox: **3 agent-days after the machine is ready**. Running over the timebox is escalated to the Maestro.
+Retire the plugin risks before V1-S2 is implemented, and leave a **repeatable build → deploy → test loop** on the Windows machine.
 
-## 2. Questions the spike must answer
+- **Spike code is throwaway.** Branch `s/v1-spike-nt8--plugin`, under `plugins/ninjatrader8/spike/`; never merged as product code.
+- **Timebox:** 3 agent-days after the machine is ready. Going over is escalated to the Maestro.
 
-Each question is answered **verified** (with evidence: log, screenshot or measured number) or **not feasible** (with the alternative).
+## 2. Facts that shape the plan (from the profile)
 
-| # | Question | Why it matters | Done when |
-|---|---|---|---|
-| K1 | Can an AddOn be built **outside** the NinjaScript Editor (MSBuild/`dotnet build`, `net48`, referencing `NinjaTrader.Core.dll`, `NinjaTrader.Gui.dll`, `NinjaTrader.Custom.dll` from the local install) and loaded from `Documents\NinjaTrader 8\bin\Custom`? Does reloading require an NinjaTrader restart? **(unverified: believed yes, restart required)** | The whole automated build/deploy loop depends on it | Scripted build → deploy → NinjaTrader start → AddOn menu visible, logged |
-| K2 | Does NinjaTrader load our `netstandard2.0` library (`AllWin.Adapter.Core`) next to the AddOn without facade or binding errors? | ADR-0001 §7: Linux-testable core | AddOn calls into the library and logs its version |
-| K3 | Which JSON library and version does NinjaTrader already load (Newtonsoft.Json?), and can we use it without a version conflict? **(unverified)** | Avoid assembly conflicts inside the host | Decision recorded: use the host's copy, or a dependency-free serializer |
-| K4 | `ClientWebSocket` over `wss` (TLS 1.2+) from inside NinjaTrader to the dev Core or a test echo endpoint, with reconnect and backoff, without blocking NinjaTrader threads | ADR-0004 transport | 1 h soak with forced disconnects, no UI freeze, reconnects logged |
-| K5 | Enumerate accounts (`Account.All`), detect the account kind (Sim101 / Playback101 / live) reliably, and subscribe to order, execution, position and account (P&L) events | Simulation guard, mapping, reports | Event log for a manual trade on Sim101 matches the expected sequence |
-| K6 | Submit a market order, attach stop and target computed from the fill price (OCO), modify them (price delta), cancel, and flatten on Sim101. Orphan cancellation when flat | V1-S2, S9 | Scripted scenario passes 10/10 runs |
-| K7 | Order `Name`/tag length and characters, to embed a short `command_id` reference. After an NinjaTrader restart, can working orders be re-associated with their `command_id`s? | ADR-0004 idempotency and reconciliation | Restart test with working orders recovers the associations, or a documented alternative |
-| K8 | Reactive block: time from a manual order on a blocked account to its cancellation; behavior if it fills first | S15 AC-6 | Measured p50/p95 over 20 trials |
-| K9 | Playback101 with downloaded Market Replay data for MNQ: platform time access, and trading-day reset driven by playback time | S15 AC-7, testability without a live feed | Reset observed at the simulated reset time |
-| K10 | Durable local store (outbox, processed `command_id`s, cached limits) in the NinjaTrader user folder: survives crash and restart; DPAPI token storage | ADR-0004 §4, §8 | Kill NinjaTrader mid-command → restart → no duplicate execution |
-| K11 | Threading model: which thread delivers events, how to marshal to the UI (WPF dispatcher), and how to keep socket I/O off NinjaTrader's critical threads | Stability inside the host | Design note plus no deadlock under the K4 soak |
-| K12 | Latency: Core send → plugin receipt → order submitted → fill reported (Sim101), and Core relay round trip for master replication (A4) | A4 "measure latency"; baseline for TTL (T2) | Table of p50/p95 from this host to the dev Core |
-| K13 | Packaging: NinjaScript "Export → compiled assembly" vs. a zip with DLLs; install/upgrade steps for the user; NinjaTrader version compatibility check at load | Distribution, "update required" path | Install guide draft; fresh install on a clean user profile works |
-| K14 | One NinjaTrader instance per Windows user, or several? **(unverified: believed one per user)** | Multi-instance topology (vision §8) | Answer recorded |
-
-## 3. Out of scope
-
-- Production-quality plugin code, UI polish and localization.
-- Core implementation: the spike may use a minimal echo/test endpoint or the `adapter-sim` once it exists.
-- Any live account. Only Sim101 and Playback101 connections are configured on the test machine.
-
-## 4. Deliverables
-
-1. `plugins/ninjatrader8/docs/spike-report.md` (Plugin Engineer): K1–K14 answers with evidence, measured numbers, and recommended changes to ADR-0001 §7 / ADR-0004. If those changes are needed, the Architect issues versioned deltas.
-2. The scripts that make up the **repeatable loop**, kept for V1-S2 onward:
-   - `plugins/ninjatrader8/tools/` (Plugin Engineer): build, deploy, NinjaTrader start/stop, log and screenshot collection;
-   - `infra/windows-test-host/` (DevOps): host setup.
-3. Draft install guide for the user (input to S3 "Como instalar o plugin").
-
-## 5. How agents build and test on the Windows machine (Q15): options
-
-**Constraint that shapes every option:** NinjaTrader 8 is a WPF desktop application that needs an **interactive, logged-on Windows desktop session** **(unverified, highly likely)**. Processes started directly from a remote shell (SSH) or from a Windows service run without a visible desktop. So every option needs a way to start NinjaTrader *inside* the interactive session, for example a Scheduled Task set to "Run only when user is logged on", triggered remotely, plus an always-logged-on test user (auto-logon, or a disconnected RDP session).
-
-**Recommended isolation, whatever the option:**
-
-- A **dedicated Windows machine or VM**, or at least a **dedicated standard (non-admin) Windows user** `allwin-agent`.
-- That user has its own NinjaTrader 8 profile, with only Sim/Playback connections and **no live brokerage credentials**.
-- Agents must never be able to reach the user's personal NinjaTrader profile or live accounts.
-
-| Option | How it works | Pros | Cons | User installs | Security implications |
-|---|---|---|---|---|---|
-| **O1. OpenSSH Server + PowerShell, over a private network** | Agents stay on the Linux dev server (in Maestri as today) and run `ssh win-nt8 'pwsh -File tools\…'` to build (MSBuild/`dotnet`), deploy the DLLs, start or stop NinjaTrader through Scheduled Tasks in the interactive session, run scenarios against the dev Core, and fetch logs and screenshots | Fast iteration (seconds to minutes); fully scriptable; no AI agent installed on Windows; Maestri unchanged, so the bash/curl limitation does not apply; Microsoft-supported components | Needs one inbound path to Windows sshd: **requires user authorization**. Visual checks rely on scripted screenshots | OpenSSH Server (Windows optional feature); VS 2022 Build Tools (MSBuild + .NET Framework 4.8 targeting pack); .NET 8 SDK; NinjaTrader 8 + free sim login + MNQ Market Replay data; auto-logon for `allwin-agent`; Tailscale or WireGuard on Windows and the dev server; our setup script (reviewed by the user before running) | Key-only auth, `AllowUsers allwin-agent`, password login disabled. sshd bound to the **private overlay interface only**: no public port, no router port-forward. Standard user, no admin. Revocable by removing the key or logging the device out of the overlay network. Full command audit in the sshd log |
-| O2. WSL2 on the Windows machine | A Linux distro inside Windows. An agent (or an SSH target for Maestri) runs in WSL with bash/curl and calls Windows tools through interop (`dotnet.exe`, NinjaTrader). Interop processes start in the user's interactive session | bash/curl available, so Maestri over SSH could attach; interop solves the GUI-session problem when WSL runs inside the logged-on session | Still needs an inbound path (sshd in WSL plus port proxy, or an overlay network). More moving parts (WSL networking, interop edge cases). If an agent seat runs there, the user's Claude account has to be set up on that machine | WSL2 + distro; the O1 build tools; optionally Claude Code inside WSL | Same network controls as O1. WSL shares the Windows user's files (`/mnt/c`), so it **must** run under the dedicated `allwin-agent` user, not the user's personal one |
-| O3. Self-hosted GitHub Actions runner on Windows | The runner connects **outbound** to GitHub. Agents push a branch; a workflow builds, deploys to NinjaTrader, runs the scenarios and uploads logs and screenshots as artifacts | **No inbound port at all**; reproducible, audited runs; doubles as a regression gate later | **Every iteration needs a push**, and push currently needs user authorization each time (A6), so the user must grant a standing authorization for spike/feature branches. Slow loop (minutes). The runner must run interactively, not as a service, to launch NinjaTrader. Depends on the GitHub remote existing | GitHub runner (interactive mode, `allwin-agent` user), the O1 build tools, NinjaTrader 8 | Outbound HTTPS only. Private repository only (a public repo would let outsiders run code on the runner). The runner executes repository code, so branch protection and review matter |
-| O4. Native Windows agent (Claude Code on Windows, Git Bash) | A Plugin Engineer agent runs directly on Windows under `allwin-agent` and talks to the team by files/git, or by the Maestri CLI if its server is reachable and Git Bash's bash/curl suffice **(unverified with Maestri)** | Agent sees the real desktop; no SSH needed | Maestri integration uncertain (user's own concern). Separate agent seat and login on that machine. Harder to supervise from the canvas | Claude Code for Windows, Git for Windows, the O1 build tools, NinjaTrader 8 | An autonomous agent with a shell on a Windows machine. Acceptable only on a dedicated machine or VM with no personal data or live credentials |
-| O5. Manual, user-run script | The team publishes a package (DLLs + `Run-AllWinChecks.ps1`). The user runs it; it deploys, starts NinjaTrader, walks a checklist, and zips logs and screenshots for the user to hand back | **No remote access, no ports, no agent on Windows**; simplest to approve | Every iteration costs the user's time and a round trip: the critical-path bottleneck the plan warned about (Q15-b). Little exploratory debugging | NinjaTrader 8 + replay data; PowerShell execution policy allowing the signed or unblocked script | Minimal attack surface. The user reviews each package before running it |
-
-### Recommendation
-
-**O1** (OpenSSH + PowerShell over a private overlay network such as Tailscale), on a **dedicated Windows VM or machine with a dedicated standard user `allwin-agent`**:
-
-- The **Linux dev server initiates** the connection through the overlay network. No public firewall port and no router port-forward are needed.
-- The overlay network and the sshd rule limited to its interface **still require the user's explicit authorization**, which we request as one consolidated change.
-- The bash/curl limitation of Maestri over SSH **does not apply**: no Maestri terminal runs on Windows, and Windows is just an SSH target used by the Plugin Engineer from Linux.
-- NinjaTrader runs in the auto-logged-on `allwin-agent` desktop, started through Scheduled Tasks that the setup script creates. Screenshots are captured the same way.
-
-**Fallbacks and complements:**
-
-- **O5 for the very first spike session**, if the user prefers to start with zero remote access. It is the same scripts, run by hand.
-- **O3 later** as a nightly or PR regression gate on the same machine, once the GitHub remote exists and the user grants standing push authorization for non-`main` branches.
-
-O2 and O4 are not recommended for V1: more setup and an agent seat on the Windows machine, with no advantage over O1 for our team layout.
-
-**Hosting note:** a small cloud Windows VM in the **US central region** (same region as production, A2) is a valid alternative to a machine at home. It gives full isolation from personal data, and its latency to the Core is representative of the production setup. It has a monthly cost. NinjaTrader's support for Windows Server editions must be checked **(unverified)**; a Windows 10/11 VM avoids the question.
-
-### What the user does for O1 (checklist, about 1–2 h, guided by a script the user reviews first)
-
-1. Provide a Windows 10/11 64-bit machine or VM (≥ 4 vCPU, 8 GB RAM, 60 GB disk). Create the local standard user `allwin-agent`.
-2. Install, as admin once: NinjaTrader 8 (latest), VS 2022 Build Tools (MSBuild + .NET Framework 4.8 targeting pack), .NET 8 SDK, OpenSSH Server (optional feature), Tailscale or WireGuard.
-3. In `allwin-agent`: log into NinjaTrader with a free account; keep only Sim101/Playback connections; download MNQ Market Replay data for the test dates; enable auto-logon for this user.
-4. **Authorize** the network change: join the machine to the private overlay network, and allow sshd only on that interface, only for `allwin-agent`, with key-only auth (we provide the public key).
-5. Run `infra/windows-test-host/Install-AllWinTestHost.ps1` (DevOps). It creates the folders, the Scheduled Tasks (start/stop NinjaTrader, screenshot) and the log locations, and changes no firewall rule beyond step 4.
-
-**Never on that machine:** live brokerage or prop-firm credentials, the user's personal NinjaTrader profile, or admin rights for `allwin-agent`.
-
-## 6. Spike sequence (after the machine is ready)
-
-1. **Day 1:** K1, K2, K3, K11 (build/deploy loop, library load, JSON, threading), K13 basics, K14.
-2. **Day 2:** K4, K5, K6, K7, K10 (socket soak, accounts and events, orders, Name limits and restart recovery, durable store).
-3. **Day 3:** K8, K9, K12 (reactive block timings, Playback reset, latency), then the report.
-
-Exit gate: the report is reviewed by the Architect and QA; ADR deltas, if any, are issued; V1-S2 starts.
-
-## 7. Decisions needed from the user
-
-| # | Decision | Recommendation |
+| # | Fact | Consequence |
 |---|---|---|
-| W1 | Access option for agents on the Windows machine | **O1** over a private overlay network; O5 acceptable for the first session |
-| W2 | Machine: a dedicated VM or machine, or a dedicated user on an existing machine | **Dedicated VM/machine** (cloud Windows 10/11 VM in US central, or local). If it is an existing personal machine, at minimum a dedicated standard user with no live credentials |
-| W3 | Authorize the overlay network + sshd restricted to it (only if O1/O2) | Authorize, as one consolidated change, when the machine is ready |
-| W4 | Standing push authorization for non-`main` branches (only if O3 is adopted later) | Decide later; not needed for O1 |
+| F2 | NT8 **8.1.8.4**, .NET Framework 4.8, Roslyn with **C# 13**, ships **Newtonsoft.Json 13** | `net48` host confirmed; never bundle our own Newtonsoft (ADR-0005) |
+| F3 / C3 | A DLL built outside NT8 loads from `Documents\NinjaTrader 8\bin\Custom` **only after an NT8 restart**. There is no headless compile | Restarts are expensive (next row) |
+| C2 | **No command-line login.** The 8.1 login screen does not save the password | Every NT8 restart needs the user, or an auto-login tool that stores the password (W3) |
+| C4 | **Source files saved while the NinjaScript Editor is open are auto-compiled, with no restart** | Development uses a **hot source loop**; restarts only when the packaged DLL is tested |
+| C1 | NT8 is a WPF/DirectX desktop app. It must run in a **logged-on interactive session**; processes started by `sshd` run in session 0 | NT8 is started by a pre-created Scheduled Task with `/it`, triggered with `schtasks /run` (E1) |
+| F6 | **Simulated Data Feed** = fully offline testing on Sim101. Playback needs all other connections closed | Two test sessions: Sim + Simulated Data Feed, and Playback |
+| F7 | **One NT8 instance per computer** | Cross-instance tests (S19) need **two Windows machines/VMs** |
+| §2 | Requirements: Windows 11 or **Windows Server 2016+** (officially supported); DirectX 10 recommended. Trilha confirmed a GPU is **not indispensable** for Sim/Playback build and test; software rendering (WARP) is acceptable, though staff report crashes on some GPU-less VPS | **W2 = Contabo Windows Server 2022 VPS without GPU.** Plan B is a vGPU instance if E1/E3/E9 fail for graphics reasons (§6.1) |
+| F5 | On NinjaTrader/Rithmic connections, **OCO is simulated locally** | Bracket-integrity tests in the spike (ADR-0004 §6.1) |
+
+## 3. Questions the spike answers (mapped to the profile's experiments)
+
+| # | Question | Experiment | Done when |
+|---|---|---|---|
+| K1 | Start NT8 remotely in the interactive session; behavior of the 8.1.8.4 login screen | **E1** | Window appears after `schtasks /run`; the login need is documented |
+| K2 | Hot source loop: auto-compile, AddOn re-instantiation, where compile errors appear (logs readable over SSH?), does `AllWin.Adapter.Core` source compile under NT's compiler | **E2** | Edit → save → compiled and reloaded within a minute, without a restart; errors visible from the shell |
+| K3 | Packaged build: `net48` multi-target of `AllWin.Adapter.Core` + host DLL, copy and restart, then zip + `AdditionalReferences.txt` import on a clean profile | **E3** | Both load; import on a clean profile works |
+| K4 | Accounts with Mode/Provider (simulation guard, `oco_location`), market entry → OCO bracket from the fill, event sequence including partial fills and `Operation.Remove`, `Order.Name` reference surviving a restart, `OrderEntry.Automated` | **E4** | Scripted scenario passes 10/10; the restart keeps the `Name` association |
+| K5 | Playback clock: `PlaybackConnection.Now` vs `Core.Globals.Now`; `SimulationAccountReset` on rewind | **E5** | Clock source chosen for S15; rewind handling documented |
+| K6 | Access path works and nothing is exposed: T-checks (a)–(e) for T1. E6 (reverse tunnel with the inbound rule disabled) applies only if the fallback B is used | **T-checks / E6** | All T-checks pass |
+| K7 | Maestri app with a Windows host (only if the user wants option C later) | **E7** | Optional |
+| K8 | Reactive block timing | **E8** | p50/p95 over 20 trials |
+| K9 | WebSocket under load beside order traffic: UI freeze or broker disconnect? | **E9** | 1 h soak, no freeze or drop |
+| K10 | Does Global Simulation Mode block NinjaScript `Account.Submit` to non-sim accounts? | **E10** | Only if safely testable; otherwise skipped. Never create a live account |
+| K11 | **Bracket integrity (new):** close NT8 with a working bracket on Sim101, move price through the stop with the Simulated Data Feed on restart, and observe the orphan leg, `Unknown` states and reconnect detection | new **E11** | ADR-0004 §6.1 cases reproduced, or documented as not reproducible on Sim |
+| K12 | Durable local store (outbox, processed `command_id`s, cached limits) survives a crash; DPAPI token storage | new **E12** | Kill NT8 mid-command → restart → no duplicate execution |
+| K13 | Latency: Core send → submit → fill report on Sim101, plus the Core relay round trip (A4) | new **E13** | p50/p95 table |
+
+## 4. Out of scope
+
+- Product-quality code, UI polish, localization.
+- Core implementation: the spike uses a **scripted fake Core** (profile §13.3), the mirror of `adapter-sim`.
+- Any live account, live connection, Market Replay download, or NinjaTrader login. Those are done by the user only (profile §14).
+
+## 5. Deliverables
+
+1. `plugins/ninjatrader8/docs/spike-report.md` (Plugin Engineer): K1–K13 with evidence and measured numbers, plus proposed ADR deltas. If deltas are needed, the Architect issues them.
+2. Repeatable loop scripts:
+   - `plugins/ninjatrader8/tools/` (Plugin Engineer): build, deploy-source, deploy-package, start/stop NT8, collect logs and screenshots, run scenarios.
+   - `infra/windows-test-host/` (DevOps): host setup and tunnel task.
+3. Fake-Core scenario harness: entry → fill → bracket, partial fills, reject, disconnect/reconnect, expiry, flatten/block, orphan cleanup, bracket integrity.
+4. Draft install guide for the user (S3 "Como instalar o plugin").
+
+## 6. Windows test machine and access (W1–W4)
+
+**Fixed in every option:**
+
+- A dedicated test VPS with a dedicated **standard (non-admin) Windows user** `allwin-agent`.
+- A **dedicated NinjaTrader development login**, ideally on the free license (Global Simulation Mode stays locked on).
+- **No live broker connections** and no personal data on the VPS.
+- The plugin's own simulation guard, which fails closed (ADR-0005 N4).
+
+### 6.1 W2 — Machine (decided: Contabo, no GPU)
+
+- **Spec:** Contabo Windows VPS, **Windows Server 2022 with Desktop Experience**, 6–8 vCPU, 16–24 GB RAM, 150–200 GB NVMe, region **St. Louis** (US central, consistent with A2).
+- **Server, not Windows 11:** NT8 officially supports Windows Server 2016+ (profile §2).
+- **No GPU:** NT8 renders with software (WARP). Charts may be slower, which does not matter for an AddOn tested through events and logs.
+- **Plan B (vGPU):** move to a GPU-capable Windows instance with another provider, in the same region if possible. Trigger: E1 (NT8 window does not start or render in the session), E3 (package fails to load for graphics reasons) or E9 (UI freezes or crashes) fail because of graphics.
+- **S19 cross-instance tests** will need a second VPS later (one NT8 per computer).
+
+### 6.2 W1 — Access: Tailscale for RDP and agent SSH (revised recommendation)
+
+The user's rule: **RDP is never open to the internet.** The user's home IP changes, so IP allow-lists do not work. The user proposed a Tailscale tailnet joining the user's Mac, the Linux dev server and the Windows VPS. Since the VPS must be on the tailnet for RDP anyway, the question is how agents reach its `sshd`.
+
+| Option | Agent SSH path | Pros | Cons / risks |
+|---|---|---|---|
+| **T1. Everything over the tailnet (recommended)** | Linux dev server → VPS `sshd` over Tailscale (`ssh allwin-agent@allwin-nt8-01`). No reverse tunnel | One mechanism for RDP and SSH. **The VPS holds no credential for the dev server**: in the reverse-tunnel design it held a forwarding key to it. The ACL denies every connection from the VPS to the dev server. Survives IP changes. No public port anywhere | Adds the Tailscale daemon to the **dev server** (a new network interface on a host where agents have sudo). Mitigated by tags, a default-deny ACL and an outbound-only role (below). The tailnet admin account becomes a root of trust |
+| T2. RDP over Tailscale (Mac ↔ VPS only); agents keep the reverse SSH tunnel | Windows → dev host `ssh -R` (W1 as accepted) | The dev server stays out of the tailnet | Two mechanisms to operate. The VPS keeps a key to the dev server, restricted to forwarding but still a path toward the dev host |
+| T3. No Tailscale: self-hosted WireGuard hub on the dev server | WireGuard | No third-party control plane | The dev server needs an inbound UDP port (requires user approval) and manual key management on the Mac. More operational work for no security gain at this scale |
+
+**Recommendation: T1.**
+
+There is no reason to avoid Tailscale here. Its one structural trade-off is trusting Tailscale's coordination server (control plane) and the user's tailnet admin login. Traffic between nodes is end-to-end encrypted with WireGuard. The control-plane trust can be reduced with **Tailnet Lock**, so new nodes must be signed by a trusted node. If the user does not want any third-party control plane, T3 (or Headscale, self-hosted) is the alternative.
+
+### 6.3 Tailnet design (for T1)
+
+- **Nodes and tags:**
+  - the user's Mac (owned by the user, untagged);
+  - the dev server: `tag:allwin-dev`;
+  - the VPS: `tag:allwin-nt8`.
+  - Tagged nodes do not expire with a user key, so node-key expiry does not cut agents off. Each tag is owned by the admin.
+- **ACL policy** (default deny; DevOps keeps it versioned in `infra/tailscale/policy.hujson`, the user applies it in the admin console):
+  - `autogroup:member` (the user's devices) → `tag:allwin-nt8`: TCP 3389 (RDP) and 22.
+  - `tag:allwin-dev` → `tag:allwin-nt8`: TCP 22 only.
+  - `tag:allwin-nt8` → anything: **nothing**. The VPS cannot open connections to the dev server or the Mac over the tailnet.
+  - Nothing → `tag:allwin-dev`. The dev server is outbound-only in the tailnet; the user keeps using the normal SSH path to it.
+  - No exit nodes, no subnet routes, and Tailscale SSH stays off: OpenSSH with keys remains the audited path.
+- **Auth keys:** two **single-use, pre-authorized, tagged** auth keys, generated by the user. They are used once at install and then expire; they are never stored in the repo or in logs.
+- **DNS:**
+  - **MagicDNS** on, for names such as `allwin-nt8-01`.
+  - The dev server runs Tailscale with `--accept-dns=false`, so its system resolver is not changed; it reaches the VPS by its Tailscale IP or a static hosts entry managed by DevOps.
+  - The VPS and the Mac may use MagicDNS.
+- **Dev server specifics:** `tailscale up --auth-key=… --advertise-tags=tag:allwin-dev --accept-dns=false --accept-routes=false`. No ufw change is needed: the dev server only initiates connections, and the ACL blocks inbound tailnet traffic to it. Installing Tailscale on the dev server is a network change, so it **needs the user's explicit approval** (decision of 2026-10-23: SSH/firewall/exposure changes are not covered by the standing authorization).
+- **Windows firewall on the VPS:**
+  - Disable the default public inbound rules for Remote Desktop and `OpenSSH-Server-In-TCP`.
+  - Add inbound allow rules for TCP 3389 and 22, scoped to remote addresses **100.64.0.0/10** (the Tailscale range) on the Tailscale interface only.
+  - Require NLA for RDP.
+  - `sshd`: `AllowUsers allwin-agent`, `PasswordAuthentication no`, `DefaultShell` = Git Bash.
+  - `sshd` keeps listening on all addresses; the firewall enforces the scope. Binding it to the Tailscale IP is fragile at boot because Tailscale may come up after `sshd`.
+- **Contabo control panel:**
+  - Enable 2FA on the Contabo account.
+  - Store the Administrator password in the user's password manager.
+  - The panel's **VNC console** is the break-glass path if Tailscale or the firewall locks everyone out. DevOps confirms that Contabo offers it for Windows VPS (unverified).
+  - Contabo's network-level firewall, if offered for this product, can additionally block all inbound except Tailscale's UDP (unverified, optional).
+- **Initial exposure window:** a new Contabo Windows VPS usually starts with RDP reachable on its public IP. To keep "never open to the internet" true, the first setup is done through the **VNC console**. If VNC is unavailable, the user does steps 3–5 of the checklist in one short first RDP session with the strong initial password, and then confirms with the T-checks below that 3389 is closed publicly.
+- **Production stays out:** the future production server must **not** join this tailnet without a separate decision.
+
+### 6.4 W3 — NT8 restarts (decided)
+
+- The user types the NT8 password when NT8 must restart; the hot source loop keeps restarts rare.
+- Windows auto-logon stays off.
+- The `allwin-agent` desktop session stays alive by **disconnecting** RDP rather than signing out, so `schtasks /it` can start NT8 in it (E1 verifies on Server 2022).
+
+### 6.5 W4 — Setup checklist
+
+**User** (about 1–2 h; DevOps scripts are reviewed by the user before running):
+
+1. **Contract** the Contabo VPS (§6.1). Enable 2FA on the Contabo account. Save the Administrator password in the password manager.
+2. **Open the VNC console** in the Contabo panel and sign in as Administrator. Use the first RDP session only if VNC is unavailable, and keep it short.
+3. **Tailscale admin** (create the account if needed; enable 2FA on its login):
+   - apply `infra/tailscale/policy.hujson` (prepared by DevOps);
+   - optionally enable Tailnet Lock;
+   - generate **two** single-use, pre-authorized auth keys, one tagged `tag:allwin-nt8` and one tagged `tag:allwin-dev`.
+4. **VPS:** install Tailscale and join with the `tag:allwin-nt8` key (hostname `allwin-nt8-01`).
+5. **VPS:** run `infra/windows-test-host/Lock-Firewall.ps1` (DevOps). It disables the public RDP/SSH rules, adds the tailnet-scoped rules, and enforces NLA.
+6. **Mac:** install Tailscale, sign in, and from now on RDP only to `allwin-nt8-01`.
+7. **Approve** DevOps joining the **dev server** to the tailnet with the `tag:allwin-dev` key (flags in §6.3). Approving this is the user's explicit network approval.
+8. **VPS, as Administrator:** create the standard user `allwin-agent` and add it to *Remote Desktop Users*. Install:
+   - NinjaTrader 8 (8.1.8.4 or later);
+   - .NET SDK 8+;
+   - Build Tools for Visual Studio (MSBuild + .NET Framework 4.8 targeting pack);
+   - Git for Windows;
+   - OpenSSH Server.
+9. **VPS:** run `infra/windows-test-host/Install-AllWinTestHost.ps1` (DevOps). It sets up:
+   - the `sshd` config and the agents' public key;
+   - folders and logs;
+   - the `/it` Scheduled Tasks for starting/stopping NT8 and taking screenshots.
+10. **VPS, RDP as `allwin-agent`:**
+    - sign in to NT8 with the **dedicated development login**;
+    - keep only Sim101/Playback and the Simulated Data Feed connections;
+    - download MNQ Market Replay data;
+    - then **disconnect** the RDP session (do not sign out).
+
+**Team (DevOps), after step 10:**
+
+- **T-checks** (in the spike report):
+  - (a) from outside the tailnet, ports 3389 and 22 on the public IP are closed;
+  - (b) the dev server reaches `ssh allwin-agent@allwin-nt8-01`;
+  - (c) from the VPS, connections to the dev server's Tailscale IP are refused by the ACL;
+  - (d) the Mac reaches RDP;
+  - (e) no auth key appears in any file or log.
+- Then the spike starts (§7).
+
+**Never on the VPS:** live brokerage or prop-firm credentials, the user's personal NT8 profile, or admin rights for `allwin-agent`.
+
+### 6.6 Complements
+
+- **User-run scripts (E):** remain available for a first session if setup is delayed.
+- **CI runner (D):** can be added later on the same VPS as a regression gate, once the GitHub remote and push authorization exist.
+- **The reverse tunnel (B):** stays documented as the fallback if Tailscale is rejected (T2).
+
+## 7. Spike sequence (after the machine is ready)
+
+1. **Day 1:** T-checks (§6.5), then E1 (access and start), E2 (hot loop), E3 (packaging), K12 store basics.
+2. **Day 2:** E4 (orders, events, names, guard), E9 (socket soak), E11 (bracket integrity), E12 (crash).
+3. **Day 3:** E5 (Playback clock), E8 (block timing), E13 (latency), E10 if safe; then the report.
+
+**Exit gate:** the report is reviewed by the Architect and QA; ADR deltas, if any, are issued; V1-S2 starts.
