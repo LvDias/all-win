@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-MNQ-trigger-s6-buy-QQQ-5-1792679400000",
+  "sent_at": "2026-10-22T14:31:05.123Z",
+  "source": {
+    "type": "tradingview",
+    "name": "nq-es-strikes",
+    "version": "4.0"
+  },
+  "signal_type": "trigger",
+  "action": "buy",
+  "instrument": {
+    "symbol": "MNQ"
+  },
+  "quantity": 1,
+  "details": {
+    "setup": "Setup 6",
+    "zone": "Defense",
+    "trigger": "engulfing"
+  }
+}

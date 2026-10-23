@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-MNQ-trigger-s6-close-QQQ-5-1792683000000",
+  "sent_at": "2026-10-22T15:30:00.000Z",
+  "source": {
+    "type": "tradingview",
+    "name": "nq-es-strikes",
+    "version": "4.0"
+  },
+  "signal_type": "trigger",
+  "action": "close",
+  "instrument": {
+    "symbol": "MNQ"
+  }
+}

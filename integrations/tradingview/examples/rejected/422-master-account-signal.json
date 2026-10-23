@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-x-5",
+  "sent_at": "2026-10-22T15:30:00Z",
+  "source": {
+    "type": "tradingview",
+    "name": "nq-es-strikes",
+    "version": "4.0"
+  },
+  "signal_type": "master_account",
+  "action": "buy",
+  "instrument": {
+    "symbol": "MNQ"
+  },
+  "quantity": 1
+}

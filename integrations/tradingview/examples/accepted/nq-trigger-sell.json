@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-MNQ-nq_trigger-nq-sell-NQ1-1-1792682000000",
+  "sent_at": "2026-10-22T15:13:20.004Z",
+  "source": {
+    "type": "tradingview",
+    "name": "nq-es-strikes",
+    "version": "4.0"
+  },
+  "signal_type": "nq_trigger",
+  "action": "sell",
+  "instrument": {
+    "symbol": "MNQ"
+  },
+  "quantity": 1
+}

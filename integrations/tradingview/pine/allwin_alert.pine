@@ -1,0 +1,126 @@
+// ============================================================================
+// All Win — alert builder for TradingView (instruction contract v1, schema 1.0)
+// Paste this whole block into the indicator, right after the indicator() line.
+// Pine Script v6. Everything is prefixed aw_ to avoid name clashes.
+// The webhook URL (with its secret) is set only in the TradingView alert dialog;
+// it never appears in this code or in the message.
+// Guide: integrations/tradingview/GUIDE.pt-BR.md / GUIDE.en.md
+// ============================================================================
+
+// ---- Inputs ----------------------------------------------------------------
+AW_GRP = "All Win"
+aw_src_name  = input.string("nq-es-strikes", "Source name", group = AW_GRP)
+aw_src_ver   = input.string("4.0", "Indicator version", group = AW_GRP)
+aw_qty_trig  = input.int(1, "Quantity: triggers", minval = 1, maxval = 1000, group = AW_GRP)
+aw_qty_tp    = input.int(1, "Quantity: Trade Plan", minval = 1, maxval = 1000, group = AW_GRP)
+aw_qty_nq    = input.int(1, "Quantity: NQ Triggers", minval = 1, maxval = 1000, group = AW_GRP)
+aw_on_close  = input.bool(true, "Send only at bar close", group = AW_GRP, tooltip = "On: a signal is sent on the bar's last tick (no repainting, up to one bar of delay). Off: sent as soon as the condition is true intrabar.")
+aw_live      = input.bool(true, "Send alerts (off = Pine Logs only)", group = AW_GRP, tooltip = "Off: messages are only written to Pine Logs, nothing is sent to the webhook.")
+
+// ---- Constants and state -----------------------------------------------------
+// V1 trades MNQ only (QQQ/SPY are references). No contract month is sent: All Win uses the
+// active contract of its catalog and rolls it on the date the admin configures.
+AW_SYMBOL = "MNQ"
+AW_ID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
+// Ids already sent during this script run. Persists across realtime ticks (varip);
+// it is reset when the script reloads, and then the Core's message_id dedupe applies.
+varip array<string> aw_sent = array.new<string>()
+
+// ---- Helpers ---------------------------------------------------------------
+// Keeps only characters allowed in message_id ([A-Za-z0-9._:-]).
+aw_tok(string s) =>
+    string out = ""
+    int n = str.length(s)
+    if n > 0
+        for i = 0 to n - 1
+            string ch = str.substring(s, i, i + 1)
+            if str.contains(AW_ID_CHARS, ch)
+                out := out + ch
+    out
+
+aw_pad(int v, int width) =>
+    string s = str.tostring(v)
+    while str.length(s) < width
+        s := "0" + s
+    s
+
+// RFC 3339 UTC with milliseconds and Z suffix, e.g. 2026-10-22T14:31:05.123Z.
+aw_utc(int t) =>
+    aw_pad(year(t, "UTC"), 4) + "-" + aw_pad(month(t, "UTC"), 2) + "-" + aw_pad(dayofmonth(t, "UTC"), 2) + "T" + aw_pad(hour(t, "UTC"), 2) + ":" + aw_pad(minute(t, "UTC"), 2) + ":" + aw_pad(second(t, "UTC"), 2) + "." + aw_pad(t % 1000, 3) + "Z"
+
+// JSON string escaping for free text (backslash and double quote).
+aw_esc(string s) =>
+    str.replace_all(str.replace_all(s, "\\", "\\\\"), "\"", "\\\"")
+
+// One "key":"value" pair for the details object. Join several with ",".
+aw_kv(string key, string value) =>
+    "\"" + aw_esc(key) + "\":\"" + aw_esc(value) + "\""
+
+// Chart ticker without disallowed characters (NQ1! -> NQ1). Computed once.
+var string AW_CHART = aw_tok(syminfo.ticker)
+
+// ---- Load-time checks (the indicator shows the error before any alert exists) ----
+if barstate.isfirst
+    if str.length(aw_src_name) < 1 or str.length(aw_src_name) > 64
+        runtime.error("All Win: source name must have 1-64 characters")
+    if str.length(aw_src_ver) < 1 or str.length(aw_src_ver) > 32
+        runtime.error("All Win: indicator version must have 1-32 characters")
+
+// ---- Main function ---------------------------------------------------------------
+// Builds the All Win instruction and calls alert() once per distinct event.
+//   kind    : "trigger" | "trade_plan" | "nq_trigger"
+//   action  : "buy" | "sell" | "close" | "reverse"
+//   side    : "long" | "short" for reverse (final side); "" otherwise
+//   setup   : short code that identifies the signal, part of message_id (e.g. "s6", "tp", "nq")
+//   qty     : base quantity in contracts (ignored for close)
+//   details : "" or pairs built with aw_kv(), joined with "," (max 32 keys)
+// Returns the message_id, or "" when nothing was sent.
+aw_send(string kind, string action, string side, string setup, int qty, string details) =>
+    string sentId = ""
+    bool kindOk = kind == "trigger" or kind == "trade_plan" or kind == "nq_trigger"
+    bool actionOk = action == "buy" or action == "sell" or action == "close" or (action == "reverse" and (side == "long" or side == "short"))
+    bool timingOk = barstate.isrealtime and (not aw_on_close or barstate.isconfirmed)
+    if not kindOk or not actionOk
+        log.error("All Win: invalid kind/action/side: " + kind + " " + action + " " + side + " (nothing sent)")
+    else if timingOk
+        string act = action == "reverse" ? "reverse_" + side : action
+        // Deterministic event key: the same event re-fired has the same id (the Core answers
+        // "duplicate"); distinct signals, charts and timeframes get distinct ids.
+        string id = "tv-" + AW_SYMBOL + "-" + kind + "-" + aw_tok(setup) + "-" + act + "-" + AW_CHART + "-" + timeframe.period + "-" + str.tostring(time)
+        string j = "{\"schema_version\":\"1.0\",\"message_id\":\"" + id + "\",\"sent_at\":\"" + aw_utc(timenow) + "\""
+        j := j + ",\"source\":{\"type\":\"tradingview\",\"name\":\"" + aw_esc(aw_src_name) + "\",\"version\":\"" + aw_esc(aw_src_ver) + "\"}"
+        j := j + ",\"signal_type\":\"" + kind + "\",\"action\":\"" + action + "\""
+        if action == "reverse"
+            j := j + ",\"side\":\"" + side + "\""
+        j := j + ",\"instrument\":{\"symbol\":\"" + AW_SYMBOL + "\"}"
+        if action != "close"
+            j := j + ",\"quantity\":" + str.tostring(math.max(1, math.min(1000, qty)))
+        if details != ""
+            j := j + ",\"details\":{" + details + "}"
+        j := j + "}"
+        if str.length(id) > 128
+            log.error("All Win: message_id longer than 128 characters (nothing sent): " + id)
+        else if str.contains(j, "awk_") or str.contains(j, "awd_")
+            log.error("All Win: message looks like it contains a token (nothing sent)")
+        else if not array.includes(aw_sent, id)
+            array.push(aw_sent, id)
+            if array.size(aw_sent) > 100
+                array.shift(aw_sent)
+            log.info(j)
+            if aw_live
+                alert(j, alert.freq_all)
+            sentId := id
+    sentId
+
+// ---- Usage (replace the conditions with the indicator's own) --------------------
+// if longSetup6
+//     aw_send("trigger", "buy", "", "s6", aw_qty_trig, aw_kv("setup", "Setup 6") + "," + aw_kv("zone", zoneName))
+// if tradePlanShort
+//     aw_send("trade_plan", "sell", "", "tp", aw_qty_tp, "")
+// if nqTriggerLong
+//     aw_send("nq_trigger", "buy", "", "nq", aw_qty_nq, "")
+// if exitSignal
+//     aw_send("trigger", "close", "", "s6", 0, "")
+// if flipToShort
+//     aw_send("trigger", "reverse", "short", "s3", aw_qty_trig, "")
+// ============================================================================
