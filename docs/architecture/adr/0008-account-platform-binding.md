@@ -44,10 +44,14 @@ If `gateway` wrote the binding, `accounts` would need a cross-module command por
       - `accounts` passes the string through and never stores or interprets it.
    3. A unique-index violation gives 409 `accounts.platform_account_taken`. It can only concern the caller's own accounts, because `resolve` is scoped by `user_id`.
    4. A change or removal of a binding first asks `Positions::has_open_position(current venue_account_id)`, a query port. An open position gives 409 `accounts.binding_open_position`.
-      - A position that opens between this read and the commit is an accepted window: Q38 is a UX guard, and execution always uses the binding in force.
-   5. The same transaction bumps `limits_version`, because the binding is a limits input (ADR-0006 §3.1). It also writes `account.binding_changed {account_id, venue_account_id | null, limits_version}` to `app.outbox`. `gateway` consumes it for side effects, for example sending `welcome`/`limits` again.
+      - A position that opens between this read and the commit is an accepted window. Q38 covers open positions only, not working orders, so an order already routed can also fill after an unbind.
+      - **Residual:** in either case the platform account holds a position with no binding. Routing then skips every action for it, exits included, with `routing.platform_unbound` (§3.5), so the position is no longer managed by All Win.
+      - **Mitigation:** when `gateway` receives a fill or a non-flat `position_snapshot` for a venue account that `account_for_venue` reports as unbound, it writes an audit entry and alerts the user, so the position can be closed on the platform or the account rebound. The code is defined in the S11 sync contract. The plugin's own enforcement is not affected.
+   5. The same transaction bumps `limits_version`, because the binding is a limits input (ADR-0006 §3.1). It writes two events to `app.outbox`:
+      - `account.limits_changed {account_id, limits_version}`, the ADR-0006 producer event that `risk` consumes, so entries leave `routing.limits_pending` as soon as risk re-derives;
+      - `account.binding_changed {account_id, venue_account_id | null, limits_version}`, which `gateway` consumes for side effects, for example sending `welcome`/`limits` again.
 3. **Archive releases the binding:**
-   - `CHECK (archived_at IS NULL OR venue_account_id IS NULL)`. The archive transaction nulls the binding and writes `account.binding_changed`. Otherwise an archived account would keep the platform account taken forever.
+   - `CHECK (archived_at IS NULL OR venue_account_id IS NULL)`. The archive transaction nulls the binding, bumps `limits_version` and writes both events of §3.2 step 5. Otherwise an archived account would keep the platform account taken forever.
    - An open position already refuses the archive with 409 `accounts.delete_open_position`, so `archiveAccount` needs no new code.
 4. **Read path:**
    - `gateway` and routing read the `accounts` query ports `binding_of(account_id)` and `account_for_venue(venue_account_id)` at the decision. There is no derived copy; if one is ever needed, it follows ADR-0006.
@@ -68,13 +72,14 @@ If `gateway` wrote the binding, `accounts` would need a cross-module command por
   - X-1 holds: `accounts` sees only an opaque id.
 - **Negative:**
   - routing and `gateway` need a query-port read of the binding per decision;
-  - the open-position check is not atomic with the commit (accepted, §3.2 step 4).
+  - the open-position check is not atomic with the commit, and working orders are not covered by Q38. A position left without a binding is no longer managed by All Win; it is audited and alerted (accepted, §3.2 step 4).
 - **Tests:**
   - binding another user's platform account gives 422 `platform_account_unknown`, never 409;
   - binding the same platform account to two of the caller's accounts gives 409 on the second, and the first is unchanged;
   - an unbind with an open position gives 409 and nothing changes;
   - archive releases the binding, and the platform account can be bound again;
-  - a binding change bumps `limits_version`, so entries are skipped with `routing.limits_pending` until risk re-derives;
+  - a binding change and an archive bump `limits_version` and emit `account.limits_changed`; entries are skipped with `routing.limits_pending` until risk re-derives, then route without waiting for the reconciliation;
+  - a fill arriving for an unbound venue account is audited and alerts the user;
   - `live` kind outside production gives 422 at bind time, and delivery is still refused after a later `hello` changes the kind to `live`;
   - after re-pairing, the binding persists for a platform account with the same name.
 - **Owners:**
