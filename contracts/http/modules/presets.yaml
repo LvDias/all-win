@@ -1,0 +1,1065 @@
+# Module `presets` — prop firm catalog (V1-S16): opt-in rule versions (S5), firms, releases, preset versions,
+# and the account's preset state, diff and apply. Global catalog data is the same for every user; the
+# account operations are scoped to the caller.
+# Owner: Compasso (Software Architect). Notes: s5-accounts.md (rule versions), s16-presets.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/opt-in-rules:
+    get:
+      tags: [presets]
+      operationId: getOptInRules
+      summary: Rule versions in force for a prop selection, before or after the account exists
+      description: |
+        The account form calls it on every selection change (firm, plan, phase, size, firm platform),
+        because the rule version depends on the selection and there is no account id yet (spec §5.2).
+        With `preset_version_id` → the rules of that preset version (and `firm_platform` when the preset
+        has platform-specific rules). Without it → the **generic** rule versions used by prop accounts
+        without a preset (stance `unknown`, no quotes; Q40). Global catalog data, the same
+        for every user; any signed-in user may read it.
+      parameters:
+        - name: preset_version_id
+          in: query
+          required: false
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        - name: firm_platform
+          in: query
+          required: false
+          schema: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
+      responses:
+        '200':
+          description: One rule version per kind.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OptInRules' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '422':
+          description: '`accounts.firm_platform_required` or `accounts.firm_platform_unknown` (pointer `/query/firm_platform`).'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/rule-versions/{rule_version_id}:
+    get:
+      tags: [presets]
+      operationId: getRuleVersion
+      summary: One opt-in rule version (current text, or a previous one for comparison)
+      description: |
+        Used for `OptInState.current_rule_version_id`, for the previous version shown in the review
+        dialog (`RuleVersion.change.previous_rule_version_id`) and for the version a past choice was
+        made against. Rule versions are immutable once published.
+      parameters:
+        - name: rule_version_id
+          in: path
+          required: true
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: The rule version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleVersion' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/firms:
+    get:
+      tags: [presets]
+      operationId: listFirms
+      summary: The prop firm catalog (firms with at least one selectable preset)
+      description: |
+        Global reference data, the same for every signed-in user. A firm with no verified data is not
+        listed (S16 AC-5). Sorted by name. No pagination (tens of firms).
+      responses:
+        '200':
+          description: The firms.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmList' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/firms/{firm_id}:
+    get:
+      tags: [presets]
+      operationId: getFirm
+      summary: One firm in its current release — stances with quotes, plans tree, excluded plans
+      parameters:
+        - { $ref: '#/components/parameters/FirmId' }
+      responses:
+        '200':
+          description: The firm.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmDetail' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/firms/{firm_id}/releases:
+    get:
+      tags: [presets]
+      operationId: listFirmReleases
+      summary: Version history of a firm's presets, newest first
+      description: |
+        One release per publication of the firm's research (all of its presets get a new version together).
+        Releases are immutable; each keeps its stance rule versions, so what an account was shown can always
+        be read (`getRuleVersion`).
+      parameters:
+        - { $ref: '#/components/parameters/FirmId' }
+      responses:
+        '200':
+          description: The releases.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmReleaseList' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/preset-versions/{preset_version_id}:
+    get:
+      tags: [presets]
+      operationId: getPresetVersion
+      summary: One preset version with every rule value and its provenance (the rules preview of the account form)
+      description: |
+        The account form's "rules of this preset" card for a full selection (firm → plan → phase → size; the
+        plans tree of `getFirm` gives the current `preset_version_id` per size). Rule values per firm
+        platform when the preset has platform-specific rules. Opt-in stances: `getOptInRules` with this id.
+        Old versions stay readable.
+      parameters:
+        - { $ref: '#/components/parameters/PresetVersionId' }
+      responses:
+        '200':
+          description: The preset version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresetVersion' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/preset:
+    get:
+      tags: [presets]
+      operationId: getAccountPreset
+      summary: The account's preset version, each rule value with its origin, and a newer version if any
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      responses:
+        '200':
+          description: The account's preset state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountPresetState' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404':
+          description: '`common.not_found` — unknown or foreign account, or an account without a preset.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/preset-diff:
+    get:
+      tags: [presets]
+      operationId: getAccountPresetDiff
+      summary: What applying a newer version of the account's preset would change (comparison dialog)
+      description: |
+        Only fields that differ between the account, its current preset version and the target version.
+        `requires_choice` marks rows the apply request must answer (an edited field, or a field that is
+        not confirmed in the target). The target must be a newer version of the same preset (422
+        `presets.version_not_newer`).
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+        - name: target_preset_version_id
+          in: query
+          required: true
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: The diff.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresetDiff' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '422':
+          description: '`presets.version_not_newer` (pointer `/query/target_preset_version_id`).'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/preset-version:
+    post:
+      tags: [presets]
+      operationId: applyPresetVersion
+      summary: Apply a newer version of the account's preset, with a choice for every field that needs one (S16 AC-3)
+      description: |
+        One save, audited as `presets.version_applied` (old and new version, every changed field). Never
+        touches open positions or working orders. For every `requires_choice` row of the diff the body has
+        either `choices.<field>` (`keep_mine` / `use_preset`, for edited fields; nothing preselected,
+        Q-S16-4) or `rule_values.<field>` (the user's value, for not-confirmed fields), else 422
+        `presets.choice_required` (pointer `/choices/<field>`). A required not-confirmed field left
+        unresolved gets 422 `presets.required_field_unresolved` (pointer `/rule_values/<field>`; the
+        maximum position is always resolved, because `max_position_qty` is required). When the
+        target changes the opt-in rule version, `opt_ins` must carry the new choices (S5 D16); step-up when
+        an `accepted` choice changes the stored state (action `account_opt_in_accept`, target = account).
+        Choices made in `opt_ins` are audited as `accounts.opt_in_chosen` as well. A not-confirmed
+        maximum position is resolved by the top-level `max_position_qty` (any value up to the highest
+        published value; the Core records whether it equals a published one).
+        Check order after authentication, Origin and schema: 404 → step-up → 409 → 422.
+      x-step-up: conditional
+      x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyPresetVersionRequest' }
+      responses:
+        '200':
+          description: Applied and audited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountPresetState' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/StepUpFailed' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: |
+            Nothing saved. `common.version_conflict` (stale `row_version`); `presets.version_superseded`
+            (a newer version than the target was published meanwhile; reload the diff);
+            `accounts.rule_version_changed` (an `opt_ins` choice names a stale rule version).
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422':
+          description: |
+            Nothing saved. `presets.version_not_newer` (`/target_preset_version_id`);
+            `presets.choice_required` (`/choices/<field>`); `presets.required_field_unresolved`
+            (`/rule_values/<field>`); `accounts.max_position_exceeds_preset` (`/max_position_qty`; the new
+            cap is lower than the account's value and the body did not lower it);
+            `accounts.opt_in_required` (`/opt_ins/<kind>`); `accounts.firm_platform_required` /
+            `accounts.firm_platform_unknown` (`/firm_platform`).
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/preset-values/{field}/restore:
+    post:
+      tags: [presets]
+      operationId: restorePresetValue
+      summary: Replace an edited rule value of the account with the value of its preset version (S16-04)
+      description: |
+        Audited as an account edit (`presets.value_restored`, old and new value). The preset is never
+        modified. A field whose preset value is not confirmed cannot be restored (422
+        `presets.value_not_confirmed`); a field that is not edited is a no-op (200, not audited).
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+        - name: field
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/RuleField' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [row_version]
+              properties:
+                row_version: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Restored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountPresetState' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`common.version_conflict` — nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422':
+          description: '`presets.value_not_confirmed` — nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  parameters:
+    FirmId:
+      name: firm_id
+      in: path
+      required: true
+      schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+    PresetVersionId:
+      name: preset_version_id
+      in: path
+      required: true
+      schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+
+  schemas:
+    LocalizedText:
+      type: object
+      additionalProperties: false
+      required: [pt-BR, en]
+      description: Text written by the catalog publisher in both UI languages (not firm text; firm text is never translated).
+      properties:
+        pt-BR: { type: string, minLength: 1, maxLength: 2000 }
+        en: { type: string, minLength: 1, maxLength: 2000 }
+    RuleQuote:
+      type: object
+      additionalProperties: false
+      required: [text, language, page_title, url, accessed_at]
+      description: A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).
+      properties:
+        text: { type: string, minLength: 1, maxLength: 20000 }
+        language: { type: string, pattern: '^[a-z]{2,3}(-[A-Z]{2})?$', description: "BCP 47, e.g. 'en'." }
+        page_title: { type: string, maxLength: 300 }
+        section: { type: string, maxLength: 300, description: 'Heading of the quoted part of the page, if any.' }
+        url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
+        accessed_at: { type: string, format: date, description: Date the page was read (YYYY-MM-DD). }
+    RuleVersion:
+      type: object
+      additionalProperties: false
+      required: [id, kind, firm_stance, is_generic, version_number, published_at, quotes]
+      properties:
+        id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
+        firm_stance: { $ref: 'accounts.yaml#/components/schemas/FirmStance' }
+        firm_platform:
+          description: The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules.
+          $ref: 'accounts.yaml#/components/schemas/FirmPlatform'
+        is_generic:
+          type: boolean
+          description: True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning).
+        firm_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        firm_name: { type: string, maxLength: 120 }
+        version_number: { type: integer, minimum: 1 }
+        published_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        quotes:
+          type: array
+          description: |
+            Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the
+            conflicting quotes, each with its own source and date.
+          items: { $ref: '#/components/schemas/RuleQuote' }
+        research:
+          type: object
+          additionalProperties: false
+          required: [searched_on, sources]
+          description: With `unknown` (not generic) — where the publisher looked and found no rule.
+          properties:
+            searched_on: { type: string, format: date }
+            sources:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [page_title, url]
+                properties:
+                  page_title: { type: string, maxLength: 300 }
+                  url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
+        change:
+          type: object
+          additionalProperties: false
+          required: [previous_rule_version_id, previous_firm_stance, cause]
+          description: Present when this version replaced an earlier one for the same preset selection and kind.
+          properties:
+            previous_rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+            previous_firm_stance: { $ref: 'accounts.yaml#/components/schemas/FirmStance' }
+            cause:
+              type: string
+              enum: [stance_changed, text_changed, not_material]
+              description: |
+                `stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the
+                text case is Q42: the publisher flagged it as material). `not_material` never
+                suspends (typo or format fix).
+            reason:
+              description: 'The publisher''s explanation shown to the user, present with `text_changed` (Q42 a: the publisher flags the change and records why); optional in the schema for compatibility.'
+              $ref: '#/components/schemas/LocalizedText'
+      allOf:
+        - if: { properties: { is_generic: { const: true } } }
+          then:
+            properties: { firm_stance: { const: unknown }, quotes: { maxItems: 0 } }
+            not: { anyOf: [{ required: [firm_id] }, { required: [firm_name] }, { required: [research] }, { required: [firm_platform] }] }
+          else: { required: [firm_id, firm_name] }
+    OptInRules:
+      type: object
+      additionalProperties: false
+      required: [automation, copy]
+      properties:
+        automation: { $ref: '#/components/schemas/RuleVersion' }
+        copy: { $ref: '#/components/schemas/RuleVersion' }
+    # ---- S16 catalog (2.5.0) ----
+    SourceRef:
+      type: object
+      additionalProperties: false
+      required: [url, accessed_at]
+      properties:
+        url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
+        accessed_at: { type: string, format: date }
+        page_title: { type: string, maxLength: 300 }
+    MoneyAmount:
+      type: string
+      pattern: '^[0-9]{1,14}(\.[0-9]{1,4})?$'
+      description: Non-negative money as a decimal string, exactly as published (X-3).
+    MaxPositionValue:
+      type: object
+      additionalProperties: false
+      required: [contracts]
+      properties:
+        contracts: { type: integer, minimum: 1, maximum: 10000, description: MNQ (micro) contracts; the account's `max_position_qty` cannot exceed it. }
+        published_text: { type: string, maxLength: 300, description: 'As published, e.g. "5 minis / 50 micros".' }
+    DrawdownValue:
+      type: object
+      additionalProperties: false
+      required: [type, amount]
+      properties:
+        type: { type: string, enum: [trailing_intraday, trailing_eod, static, other] }
+        amount: { $ref: '#/components/schemas/MoneyAmount' }
+        stops_trailing_at: { type: string, maxLength: 300, description: 'When it stops trailing, as published.' }
+        description: { type: string, maxLength: 500, description: Required for `other`. }
+      allOf:
+        - if: { properties: { type: { const: other } } }
+          then: { required: [description] }
+    DailyLossValue:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [hard, soft_pause, none] }
+        amount: { $ref: '#/components/schemas/MoneyAmount' }
+      allOf:
+        - if: { properties: { kind: { const: none } } }
+          then: { not: { required: [amount] } }
+          else: { required: [amount] }
+    DailyProfitTargetValue:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount: { $ref: '#/components/schemas/MoneyAmount' }
+    TradingDayResetValue:
+      type: object
+      additionalProperties: false
+      required: [local_time, time_zone]
+      properties:
+        local_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        time_zone: { $ref: '../openapi.yaml#/components/schemas/TimeZone' }
+        published_text: { type: string, maxLength: 100, description: 'As published, e.g. "5:00 PM ET".' }
+    ConsistencyValue:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 2000, description: The firm's wording (not translated). }
+        threshold_pct: { type: string, pattern: '^[0-9]{1,3}(\.[0-9]{1,2})?$' }
+    ProvenanceStatus:
+      type: string
+      enum: [verified, not_confirmed]
+      description: '`not_confirmed` = the firm''s official pages disagree; never prefilled (S16 AC-5/AC-6).'
+    ProvenanceShape:
+      description: '`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`.'
+      allOf:
+        - if: { properties: { status: { const: verified } } }
+          then: { required: [value, sources], not: { required: [published_values] } }
+          else: { required: [published_values], not: { required: [value] } }
+    MaxPositionRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: 'Maximum position (MNQ contracts) as the preset publishes it.'
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/MaxPositionValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/MaxPositionValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    DrawdownRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: Drawdown amount and type.
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/DrawdownValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/DrawdownValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    DailyLossRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: Daily loss limit and its kind.
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/DailyLossValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/DailyLossValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    DailyProfitTargetRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: Daily profit target (S13 AC-5); absent from the preset when the firm has none.
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/DailyProfitTargetValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/DailyProfitTargetValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    TradingDayResetRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: Trading-day reset time.
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/TradingDayResetValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/TradingDayResetValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    ConsistencyRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: Consistency rule; optional (an unresolved one is shown as not tracked).
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/ConsistencyValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/ConsistencyValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    CommissionValue:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount:
+          description: USD per contract and per side (a round turn costs twice), ≥ 0.
+          $ref: '#/components/schemas/MoneyAmount'
+    EvaluationTargetValue:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount:
+          description: Net profit to reach since the evaluation start, > 0.
+          $ref: '#/components/schemas/MoneyAmount'
+    CommissionRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: 'Commission per contract and side, as the firm publishes it.'
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/CommissionValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/CommissionValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    EvaluationTargetRule:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: 'Evaluation profit target (Q46).'
+      properties:
+        status: { $ref: '#/components/schemas/ProvenanceStatus' }
+        value: { $ref: '#/components/schemas/EvaluationTargetValue' }
+        sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+        published_values:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, sources]
+            properties:
+              value: { $ref: '#/components/schemas/EvaluationTargetValue' }
+              sources: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceRef' } }
+      allOf:
+        - $ref: '#/components/schemas/ProvenanceShape'
+    RuleField:
+      type: string
+      enum: [max_position_qty, drawdown, daily_loss_limit, daily_profit_target, trading_day_reset, consistency_rule, commission_per_contract_side, evaluation_profit_target]
+      description: Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.
+    PresetRules:
+      type: object
+      additionalProperties: false
+      required: [max_position_qty, drawdown, daily_loss_limit, trading_day_reset]
+      properties:
+        max_position_qty: { $ref: '#/components/schemas/MaxPositionRule' }
+        drawdown: { $ref: '#/components/schemas/DrawdownRule' }
+        daily_loss_limit: { $ref: '#/components/schemas/DailyLossRule' }
+        daily_profit_target: { $ref: '#/components/schemas/DailyProfitTargetRule' }
+        trading_day_reset: { $ref: '#/components/schemas/TradingDayResetRule' }
+        consistency_rule: { $ref: '#/components/schemas/ConsistencyRule' }
+        commission_per_contract_side:
+          description: The firm's published commission per contract and side (U20 a; prefills the account floor, editable on the account).
+          $ref: '#/components/schemas/CommissionRule'
+        evaluation_profit_target:
+          description: Evaluation phase only — the profit to reach to pass (Q46; S16 AC-10). Absent for funded / live phases.
+          $ref: '#/components/schemas/EvaluationTargetRule'
+    PresetRuleValues:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: |
+        The account's own value for a rule field, sent when it differs from the preset value (edited, S16
+        AC-2) or resolves a not-confirmed field (chosen among the published values or typed, S16 AC-6).
+        `max_position_qty` is not here: it is the account's top-level field (S5).
+      properties:
+        drawdown: { $ref: '#/components/schemas/DrawdownValue' }
+        daily_loss_limit: { $ref: '#/components/schemas/DailyLossValue' }
+        daily_profit_target: { $ref: '#/components/schemas/DailyProfitTargetValue' }
+        trading_day_reset: { $ref: '#/components/schemas/TradingDayResetValue' }
+        consistency_rule: { $ref: '#/components/schemas/ConsistencyValue' }
+        evaluation_profit_target: { $ref: '#/components/schemas/EvaluationTargetValue' }
+    StanceInfo:
+      type: object
+      additionalProperties: false
+      required: [value, quotes]
+      description: VPS/server and personal-device stances (S16 AC-8); verbatim quotes, never translated.
+      properties:
+        value: { type: string, enum: [allowed, forbidden, conditional, unknown, not_confirmed, required, not_required] }
+        quotes: { type: array, items: { $ref: '#/components/schemas/RuleQuote' } }
+        research:
+          type: object
+          additionalProperties: false
+          required: [searched_on, sources]
+          properties:
+            searched_on: { type: string, format: date }
+            sources: { type: array, items: { $ref: '#/components/schemas/SourceRef' } }
+    FirmStances:
+      type: object
+      additionalProperties: false
+      required: [automation, copy, vps, personal_device]
+      description: |
+        `automation` / `copy` are the rule versions of the opt-ins: one entry without `firm_platform` when
+        the stance is the same on every platform, otherwise one entry per firm platform. `vps` ∈ allowed /
+        forbidden / conditional / unknown / not_confirmed; `personal_device` ∈ required / not_required /
+        unknown (Q-S16-2).
+      properties:
+        automation: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
+        copy: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
+        vps:
+          allOf:
+            - $ref: '#/components/schemas/StanceInfo'
+            - properties: { value: { enum: [allowed, forbidden, conditional, unknown, not_confirmed] } }
+        personal_device:
+          allOf:
+            - $ref: '#/components/schemas/StanceInfo'
+            - properties: { value: { enum: [required, not_required, unknown] } }
+    ManualOnly:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      description: 'S16 AC-7: no V1 output reaches the firm''s platforms; risk tracking only, no routing (S7 AC-7b).'
+      properties:
+        reason: { $ref: '#/components/schemas/RuleQuote' }
+    FirmSummary:
+      type: object
+      additionalProperties: false
+      required: [id, slug, name, plan_names, stances, not_confirmed_count, release]
+      properties:
+        id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 64 }
+        name: { type: string, maxLength: 120 }
+        manual_only: { $ref: '#/components/schemas/ManualOnly' }
+        plan_names: { type: array, items: { type: string, maxLength: 120 } }
+        stances:
+          type: object
+          additionalProperties: false
+          required: [automation, copy, vps, personal_device]
+          properties:
+            automation: { $ref: '#/components/schemas/StanceSummary' }
+            copy: { $ref: '#/components/schemas/StanceSummary' }
+            vps: { type: string, enum: [allowed, forbidden, conditional, unknown, not_confirmed] }
+            personal_device: { type: string, enum: [required, not_required, unknown] }
+        not_confirmed_count: { type: integer, minimum: 0 }
+        release: { $ref: '#/components/schemas/FirmReleaseRef' }
+    StanceSummary:
+      type: string
+      enum: [allowed, forbidden, conditional, unknown, not_confirmed, varies_by_platform]
+      description: A `FirmStance`, or `varies_by_platform` when the firm's platforms have different stances (the firm detail lists them).
+    FirmReleaseRef:
+      type: object
+      additionalProperties: false
+      required: [version_number, published_at, verified_on]
+      properties:
+        version_number: { type: integer, minimum: 1 }
+        published_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        verified_on: { type: string, format: date }
+    FirmList:
+      type: object
+      additionalProperties: false
+      required: [firms]
+      properties:
+        firms: { type: array, items: { $ref: '#/components/schemas/FirmSummary' } }
+    PresetOption:
+      type: object
+      additionalProperties: false
+      required: [preset_id, preset_version_id, size_amount, platform_specific, not_confirmed_count]
+      description: One size of a plan/phase in the current release.
+      properties:
+        preset_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        size_label: { type: string, maxLength: 32, description: 'As published, e.g. "50K".' }
+        platform_specific: { type: boolean, description: True → the account must choose `firm_platform`. }
+        not_confirmed_count: { type: integer, minimum: 0 }
+    FirmDetail:
+      type: object
+      additionalProperties: false
+      required: [summary, stances, platforms, plans, excluded_plans]
+      properties:
+        summary: { $ref: '#/components/schemas/FirmSummary' }
+        stances: { $ref: '#/components/schemas/FirmStances' }
+        platforms:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, label]
+            properties:
+              code: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
+              label: { type: string, maxLength: 60, description: 'Product name, e.g. "Rithmic" (not translated).' }
+        plans:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [plan_id, name, phases]
+            properties:
+              plan_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              name: { type: string, maxLength: 120 }
+              phases:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [phase, sizes]
+                  properties:
+                    phase: { type: string, enum: [evaluation, funded, live], description: Research format phases; the UI translates them. }
+                    sizes: { type: array, items: { $ref: '#/components/schemas/PresetOption' } }
+        excluded_plans:
+          type: array
+          description: 'Plans not offered as presets (S16 AC-9); registered manually.'
+          items: { type: string, maxLength: 120 }
+    ReleaseChange:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [stance_changed, stance_text_changed, rule_value_changed, preset_added, preset_removed] }
+        stance: { type: string, enum: [automation, copy, vps, personal_device] }
+        from: { type: string, maxLength: 32 }
+        to: { type: string, maxLength: 32 }
+        material:
+          type: boolean
+          description: |
+            With `stance_text_changed` — flagged by the publisher as a material change (Q42;
+            `reason` is expected but optional while Q42 is open); only material automation/copy text
+            changes suspend. Always consistent with the new `RuleVersion.change.cause`: material ⇔
+            `text_changed`, not material ⇔ `not_material`.
+        reason: { $ref: '#/components/schemas/LocalizedText' }
+        field: { $ref: '#/components/schemas/RuleField' }
+        preset_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      allOf:
+        - if: { properties: { kind: { enum: [stance_changed, stance_text_changed] } } }
+          then: { required: [stance] }
+        - if: { properties: { kind: { const: stance_changed } } }
+          then: { required: [from, to] }
+        - if: { properties: { kind: { enum: [preset_added, preset_removed] } } }
+          then: { required: [preset_id] }
+        - if: { properties: { kind: { const: stance_text_changed } } }
+          then: { required: [material] }
+        - if: { properties: { kind: { const: rule_value_changed } } }
+          then: { required: [field, preset_id] }
+    FirmRelease:
+      type: object
+      additionalProperties: false
+      required: [version_number, published_at, verified_on, changes, rule_versions, vps, personal_device]
+      properties:
+        version_number: { type: integer, minimum: 1 }
+        published_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        verified_on: { type: string, format: date }
+        changes: { type: array, items: { $ref: '#/components/schemas/ReleaseChange' } }
+        rule_versions:
+          type: array
+          description: The opt-in rule versions of this release (texts viewable with `getRuleVersion`).
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, kind]
+            properties:
+              id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
+              firm_platform: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
+        vps: { $ref: '#/components/schemas/StanceInfo' }
+        personal_device: { $ref: '#/components/schemas/StanceInfo' }
+    FirmReleaseList:
+      type: object
+      additionalProperties: false
+      required: [firm_id, releases]
+      properties:
+        firm_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        releases: { type: array, items: { $ref: '#/components/schemas/FirmRelease' } }
+    PresetVersion:
+      type: object
+      additionalProperties: false
+      required: [id, preset_id, firm_id, firm_name, plan_id, plan_name, phase, size_amount, release, rule_sets, not_confirmed_count]
+      properties:
+        id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        preset_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        firm_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        firm_name: { type: string, maxLength: 120 }
+        plan_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        plan_name: { type: string, maxLength: 120 }
+        phase: { type: string, enum: [evaluation, funded, live] }
+        size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        size_label: { type: string, maxLength: 32 }
+        manual_only: { $ref: '#/components/schemas/ManualOnly' }
+        release: { $ref: '#/components/schemas/FirmReleaseRef' }
+        superseded_by:
+          description: Present when a newer version of this preset exists.
+          $ref: '../openapi.yaml#/components/schemas/Uuid'
+        rule_sets:
+          type: array
+          minItems: 1
+          description: One entry without `firm_platform`, or one entry per firm platform when the rules differ by platform.
+          items:
+            type: object
+            additionalProperties: false
+            required: [rules]
+            properties:
+              firm_platform: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
+              rules: { $ref: '#/components/schemas/PresetRules' }
+        not_confirmed_count: { type: integer, minimum: 0 }
+    AccountRuleField:
+      type: object
+      additionalProperties: false
+      required: [field, origin]
+      properties:
+        field: { $ref: '#/components/schemas/RuleField' }
+        origin:
+          type: string
+          enum: [preset, edited, chosen_from_conflict, unresolved]
+          description: |
+            `preset` = the preset's verified value; `edited` = the user changed it (badge `Editado`);
+            `chosen_from_conflict` = the user resolved a not-confirmed value (Q-S16-3: stored with the time
+            and whether one of the published values or another value was chosen); `unresolved` = an optional
+            not-confirmed field left open (not tracked).
+        chose: { type: string, enum: [published_value, other_value], description: With `chosen_from_conflict`. }
+        chosen_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        account_value:
+          description: The account's value (typed by `field`, as in `PresetRuleValues`; for `max_position_qty` a `MaxPositionValue`). Absent with `unresolved`.
+          type: object
+        preset_value:
+          description: The preset version's rule for this field (typed by `field`, as in `PresetRules`).
+          type: object
+      allOf:
+        - if: { properties: { origin: { const: chosen_from_conflict } } }
+          then: { required: [chose, chosen_at, account_value] }
+          else: { not: { anyOf: [{ required: [chose] }, { required: [chosen_at] }] } }
+        - if: { properties: { origin: { const: unresolved } } }
+          then: { not: { required: [account_value] } }
+          else: { required: [account_value] }
+    AccountPresetState:
+      type: object
+      additionalProperties: false
+      required: [account_id, preset_version_id, release, fields, row_version]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        release: { $ref: '#/components/schemas/FirmReleaseRef' }
+        firm_platform: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
+        fields: { type: array, items: { $ref: '#/components/schemas/AccountRuleField' } }
+        newer_version:
+          type: object
+          additionalProperties: false
+          required: [preset_version_id, release, suspends]
+          properties:
+            preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+            release: { $ref: '#/components/schemas/FirmReleaseRef' }
+            suspends:
+              type: boolean
+              description: True when it changed the automation or copy stance or its material text, so the opt-in is already `pending_review` (Q-S5-3).
+        row_version: { type: integer, minimum: 1, description: The account's `row_version`. }
+    PresetDiffRow:
+      type: object
+      additionalProperties: false
+      required: [field, edited, requires_choice, cap_conflict]
+      properties:
+        field: { $ref: '#/components/schemas/RuleField' }
+        account_value: { type: object, description: Typed by `field`; absent when unresolved. }
+        current_preset_value: { type: object, description: The current version's rule (typed by `field`). }
+        new_preset_value: { type: object, description: The target version's rule (typed by `field`); absent when the field was removed. }
+        edited: { type: boolean, description: The user had edited this field ("Você editou este valor"). }
+        requires_choice: { type: boolean }
+        cap_conflict:
+          type: boolean
+          description: '`max_position_qty` only: the new cap is below the account''s value; apply is refused until the body lowers it.'
+    PresetDiff:
+      type: object
+      additionalProperties: false
+      required: [account_id, from_preset_version_id, to_preset_version_id, rows, opt_in_changes, firm_platform_required]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        from_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        to_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        rows: { type: array, items: { $ref: '#/components/schemas/PresetDiffRow' } }
+        firm_platform_required:
+          type: boolean
+          description: True when the target has platform-specific rules and the account must name (or confirm) its `firm_platform` in the apply request.
+        firm_platforms:
+          type: array
+          description: The target's firm platforms (with `firm_platform_required`).
+          items: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
+        opt_in_changes:
+          type: object
+          additionalProperties: false
+          required: [automation, copy]
+          description: The new rule version per kind when it differs from the account's current one; then the apply request needs `opt_ins` for that kind if a choice is required.
+          properties:
+            automation: { oneOf: [{ $ref: '../openapi.yaml#/components/schemas/Uuid' }, { type: 'null' }] }
+            copy: { oneOf: [{ $ref: '../openapi.yaml#/components/schemas/Uuid' }, { type: 'null' }] }
+    ApplyPresetVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [target_preset_version_id, row_version]
+      properties:
+        target_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        row_version: { type: integer, minimum: 1 }
+        firm_platform:
+          description: Required when the target has platform-specific rules and the account has no platform yet, or to change it (`PresetDiff.firm_platform_required`).
+          $ref: 'accounts.yaml#/components/schemas/FirmPlatform'
+        choices:
+          type: object
+          additionalProperties: false
+          description: For each edited field of the diff, keep the user's value or take the new preset value.
+          properties:
+            max_position_qty: { $ref: '#/components/schemas/ApplyChoice' }
+            drawdown: { $ref: '#/components/schemas/ApplyChoice' }
+            daily_loss_limit: { $ref: '#/components/schemas/ApplyChoice' }
+            daily_profit_target: { $ref: '#/components/schemas/ApplyChoice' }
+            trading_day_reset: { $ref: '#/components/schemas/ApplyChoice' }
+            consistency_rule: { $ref: '#/components/schemas/ApplyChoice' }
+            commission_per_contract_side: { $ref: '#/components/schemas/ApplyChoice' }
+            evaluation_profit_target: { $ref: '#/components/schemas/ApplyChoice' }
+        rule_values: { $ref: '#/components/schemas/PresetRuleValues' }
+        max_position_qty: { $ref: 'accounts.yaml#/components/schemas/MaxPositionQty' }
+        opt_ins: { $ref: 'accounts.yaml#/components/schemas/OptInChoices' }
+        step_up:
+          description: Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`, target = this account).
+          $ref: '../openapi.yaml#/components/schemas/StepUpProof'
+      description: A field appears in `choices` or in `rule_values`, never in both (400 otherwise).
+      allOf:
+        - not: { required: [choices, rule_values], properties: { choices: { required: [drawdown] }, rule_values: { required: [drawdown] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [daily_loss_limit] }, rule_values: { required: [daily_loss_limit] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [daily_profit_target] }, rule_values: { required: [daily_profit_target] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [trading_day_reset] }, rule_values: { required: [trading_day_reset] } } }
+        - not: { required: [choices, rule_values], properties: { choices: { required: [consistency_rule] }, rule_values: { required: [consistency_rule] } } }
+    ApplyChoice:
+      type: string
+      enum: [keep_mine, use_preset]
+    PresetVersionAvailableEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, firm_id, account_ids]
+      description: A new release of a firm affects some of the caller's accounts (refresh the notice; S18 sends one notification per firm, Q-S16-5).
+      properties:
+        type: { const: presets.version_available }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        firm_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_ids: { type: array, minItems: 1, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }

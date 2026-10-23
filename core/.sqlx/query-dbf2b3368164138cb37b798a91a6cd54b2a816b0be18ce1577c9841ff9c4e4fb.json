@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.session\n                     (id, user_id, device_id, token_hash, is_persistent, login_channel, created_at, login_at,\n                      last_activity_at, idle_expires_at, absolute_expires_at, ip_address, user_agent)\n                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $9, $10, $11::text::inet, $12)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Bool",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dbf2b3368164138cb37b798a91a6cd54b2a816b0be18ce1577c9841ff9c4e4fb"
+}

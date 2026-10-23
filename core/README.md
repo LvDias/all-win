@@ -25,7 +25,7 @@ Workspace lints deny `unwrap`/`expect`/`panic`/float arithmetic outside tests.
 | `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop; `true` only when Caddy sets it and the Core is reachable only through Caddy |
 | `INGRESS_IP_FLOOD_PER_MIN` | `3000` | every ingress request, per IPv4 address / IPv6 /64 |
 | `INGRESS_TRADINGVIEW_FLOOD_PER_MIN` | `30000` | the same, for addresses in the TradingView ranges |
-| `INGRESS_TRADINGVIEW_SOURCE_RANGES` | empty | comma-separated CIDRs of TradingView's webhook IPs; non-empty requires `INGRESS_TRUST_FORWARDED_FOR=true` (the Core refuses to start otherwise) |
+| `INGRESS_TRADINGVIEW_SOURCE_RANGES` | empty | comma-separated CIDRs of TradingView's webhook IPs (IPv4 /16 or narrower, IPv6 /32 or narrower); non-empty requires `INGRESS_TRUST_FORWARDED_FOR=true` (the Core refuses to start otherwise) |
 | `INGRESS_IP_TOKEN_FAILURES_PER_MIN` | `30` | token failures per IP before the identical 429; valid tokens are never refused |
 | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | per authenticated key |
 | `INGRESS_UNKNOWN_KEY_CACHE_TTL_S` | `60` | negative cache of unknown `key_id`s only (0 disables) |

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.channel_change SET status = status\n                    WHERE id = $1 AND status = 'awaiting_codes' AND expires_at > $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "56226c012b378164898a13d6720f25a2926e8776006b1a9c0a89d91e74470e6d"
+}

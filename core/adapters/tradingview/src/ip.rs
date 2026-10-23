@@ -54,6 +54,19 @@ impl std::str::FromStr for Cidr {
 }
 
 impl Cidr {
+    /// Shortest prefixes accepted for TradingView ranges: anything broader would hand the
+    /// high flood cap to a large part of the Internet (QA Security, 976e4f9 review).
+    pub const MIN_PREFIX_V4: u8 = 16;
+    pub const MIN_PREFIX_V6: u8 = 32;
+
+    /// `false` for overly broad networks such as `0.0.0.0/0`.
+    pub fn is_narrow_enough(&self) -> bool {
+        match self.network {
+            IpAddr::V4(_) => self.prefix >= Self::MIN_PREFIX_V4,
+            IpAddr::V6(_) => self.prefix >= Self::MIN_PREFIX_V6,
+        }
+    }
+
     pub fn contains(&self, ip: IpAddr) -> bool {
         let ip = match ip {
             IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
@@ -117,6 +130,16 @@ mod tests {
         assert!(v6.contains(ip("2001:db8:ffff::1")) && !v6.contains(ip("2001:db9::1")));
         let all: Cidr = "0.0.0.0/0".parse().unwrap();
         assert!(all.contains(ip("8.8.8.8")));
+        assert!(
+            "52.89.214.238/32"
+                .parse::<Cidr>()
+                .unwrap()
+                .is_narrow_enough()
+        );
+        assert!("2001:db8::/32".parse::<Cidr>().unwrap().is_narrow_enough());
+        assert!(!all.is_narrow_enough());
+        assert!(!"10.0.0.0/8".parse::<Cidr>().unwrap().is_narrow_enough());
+        assert!(!"2000::/3".parse::<Cidr>().unwrap().is_narrow_enough());
         for bad in ["1.2.3.4/33", "x/8", "::/129", ""] {
             assert!(bad.parse::<Cidr>().is_err(), "{bad}");
         }

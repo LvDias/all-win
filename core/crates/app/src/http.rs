@@ -17,12 +17,14 @@ pub const UNMATCHED_INGRESS: &str = "<unmatched-ingress>";
 
 pub fn router(state: AppState) -> Router {
     let ingress = adapter_tradingview::router(state.ingress.clone());
+    let identity = state.identity.clone().unwrap_or_default();
     Router::new()
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
         .fallback(fallback)
         .with_state(state)
         .merge(ingress)
+        .merge(identity)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(make_span)
@@ -51,7 +53,9 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     state.ingress.metrics.render(&mut out);
     // Dead-lettered: an audit entry missing from a user's log (X-5). Unconsumed: events of
     // a type with no registered consumer, never fetched (Architect decision (A)). Alert on > 0.
-    let consumed: Vec<String> = state.consumed_event_types.to_vec();
+    // Allowlisted types (crate::unconsumed) are not unconsumed: no consumer yet, by decision.
+    let mut consumed: Vec<String> = state.consumed_event_types.to_vec();
+    consumed.extend(crate::unconsumed::types(crate::unconsumed::UNCONSUMED));
     match sqlx::query!(
         r#"SELECT count(*) FILTER (WHERE dead_lettered_at IS NOT NULL) AS "dead_lettered!",
                   count(*) FILTER (WHERE published_at IS NULL AND dead_lettered_at IS NULL

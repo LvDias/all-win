@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.adapter_connection\n                      SET adapter_type = $3, instance_id = $4, instance_name = $5, adapter_version = $6,\n                          paired_at = $7, status = 'disconnected', status_changed_at = $7\n                    WHERE user_id = $1 AND id = $2 AND archived_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a5237f8a78019f224307d4fdb53cc5472fa58bebdbc77279ac942ee1285c1e4d"
+}

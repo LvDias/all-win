@@ -14,6 +14,7 @@ name = "allwin-core"
 path = "src/main.rs"
 
 [dependencies]
+access = { workspace = true, features = ["axum"] }
 adapter-tradingview.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
@@ -24,6 +25,9 @@ base64.workspace = true
 chrono.workspace = true
 catalog-application.workspace = true
 catalog-infra.workspace = true
+identity-application.workspace = true
+identity-enterprise.workspace = true
+identity-infra.workspace = true
 rand.workspace = true
 routing-application.workspace = true
 routing-infra.workspace = true
@@ -38,9 +42,13 @@ tokio = { workspace = true, features = ["full"] }
 tower-http = { workspace = true, features = ["trace", "set-header"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+utoipa.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+serde.workspace = true
+sha2.workspace = true
+yaml_serde.workspace = true
 chrono.workspace = true
 http-body-util.workspace = true
 rust_decimal.workspace = true

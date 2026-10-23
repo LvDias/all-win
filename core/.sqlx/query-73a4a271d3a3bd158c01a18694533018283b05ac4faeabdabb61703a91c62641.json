@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.known_device (id, user_id, device_key_hash, label, first_seen_at, last_seen_at, last_ip)\n                   VALUES ($1, $2, $3, $4, $5, $6, $7::text::inet)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "73a4a271d3a3bd158c01a18694533018283b05ac4faeabdabb61703a91c62641"
+}

@@ -1,0 +1,161 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at,\n                      hold_until, completed_at, cancelled_at, cancelled_by_session_id\n                 FROM identity.channel_change WHERE user_id = $1 AND id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "new_value",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "new_value"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "requested_session_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "requested_session_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "hold_until",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "hold_until"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "completed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "completed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "cancelled_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "cancelled_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "cancelled_by_session_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.channel_change",
+            "name": "cancelled_by_session_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "04f40307558ae1615da26da93fb997830ece134d60e08fb13098519b2c95d311"
+}

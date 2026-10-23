@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.signup_code\n                          SET failed_attempts = failed_attempts + 1,\n                              invalidated_at = CASE WHEN failed_attempts + 1 >= 5 THEN now() END,\n                              invalidated_reason = CASE WHEN failed_attempts + 1 >= 5 THEN 'attempts' END\n                        WHERE id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0cae577761aad2b11024869ccfd65b6b761f081e05d8e4e25eb9e04fec5274f7"
+}

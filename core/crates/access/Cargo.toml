@@ -1,0 +1,27 @@
+[package]
+name = "access"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Access port between modules: the authenticated caller and the step-up gate (ADR-0007)."
+
+[lints]
+workspace = true
+
+[features]
+# HTTP extractor for other modules' handlers (session cookie, Origin check, contract error body).
+axum = ["dep:axum", "dep:serde_json"]
+
+[dependencies]
+shared-kernel.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+axum = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+tower = { workspace = true, features = ["util"] }

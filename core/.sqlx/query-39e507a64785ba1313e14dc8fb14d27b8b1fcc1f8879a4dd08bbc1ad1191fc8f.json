@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.one_time_code SET invalidated_at = $2, invalidated_reason = 'change_closed'\n                    WHERE channel_change_id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "39e507a64785ba1313e14dc8fb14d27b8b1fcc1f8879a4dd08bbc1ad1191fc8f"
+}

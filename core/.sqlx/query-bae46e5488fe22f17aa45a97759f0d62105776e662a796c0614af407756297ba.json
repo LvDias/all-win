@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.app_user (id, email, email_normalized, email_verified_at, locale, time_zone)\n               VALUES ($1, $2, $2, now(), 'en', 'UTC')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bae46e5488fe22f17aa45a97759f0d62105776e662a796c0614af407756297ba"
+}

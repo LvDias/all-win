@@ -1,0 +1,461 @@
+# Module `profiles` — V1-S6 (stop/target profiles: per-size defaults, the account's own copy, Core preview).
+# Also holds the read-only instrument catalog the profiles need (`listInstruments`).
+# Owner: Compasso (Software Architect). Notes: docs/architecture/contracts/s6-profiles.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/instruments:
+    get:
+      tags: [profiles]
+      operationId: listInstruments
+      summary: Enabled instruments with their exact tick data (global catalog)
+      description: Only MNQ in V1. Values are decimal strings; the UI never hard-codes them and does no arithmetic with them.
+      responses:
+        '200':
+          description: The instruments, sorted by symbol.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstrumentList' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/default-profiles:
+    get:
+      tags: [profiles]
+      operationId: listDefaultProfiles
+      summary: The caller's default profile for every standard size, for one instrument
+      description: |
+        Always one entry per standard size (25k … 300k, `catalog.standard_account_size`), in size order;
+        a size the user has not defined has no `profile` (UI `Não definido`; no invented values, Q-S6-2).
+      parameters:
+        - { $ref: '#/components/parameters/InstrumentIdQuery' }
+      responses:
+        '200':
+          description: The defaults.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DefaultProfileList' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/default-profiles/{instrument_id}/{size_amount}:
+    put:
+      tags: [profiles]
+      operationId: putDefaultProfile
+      summary: Define or replace the default profile of one standard size (upsert)
+      description: |
+        Idempotent: the same body twice leaves one profile and one audit entry (an unchanged profile is
+        not audited). Affects only accounts created afterwards; existing accounts keep their own copy
+        (Q-S6-3). A size that is not a standard size gets 404. Audited as `profiles.default_changed`.
+      parameters:
+        - { $ref: '#/components/parameters/InstrumentIdPath' }
+        - name: size_amount
+          in: path
+          required: true
+          description: A standard size as a decimal string without separators, e.g. `50000` or `50000.00`.
+          schema: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DistanceProfile' }
+            examples:
+              usd:
+                value: { distance_unit: usd, stop_distance: '100.10', target_distance: '200.00' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DefaultProfileEntry' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/DistanceRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/profiles:
+    get:
+      tags: [profiles]
+      operationId: listAccountProfiles
+      summary: The account's own profiles, one entry per enabled instrument
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      responses:
+        '200':
+          description: The account's profiles.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountProfileList' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}:
+    put:
+      tags: [profiles]
+      operationId: putAccountProfile
+      summary: Customize the account's own profile (the default is not changed)
+      description: |
+        Applies to the next entries only; open positions and working orders are not changed (Q-S6-5).
+        `row_version` is required when the account already has a profile for the instrument (stale or
+        missing → 409 `common.version_conflict`) and must be absent when it has none (an account created
+        while its size had no default, Q43; a `row_version` sent then also gets 409). The same values as
+        stored are a no-op (200, not audited, `row_version` unchanged). Audited as `profiles.account_changed` (`edited`).
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+        - { $ref: '#/components/parameters/InstrumentIdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountProfileRequest' }
+      responses:
+        '200':
+          description: Saved and audited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountProfile' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`common.version_conflict` — nothing saved.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/DistanceRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/profiles/{instrument_id}/restore:
+    post:
+      tags: [profiles]
+      operationId: restoreAccountProfile
+      summary: Replace the account's profile with the current default of its size (Q-S6-4)
+      description: |
+        Copies the current default of the size the profile was copied from (`copied_from_size`, which
+        keeps the user's Q60 tie choice). For a profile without one (`set_by_user`) the Core uses the
+        account's size, or the nearest standard size for a real account; on an exact tie (Q60,
+        decided) the body must name `profile_size` (one of `getNearestProfileSize`'s candidates),
+        else 422 `profiles.profile_size_required` / `profiles.profile_size_invalid`. An account with no
+        profile gets its first copy this way (origin `size_default` / `nearest_size_default`). Optional
+        `row_version` (stale → 409 `common.version_conflict`). No-op when the profile already equals that
+        default and is not customized (200, not audited). Applies to the next
+        entries only. Audited as `profiles.account_changed` (`restored`).
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+        - { $ref: '#/components/parameters/InstrumentIdPath' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                profile_size:
+                  description: Only for a `set_by_user` (or missing) profile of a real account whose size is a tie.
+                  $ref: 'accounts.yaml#/components/schemas/SizeAmount'
+                row_version: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Restored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountProfile' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`common.version_conflict` — nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422':
+          description: '`profiles.default_missing` (the size has no default profile yet), `profiles.profile_size_required` or `profiles.profile_size_invalid` (pointer `/profile_size`); nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/profile-sizes/nearest:
+    get:
+      tags: [profiles]
+      operationId: getNearestProfileSize
+      summary: The standard size(s) whose default profile a real account of this size starts from
+      description: |
+        Distance = absolute difference between the account size and each standard size; below the
+        smallest standard size the smallest is used, above the largest the largest (PO, Q60). An exact
+        tie returns both sizes and the user chooses (`createAccount.profile_size`); Q60 (option c): the
+        Core does not choose. If the user later decides "always the smaller" or "always the larger",
+        `candidates` simply has one entry. Each candidate says whether the user has a default for it.
+      parameters:
+        - name: size_amount
+          in: query
+          required: true
+          schema: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        - { $ref: '#/components/parameters/InstrumentIdQuery' }
+      responses:
+        '200':
+          description: One or two candidates.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NearestProfileSize' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/profile-preview:
+    get:
+      tags: [profiles]
+      operationId: previewProfile
+      summary: Stateless conversion of a stop/target pair to whole ticks, points and dollars (Core arithmetic)
+      description: |
+        Used by `DistanceFields` while the user types (debounced). Stores nothing, audits nothing. Uses
+        the same conversion as execution (ADR-0004 §5): points and dollars become whole ticks with the
+        instrument's exact tick size and tick value; a value that is not a whole number of ticks is
+        **rounded toward the entry** (down to the tighter distance), reported with `rounded: true`. A
+        distance below one tick gets 422 `profiles.distance_below_one_tick`.
+      parameters:
+        - { $ref: '#/components/parameters/InstrumentIdQuery' }
+        - name: distance_unit
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/DistanceUnit' }
+        - name: stop_distance
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/DistanceValue' }
+        - name: target_distance
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/DistanceValue' }
+      responses:
+        '200':
+          description: The equivalents.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileEquivalents' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/DistanceRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  parameters:
+    InstrumentIdPath:
+      name: instrument_id
+      in: path
+      required: true
+      schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+    InstrumentIdQuery:
+      name: instrument_id
+      in: query
+      required: true
+      schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+
+  responses:
+    DistanceRejected:
+      description: |
+        Valid shape, refused by a rule; nothing saved. Codes and pointers (`/query/...` on the preview):
+        - `profiles.distance_below_one_tick` — `/stop_distance` or `/target_distance` (zero, or less than
+          one tick after conversion);
+        - `profiles.distance_too_large` — `/stop_distance` or `/target_distance` (more than 10 000 ticks).
+        A value whose shape does not fit its unit (fractional ticks, dollars with more than 2 decimals)
+        is a schema error: 400 `common.invalid_request` with the pointer.
+      content:
+        application/json:
+          schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+          examples:
+            below_one_tick:
+              value: { error: { code: profiles.distance_below_one_tick, pointer: /stop_distance } }
+
+  schemas:
+    DecimalString:
+      type: string
+      pattern: '^[0-9]{1,12}(\.[0-9]{1,10})?$'
+      description: Exact decimal as a string (no sign, no exponent, no separators).
+    MoneyString:
+      type: string
+      pattern: '^[0-9]{1,14}(\.[0-9]{1,4})?$'
+      description: Non-negative money as a decimal string (NUMERIC(18,4)).
+    Instrument:
+      type: object
+      additionalProperties: false
+      required: [id, symbol, name, exchange, currency, tick_size, tick_value, point_value, price_decimals]
+      properties:
+        id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$', description: "Neutral root, e.g. 'MNQ'." }
+        name: { type: string, maxLength: 120 }
+        exchange: { type: string, maxLength: 16 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        tick_size: { $ref: '#/components/schemas/DecimalString' }
+        tick_value:
+          description: Money per tick (tick_size × point_value, computed by the Core).
+          $ref: '#/components/schemas/MoneyString'
+        point_value: { $ref: '#/components/schemas/MoneyString' }
+        price_decimals: { type: integer, minimum: 0, maximum: 10, description: Decimals to display prices and points with. }
+    InstrumentList:
+      type: object
+      additionalProperties: false
+      required: [instruments]
+      properties:
+        instruments:
+          type: array
+          items: { $ref: '#/components/schemas/Instrument' }
+    DistanceUnit:
+      type: string
+      enum: [points, ticks, usd]
+    DistanceValue:
+      type: string
+      pattern: '^[0-9]{1,8}(\.[0-9]{1,10})?$'
+      description: Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).
+    DistanceProfile:
+      type: object
+      additionalProperties: false
+      required: [distance_unit, stop_distance, target_distance]
+      description: |
+        `ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most
+        10 decimals. Each distance must be at least one tick after conversion (422 otherwise).
+      properties:
+        distance_unit: { $ref: '#/components/schemas/DistanceUnit' }
+        stop_distance: { $ref: '#/components/schemas/DistanceValue' }
+        target_distance: { $ref: '#/components/schemas/DistanceValue' }
+      allOf:
+        - $ref: '#/components/schemas/DistanceProfileShape'
+    DistanceEquivalent:
+      type: object
+      additionalProperties: false
+      required: [ticks, points, usd, rounded]
+      description: What execution will use for one side. All values computed by the Core.
+      properties:
+        ticks: { type: integer, minimum: 1, maximum: 10000 }
+        points: { $ref: '#/components/schemas/DecimalString' }
+        usd: { $ref: '#/components/schemas/MoneyString' }
+        rounded:
+          type: boolean
+          description: True when the requested distance was not a whole number of ticks and was rounded toward the entry.
+    ProfileEquivalents:
+      type: object
+      additionalProperties: false
+      required: [instrument_id, stop, target]
+      properties:
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        stop: { $ref: '#/components/schemas/DistanceEquivalent' }
+        target: { $ref: '#/components/schemas/DistanceEquivalent' }
+    NearestProfileSize:
+      type: object
+      additionalProperties: false
+      required: [size_amount, candidates]
+      properties:
+        size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        candidates:
+          type: array
+          minItems: 1
+          maxItems: 2
+          description: Ascending. Two entries only on an exact tie (the user chooses).
+          items:
+            type: object
+            additionalProperties: false
+            required: [size_amount, has_default]
+            properties:
+              size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+              has_default: { type: boolean, description: False → the account will start without a profile (Q43). }
+    DefaultProfileEntry:
+      type: object
+      additionalProperties: false
+      required: [instrument_id, size_amount]
+      properties:
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        profile:
+          description: Absent when the user has not defined this size.
+          $ref: '#/components/schemas/DistanceProfile'
+        updated_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+      dependentRequired: { profile: [updated_at] }
+    DefaultProfileList:
+      type: object
+      additionalProperties: false
+      required: [instrument_id, defaults]
+      properties:
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        defaults:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/DefaultProfileEntry' }
+    AccountProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [distance_unit, stop_distance, target_distance]
+      properties:
+        distance_unit: { $ref: '#/components/schemas/DistanceUnit' }
+        stop_distance: { $ref: '#/components/schemas/DistanceValue' }
+        target_distance: { $ref: '#/components/schemas/DistanceValue' }
+        row_version: { type: integer, minimum: 1 }
+      allOf:
+        - $ref: '#/components/schemas/DistanceProfileShape'
+    DistanceProfileShape:
+      description: The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields.
+      allOf:
+        - if: { properties: { distance_unit: { const: ticks } } }
+          then: { properties: { stop_distance: { pattern: '^[0-9]{1,5}$' }, target_distance: { pattern: '^[0-9]{1,5}$' } } }
+        - if: { properties: { distance_unit: { const: usd } } }
+          then: { properties: { stop_distance: { pattern: '^[0-9]{1,8}(\.[0-9]{1,2})?$' }, target_distance: { pattern: '^[0-9]{1,8}(\.[0-9]{1,2})?$' } } }
+    AccountProfile:
+      type: object
+      additionalProperties: false
+      required: [account_id, instrument_id, profile, equivalents, origin, customized, row_version, updated_at]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        profile: { $ref: '#/components/schemas/DistanceProfile' }
+        equivalents: { $ref: '#/components/schemas/ProfileEquivalents' }
+        origin:
+          type: string
+          enum: [size_default, nearest_size_default, set_by_user]
+          description: |
+            Where the values came from when last copied: the default of the account's size, the default of
+            the nearest standard size (real account of another size; on an exact tie the size the user
+            picked, Q60), or typed by the user on an account that had no profile.
+        copied_from_size:
+          description: With `size_default` / `nearest_size_default`.
+          $ref: 'accounts.yaml#/components/schemas/SizeAmount'
+        copied_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        customized:
+          type: boolean
+          description: True after the user edited the copy (badge `Personalizado`); false right after a copy or restore; always false with `set_by_user` (nothing to diverge from).
+        default_now:
+          description: The current default of `copied_from_size` (for the "default today" popover); absent if that size has none.
+          $ref: '#/components/schemas/DistanceProfile'
+        row_version: { type: integer, minimum: 1 }
+        updated_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+      allOf:
+        - if: { properties: { origin: { enum: [size_default, nearest_size_default] } } }
+          then: { required: [copied_from_size, copied_at] }
+          else:
+            properties: { customized: { const: false } }
+            not: { anyOf: [{ required: [copied_from_size] }, { required: [copied_at] }, { required: [default_now] }] }
+    AccountProfileList:
+      type: object
+      additionalProperties: false
+      required: [account_id, profiles]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        profiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [instrument_id]
+            properties:
+              instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              profile:
+                description: Absent when the account has no profile for the instrument (its size had no default when it was created; Q43).
+                $ref: '#/components/schemas/AccountProfile'

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.one_time_code\n                          SET code_hmac = $2, pepper_version = $3, sent_at = $4, expires_at = $5, delivery_state = 'pending'\n                        WHERE id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL AND expires_at > $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Int2",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "91b6fa68ba48696a97f1c7298e760e4618c786f24e070c6aa6ae86905a3de560"
+}

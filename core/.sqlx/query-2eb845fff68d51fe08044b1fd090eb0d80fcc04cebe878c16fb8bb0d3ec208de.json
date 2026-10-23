@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.pairing_code SET used_at = $2\n                    WHERE id = $1 AND used_at IS NULL AND invalidated_at IS NULL AND expires_at > $2\n                   RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.pairing_code",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2eb845fff68d51fe08044b1fd090eb0d80fcc04cebe878c16fb8bb0d3ec208de"
+}
