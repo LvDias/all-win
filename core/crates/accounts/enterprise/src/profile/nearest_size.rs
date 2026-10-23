@@ -1,6 +1,5 @@
 //! Which standard size's default a profile is copied from (S6 AC-2, AC-7, Q60 option c).
 
-use crate::account::AccountKind;
 use crate::values::SizeAmount;
 
 use super::account_profile::ProfileOrigin;
@@ -35,16 +34,15 @@ pub enum CopySourceError {
     ProfileSizeInvalid,
 }
 
-/// The size whose default an account copies, and the resulting origin.
+/// The size whose default an account copies, and the resulting origin. The account's kind does not
+/// matter (Q73 b): only the profile is picked here; risk always uses the account's own size.
 ///
-/// - A standard size (prop or real) copies its own default (`size_default`).
-/// - A real account of another size copies the nearest standard size's default
-///   (`nearest_size_default`); on a tie `profile_size` must name one candidate, otherwise it is
-///   ignored.
-/// - A prop account of a non-standard size has no source: it starts without a profile
-///   (Q73 provisional (a); the PO recommends (b) "as real", which only changes the prop arm here).
+/// - A standard size copies its own default (`size_default`).
+/// - Any other size copies the nearest standard size's default (`nearest_size_default`); on a tie
+///   `profile_size` must name one candidate, otherwise it is ignored.
+///
+/// `Ok(None)` only when there is no standard size at all.
 pub fn copy_source(
-    kind: AccountKind,
     size: &SizeAmount,
     profile_size: Option<&SizeAmount>,
     standard: &[SizeAmount],
@@ -52,24 +50,19 @@ pub fn copy_source(
     if standard.iter().any(|s| s.value() == size.value()) {
         return Ok(Some((*size, ProfileOrigin::SizeDefault)));
     }
-    match kind {
-        AccountKind::Prop => Ok(None),
-        AccountKind::Real => {
-            let candidates = nearest_profile_sizes(size, standard);
-            let chosen = match candidates.as_slice() {
-                [] => return Ok(None),
-                [only] => *only,
-                _ => {
-                    let picked = profile_size.ok_or(CopySourceError::ProfileSizeRequired)?;
-                    *candidates
-                        .iter()
-                        .find(|c| c.value() == picked.value())
-                        .ok_or(CopySourceError::ProfileSizeInvalid)?
-                }
-            };
-            Ok(Some((chosen, ProfileOrigin::NearestSizeDefault)))
+    let candidates = nearest_profile_sizes(size, standard);
+    let chosen = match candidates.as_slice() {
+        [] => return Ok(None),
+        [only] => *only,
+        _ => {
+            let picked = profile_size.ok_or(CopySourceError::ProfileSizeRequired)?;
+            *candidates
+                .iter()
+                .find(|c| c.value() == picked.value())
+                .ok_or(CopySourceError::ProfileSizeInvalid)?
         }
-    }
+    };
+    Ok(Some((chosen, ProfileOrigin::NearestSizeDefault)))
 }
 
 #[cfg(test)]
@@ -106,60 +99,36 @@ mod tests {
     }
 
     #[test]
-    fn standard_size_copies_its_own_default_for_both_kinds() {
-        for kind in [AccountKind::Prop, AccountKind::Real] {
-            let got = copy_source(kind, &size("50000.00"), None, &standard()).unwrap();
-            assert_eq!(got, Some((size("50000"), ProfileOrigin::SizeDefault)));
-        }
+    fn standard_size_copies_its_own_default() {
+        let got = copy_source(&size("50000.00"), None, &standard()).unwrap();
+        assert_eq!(got, Some((size("50000"), ProfileOrigin::SizeDefault)));
     }
 
     #[test]
-    fn real_non_standard_uses_the_nearest() {
-        let got = copy_source(
-            AccountKind::Real,
-            &size("60000"),
-            Some(&size("100000")),
-            &standard(),
-        );
+    fn non_standard_uses_the_nearest() {
         // No tie: profile_size is ignored.
+        let got = copy_source(&size("60000"), Some(&size("100000")), &standard());
         assert_eq!(
             got,
             Ok(Some((size("50000"), ProfileOrigin::NearestSizeDefault)))
         );
+        assert_eq!(copy_source(&size("60000"), None, &[]), Ok(None));
     }
 
     #[test]
-    fn real_tie_requires_one_candidate() {
+    fn tie_requires_one_candidate() {
         let s = standard();
         assert_eq!(
-            copy_source(AccountKind::Real, &size("75000"), None, &s),
+            copy_source(&size("75000"), None, &s),
             Err(CopySourceError::ProfileSizeRequired)
         );
         assert_eq!(
-            copy_source(AccountKind::Real, &size("75000"), Some(&size("150000")), &s),
+            copy_source(&size("75000"), Some(&size("150000")), &s),
             Err(CopySourceError::ProfileSizeInvalid)
         );
         assert_eq!(
-            copy_source(
-                AccountKind::Real,
-                &size("75000"),
-                Some(&size("100000.00")),
-                &s
-            ),
+            copy_source(&size("75000"), Some(&size("100000.00")), &s),
             Ok(Some((size("100000"), ProfileOrigin::NearestSizeDefault)))
-        );
-    }
-
-    #[test]
-    fn prop_non_standard_has_no_source() {
-        assert_eq!(
-            copy_source(
-                AccountKind::Prop,
-                &size("75000"),
-                Some(&size("50000")),
-                &standard()
-            ),
-            Ok(None)
         );
     }
 }

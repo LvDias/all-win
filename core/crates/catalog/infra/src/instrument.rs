@@ -65,4 +65,13 @@ impl InstrumentReader for PgInstrumentRepository {
         .map(Instrument::try_from)
         .transpose()
     }
+
+    async fn standard_account_sizes(&self) -> Result<Vec<Decimal>, CatalogError> {
+        sqlx::query_scalar!(
+            "SELECT size_amount FROM catalog.standard_account_size ORDER BY size_amount"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| CatalogError(e.to_string()))
+    }
 }

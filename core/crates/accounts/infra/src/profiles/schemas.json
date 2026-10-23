@@ -1,0 +1,1220 @@
+{
+ "AccountProfile": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "else": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "copied_from_size"
+        ]
+       },
+       {
+        "required": [
+         "copied_at"
+        ]
+       },
+       {
+        "required": [
+         "default_now"
+        ]
+       }
+      ]
+     },
+     "properties": {
+      "customized": {
+       "const": false
+      }
+     }
+    },
+    "if": {
+     "properties": {
+      "origin": {
+       "enum": [
+        "size_default",
+        "nearest_size_default"
+       ]
+      }
+     }
+    },
+    "then": {
+     "required": [
+      "copied_from_size",
+      "copied_at"
+     ]
+    }
+   }
+  ],
+  "properties": {
+   "account_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "copied_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   },
+   "copied_from_size": {
+    "description": "With `size_default` / `nearest_size_default`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "customized": {
+    "description": "True after the user edited the copy (badge `Personalizado`); false right after a copy or restore; always false with `set_by_user` (nothing to diverge from).",
+    "type": "boolean"
+   },
+   "default_now": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "ticks"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          }
+         }
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "usd"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          }
+         }
+        }
+       }
+      ],
+      "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+     }
+    ],
+    "description": "The current default of `copied_from_size` (for the \"default today\" popover); absent if that size has none.",
+    "properties": {
+     "distance_unit": {
+      "enum": [
+       "points",
+       "ticks",
+       "usd"
+      ],
+      "type": "string"
+     },
+     "stop_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "target_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "distance_unit",
+     "stop_distance",
+     "target_distance"
+    ],
+    "type": "object"
+   },
+   "equivalents": {
+    "additionalProperties": false,
+    "properties": {
+     "instrument_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "stop": {
+      "additionalProperties": false,
+      "description": "What execution will use for one side. All values computed by the Core.",
+      "properties": {
+       "points": {
+        "description": "Exact decimal as a string (no sign, no exponent, no separators).",
+        "pattern": "^[0-9]{1,12}(\\.[0-9]{1,10})?$",
+        "type": "string"
+       },
+       "rounded": {
+        "description": "True when the requested distance was not a whole number of ticks and was rounded toward the entry.",
+        "type": "boolean"
+       },
+       "ticks": {
+        "maximum": 10000,
+        "minimum": 1,
+        "type": "integer"
+       },
+       "usd": {
+        "description": "Non-negative money as a decimal string (NUMERIC(18,4)).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "ticks",
+       "points",
+       "usd",
+       "rounded"
+      ],
+      "type": "object"
+     },
+     "target": {
+      "additionalProperties": false,
+      "description": "What execution will use for one side. All values computed by the Core.",
+      "properties": {
+       "points": {
+        "description": "Exact decimal as a string (no sign, no exponent, no separators).",
+        "pattern": "^[0-9]{1,12}(\\.[0-9]{1,10})?$",
+        "type": "string"
+       },
+       "rounded": {
+        "description": "True when the requested distance was not a whole number of ticks and was rounded toward the entry.",
+        "type": "boolean"
+       },
+       "ticks": {
+        "maximum": 10000,
+        "minimum": 1,
+        "type": "integer"
+       },
+       "usd": {
+        "description": "Non-negative money as a decimal string (NUMERIC(18,4)).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "ticks",
+       "points",
+       "usd",
+       "rounded"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "instrument_id",
+     "stop",
+     "target"
+    ],
+    "type": "object"
+   },
+   "instrument_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "origin": {
+    "description": "Where the values came from when last copied: the default of the account's size, the default of\nthe nearest standard size (real account of another size; on an exact tie the size the user\npicked, Q60), or typed by the user on an account that had no profile.\n",
+    "enum": [
+     "size_default",
+     "nearest_size_default",
+     "set_by_user"
+    ],
+    "type": "string"
+   },
+   "profile": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "ticks"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          }
+         }
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "usd"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          }
+         }
+        }
+       }
+      ],
+      "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+     }
+    ],
+    "description": "`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most\n10 decimals. Each distance must be at least one tick after conversion (422 otherwise).\n",
+    "properties": {
+     "distance_unit": {
+      "enum": [
+       "points",
+       "ticks",
+       "usd"
+      ],
+      "type": "string"
+     },
+     "stop_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "target_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "distance_unit",
+     "stop_distance",
+     "target_distance"
+    ],
+    "type": "object"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "updated_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "account_id",
+   "instrument_id",
+   "profile",
+   "equivalents",
+   "origin",
+   "customized",
+   "row_version",
+   "updated_at"
+  ],
+  "type": "object"
+ },
+ "AccountProfileList": {
+  "additionalProperties": false,
+  "properties": {
+   "account_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "profiles": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "instrument_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "profile": {
+       "additionalProperties": false,
+       "allOf": [
+        {
+         "else": {
+          "not": {
+           "anyOf": [
+            {
+             "required": [
+              "copied_from_size"
+             ]
+            },
+            {
+             "required": [
+              "copied_at"
+             ]
+            },
+            {
+             "required": [
+              "default_now"
+             ]
+            }
+           ]
+          },
+          "properties": {
+           "customized": {
+            "const": false
+           }
+          }
+         },
+         "if": {
+          "properties": {
+           "origin": {
+            "enum": [
+             "size_default",
+             "nearest_size_default"
+            ]
+           }
+          }
+         },
+         "then": {
+          "required": [
+           "copied_from_size",
+           "copied_at"
+          ]
+         }
+        }
+       ],
+       "description": "Absent when the account has no profile for the instrument (its size had no default when it was created; Q43).",
+       "properties": {
+        "account_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "type": "string"
+        },
+        "copied_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        },
+        "copied_from_size": {
+         "description": "With `size_default` / `nearest_size_default`.",
+         "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+         "type": "string"
+        },
+        "customized": {
+         "description": "True after the user edited the copy (badge `Personalizado`); false right after a copy or restore; always false with `set_by_user` (nothing to diverge from).",
+         "type": "boolean"
+        },
+        "default_now": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "if": {
+              "properties": {
+               "distance_unit": {
+                "const": "ticks"
+               }
+              }
+             },
+             "then": {
+              "properties": {
+               "stop_distance": {
+                "pattern": "^[0-9]{1,5}$"
+               },
+               "target_distance": {
+                "pattern": "^[0-9]{1,5}$"
+               }
+              }
+             }
+            },
+            {
+             "if": {
+              "properties": {
+               "distance_unit": {
+                "const": "usd"
+               }
+              }
+             },
+             "then": {
+              "properties": {
+               "stop_distance": {
+                "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+               },
+               "target_distance": {
+                "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+               }
+              }
+             }
+            }
+           ],
+           "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+          }
+         ],
+         "description": "The current default of `copied_from_size` (for the \"default today\" popover); absent if that size has none.",
+         "properties": {
+          "distance_unit": {
+           "enum": [
+            "points",
+            "ticks",
+            "usd"
+           ],
+           "type": "string"
+          },
+          "stop_distance": {
+           "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+           "type": "string"
+          },
+          "target_distance": {
+           "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+           "type": "string"
+          }
+         },
+         "required": [
+          "distance_unit",
+          "stop_distance",
+          "target_distance"
+         ],
+         "type": "object"
+        },
+        "equivalents": {
+         "additionalProperties": false,
+         "properties": {
+          "instrument_id": {
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "stop": {
+           "additionalProperties": false,
+           "description": "What execution will use for one side. All values computed by the Core.",
+           "properties": {
+            "points": {
+             "description": "Exact decimal as a string (no sign, no exponent, no separators).",
+             "pattern": "^[0-9]{1,12}(\\.[0-9]{1,10})?$",
+             "type": "string"
+            },
+            "rounded": {
+             "description": "True when the requested distance was not a whole number of ticks and was rounded toward the entry.",
+             "type": "boolean"
+            },
+            "ticks": {
+             "maximum": 10000,
+             "minimum": 1,
+             "type": "integer"
+            },
+            "usd": {
+             "description": "Non-negative money as a decimal string (NUMERIC(18,4)).",
+             "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+             "type": "string"
+            }
+           },
+           "required": [
+            "ticks",
+            "points",
+            "usd",
+            "rounded"
+           ],
+           "type": "object"
+          },
+          "target": {
+           "additionalProperties": false,
+           "description": "What execution will use for one side. All values computed by the Core.",
+           "properties": {
+            "points": {
+             "description": "Exact decimal as a string (no sign, no exponent, no separators).",
+             "pattern": "^[0-9]{1,12}(\\.[0-9]{1,10})?$",
+             "type": "string"
+            },
+            "rounded": {
+             "description": "True when the requested distance was not a whole number of ticks and was rounded toward the entry.",
+             "type": "boolean"
+            },
+            "ticks": {
+             "maximum": 10000,
+             "minimum": 1,
+             "type": "integer"
+            },
+            "usd": {
+             "description": "Non-negative money as a decimal string (NUMERIC(18,4)).",
+             "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+             "type": "string"
+            }
+           },
+           "required": [
+            "ticks",
+            "points",
+            "usd",
+            "rounded"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "instrument_id",
+          "stop",
+          "target"
+         ],
+         "type": "object"
+        },
+        "instrument_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "type": "string"
+        },
+        "origin": {
+         "description": "Where the values came from when last copied: the default of the account's size, the default of\nthe nearest standard size (real account of another size; on an exact tie the size the user\npicked, Q60), or typed by the user on an account that had no profile.\n",
+         "enum": [
+          "size_default",
+          "nearest_size_default",
+          "set_by_user"
+         ],
+         "type": "string"
+        },
+        "profile": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "if": {
+              "properties": {
+               "distance_unit": {
+                "const": "ticks"
+               }
+              }
+             },
+             "then": {
+              "properties": {
+               "stop_distance": {
+                "pattern": "^[0-9]{1,5}$"
+               },
+               "target_distance": {
+                "pattern": "^[0-9]{1,5}$"
+               }
+              }
+             }
+            },
+            {
+             "if": {
+              "properties": {
+               "distance_unit": {
+                "const": "usd"
+               }
+              }
+             },
+             "then": {
+              "properties": {
+               "stop_distance": {
+                "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+               },
+               "target_distance": {
+                "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+               }
+              }
+             }
+            }
+           ],
+           "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+          }
+         ],
+         "description": "`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most\n10 decimals. Each distance must be at least one tick after conversion (422 otherwise).\n",
+         "properties": {
+          "distance_unit": {
+           "enum": [
+            "points",
+            "ticks",
+            "usd"
+           ],
+           "type": "string"
+          },
+          "stop_distance": {
+           "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+           "type": "string"
+          },
+          "target_distance": {
+           "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+           "type": "string"
+          }
+         },
+         "required": [
+          "distance_unit",
+          "stop_distance",
+          "target_distance"
+         ],
+         "type": "object"
+        },
+        "row_version": {
+         "minimum": 1,
+         "type": "integer"
+        },
+        "updated_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        }
+       },
+       "required": [
+        "account_id",
+        "instrument_id",
+        "profile",
+        "equivalents",
+        "origin",
+        "customized",
+        "row_version",
+        "updated_at"
+       ],
+       "type": "object"
+      }
+     },
+     "required": [
+      "instrument_id"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "account_id",
+   "profiles"
+  ],
+  "type": "object"
+ },
+ "AccountProfileRequest": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "allOf": [
+     {
+      "if": {
+       "properties": {
+        "distance_unit": {
+         "const": "ticks"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "stop_distance": {
+         "pattern": "^[0-9]{1,5}$"
+        },
+        "target_distance": {
+         "pattern": "^[0-9]{1,5}$"
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "distance_unit": {
+         "const": "usd"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "stop_distance": {
+         "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+        },
+        "target_distance": {
+         "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+        }
+       }
+      }
+     }
+    ],
+    "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+   }
+  ],
+  "properties": {
+   "distance_unit": {
+    "enum": [
+     "points",
+     "ticks",
+     "usd"
+    ],
+    "type": "string"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "stop_distance": {
+    "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+    "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+    "type": "string"
+   },
+   "target_distance": {
+    "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+    "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "distance_unit",
+   "stop_distance",
+   "target_distance"
+  ],
+  "type": "object"
+ },
+ "DefaultProfileEntry": {
+  "additionalProperties": false,
+  "dependentRequired": {
+   "profile": [
+    "updated_at"
+   ]
+  },
+  "properties": {
+   "instrument_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "profile": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "ticks"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          }
+         }
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "usd"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          }
+         }
+        }
+       }
+      ],
+      "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+     }
+    ],
+    "description": "Absent when the user has not defined this size.",
+    "properties": {
+     "distance_unit": {
+      "enum": [
+       "points",
+       "ticks",
+       "usd"
+      ],
+      "type": "string"
+     },
+     "stop_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "target_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "distance_unit",
+     "stop_distance",
+     "target_distance"
+    ],
+    "type": "object"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "updated_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "instrument_id",
+   "size_amount"
+  ],
+  "type": "object"
+ },
+ "DefaultProfileList": {
+  "additionalProperties": false,
+  "properties": {
+   "defaults": {
+    "items": {
+     "additionalProperties": false,
+     "dependentRequired": {
+      "profile": [
+       "updated_at"
+      ]
+     },
+     "properties": {
+      "instrument_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "profile": {
+       "additionalProperties": false,
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "if": {
+            "properties": {
+             "distance_unit": {
+              "const": "ticks"
+             }
+            }
+           },
+           "then": {
+            "properties": {
+             "stop_distance": {
+              "pattern": "^[0-9]{1,5}$"
+             },
+             "target_distance": {
+              "pattern": "^[0-9]{1,5}$"
+             }
+            }
+           }
+          },
+          {
+           "if": {
+            "properties": {
+             "distance_unit": {
+              "const": "usd"
+             }
+            }
+           },
+           "then": {
+            "properties": {
+             "stop_distance": {
+              "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+             },
+             "target_distance": {
+              "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+             }
+            }
+           }
+          }
+         ],
+         "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+        }
+       ],
+       "description": "Absent when the user has not defined this size.",
+       "properties": {
+        "distance_unit": {
+         "enum": [
+          "points",
+          "ticks",
+          "usd"
+         ],
+         "type": "string"
+        },
+        "stop_distance": {
+         "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+         "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+         "type": "string"
+        },
+        "target_distance": {
+         "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+         "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+         "type": "string"
+        }
+       },
+       "required": [
+        "distance_unit",
+        "stop_distance",
+        "target_distance"
+       ],
+       "type": "object"
+      },
+      "size_amount": {
+       "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+       "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+       "type": "string"
+      },
+      "updated_at": {
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      }
+     },
+     "required": [
+      "instrument_id",
+      "size_amount"
+     ],
+     "type": "object"
+    },
+    "minItems": 1,
+    "type": "array"
+   },
+   "instrument_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "instrument_id",
+   "defaults"
+  ],
+  "type": "object"
+ },
+ "DistanceProfile": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "allOf": [
+     {
+      "if": {
+       "properties": {
+        "distance_unit": {
+         "const": "ticks"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "stop_distance": {
+         "pattern": "^[0-9]{1,5}$"
+        },
+        "target_distance": {
+         "pattern": "^[0-9]{1,5}$"
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "distance_unit": {
+         "const": "usd"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "stop_distance": {
+         "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+        },
+        "target_distance": {
+         "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+        }
+       }
+      }
+     }
+    ],
+    "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+   }
+  ],
+  "description": "`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most\n10 decimals. Each distance must be at least one tick after conversion (422 otherwise).\n",
+  "properties": {
+   "distance_unit": {
+    "enum": [
+     "points",
+     "ticks",
+     "usd"
+    ],
+    "type": "string"
+   },
+   "stop_distance": {
+    "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+    "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+    "type": "string"
+   },
+   "target_distance": {
+    "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+    "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "distance_unit",
+   "stop_distance",
+   "target_distance"
+  ],
+  "type": "object"
+ },
+ "DistanceUnit": {
+  "enum": [
+   "points",
+   "ticks",
+   "usd"
+  ],
+  "type": "string"
+ },
+ "DistanceValue": {
+  "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+  "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+  "type": "string"
+ },
+ "NearestProfileSize": {
+  "additionalProperties": false,
+  "properties": {
+   "candidates": {
+    "description": "Ascending. Two entries only on an exact tie (the user chooses).",
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "has_default": {
+       "description": "False → the account will start without a profile (Q43).",
+       "type": "boolean"
+      },
+      "size_amount": {
+       "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+       "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+       "type": "string"
+      }
+     },
+     "required": [
+      "size_amount",
+      "has_default"
+     ],
+     "type": "object"
+    },
+    "maxItems": 2,
+    "minItems": 1,
+    "type": "array"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "size_amount",
+   "candidates"
+  ],
+  "type": "object"
+ },
+ "ProfileEquivalents": {
+  "additionalProperties": false,
+  "properties": {
+   "instrument_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "stop": {
+    "additionalProperties": false,
+    "description": "What execution will use for one side. All values computed by the Core.",
+    "properties": {
+     "points": {
+      "description": "Exact decimal as a string (no sign, no exponent, no separators).",
+      "pattern": "^[0-9]{1,12}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "rounded": {
+      "description": "True when the requested distance was not a whole number of ticks and was rounded toward the entry.",
+      "type": "boolean"
+     },
+     "ticks": {
+      "maximum": 10000,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "usd": {
+      "description": "Non-negative money as a decimal string (NUMERIC(18,4)).",
+      "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "ticks",
+     "points",
+     "usd",
+     "rounded"
+    ],
+    "type": "object"
+   },
+   "target": {
+    "additionalProperties": false,
+    "description": "What execution will use for one side. All values computed by the Core.",
+    "properties": {
+     "points": {
+      "description": "Exact decimal as a string (no sign, no exponent, no separators).",
+      "pattern": "^[0-9]{1,12}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "rounded": {
+      "description": "True when the requested distance was not a whole number of ticks and was rounded toward the entry.",
+      "type": "boolean"
+     },
+     "ticks": {
+      "maximum": 10000,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "usd": {
+      "description": "Non-negative money as a decimal string (NUMERIC(18,4)).",
+      "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "ticks",
+     "points",
+     "usd",
+     "rounded"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "instrument_id",
+   "stop",
+   "target"
+  ],
+  "type": "object"
+ },
+ "ProfileRestoreRequest": {
+  "additionalProperties": false,
+  "properties": {
+   "profile_size": {
+    "description": "Only for a `set_by_user` (or missing) profile of a real account whose size is a tie.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "type": "object"
+ },
+ "SizeAmount": {
+  "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+  "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+  "type": "string"
+ }
+}

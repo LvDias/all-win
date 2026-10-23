@@ -26,6 +26,7 @@ utoipa.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+jsonschema.workspace = true
 async-trait.workspace = true
 http-body-util.workspace = true
 shared-kernel.workspace = true

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use catalog_enterprise::instrument::Instrument;
+use rust_decimal::Decimal;
 use uuid::Uuid;
 
 use crate::CatalogError;
@@ -15,6 +16,8 @@ pub trait InstrumentReader: Send + Sync {
     async fn list_enabled(&self) -> Result<Vec<Instrument>, CatalogError>;
     /// `None` when the id is unknown or the instrument is not enabled.
     async fn find_enabled(&self, id: Uuid) -> Result<Option<Instrument>, CatalogError>;
+    /// `catalog.standard_account_size`, ascending (vision §8).
+    async fn standard_account_sizes(&self) -> Result<Vec<Decimal>, CatalogError>;
 }
 
 /// `listInstruments`: the global catalog (no user data).
@@ -46,5 +49,21 @@ impl FindEnabledInstrument {
 
     pub async fn handle(&self, id: Uuid) -> Result<Option<Instrument>, CatalogError> {
         self.reader.find_enabled(id).await
+    }
+}
+
+/// Query port: the standard account sizes (profiles per size, nearest size Q60).
+#[derive(Clone)]
+pub struct ListStandardSizes {
+    reader: Arc<dyn InstrumentReader>,
+}
+
+impl ListStandardSizes {
+    pub fn new(reader: Arc<dyn InstrumentReader>) -> Self {
+        Self { reader }
+    }
+
+    pub async fn handle(&self) -> Result<Vec<Decimal>, CatalogError> {
+        self.reader.standard_account_sizes().await
     }
 }

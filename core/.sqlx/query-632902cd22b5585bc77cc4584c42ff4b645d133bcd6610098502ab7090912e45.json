@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounts.default_bracket_profile\n                   SET distance_unit = $4, stop_distance = $5, target_distance = $6, updated_at = $7\n                   WHERE user_id = $1 AND size_amount = $2 AND instrument_id = $3\n                     AND distance_unit = $8 AND stop_distance = $9 AND target_distance = $10",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Numeric",
+        "Uuid",
+        "Text",
+        "Numeric",
+        "Numeric",
+        "Timestamptz",
+        "Text",
+        "Numeric",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "632902cd22b5585bc77cc4584c42ff4b645d133bcd6610098502ab7090912e45"
+}

@@ -4,7 +4,6 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::account::AccountKind;
 use crate::values::SizeAmount;
 
 use super::distance::DistanceProfile;
@@ -171,13 +170,6 @@ impl AccountBracketProfile {
     }
 }
 
-/// Facts of the account a profile belongs to (from the accounts port).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProfileAccount {
-    pub kind: AccountKind,
-    pub size_amount: SizeAmount,
-}
-
 /// What a copy reads: the standard sizes and the user's defaults for the instrument.
 #[derive(Debug, Clone, Copy)]
 pub struct ProfileSources<'a> {
@@ -190,18 +182,12 @@ pub struct ProfileSources<'a> {
 /// starts without a profile (Q43).
 pub fn initial_copy(
     instrument_id: Uuid,
-    account: &ProfileAccount,
+    size: &SizeAmount,
     profile_size: Option<&SizeAmount>,
     sources: ProfileSources<'_>,
     now: DateTime<Utc>,
 ) -> Result<Option<AccountBracketProfile>, CopySourceError> {
-    let Some((source, origin)) = copy_source(
-        account.kind,
-        &account.size_amount,
-        profile_size,
-        sources.standard,
-    )?
-    else {
+    let Some((source, origin)) = copy_source(size, profile_size, sources.standard)? else {
         return Ok(None);
     };
     Ok(find_default(sources.defaults, instrument_id, &source)
@@ -298,7 +284,7 @@ pub enum RestoreError {
 /// `row_version` is optional; when sent it must match (absent profile: any value conflicts).
 pub fn restore(
     instrument_id: Uuid,
-    account: &ProfileAccount,
+    size: &SizeAmount,
     existing: Option<AccountBracketProfile>,
     profile_size: Option<&SizeAmount>,
     row_version: Option<i32>,
@@ -313,13 +299,8 @@ pub fn restore(
     let (source, origin) =
         match existing.and_then(|e| e.copied_from.map(|c| (c.size_amount, e.origin))) {
             Some(kept) => kept,
-            None => copy_source(
-                account.kind,
-                &account.size_amount,
-                profile_size,
-                sources.standard,
-            )?
-            .ok_or(RestoreError::DefaultMissing)?,
+            None => copy_source(size, profile_size, sources.standard)?
+                .ok_or(RestoreError::DefaultMissing)?,
         };
     let default = find_default(sources.defaults, instrument_id, &source)
         .ok_or(RestoreError::DefaultMissing)?;
@@ -381,13 +362,6 @@ mod tests {
         }
     }
 
-    fn account(kind: AccountKind, amount: &str) -> ProfileAccount {
-        ProfileAccount {
-            kind,
-            size_amount: size(amount),
-        }
-    }
-
     fn defaults() -> Vec<DefaultProfile> {
         vec![
             default("50000", ticks("40", "80")),
@@ -403,15 +377,11 @@ mod tests {
         }
     }
 
-    fn copied(
-        kind: AccountKind,
-        amount: &str,
-        pick: Option<&str>,
-    ) -> Option<AccountBracketProfile> {
+    fn copied(amount: &str, pick: Option<&str>) -> Option<AccountBracketProfile> {
         let pick = pick.map(size);
         initial_copy(
             instrument(),
-            &account(kind, amount),
+            &size(amount),
             pick.as_ref(),
             src(&defaults()),
             t(1),
@@ -439,7 +409,7 @@ mod tests {
 
     #[test]
     fn initial_copy_of_a_standard_size() {
-        let p = copied(AccountKind::Prop, "50000", None).unwrap();
+        let p = copied("50000", None).unwrap();
         assert_eq!(p.origin(), ProfileOrigin::SizeDefault);
         assert_eq!(
             p.copied_from(),
@@ -455,37 +425,30 @@ mod tests {
 
     #[test]
     fn initial_copy_of_a_real_tie_keeps_the_choice() {
-        let p = copied(AccountKind::Real, "75000", Some("100000")).unwrap();
+        let p = copied("75000", Some("100000")).unwrap();
         assert_eq!(p.origin(), ProfileOrigin::NearestSizeDefault);
         assert_eq!(p.copied_from().map(|c| c.size_amount), Some(size("100000")));
-        let err = initial_copy(
-            instrument(),
-            &account(AccountKind::Real, "75000"),
-            None,
-            src(&defaults()),
-            t(1),
-        );
+        let err = initial_copy(instrument(), &size("75000"), None, src(&defaults()), t(1));
         assert_eq!(err, Err(CopySourceError::ProfileSizeRequired));
     }
 
     #[test]
     fn no_default_or_no_source_means_no_profile() {
-        assert_eq!(copied(AccountKind::Real, "25000", None), None);
-        assert_eq!(copied(AccountKind::Prop, "60000", None), None);
+        assert_eq!(copied("25000", None), None);
+        // Nearest is 300000, which has no default.
+        assert_eq!(copied("280000", None), None);
+        // Q73 b: any non-standard size (real or prop) takes the nearest standard size.
+        let p = copied("60000", None).unwrap();
+        assert_eq!(p.origin(), ProfileOrigin::NearestSizeDefault);
+        assert_eq!(p.copied_from().map(|c| c.size_amount), Some(size("50000")));
         // The tie is still validated when the chosen size has no default.
-        let err = initial_copy(
-            instrument(),
-            &account(AccountKind::Real, "37500"),
-            None,
-            src(&defaults()),
-            t(1),
-        );
+        let err = initial_copy(instrument(), &size("37500"), None, src(&defaults()), t(1));
         assert_eq!(err, Err(CopySourceError::ProfileSizeRequired));
     }
 
     #[test]
     fn edit_a_copy_marks_it_customized() {
-        let p = copied(AccountKind::Real, "50000", None).unwrap();
+        let p = copied("50000", None).unwrap();
         assert_eq!(
             edit(instrument(), Some(p), ticks("30", "90"), None, t(2)),
             Err(VersionConflict)
@@ -508,7 +471,7 @@ mod tests {
 
     #[test]
     fn edit_with_same_values_is_a_no_op() {
-        let p = copied(AccountKind::Real, "50000", None).unwrap();
+        let p = copied("50000", None).unwrap();
         assert_eq!(
             edit(instrument(), Some(p), ticks("40", "80"), Some(1), t(2)),
             Ok(ProfileWrite::Unchanged(p))
@@ -556,7 +519,7 @@ mod tests {
 
     #[test]
     fn restore_copies_the_current_default_of_the_copied_size() {
-        let p = copied(AccountKind::Real, "75000", Some("100000")).unwrap();
+        let p = copied("75000", Some("100000")).unwrap();
         let ProfileWrite::Changed {
             current: edited, ..
         } = edit(instrument(), Some(p), ticks("1", "2"), Some(1), t(2)).unwrap()
@@ -565,7 +528,7 @@ mod tests {
         };
         let mut now_defaults = defaults();
         now_defaults[1].profile = ticks("70", "140");
-        let acc = account(AccountKind::Real, "75000");
+        let acc = size("75000");
         // The kept tie choice needs no profile_size.
         let ProfileWrite::Changed { previous, current } = restore(
             instrument(),
@@ -607,8 +570,8 @@ mod tests {
 
     #[test]
     fn restore_conflicts_and_missing_defaults() {
-        let acc = account(AccountKind::Real, "50000");
-        let p = copied(AccountKind::Real, "50000", None).unwrap();
+        let acc = size("50000");
+        let p = copied("50000", None).unwrap();
         assert_eq!(
             restore(
                 instrument(),
@@ -638,11 +601,11 @@ mod tests {
             restore(instrument(), &acc, Some(p), None, None, src(&none), t(2)),
             Err(RestoreError::DefaultMissing)
         );
-        let prop = account(AccountKind::Prop, "60000");
+        let no_default = size("280000");
         assert_eq!(
             restore(
                 instrument(),
-                &prop,
+                &no_default,
                 None,
                 None,
                 None,
@@ -655,7 +618,7 @@ mod tests {
 
     #[test]
     fn restore_of_set_by_user_or_absent_takes_the_account_source() {
-        let acc = account(AccountKind::Real, "75000");
+        let acc = size("75000");
         let ProfileWrite::Changed { current: set, .. } =
             edit(instrument(), None, ticks("4", "8"), None, t(1)).unwrap()
         else {
@@ -707,7 +670,7 @@ mod tests {
             current,
         } = restore(
             instrument(),
-            &account(AccountKind::Prop, "100000"),
+            &size("100000"),
             None,
             None,
             None,
@@ -753,7 +716,7 @@ mod tests {
 
     #[test]
     fn default_now_follows_the_copied_size() {
-        let p = copied(AccountKind::Real, "75000", Some("50000")).unwrap();
+        let p = copied("75000", Some("50000")).unwrap();
         assert_eq!(default_now(&p, &defaults()), Some(&ticks("40", "80")));
         assert_eq!(default_now(&p, &[]), None);
     }
