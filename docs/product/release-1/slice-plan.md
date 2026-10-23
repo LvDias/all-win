@@ -285,7 +285,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 ### V1-S13 — Risk rules and live risk state (ready)
 
 - **AC-1** Per account, the user can set drawdown (amount and type: trailing intraday, end-of-day trailing, static), daily loss limit, daily profit target, and firm-specific rules such as consistency rules. (§9)
-- **AC-2** The Core keeps each account's current risk state from execution results and plugin-reported P&L, and the user sees it per account (used vs limit).
+- **AC-2** The Core keeps each account's current risk state from execution results and plugin-reported P&L, and the user sees it per account (used vs limit). **Only those two sources count** (clarification rev. 7): trades entered manually (S21 AC-3) never change the risk state, the limits, the blocks or the consistency figures; they appear only in the trade list and the metrics (S21, S22).
 - **AC-3** At 80% of each limit, a warning is shown in the Web and in the plugin. (§9)
 - **AC-4** Trading day resets at the prop firm's reset time (from the preset) or, for real accounts, at the CME futures session close. (§9)
 - **AC-5** **Daily profit target:** the user chooses per account between "notify only" (default) and "flatten and block like a loss limit" (enforcement on); with "notify only" the user is notified once when it is reached (Q3 [Decision 2026-10-23]).
@@ -363,7 +363,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 
 - **AC-1** Each completed trade on a connected account is captured with: account, instrument, direction, quantity, entry/exit time and price, time in trade, P&L, MAE, MFE, and originating signal/source. (§10)
 - **AC-2** Metrics are computed by the plugin from the user's own data; only computed numbers are sent; no raw price data is stored (§10).
-- **AC-3** The user can enter a trade manually with the same fields (source = "manual").
+- **AC-3** The user can enter a trade manually with the same fields (source = "manual"). Manual trades feed **only** the trade list and the performance metrics, never the risk state or enforcement (S13 AC-2).
 - **AC-4** The user can list and filter trades by account, date, source, and signal type.
 
 ### V1-S22 — Performance metrics view (ready)
@@ -555,6 +555,12 @@ Enforcement flattens positions and blocks accounts: nothing below is applied unt
 | # | Question | Options | Recommendation |
 |---|---|---|---|
 | Q67 | S7 AC-6 says an account that does not accept automated sources "cannot be subscribed" to an automated source (creation is blocked). What about the on/off switch of a route that already exists when the account becomes ineligible (declined opt-in, pending review after a preset change)? Meanwhile nothing is routed: instructions are skipped and audited | (a) The switch can be turned on and off freely; the choice is saved and the status shows why the route is not active; if the account becomes eligible again, routes left "on" start working; (b) turning **off** is always allowed; turning **on** is unavailable while the account is ineligible, with the reason, so every route starts again only by a new explicit action; (c) the switch is disabled in both directions | **(b)** — it follows AC-6 literally, never traps the user with a route they cannot turn off, and nothing restarts by itself when the opt-in is accepted again |
+
+### Questions for the user — grouped notifications that were already read (Q-S18-1) — open
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q68 | Repeated identical notifications (same code, account and trading day) are shown as one group with a count. If the user already **read** the group and the same problem happens again that day, should it become unread again? Audit is not affected: it keeps one entry per event (S10 AC-1) | (a) Yes for every code; (b) yes for **danger** codes (risk block, out-of-sync, expired command), while the other groups stay read and only the count grows; (c) no, a read group stays read (current spec) | **(b)** — a second block or out-of-sync on the same day must be noticed; routine skips (e.g. excess quantity) would not re-alert |
 
 ## 8. Architect inputs requested
 
