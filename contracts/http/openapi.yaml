@@ -1,0 +1,1413 @@
+openapi: 3.1.0
+info:
+  title: All Win HTTP API
+  version: 1.0.0
+  description: |
+    Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
+    Covers V1-S1 (TradingView webhook ingress), V1-S3 (auth, invitations, sessions, sources,
+    NinjaTrader connections and pairing) and the S5 per-account opt-in operation (automation / copy) requested by design.
+    The Core generates its own spec from handlers (utoipa); CI fails on any drift from this file.
+
+    Conventions
+    - Base paths: `/api/v1` (web, cookie session), `/ingress/v1` (webhooks), `/adapter/v1` (plugin HTTP;
+      the WebSocket `/adapter/v1` is specified by ADR-0004 and contracts/adapter-protocol/v1).
+    - JSON only (`application/json; charset=utf-8`), except the ingress which also accepts `text/plain`.
+    - Decimals are strings; timestamps are RFC 3339 UTC with `Z`; ids are lowercase UUIDs.
+    - Errors: `{"error": {"code": "<stable.code>", ...}}`. Clients translate codes; never rely on text.
+    - State-changing requests are protected against CSRF by `SameSite=Lax` plus a strict `Origin`
+      check (must equal the app origin); requests without a matching `Origin` get 403 `common.forbidden_origin`.
+    - Sensitive operations (marked `x-step-up: true`) return 403 `auth.step_up_required` when the
+      session's last authentication is older than 15 minutes; the client calls `POST /api/v1/auth/step-up`
+      and retries (auth-and-session-policy.md §1).
+    - Secrets (session cookie, ingress token, invitation/reset tokens, pairing codes, device tokens,
+      TOTP secrets, recovery codes) are never logged (ADR-0001 §5, auth policy §3). One-time values are
+      returned exactly once.
+    - Rate-limited responses are 429 with a `Retry-After` header (seconds).
+servers:
+  - url: https://{host}
+    variables:
+      host:
+        default: localhost
+tags:
+  - name: ingress
+  - name: auth
+  - name: me
+  - name: admin
+  - name: sources
+  - name: connections
+  - name: pairing
+  - name: events
+  - name: accounts
+
+paths:
+  /ingress/v1/tradingview/{token}:
+    post:
+      tags: [ingress]
+      operationId: ingressTradingView
+      summary: Receive a TradingView alert (V1-S1)
+      description: |
+        Processing order (ADR-0003 §7): authenticate token → parse → validate against instruction
+        schema v1 → apply source policy (ADR-0003 §6) → insert with UNIQUE (user_id, message_id) →
+        respond. Routing is asynchronous after commit. Every response must be produced well under
+        TradingView's ~3 s timeout. The `token` path segment is a secret: it must be masked in every
+        log (see docs/architecture/contracts/s1-webhook-ingest.md §4).
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Source token `awk_<key_id>_<secret>`. Malformed tokens get the same 404 as unknown ones.
+          schema:
+            type: string
+            maxLength: 128
+      requestBody:
+        required: true
+        description: The standard instruction (contracts/instruction/v1). Maximum 16 KiB, UTF-8.
+        content:
+          application/json:
+            schema:
+              $ref: '../instruction/v1/instruction.schema.json'
+          text/plain:
+            schema:
+              type: string
+              maxLength: 16384
+              description: Parsed as JSON and validated exactly like application/json.
+      responses:
+        '200':
+          description: Accepted, or duplicate (nothing re-executed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngressAccepted'
+              examples:
+                accepted:
+                  value: { status: accepted, instruction_id: 0192b3c4-0000-7000-8000-000000000006 }
+                duplicate:
+                  value: { status: duplicate, instruction_id: 0192b3c4-0000-7000-8000-000000000006 }
+        '400':
+          description: '`ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngressRejected' }
+              examples:
+                schema:
+                  value: { status: rejected, error: { code: ingress.schema_violation, pointer: /quantity } }
+        '404':
+          description: Unknown, revoked or malformed token. Empty body; existence of user/source is never revealed.
+        '413':
+          description: '`ingress.payload_too_large` (> 16 KiB).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngressRejected' }
+        '415':
+          description: '`ingress.unsupported_media_type` (not application/json or text/plain).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngressRejected' }
+        '422':
+          description: |
+            Source policy or catalog: `ingress.action_not_allowed_for_source` (modify/cancel/reduce from
+            TradingView), `ingress.order_type_not_allowed_for_source`, `ingress.source_mismatch`,
+            `ingress.unsupported_instrument` (symbol not enabled in the instrument catalog, S1 AC-7).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngressRejected' }
+        '429':
+          description: '`ingress.rate_limited` (per key and per IP). Header `Retry-After`.'
+          headers:
+            Retry-After: { $ref: '#/components/headers/RetryAfter' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngressRejected' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Sign in with e-mail and password
+      description: |
+        Same response and timing for unknown e-mail, wrong password and closed user (S3 AC-5).
+        On success sets `__Host-aw_session`. When TOTP is enabled the session is in `pending_2fa`
+        state (5 minutes) and grants nothing but the verify endpoints.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password, remember_me]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, minLength: 1, maxLength: 1024 }
+                remember_me: { type: boolean }
+      responses:
+        '200':
+          description: Authenticated, or second factor required.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResult' }
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/login/totp:
+    post:
+      tags: [auth]
+      operationId: verifyLoginTotp
+      summary: Complete sign-in with a TOTP code
+      security: [{ pendingSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        '200':
+          description: Authenticated; session id rotated.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResult' }
+        '401':
+          description: '`auth.invalid_code` (wrong or replayed code) or `auth.pending_expired`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/login/recovery-code:
+    post:
+      tags: [auth]
+      operationId: verifyLoginRecoveryCode
+      summary: Complete sign-in with a single-use recovery code (Q22)
+      security: [{ pendingSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: 10 Crockford Base32 characters; case, spaces and hyphens ignored.
+                  maxLength: 20
+      responses:
+        '200':
+          description: Authenticated; `recovery_codes_remaining` is included.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResult' }
+        '401':
+          description: '`auth.invalid_code` or `auth.pending_expired`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: End the current session (server-side)
+      responses:
+        '204':
+          description: Session ended; cookie cleared.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookieClear' }
+
+  /api/v1/auth/step-up:
+    post:
+      tags: [auth]
+      operationId: stepUp
+      summary: Re-authenticate before a sensitive action (15-minute rule)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [password]
+              properties:
+                password: { type: string, minLength: 1, maxLength: 1024 }
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+                  description: Required when TOTP is enabled.
+      responses:
+        '204': { description: Re-authenticated; `authenticated_at` refreshed. }
+        '401':
+          description: '`auth.reauth_failed` (wrong password) or `auth.invalid_code`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/invitations/lookup:
+    post:
+      tags: [auth]
+      operationId: lookupInvitation
+      summary: Read an invitation before accepting it
+      description: |
+        The token travels in the request body, never in a URL path or query. Invitation links use a
+        URL fragment (`/{locale}/invite#t=<token>`), which browsers never send to servers, so the token
+        cannot reach Caddy, Next.js or Core logs.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenBody' }
+      responses:
+        '200':
+          description: Valid invitation.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [email, expires_at]
+                properties:
+                  email: { type: string, format: email }
+                  locale: { $ref: '#/components/schemas/Locale' }
+                  expires_at: { $ref: '#/components/schemas/Timestamp' }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/invitations/accept:
+    post:
+      tags: [auth]
+      operationId: acceptInvitation
+      summary: Create the account from an invitation and sign in (S3 AC-1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, password, locale, time_zone]
+              properties:
+                token: { type: string, maxLength: 128 }
+                password: { $ref: '#/components/schemas/NewPassword' }
+                locale: { $ref: '#/components/schemas/Locale' }
+                time_zone: { $ref: '#/components/schemas/TimeZone' }
+      responses:
+        '201':
+          description: Account created; session started.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResult' }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
+        '422': { $ref: '#/components/responses/PasswordRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/password-reset/request:
+    post:
+      tags: [auth]
+      operationId: requestPasswordReset
+      summary: Request a reset link by e-mail (always 202, Q20)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '202':
+          description: Always returned, whether or not the e-mail exists or the request was throttled.
+
+  /api/v1/auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      operationId: confirmPasswordReset
+      summary: Set a new password with a reset token; ends ALL sessions
+      description: Reset links use a URL fragment (`/{locale}/reset-password#t=<token>`); the token goes in the body.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, new_password]
+              properties:
+                token: { type: string, maxLength: 128 }
+                new_password: { $ref: '#/components/schemas/NewPassword' }
+      responses:
+        '204': { description: Password changed; every session of the user ended. }
+        '404':
+          description: '`auth.reset_token_invalid` (unknown, used, expired or superseded; one code for all).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/PasswordRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/me:
+    get:
+      tags: [me]
+      operationId: getMe
+      responses:
+        '200':
+          description: Signed-in user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      tags: [me]
+      operationId: updateMe
+      summary: Update profile preferences (locale, time zone; Q23)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                locale: { $ref: '#/components/schemas/Locale' }
+                time_zone: { $ref: '#/components/schemas/TimeZone' }
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422':
+          description: '`me.invalid_time_zone`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/me/security:
+    get:
+      tags: [me]
+      operationId: getMySecurity
+      responses:
+        '200':
+          description: Security state for the settings page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /api/v1/me/totp/setup:
+    post:
+      tags: [me]
+      operationId: startTotpSetup
+      summary: Start TOTP enrolment (step-up)
+      x-step-up: true
+      responses:
+        '200':
+          description: Enrolment secret, shown once; expires if not confirmed within 10 minutes.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [otpauth_uri, secret, expires_at]
+                properties:
+                  otpauth_uri: { type: string, description: 'otpauth://totp/All%20Win:<email>?secret=…&issuer=All%20Win' }
+                  secret: { type: string, description: Base32, for manual entry. }
+                  expires_at: { $ref: '#/components/schemas/Timestamp' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '409':
+          description: '`auth.totp_already_enabled`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/me/totp/confirm:
+    post:
+      tags: [me]
+      operationId: confirmTotpSetup
+      summary: Confirm enrolment with a code; returns recovery codes once; ends other sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        '200':
+          description: TOTP enabled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecoveryCodes' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422':
+          description: '`auth.invalid_code` or `auth.totp_setup_expired`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/me/totp/disable:
+    post:
+      tags: [me]
+      operationId: disableTotp
+      summary: Disable TOTP (password + current code, Q22); ends other sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordAndCode' }
+      responses:
+        '204': { description: TOTP disabled; recovery codes deleted. }
+        '401':
+          description: '`auth.reauth_failed` or `auth.invalid_code`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/me/recovery-codes/regenerate:
+    post:
+      tags: [me]
+      operationId: regenerateRecoveryCodes
+      summary: Replace the recovery code batch (password + current code)
+      description: In V1 scope per the design default; PO confirms (spec §4).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordAndCode' }
+      responses:
+        '200':
+          description: New batch, shown once; the old batch is invalid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecoveryCodes' }
+        '401':
+          description: '`auth.reauth_failed` or `auth.invalid_code`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/me/password:
+    post:
+      tags: [me]
+      operationId: changePassword
+      summary: Change password (step-up); ends other sessions
+      description: In V1 scope per the design default; PO confirms (spec §4).
+      x-step-up: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string, minLength: 1, maxLength: 1024 }
+                new_password: { $ref: '#/components/schemas/NewPassword' }
+      responses:
+        '204': { description: Changed; current session rotated, other sessions ended. }
+        '401':
+          description: '`auth.reauth_failed`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '422': { $ref: '#/components/responses/PasswordRejected' }
+
+  /api/v1/admin/invitations:
+    get:
+      tags: [admin]
+      operationId: listInvitations
+      responses:
+        '200':
+          description: All invitations (small list in V1; no pagination).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Invitation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin]
+      operationId: createInvitation
+      summary: Issue an invitation bound to one e-mail (Q19); link returned once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, locale]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                locale: { $ref: '#/components/schemas/Locale' }
+                send_email: { type: boolean, default: true }
+      responses:
+        '201':
+          description: Created. `invite_url` (fragment form) is returned only here.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [invitation, invite_url, email_sent]
+                properties:
+                  invitation: { $ref: '#/components/schemas/Invitation' }
+                  invite_url: { type: string, description: 'https://<host>/<locale>/invite#t=<token>' }
+                  email_sent: { type: boolean, description: False when e-mail is disabled or failed (`invites.email_send_failed` is then logged); the admin delivers the link manually. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`invites.email_taken` (a user or an open invitation already exists for this e-mail; admin-only screen).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/admin/invitations/{invitation_id}/revoke:
+    post:
+      tags: [admin]
+      operationId: revokeInvitation
+      parameters:
+        - { $ref: '#/components/parameters/InvitationId' }
+      responses:
+        '204': { description: Revoked (idempotent). }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/users:
+    get:
+      tags: [admin]
+      operationId: listUsers
+      responses:
+        '200':
+          description: Identity fields only; no trading data.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AdminUser' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/admin/users/{user_id}/password-reset-link:
+    post:
+      tags: [admin]
+      operationId: adminCreateResetLink
+      summary: Generate a reset link when e-mail is unavailable (Q20 fallback; step-up)
+      x-step-up: true
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '201':
+          description: Link returned once (fragment form), valid 30 minutes; supersedes earlier links.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [reset_url, expires_at]
+                properties:
+                  reset_url: { type: string, description: 'https://<host>/<locale>/reset-password#t=<token>' }
+                  expires_at: { $ref: '#/components/schemas/Timestamp' }
+        '403': { $ref: '#/components/responses/ForbiddenOrStepUp' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/users/{user_id}/totp-reset:
+    post:
+      tags: [admin]
+      operationId: adminResetTotp
+      summary: Remove a user's TOTP after an identity check (Q22; step-up); ends that user's sessions
+      x-step-up: true
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '204': { description: TOTP and recovery codes removed; audited with the admin's id. }
+        '403': { $ref: '#/components/responses/ForbiddenOrStepUp' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/sources:
+    get:
+      tags: [sources]
+      operationId: listSources
+      parameters:
+        - name: include_revoked
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Sources of the signed-in user. Never contains a full token.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [sources]
+      operationId: createSource
+      summary: Create a named source; webhook URL returned once (S3 AC-3, Q17; step-up)
+      x-step-up: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, source_type]
+              properties:
+                name: { $ref: '#/components/schemas/DisplayName' }
+                source_type: { type: string, enum: [tradingview] }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceWithUrl' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '409':
+          description: '`sources.name_taken` (case-insensitive, among active sources).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/sources/{source_id}:
+    patch:
+      tags: [sources]
+      operationId: renameSource
+      parameters:
+        - { $ref: '#/components/parameters/SourceId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { $ref: '#/components/schemas/DisplayName' }
+      responses:
+        '200':
+          description: Renamed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Source' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`sources.name_taken`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/sources/{source_id}/rotate:
+    post:
+      tags: [sources]
+      operationId: rotateSource
+      summary: Replace the token immediately (old URL stops working at once; step-up)
+      x-step-up: true
+      parameters:
+        - { $ref: '#/components/parameters/SourceId' }
+      responses:
+        '200':
+          description: New URL returned once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceWithUrl' }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`sources.revoked` (a revoked source cannot be rotated).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/sources/{source_id}/revoke:
+    post:
+      tags: [sources]
+      operationId: revokeSource
+      summary: Revoke the source; it stays listed as revoked (no step-up; revoking reduces risk)
+      parameters:
+        - { $ref: '#/components/parameters/SourceId' }
+      responses:
+        '204': { description: Revoked (idempotent). Subsequent webhooks with its token get 404. }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/connections:
+    get:
+      tags: [connections]
+      operationId: listConnections
+      parameters:
+        - name: include_unpaired
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: NinjaTrader connections of the signed-in user. Device tokens are never returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Connection' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [connections]
+      operationId: createConnection
+      summary: Create a connection and its first pairing code (step-up)
+      x-step-up: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { $ref: '#/components/schemas/DisplayName' }
+      responses:
+        '201':
+          description: Created, awaiting pairing.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [connection, pairing]
+                properties:
+                  connection: { $ref: '#/components/schemas/Connection' }
+                  pairing: { $ref: '#/components/schemas/PairingCode' }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '409':
+          description: '`connections.name_taken`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/connections/{connection_id}:
+    patch:
+      tags: [connections]
+      operationId: renameConnection
+      parameters:
+        - { $ref: '#/components/parameters/ConnectionId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { $ref: '#/components/schemas/DisplayName' }
+      responses:
+        '200':
+          description: Renamed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Connection' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/connections/{connection_id}/pairing-code:
+    post:
+      tags: [connections]
+      operationId: newPairingCode
+      summary: New pairing code (expired code, or "move to another machine"; step-up)
+      description: |
+        Invalidates any previous active code. For a paired connection this is the re-pairing flow:
+        the current instance keeps working until the new code is used; then its device token is revoked
+        (WebSocket close 4002). Account bindings follow the connection by `platform_account` name
+        (ADR-0004 §8 "Re-pairing"); accounts not reported by the new instance become out of sync with
+        reason `sync.account_not_found_after_repair`.
+      x-step-up: true
+      parameters:
+        - { $ref: '#/components/parameters/ConnectionId' }
+      responses:
+        '201':
+          description: New code.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PairingCode' }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`connections.unpaired` (an unpaired connection cannot get a code; create a new one).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/connections/{connection_id}/unpair:
+    post:
+      tags: [connections]
+      operationId: unpairConnection
+      summary: Unpair (Q18) — revokes the device token; mapped accounts become out of sync; nothing is closed (step-up)
+      x-step-up: true
+      parameters:
+        - { $ref: '#/components/parameters/ConnectionId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [acknowledge_open_positions]
+              properties:
+                acknowledge_open_positions:
+                  type: boolean
+                  description: Must be true when any mapped account has an open position (design S3-10 checkbox).
+      responses:
+        '204': { description: Unpaired; WebSocket closed with 4002; audited. }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`connections.open_positions_not_acknowledged` (body lists nothing sensitive; the client re-reads the connection).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /adapter/v1/pairings:
+    post:
+      tags: [pairing]
+      operationId: pairAdapter
+      summary: Exchange a pairing code for a device token (called by the plugin; ADR-0004 §8)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pairing_code, instance_id, instance_name, adapter]
+              properties:
+                pairing_code:
+                  type: string
+                  maxLength: 16
+                  description: 8 Crockford Base32 characters; case, spaces and hyphens ignored; O→0, I/L→1.
+                instance_id: { $ref: '#/components/schemas/Uuid' }
+                instance_name: { type: string, minLength: 1, maxLength: 64 }
+                adapter:
+                  type: object
+                  additionalProperties: false
+                  required: [type, version, build]
+                  properties:
+                    type: { type: string, pattern: '^[a-z][a-z0-9_]{0,31}$' }
+                    version: { type: string, maxLength: 32 }
+                    build: { type: string, enum: [release, development] }
+      responses:
+        '201':
+          description: Paired. `device_token` is returned exactly once; the plugin stores it with DPAPI.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [connection_id, device_token]
+                properties:
+                  connection_id: { $ref: '#/components/schemas/Uuid' }
+                  device_token: { type: string, pattern: '^awd_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$' }
+        '400':
+          description: '`pairing.invalid_code` — one code for unknown, expired, used or superseded (plugin shows one message).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '426':
+          description: '`pairing.adapter_version_unsupported`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: '`pairing.rate_limited` (10/min per IP) or `pairing.temporarily_locked` (global lock after 100 failures in 10 minutes). Header `Retry-After`.'
+          headers:
+            Retry-After: { $ref: '#/components/headers/RetryAfter' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/events:
+    get:
+      tags: [events]
+      operationId: eventStream
+      summary: Server-Sent Events stream for the signed-in user
+      description: |
+        `text/event-stream`. Each event has `event: <type>` and `data: <JSON>` matching
+        `#/components/schemas/Event`. Does NOT extend the idle session timeout. On session end the
+        server sends `session.ended` and closes the stream. Clients reconnect with `Last-Event-ID`;
+        missed events are not replayed in V1 (clients refetch state after reconnect).
+      responses:
+        '200':
+          description: Stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /api/v1/accounts/{account_id}/opt-ins/{kind}:
+    put:
+      tags: [accounts]
+      operationId: setAccountOptIn
+      summary: Record or change an explicit per-account opt-in (automation or copy) after the account exists
+      description: |
+        Decisions 2026-10-23: option A (explicit per-account opt-in), Q24 (separate `copy` opt-in for
+        followers of master replication), Q25 (the choice is required when the firm's stance for that kind
+        is forbidden, conditional, unknown or not confirmed), Q26 (a new preset version that changes the
+        stance or its official text moves the state to `pending_review` and suspends that kind until the
+        user chooses again).
+        - `automation` covers automated sources (TradingView webhook, future signal engine).
+        - `copy` covers receiving master-account replication as a follower.
+        The first choice is made **atomically with account creation** (S5 create/update requests embed
+        `OptInChoices`; a missing required choice is rejected with 422 `accounts.opt_in_required`), and
+        the `copy` choice atomically with adding the account as a follower (S7/S19). This operation is
+        for later changes and for resolving `pending_review`. `rule_version_id` must be the preset rule
+        version whose text the user saw; if it is stale the Core answers 409 `accounts.rule_version_changed`
+        and saves nothing. Every change is audited (date, user, kind, choice, rule version, previous value).
+      x-step-up: when choice = accepted
+      parameters:
+        - { $ref: '#/components/parameters/AccountId' }
+        - name: kind
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/OptInKind' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OptInChoiceRequest' }
+      responses:
+        '200':
+          description: Saved and audited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OptInState' }
+        '403': { $ref: '#/components/responses/StepUpRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`accounts.rule_version_changed` — `error.current_rule_version_id` carries the current version; nothing saved.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: '`accounts.opt_in_not_applicable` (state is `not_required`: real account, or the firm allows that kind).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Host-aw_session
+      description: Server-side session (HttpOnly; Secure; SameSite=Lax; Path=/). Full session.
+    pendingSession:
+      type: apiKey
+      in: cookie
+      name: __Host-aw_session
+      description: Same cookie in `pending_2fa` state; accepted only by the login verify endpoints.
+
+  headers:
+    RetryAfter:
+      description: Seconds to wait.
+      schema: { type: integer, minimum: 1 }
+    SessionCookie:
+      description: '`__Host-aw_session=<256-bit random>; HttpOnly; Secure; SameSite=Lax; Path=/` (Max-Age only when remember_me).'
+      schema: { type: string }
+    SessionCookieClear:
+      description: Expires the session cookie.
+      schema: { type: string }
+
+  parameters:
+    InvitationId: { name: invitation_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    UserId: { name: user_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    SourceId: { name: source_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    ConnectionId: { name: connection_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    AccountId: { name: account_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+
+  responses:
+    Unauthenticated:
+      description: '`auth.unauthenticated` (no session, expired, or pending_2fa on a full-session endpoint). Web redirects to login with `?reason=session_expired`.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidCredentials:
+      description: '`auth.invalid_credentials` — identical for unknown e-mail, wrong password and closed user.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: '`auth.rate_limited`.'
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    StepUpRequired:
+      description: '`auth.step_up_required` — call POST /api/v1/auth/step-up and retry.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: '`auth.forbidden` (not a platform admin).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ForbiddenOrStepUp:
+      description: '`auth.forbidden` or `auth.step_up_required`.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: '`common.not_found` — also returned for resources of another user (never 403, so existence is not revealed).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvitationInvalid:
+      description: '`auth.invitation_invalid` — one code for unknown, used, expired or revoked.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PasswordRejected:
+      description: '`auth.password_too_short`, `auth.password_too_long` or `auth.password_breached` (pointer to the field).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Uuid:
+      type: string
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    Timestamp:
+      type: string
+      pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$'
+    Locale:
+      type: string
+      enum: [pt-BR, en]
+    TimeZone:
+      type: string
+      description: IANA time zone name, validated by the Core against its tz database.
+      pattern: '^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$'
+      maxLength: 64
+    DisplayName:
+      type: string
+      minLength: 1
+      maxLength: 60
+    NewPassword:
+      type: string
+      description: 12–128 characters after NFKC normalization; breached/common list rejected (auth policy §2). Length limits are enforced by the Core after normalization.
+      minLength: 1
+      maxLength: 1024
+    TokenBody:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: { type: string, maxLength: 128 }
+    PasswordAndCode:
+      type: object
+      additionalProperties: false
+      required: [password, code]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 1024 }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+    ErrorCode:
+      type: string
+      pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            pointer: { type: string, maxLength: 256, description: JSON pointer to the offending request field. }
+            retry_after_s: { type: integer, minimum: 1 }
+            current_rule_version_id: { $ref: '#/components/schemas/Uuid' }
+    IngressAccepted:
+      type: object
+      additionalProperties: false
+      required: [status, instruction_id]
+      properties:
+        status: { type: string, enum: [accepted, duplicate] }
+        instruction_id: { $ref: '#/components/schemas/Uuid' }
+    IngressRejected:
+      type: object
+      additionalProperties: false
+      required: [status, error]
+      properties:
+        status: { type: string, const: rejected }
+        error:
+          type: object
+          additionalProperties: false
+          required: [code]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            pointer: { type: string, maxLength: 256 }
+    Me:
+      type: object
+      additionalProperties: false
+      required: [id, email, locale, time_zone, is_platform_admin]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        email: { type: string, format: email }
+        locale: { $ref: '#/components/schemas/Locale' }
+        time_zone: { $ref: '#/components/schemas/TimeZone' }
+        is_platform_admin: { type: boolean }
+    LoginResult:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: { type: string, enum: [authenticated, pending_2fa] }
+        user: { $ref: '#/components/schemas/Me' }
+        pending_expires_at: { $ref: '#/components/schemas/Timestamp' }
+        recovery_codes_remaining: { type: integer, minimum: 0, maximum: 10 }
+      allOf:
+        - if: { properties: { state: { const: authenticated } } }
+          then: { required: [user] }
+          else: { required: [pending_expires_at] }
+    SecurityState:
+      type: object
+      additionalProperties: false
+      required: [totp_enabled, recovery_codes_remaining, session]
+      properties:
+        totp_enabled: { type: boolean }
+        recovery_codes_remaining: { type: integer, minimum: 0, maximum: 10 }
+        session:
+          type: object
+          additionalProperties: false
+          required: [persistent, idle_timeout_s, absolute_timeout_s, idle_expires_at, absolute_expires_at, step_up_valid_until]
+          properties:
+            persistent: { type: boolean }
+            idle_timeout_s: { type: integer, description: '43200 (12 h) or 604800 (7 d) — Q21.' }
+            absolute_timeout_s: { type: integer, description: '86400 (24 h) or 2592000 (30 d) — Q21.' }
+            idle_expires_at: { $ref: '#/components/schemas/Timestamp' }
+            absolute_expires_at: { $ref: '#/components/schemas/Timestamp' }
+            step_up_valid_until: { $ref: '#/components/schemas/Timestamp' }
+    RecoveryCodes:
+      type: object
+      additionalProperties: false
+      required: [recovery_codes]
+      properties:
+        recovery_codes:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$' }
+    Invitation:
+      type: object
+      additionalProperties: false
+      required: [id, email, status, created_at, expires_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        email: { type: string, format: email }
+        status: { type: string, enum: [pending, accepted, revoked, expired] }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        accepted_at: { $ref: '#/components/schemas/Timestamp' }
+        revoked_at: { $ref: '#/components/schemas/Timestamp' }
+    AdminUser:
+      type: object
+      additionalProperties: false
+      required: [id, email, status, totp_enabled, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        email: { type: string, format: email }
+        status: { type: string, enum: [active, closed] }
+        totp_enabled: { type: boolean }
+        is_platform_admin: { type: boolean }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        last_sign_in_at: { $ref: '#/components/schemas/Timestamp' }
+    Source:
+      type: object
+      additionalProperties: false
+      required: [id, name, source_type, status, key_id, masked_url, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { $ref: '#/components/schemas/DisplayName' }
+        source_type: { type: string, enum: [tradingview] }
+        status: { type: string, enum: [active, revoked] }
+        key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$' }
+        masked_url:
+          type: string
+          description: "'https://<host>/ingress/v1/tradingview/awk_<key_id>_…' — never the secret."
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        rotated_at: { $ref: '#/components/schemas/Timestamp' }
+        revoked_at: { $ref: '#/components/schemas/Timestamp' }
+        last_received_at: { $ref: '#/components/schemas/Timestamp' }
+    SourceWithUrl:
+      type: object
+      additionalProperties: false
+      required: [source, webhook_url]
+      properties:
+        source: { $ref: '#/components/schemas/Source' }
+        webhook_url:
+          type: string
+          description: Full URL with the secret token. Returned only by create/rotate; never logged.
+          pattern: '^https://[^/]+/ingress/v1/tradingview/awk_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$'
+    PairingCode:
+      type: object
+      additionalProperties: false
+      required: [pairing_code, expires_at]
+      properties:
+        pairing_code:
+          type: string
+          description: Display form, returned once per code.
+          pattern: '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$'
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+    VisibleAccount:
+      type: object
+      additionalProperties: false
+      required: [platform_account, kind, oco_location]
+      properties:
+        platform_account: { type: string, maxLength: 128 }
+        kind: { type: string, enum: [simulation, playback, live, unknown] }
+        oco_location: { type: string, enum: [local, server, unknown] }
+        account_id:
+          description: The All Win account bound to it, if any (S5).
+          $ref: '#/components/schemas/Uuid'
+    Connection:
+      type: object
+      additionalProperties: false
+      required: [id, name, status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { $ref: '#/components/schemas/DisplayName' }
+        status:
+          type: string
+          enum: [awaiting_pairing, connected, disconnected, outdated, unpaired]
+        adapter_type: { type: string }
+        adapter_version: { type: string }
+        instance_name: { type: string }
+        paired_at: { $ref: '#/components/schemas/Timestamp' }
+        last_seen_at: { $ref: '#/components/schemas/Timestamp' }
+        pairing_code_expires_at:
+          description: Present while a code is active (the code itself is never re-shown).
+          $ref: '#/components/schemas/Timestamp'
+        repairing_pending:
+          type: boolean
+          description: True while a "move to another machine" code is active and the current instance still works.
+        visible_accounts:
+          type: array
+          items: { $ref: '#/components/schemas/VisibleAccount' }
+        open_position_accounts:
+          type: array
+          description: Platform accounts with an open position (for the unpair confirmation).
+          items: { type: string }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        unpaired_at: { $ref: '#/components/schemas/Timestamp' }
+    OptInKind:
+      type: string
+      enum: [automation, copy]
+    FirmStance:
+      type: string
+      enum: [allowed, forbidden, conditional, unknown, not_confirmed]
+      description: Stance of the account's preset version for the opt-in kind. A missing stance in the preset is `unknown`.
+    OptInChoiceRequest:
+      type: object
+      additionalProperties: false
+      required: [choice, rule_version_id]
+      properties:
+        choice: { type: string, enum: [accepted, declined] }
+        rule_version_id:
+          description: Preset rule version whose text was displayed.
+          $ref: '#/components/schemas/Uuid'
+    OptInChoices:
+      description: |
+        Embedded in the S5 account create/update requests (atomic create-with-choice). Must contain every
+        kind whose state would otherwise be required; otherwise 422 `accounts.opt_in_required` with a
+        pointer to the missing kind, and nothing is saved.
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        automation: { $ref: '#/components/schemas/OptInChoiceRequest' }
+        copy: { $ref: '#/components/schemas/OptInChoiceRequest' }
+    OptInState:
+      type: object
+      additionalProperties: false
+      required: [kind, state, firm_stance]
+      properties:
+        kind: { $ref: '#/components/schemas/OptInKind' }
+        firm_stance: { $ref: '#/components/schemas/FirmStance' }
+        state:
+          type: string
+          enum: [not_required, chosen, pending_review]
+          description: |
+            not_required = real account or the stance is `allowed`; chosen = an explicit choice exists for
+            the current rule version; pending_review = the stance or its text changed after the choice, or a
+            requirement appeared for an account that had none (Q26). Routing treats `pending_review` and
+            `declined` as not accepted (`routing.automation_not_accepted` / `routing.copy_not_accepted`).
+            There is no "saved without a choice" state: first choices are atomic with creation.
+        choice: { type: string, enum: [accepted, declined] }
+        chosen_at: { $ref: '#/components/schemas/Timestamp' }
+        rule_version_id: { $ref: '#/components/schemas/Uuid' }
+        current_rule_version_id:
+          description: The preset rule version currently in force for this account.
+          $ref: '#/components/schemas/Uuid'
+    Event:
+      description: SSE payloads (field `data`). `type` equals the SSE `event` name.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, connection_id, status]
+          properties:
+            type: { const: connection.status_changed }
+            connection_id: { $ref: '#/components/schemas/Uuid' }
+            status: { type: string, enum: [awaiting_pairing, connected, disconnected, outdated, unpaired] }
+        - type: object
+          additionalProperties: false
+          required: [type, connection_id, instance_name, visible_accounts]
+          properties:
+            type: { const: connection.paired }
+            connection_id: { $ref: '#/components/schemas/Uuid' }
+            instance_name: { type: string }
+            visible_accounts:
+              type: array
+              items: { $ref: '#/components/schemas/VisibleAccount' }
+        - type: object
+          additionalProperties: false
+          required: [type, connection_id, reason]
+          properties:
+            type: { const: connection.pairing_code_invalidated }
+            connection_id: { $ref: '#/components/schemas/Uuid' }
+            reason: { type: string, enum: [superseded, pairing_locked] }
+        - type: object
+          additionalProperties: false
+          required: [type, reason]
+          properties:
+            type: { const: session.ended }
+            reason: { type: string, enum: [logout, expired, password_reset, password_changed, totp_changed, admin_totp_reset] }
