@@ -81,6 +81,11 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
   const [summary, setSummary] = useState(0);
   const [discarding, setDiscarding] = useState(false);
   const [announce, setAnnounce] = useState("");
+  // Focus moves to the new step's heading from an effect, so no timer can outlive the component.
+  const [focusTick, setFocusTick] = useState(0);
+  useEffect(() => {
+    if (focusTick > 0) heading.current?.focus();
+  }, [focusTick]);
 
   const ids = [...active.map((step) => step.id), reviewId];
   // A step that stopped applying (its gate changed) falls back to the closest remaining one.
@@ -103,7 +108,7 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
     setFormErrors([]);
     setSummary(0);
     setAnnounce(t("step.announce", { n: Math.max(1, ids.indexOf(id) + 1), total: ids.length, label: id === reviewId ? t("review.title") : (active.find((step) => step.id === id)?.label ?? "") }));
-    window.setTimeout(() => heading.current?.focus(), 0);
+    setFocusTick((tick) => tick + 1);
   }
 
   function validate(step: FormStep<V>): boolean {

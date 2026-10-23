@@ -114,7 +114,9 @@ test("pages carry the security headers and a nonce on the framework scripts", as
   expect(headers["x-content-type-options"]).toBe("nosniff");
   expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
   expect(headers["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=()");
-  const scripts = await page.locator("script[src]").evaluateAll((nodes) => nodes.map((node) => (node as HTMLScriptElement).nonce));
-  expect(scripts.length).toBeGreaterThan(0);
-  expect(scripts.every((value) => value === nonce)).toBe(true);
+  // Only the scripts in the served HTML: chunks the Next runtime inserts later carry no nonce and are allowed by 'strict-dynamic'.
+  const html = (await response?.text()) ?? "";
+  const tags = html.match(/<script\b[^>]*\bsrc=[^>]*>/g) ?? [];
+  expect(tags.length).toBeGreaterThan(0);
+  expect(tags.every((tag) => tag.includes(`nonce="${nonce}"`))).toBe(true);
 });

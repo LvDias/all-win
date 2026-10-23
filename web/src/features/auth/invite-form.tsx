@@ -73,6 +73,16 @@ export function InviteForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per mounted page, after the fragment was read
   }, [checked, token]);
 
+  // Back drops the code step, so focus goes to the first field of step 1 instead of the page body. Done in an effect
+  // (no timer), so nothing can fire after the component is gone.
+  const refocusEmail = useRef(false);
+  useEffect(() => {
+    if (challenge === null && refocusEmail.current) {
+      refocusEmail.current = false;
+      document.getElementById("invite-email")?.focus();
+    }
+  }, [challenge]);
+
   const challengeId = challenge?.challenge_id;
   useEffect(() => {
     if (!challengeId) return;
@@ -198,9 +208,8 @@ export function InviteForm() {
               type="button"
               variant="ghost"
               onClick={() => {
+                refocusEmail.current = true;
                 setChallenge(null);
-                // Back drops the code step, so focus goes to the first field of step 1 instead of the page body.
-                window.setTimeout(() => document.getElementById("invite-email")?.focus(), 0);
               }}
             >
               {t("auth.invite.back")}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiError } from "@/shared/api/client";
 import { errorMessage } from "@/shared/api/error-message";
 import type { ChallengeDelivery, ChallengeIssued } from "@/shared/api/types";
@@ -61,9 +61,12 @@ export function CodeChallenge({ challenge, description, onVerify, onResend, onNe
   const expired = remaining === 0;
   const locked = attempts >= maxAttempts || expired;
 
-  function focusInput() {
-    window.setTimeout(() => input.current?.querySelector("input")?.focus(), 0);
-  }
+  // Refocus from an effect after a failed attempt (no timer that could fire after unmount).
+  const [focusTick, setFocusTick] = useState(0);
+  useEffect(() => {
+    if (focusTick > 0) input.current?.querySelector("input")?.focus();
+  }, [focusTick]);
+  const focusInput = () => setFocusTick((tick) => tick + 1);
 
   function apply(next: ChallengeIssued) {
     setCooldownUntil(Date.now() + next.resend_after_s * 1000);
