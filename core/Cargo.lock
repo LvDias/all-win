@@ -3,6 +3,20 @@
 version = 4
 
 [[package]]
+name = "access"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "serde_json",
+ "shared-kernel",
+ "thiserror",
+ "tokio",
+ "tower",
+ "uuid",
+]
+
+[[package]]
 name = "adapter-tradingview"
 version = "0.1.0"
 dependencies = [
