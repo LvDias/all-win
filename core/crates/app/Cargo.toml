@@ -1,0 +1,30 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "allwin-core"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+shared-kernel = { workspace = true, features = ["sqlx"] }
+contracts.workspace = true
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "rust_decimal", "macros", "derive", "migrate"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tower-http = { workspace = true, features = ["trace", "request-id", "timeout", "limit"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+
+[dev-dependencies]
+http-body-util.workspace = true
+tower = { workspace = true, features = ["util"] }
