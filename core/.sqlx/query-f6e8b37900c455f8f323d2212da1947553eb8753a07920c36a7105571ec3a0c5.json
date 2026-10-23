@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO routing.message_receipt (user_id, message_id, instruction_id, received_at)\n               VALUES ($1, $2, $3, $4)\n               ON CONFLICT (user_id, message_id) DO NOTHING\n               RETURNING instruction_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "instruction_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "routing.message_receipt",
+            "name": "instruction_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f6e8b37900c455f8f323d2212da1947553eb8753a07920c36a7105571ec3a0c5"
+}

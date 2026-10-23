@@ -10,4 +10,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+chrono.workspace = true
+serde.workspace = true
 shared-kernel.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v7", "serde"] }

@@ -14,17 +14,33 @@ name = "allwin-core"
 path = "src/main.rs"
 
 [dependencies]
+adapter-tradingview.workspace = true
 anyhow.workspace = true
+async-trait.workspace = true
+audit-application.workspace = true
+audit-infra.workspace = true
 axum.workspace = true
+base64.workspace = true
+catalog-application.workspace = true
+catalog-infra.workspace = true
+rand.workspace = true
+routing-application.workspace = true
+routing-infra.workspace = true
+sha2.workspace = true
+uuid = { workspace = true, features = ["v7"] }
 shared-kernel = { workspace = true, features = ["sqlx"] }
 contracts.workspace = true
-sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "rust_decimal", "macros", "derive", "migrate"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "rust_decimal", "json", "macros", "derive", "migrate"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["full"] }
-tower-http = { workspace = true, features = ["trace", "request-id", "timeout", "limit"] }
+tower-http = { workspace = true, features = ["trace", "set-header"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 
 [dev-dependencies]
+chrono.workspace = true
 http-body-util.workspace = true
+rust_decimal.workspace = true
+serde_json.workspace = true
 tower = { workspace = true, features = ["util"] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }

@@ -55,7 +55,7 @@ fn every_invalid_fixture_is_rejected_by_the_schema() {
     for path in fixtures("invalid") {
         let raw = fs::read(&path).unwrap();
         match v1::parse(&raw) {
-            Err(ParseError::Schema { paths }) => assert!(!paths.is_empty()),
+            Err(ParseError::Schema { pointers }) => assert!(!pointers.is_empty()),
             other => panic!("{} not rejected by schema: {other:?}", path.display()),
         }
     }
@@ -78,4 +78,28 @@ fn malformed_json_is_distinguished() {
         v1::parse(b"{not json"),
         Err(ParseError::Malformed)
     ));
+}
+
+#[test]
+fn pointers_name_the_offending_field_without_echoing_unexpected_keys() {
+    let base = r#""schema_version":"1.0","message_id":"m1","sent_at":"2026-10-22T16:03:20Z",
+        "source":{"type":"tradingview"},"signal_type":"trigger","action":"buy","instrument":{"symbol":"MNQ"}"#;
+    let first = |raw: String| match v1::parse(raw.as_bytes()) {
+        Err(ParseError::Schema { pointers }) => pointers,
+        other => panic!("{other:?}"),
+    };
+    assert!(first(format!(r#"{{{base},"quantity":0}}"#)).contains(&"/quantity".to_owned()));
+    assert!(first(format!(r#"{{{base}}}"#)).contains(&"/quantity".to_owned()));
+    let planted = "awk_AAAAAAAAAAAA_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    let pointers = first(format!(r#"{{{base},"quantity":1,"{planted}":1}}"#));
+    assert!(pointers.iter().all(|p| !p.contains("awk_")), "{pointers:?}");
+}
+
+#[test]
+fn schema_version_is_peeked_before_validation() {
+    let v = |s: &str| serde_json::json!({ "schema_version": s });
+    assert_eq!(v1::peek_schema_version(&v("1.3")), Some((1, 3)));
+    assert_eq!(v1::peek_schema_version(&v("2.0")), Some((2, 0)));
+    assert_eq!(v1::peek_schema_version(&v("1.x")), None);
+    assert_eq!(v1::peek_schema_version(&serde_json::json!({})), None);
 }

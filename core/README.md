@@ -17,10 +17,30 @@ Workspace lints deny `unwrap`/`expect`/`panic`/float arithmetic outside tests.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DATABASE_URL` | required | PostgreSQL connection string |
+| `DATABASE_URL` | required | PostgreSQL as `allwin_app` (RLS enforced) |
+| `WORKER_DATABASE_URL` | `DATABASE_URL` | `allwin_worker` (BYPASSRLS), outbox dispatcher |
+| `MIGRATION_DATABASE_URL` | unset | `allwin_owner`; when set, `serve` applies migrations first |
 | `CORE_BIND` | `127.0.0.1:8080` | listen address |
 | `DB_MAX_CONNECTIONS` | `10` | pool size |
+| `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop (only behind Caddy) |
+| `INGRESS_RATE_PER_IP_PER_MIN` / `INGRESS_RATE_PER_KEY_PER_MIN` | `300` / `60` | ingress rate limits (burst = same) |
 | `RUST_LOG` | `info` | tracing filter (JSON lines on stdout) |
+| `ALLWIN_ENABLE_DEV_COMMANDS` | unset | `true` enables `seed` / `revoke-key` (dev and test only) |
+
+Migrations must run connected as `allwin_owner` (never a superuser): default privileges only apply to objects it creates.
+
+## Commands
+
+```sh
+allwin-core                    # serve (HTTP, outbox dispatcher)
+allwin-core migrate            # apply migrations (MIGRATION_DATABASE_URL)
+allwin-core seed [LABEL]       # dev: user seed-<LABEL>@example.invalid + TradingView source; prints ONE token on stdout
+allwin-core revoke-key KEY_ID  # dev: revoke a source key
+```
+
+Endpoints on the Core bind: `POST /ingress/v1/tradingview/{token}`, `GET /healthz` (204), `GET /metrics`
+(counters by result only; not proxied by Caddy). Request logs carry `http.route` (template, `<unmatched>` or
+`<unmatched-ingress>`), status, latency, `client.ip` and, for a canonical token only, `key_id`.
 
 ## Checks
 
@@ -29,5 +49,10 @@ cargo fmt --all --check
 cargo clippy -q --workspace --all-targets --all-features -- -D warnings
 cargo test -q --workspace
 ```
+
+Integration tests need PostgreSQL 16: set `TEST_DATABASE_ADMIN_URL` (superuser; or put it in the git-ignored
+`core/.env.test`). The harness creates the four roles with test-only passwords and one database per test binary.
+Without it the DB tests are skipped; `ALLWIN_REQUIRE_DB_TESTS=1` (CI) makes that a failure.
+After changing a query, regenerate `.sqlx/` with `cargo sqlx prepare --workspace -- --all-targets` against a migrated database.
 
 If rustup reports no default toolchain on the dev host, export `RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo`.

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT is_enabled FROM catalog.instrument WHERE symbol = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "is_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "catalog.instrument",
+            "name": "is_enabled"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "48b8ad279cb9ead45782e0491188612bd2af3f73307a2907f694abbbe45ca58d"
+}

@@ -2,12 +2,18 @@
 //!
 //! | Variable | Default | Meaning |
 //! |---|---|---|
-//! | `DATABASE_URL` | required | PostgreSQL connection string (runtime role) |
+//! | `DATABASE_URL` | required | PostgreSQL, role `allwin_app` (RLS enforced) |
+//! | `WORKER_DATABASE_URL` | `DATABASE_URL` | role `allwin_worker` (BYPASSRLS) for the outbox dispatcher |
+//! | `MIGRATION_DATABASE_URL` | unset | role `allwin_owner`; when set, migrations run at startup and the dev seed uses it |
 //! | `CORE_BIND` | `127.0.0.1:8080` | listen address |
 //! | `DB_MAX_CONNECTIONS` | `10` | pool size |
+//! | `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop (behind Caddy only) |
+//! | `INGRESS_RATE_PER_IP_PER_MIN` | `300` | per-source-IP limit (burst = same) |
+//! | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | per-key limit (burst = same) |
 //! | `RUST_LOG` | `info` | tracing filter |
 
 use std::net::SocketAddr;
+use std::str::FromStr;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -40,8 +46,13 @@ impl std::fmt::Debug for SecretString {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub database_url: SecretString,
+    pub worker_database_url: SecretString,
+    pub migration_database_url: Option<SecretString>,
     pub bind: SocketAddr,
     pub db_max_connections: u32,
+    pub trust_forwarded_for: bool,
+    pub rate_per_ip_per_min: u32,
+    pub rate_per_key_per_min: u32,
 }
 
 impl Config {
@@ -50,24 +61,31 @@ impl Config {
     }
 
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
-        let database_url = get("DATABASE_URL")
-            .filter(|v| !v.is_empty())
-            .ok_or(ConfigError::Missing("DATABASE_URL"))?;
-        let bind = get("CORE_BIND")
-            .unwrap_or_else(|| "127.0.0.1:8080".to_owned())
-            .parse()
-            .map_err(|_| ConfigError::Invalid("CORE_BIND"))?;
-        let db_max_connections = match get("DB_MAX_CONNECTIONS") {
-            Some(v) => v
-                .parse()
-                .map_err(|_| ConfigError::Invalid("DB_MAX_CONNECTIONS"))?,
-            None => 10,
-        };
+        let non_empty = |k: &str| get(k).filter(|v| !v.is_empty());
+        let database_url = non_empty("DATABASE_URL").ok_or(ConfigError::Missing("DATABASE_URL"))?;
+        let worker_database_url =
+            non_empty("WORKER_DATABASE_URL").unwrap_or_else(|| database_url.clone());
         Ok(Self {
             database_url: SecretString::new(database_url),
-            bind,
-            db_max_connections,
+            worker_database_url: SecretString::new(worker_database_url),
+            migration_database_url: non_empty("MIGRATION_DATABASE_URL").map(SecretString::new),
+            bind: parse_or(&get, "CORE_BIND", "127.0.0.1:8080".parse().ok())?,
+            db_max_connections: parse_or(&get, "DB_MAX_CONNECTIONS", Some(10))?,
+            trust_forwarded_for: parse_or(&get, "INGRESS_TRUST_FORWARDED_FOR", Some(false))?,
+            rate_per_ip_per_min: parse_or(&get, "INGRESS_RATE_PER_IP_PER_MIN", Some(300))?,
+            rate_per_key_per_min: parse_or(&get, "INGRESS_RATE_PER_KEY_PER_MIN", Some(60))?,
         })
+    }
+}
+
+fn parse_or<T: FromStr>(
+    get: &impl Fn(&str) -> Option<String>,
+    key: &'static str,
+    default: Option<T>,
+) -> Result<T, ConfigError> {
+    match get(key).filter(|v| !v.is_empty()) {
+        Some(v) => v.parse().map_err(|_| ConfigError::Invalid(key)),
+        None => default.ok_or(ConfigError::Missing(key)),
     }
 }
 
@@ -83,14 +101,27 @@ mod tests {
         .unwrap();
         assert_eq!(c.bind.to_string(), "127.0.0.1:8080");
         assert_eq!(c.db_max_connections, 10);
+        assert_eq!(c.worker_database_url.expose(), c.database_url.expose());
+        assert!(c.migration_database_url.is_none());
+        assert!(!c.trust_forwarded_for);
+        assert_eq!((c.rate_per_ip_per_min, c.rate_per_key_per_min), (300, 60));
         assert!(!format!("{c:?}").contains("pw-secret"));
     }
 
     #[test]
-    fn database_url_is_required() {
+    fn database_url_is_required_and_values_are_validated() {
         assert!(matches!(
             Config::from_lookup(|_| None),
             Err(ConfigError::Missing("DATABASE_URL"))
+        ));
+        let bad = Config::from_lookup(|k| match k {
+            "DATABASE_URL" => Some("postgres://x".into()),
+            "INGRESS_TRUST_FORWARDED_FOR" => Some("yes".into()),
+            _ => None,
+        });
+        assert!(matches!(
+            bad,
+            Err(ConfigError::Invalid("INGRESS_TRUST_FORWARDED_FOR"))
         ));
     }
 }

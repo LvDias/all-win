@@ -28,10 +28,11 @@ pub enum ParseError {
     /// Body is not JSON.
     #[error("malformed json")]
     Malformed,
-    /// JSON does not satisfy the schema. Holds instance paths only, never values,
-    /// so it is safe to log and to show the user.
-    #[error("schema violation at {paths:?}")]
-    Schema { paths: Vec<String> },
+    /// JSON does not satisfy the schema. Holds JSON pointers built only from
+    /// instance paths and schema-defined property names, never from input values or
+    /// unexpected keys, so they are safe to log, audit and return.
+    #[error("schema violation at {pointers:?}")]
+    Schema { pointers: Vec<String> },
     /// Schema-valid JSON the DTO cannot represent (contract/DTO drift).
     #[error("schema-valid instruction not representable: {0}")]
     Unrepresentable(String),
@@ -50,14 +51,57 @@ pub fn parse_value(value: Value) -> Result<Instruction, ParseError> {
     let validator = VALIDATOR
         .as_ref()
         .map_err(|e| ParseError::SchemaUnavailable(e.clone()))?;
-    let paths: Vec<String> = validator
+    let pointers: Vec<String> = validator
         .iter_errors(&value)
-        .map(|e| e.instance_path().to_string())
+        .map(|e| pointer_of(&e))
         .collect();
-    if !paths.is_empty() {
-        return Err(ParseError::Schema { paths });
+    if !pointers.is_empty() {
+        return Err(ParseError::Schema { pointers });
     }
     serde_json::from_value(value).map_err(|e| ParseError::Unrepresentable(e.to_string()))
+}
+
+/// Maximum pointer length (`IngressRejected.error.pointer`, OpenAPI).
+const MAX_POINTER_LEN: usize = 256;
+
+fn pointer_of(error: &jsonschema::ValidationError<'_>) -> String {
+    let base = error.instance_path().to_string();
+    let pointer = match error.kind() {
+        // Missing property: point at it. The name comes from the schema, not the input.
+        jsonschema::error::ValidationErrorKind::Required {
+            property: Value::String(name),
+        } => format!("{base}/{}", escape_pointer_token(name)),
+        // Unexpected keys are input; point at the object that holds them.
+        _ => base,
+    };
+    truncate_on_char_boundary(pointer, MAX_POINTER_LEN)
+}
+
+fn escape_pointer_token(token: &str) -> String {
+    token.replace('~', "~0").replace('/', "~1")
+}
+
+fn truncate_on_char_boundary(mut s: String, max: usize) -> String {
+    if s.len() > max {
+        let mut end = max;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+    }
+    s
+}
+
+/// `(major, minor)` of a `schema_version` that looks like `<int>.<int>`, before
+/// schema validation, so callers can answer "unsupported version" for majors the
+/// schema rejects outright.
+pub fn peek_schema_version(value: &Value) -> Option<(u64, u64)> {
+    let (major, minor) = value.get("schema_version")?.as_str()?.split_once('.')?;
+    let digits = |s: &str| !s.is_empty() && s.len() <= 9 && s.bytes().all(|b| b.is_ascii_digit());
+    if !digits(major) || !digits(minor) {
+        return None;
+    }
+    Some((major.parse().ok()?, minor.parse().ok()?))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
