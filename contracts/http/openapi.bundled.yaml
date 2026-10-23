@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 4.0.0
+  version: 4.1.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -5516,7 +5516,9 @@ components:
 
             this × quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);
 
-            absent = no floor. Any change bumps the account''s limits version (net P&L feeds risk).
+            absent = no floor. Any change bumps the account''s limits version (net P&L feeds risk). A higher floor applies
+            at once; a lower one (or removing it) applies from the next trading day and is shown in `AccountRisk.pending_commission_change`
+            (ADR-0006 §3.7).
 
             '
           $ref: '#/components/schemas/MoneyAmount'
@@ -5649,14 +5651,20 @@ components:
         max_position_qty:
           $ref: '#/components/schemas/MaxPositionQty'
         commission_per_contract_side:
-          description: 'USD per contract and side, ≥ 0 (U20 a): the floor of each fill''s commission (effective = max(platform,
+          description: 'USD per contract and side, ≥ 0 (U20 a): the floor of each fill''s commission. Exception to the
 
-            this × quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);
+            full replacement (QA Security): **absent = unchanged**, so a client that forgets the field never
 
-            absent = no floor (full replacement). Any change bumps the account''s limits version (net P&L feeds risk).
+            removes the floor; `null` removes it explicitly. A higher floor applies at once; a lower one, or
+
+            `null`, applies from the next trading day (`AccountRisk.pending_commission_change`; ADR-0006
+
+            §3.7) and is audited (`accounts.updated`). Any change bumps the account''s limits version.
 
             '
-          $ref: '#/components/schemas/MoneyAmount'
+          oneOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          - type: 'null'
         binding:
           description: The platform account to bind; absent means unbound.
           $ref: '#/components/schemas/PlatformAccountRef'
@@ -10095,6 +10103,30 @@ components:
           $ref: '#/components/schemas/CommissionSource'
         commissions_today:
           $ref: '#/components/schemas/MoneyString'
+        pending_commission_change:
+          type: object
+          additionalProperties: false
+          required:
+          - effective_from
+          - new_commission_per_contract_side
+          description: 'A LOWER commission floor saved on the account applies only from the next trading day (it would
+
+            loosen the net limits; ADR-0006 §3.7, ADR-0004 §7). A higher floor applies at once. Absent
+
+            when nothing is pending.
+
+            '
+          properties:
+            effective_from:
+              $ref: '#/components/schemas/Timestamp'
+            new_commission_per_contract_side:
+              description: The new floor; absent when the floor is being removed.
+              $ref: '#/components/schemas/MoneyAmount'
+            change:
+              type: string
+              enum:
+              - commission_floor_lowered
+              - commission_floor_removed
         evaluation:
           type: object
           additionalProperties: false
@@ -10678,15 +10710,19 @@ components:
       - mixed
       - manual
       - none
-      description: 'Where the commission came from. Effective commission of a fill = max(platform-reported,
+      description: 'Where the commission came from; per fill the same rule as adapter protocol 1.3 `fill.commission`
 
-        `commission_per_contract_side` × quantity) (U20 a). `platform` = the platform''s value was used;
+        and ADR-0004 §7 (not reported ≠ reported 0). Effective commission of a fill = max(platform-
 
-        `configured` = the account floor was used (platform 0 or lower); `mixed` = both, fill by fill;
+        reported, the account''s `commission_per_contract_side` × quantity) (U20 a). `platform` when the
 
-        `manual` = typed in a manual trade; `none` = no commission at all (platform 0 and no floor):
+        reported value is ≥ floor × quantity (it won); `configured` when the floor won (reported lower,
 
-        net = gross and the UI shows "comissões não informadas".
+        zero, or absent with a floor); `none` when absent and no floor (net = gross; the UI shows
+
+        "comissões não informadas"). For a trade: `mixed` when its fills differ; `manual` = typed in a
+
+        manual trade.
 
         '
     TradeDirection:

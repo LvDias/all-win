@@ -321,6 +321,20 @@ components:
           description: How today's commissions were obtained (`none` → the UI shows "comissão não informada; os limites podem estar folgados demais", a notice, not a block).
           $ref: 'trades.yaml#/components/schemas/CommissionSource'
         commissions_today: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        pending_commission_change:
+          type: object
+          additionalProperties: false
+          required: [effective_from, new_commission_per_contract_side]
+          description: |
+            A LOWER commission floor saved on the account applies only from the next trading day (it would
+            loosen the net limits; ADR-0006 §3.7, ADR-0004 §7). A higher floor applies at once. Absent
+            when nothing is pending.
+          properties:
+            effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            new_commission_per_contract_side:
+              description: The new floor; absent when the floor is being removed.
+              $ref: 'presets.yaml#/components/schemas/MoneyAmount'
+            change: { type: string, enum: [commission_floor_lowered, commission_floor_removed] }
         evaluation:
           type: object
           additionalProperties: false

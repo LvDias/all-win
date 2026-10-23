@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 4.1.0 — 2026-10-23 (Code Review of 4.0.0; additive)
+- F1: a lower (or removed) `commission_per_contract_side` applies from the next trading day (it loosens net limits; ADR-0006 §3.7, ADR-0004 §7); a higher one at once. New optional `AccountRisk.pending_commission_change` (`effective_from`, `new_commission_per_contract_side`, `change`: `commission_floor_lowered` / `commission_floor_removed`).
+- QA Security (low, same as F1): in `updateAccount`, an absent `commission_per_contract_side` now means unchanged (exception to the full replacement), and `null` removes the floor explicitly. The removal applies from the next trading day and is audited.
+- F2: `CommissionSource` uses the same per-fill sentence as adapter protocol 1.3 `fill.commission` / ADR-0004 §7: `platform` when reported ≥ floor × quantity (it won); `configured` when the floor won (reported lower, zero, or absent with a floor); `none` when absent and no floor.
+
 ## 4.0.0 — 2026-10-23 (BREAKING: re-release of 3.5.0 as a major; + Connection.disconnect_reason)
 - **Versioning (Esquadro, ADR-0002 §4 / U18):** `Trade.pnl`, `TradesSummary.total_pnl` and the performance P&L figures change meaning from gross to net. A client that reads only `pnl` would show another number, so this is breaking: document major, paths stay `/api/v1`. The content of 3.5.0 (2778318, never merged or consumed) is unchanged; its "minor" reasoning is withdrawn.
 - Root (Esquadro): `Connection.disconnect_reason` and optional `disconnect_reason` on the SSE `connection.status_changed` (`user`, `network`, `outdated`, `unpaired`; adapter protocol 1.3, close 4100; ADR-0004 §6).

@@ -105,6 +105,6 @@ They are written in the same transaction as the change, through `app.outbox`. Th
 
 ## 7. 4.0.0 (written as 3.5.0) additions
 
-- `commission_per_contract_side` (optional, USD per contract and side): the commission floor (U20 a), prefilled from the preset and editable, in create, update and the response.
+- `commission_per_contract_side` (optional, USD per contract and side): the commission floor (U20 a), prefilled from the preset and editable, in create, update and the response. In `updateAccount` it is the one exception to the full replacement: absent = unchanged, `null` = remove (4.1.0, QA Security). A lower or removed floor applies from the next trading day.
 - `evaluation_start` + `evaluation_earned_before` on create (S13b). Later changes go through `restartEvaluation`, not `updateAccount`.
 - Q35 decided 2026-10-23 with the setting on: the step-up of `account_binding_change` is required. Q37–Q42 are decided, and the "provisional" marks were removed.

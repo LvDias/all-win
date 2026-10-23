@@ -565,7 +565,7 @@ components:
           description: |
             USD per contract and side, ≥ 0 (U20 a): the floor of each fill's commission (effective = max(platform,
             this × quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);
-            absent = no floor. Any change bumps the account's limits version (net P&L feeds risk).
+            absent = no floor. Any change bumps the account's limits version (net P&L feeds risk). A higher floor applies at once; a lower one (or removing it) applies from the next trading day and is shown in `AccountRisk.pending_commission_change` (ADR-0006 §3.7).
           $ref: 'presets.yaml#/components/schemas/MoneyAmount'
         evaluation_start:
           type: string
@@ -624,10 +624,14 @@ components:
         max_position_qty: { $ref: '#/components/schemas/MaxPositionQty' }
         commission_per_contract_side:
           description: |
-            USD per contract and side, ≥ 0 (U20 a): the floor of each fill's commission (effective = max(platform,
-            this × quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);
-            absent = no floor (full replacement). Any change bumps the account's limits version (net P&L feeds risk).
-          $ref: 'presets.yaml#/components/schemas/MoneyAmount'
+            USD per contract and side, ≥ 0 (U20 a): the floor of each fill's commission. Exception to the
+            full replacement (QA Security): **absent = unchanged**, so a client that forgets the field never
+            removes the floor; `null` removes it explicitly. A higher floor applies at once; a lower one, or
+            `null`, applies from the next trading day (`AccountRisk.pending_commission_change`; ADR-0006
+            §3.7) and is audited (`accounts.updated`). Any change bumps the account's limits version.
+          oneOf:
+            - { $ref: 'presets.yaml#/components/schemas/MoneyAmount' }
+            - { type: 'null' }
         binding:
           description: The platform account to bind; absent means unbound.
           $ref: '#/components/schemas/PlatformAccountRef'

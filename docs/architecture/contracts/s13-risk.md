@@ -85,7 +85,7 @@ SSE: `risk.state_changed` (state, stale, block, trading-day reset, rules changed
 
 ## 7. 4.0.0 (written as 3.5.0) — net basis and the evaluation target
 
-- **Net (S13 AC-2 rev. 8; firms measure on net):** every meter is net. `AccountRisk` adds `pnl_basis: net`, `commission_source` and `commissions_today`. `commission_source: none` (platform 0 and no floor) shows the notice "comissão não informada; os limites podem estar folgados demais". It is not a block. The account floor `commission_per_contract_side` (U20 a) is an input in accounts; changing it bumps the limits version (ADR-0006).
+- **Net (S13 AC-2 rev. 8; firms measure on net):** every meter is net. `AccountRisk` adds `pnl_basis: net`, `commission_source` and `commissions_today`. `commission_source: none` (platform 0 and no floor) shows the notice "comissão não informada; os limites podem estar folgados demais". It is not a block. The account floor `commission_per_contract_side` (U20 a) is an input in accounts; changing it bumps the limits version (ADR-0006). A higher floor applies at once. A lower or removed floor applies from the next trading day and is shown as `pending_commission_change` (4.1.0, Crivo F1). `commission_source` follows the 1.3 distinction between "not reported" and "reported 0" (F2).
 - **S13b — evaluation target (Q46; Q69 a, Q70 a):**
   - `RiskRules.evaluation_profit_target` is prefilled from the preset (`PresetRules.evaluation_profit_target`, evaluation phase only) and editable.
   - The account has `evaluation_start` (default: the registration date) and an optional `evaluation_earned_before`. They change only through `POST /api/v1/accounts/{id}/evaluation/restart`, audited as `accounts.evaluation_restarted`. A Sim / Playback reset never restarts the count.
