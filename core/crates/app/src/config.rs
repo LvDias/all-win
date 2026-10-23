@@ -135,16 +135,43 @@ impl Config {
 
 /// `http(s)://host[:port]`: no path, query, fragment, credentials or trailing slash.
 fn is_origin(value: &str) -> bool {
-    let Some(rest) = value
+    let Some(authority) = value
         .strip_prefix("https://")
         .or_else(|| value.strip_prefix("http://"))
     else {
         return false;
     };
-    !rest.is_empty()
-        && rest
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':' | b'[' | b']'))
+    // `host[:port]`, where host is a DNS name, an IPv4 address or a bracketed IPv6 literal.
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(v6) => match v6.split_once(']') {
+            Some((addr, rest)) if addr.parse::<std::net::Ipv6Addr>().is_ok() => match rest {
+                "" => (addr, None),
+                rest => match rest.strip_prefix(':') {
+                    Some(port) => (addr, Some(port)),
+                    None => return false,
+                },
+            },
+            _ => return false,
+        },
+        None => match authority.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        },
+    };
+    let host_ok = authority.starts_with('[')
+        || (!host.is_empty()
+            && host.split('.').all(|label| {
+                !label.is_empty()
+                    && label
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            }));
+    let port_ok = port.is_none_or(|p| {
+        (1..=5).contains(&p.len())
+            && p.bytes().all(|b| b.is_ascii_digit())
+            && p.parse::<u16>().is_ok_and(|n| n > 0)
+    });
+    host_ok && port_ok
 }
 
 fn parse_or<T: FromStr>(
@@ -199,19 +226,33 @@ mod tests {
                 _ => None,
             })
         };
-        assert_eq!(
-            with("https://localhost:8443")
-                .unwrap()
-                .public_origin
-                .as_deref(),
-            Some("https://localhost:8443")
-        );
+        for good in [
+            "https://localhost:8443",
+            "https://app.allwin.example",
+            "http://127.0.0.1:3000",
+            "https://[::1]:8443",
+            "https://[2001:db8::1]",
+        ] {
+            assert_eq!(with(good).unwrap().public_origin.as_deref(), Some(good));
+        }
         for bad in [
             "https://x/",
             "https://x/path",
             "ftp://x",
             "https://u@x",
             "https://",
+            "https://:",
+            "https://x:",
+            "https://:8443",
+            "https://x:0",
+            "https://x:65536",
+            "https://x:84a3",
+            "https://x:1:2",
+            "https://x..y",
+            "https://.x",
+            "https://[::1",
+            "https://[nope]:1",
+            "https://[::1]x",
         ] {
             assert!(with(bad).is_err(), "{bad}");
         }
