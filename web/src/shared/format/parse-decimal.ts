@@ -1,6 +1,6 @@
 import type { Locale } from "@/shared/i18n/config";
 
-export type ParseFailure = "empty" | "invalid" | "grouping" | "sign" | "scale" | "tick";
+export type ParseFailure = "empty" | "invalid" | "grouping" | "ambiguous" | "sign" | "scale" | "tick";
 export type ParseResult = { ok: true; value: string } | { ok: false; reason: ParseFailure };
 
 export type ParseOptions = {
@@ -35,6 +35,10 @@ export function parseDecimalInput(text: string, locale: Locale, options: ParseOp
   if (intPart === "" || !/^\d+$/.test(intPart) || (dots + commas === 1 && !/^\d+$/.test(fracPart))) {
     return { ok: false, reason: "invalid" };
   }
+
+  // Money fields (`scale` set): in pt-BR "2.500" or "2,500" could be 2.5 or a thousands group (2500). A wrong guess sets a
+  // limit 1000x off, so the user must type the decimal part explicitly ("2500,00" or "2,5").
+  if (options.scale !== undefined && locale === "pt-BR" && dots + commas === 1 && fracPart.length === 3 && intPart.length <= 3 && !intPart.startsWith("0")) return { ok: false, reason: "ambiguous" };
 
   const integer = intPart.replace(/^0+(?=\d)/, "");
   const fraction = fracPart.replace(/0+$/, "");
