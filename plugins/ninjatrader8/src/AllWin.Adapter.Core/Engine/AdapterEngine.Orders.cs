@@ -52,7 +52,8 @@ namespace AllWin.Adapter.Core.Engine
                 && order.IsTerminal && record.Phase != CommandPhase.Done)
             {
                 record.EntryTerminal = true;
-                var success = order.State == PlatformOrderState.Filled || (order.State == PlatformOrderState.Cancelled && order.FilledQuantity > 0);
+                // Registry §3: a place succeeds for depends_on only when its order is filled.
+                var success = order.State == PlatformOrderState.Filled;
                 Finish(record, success, null, null);
                 Pump(account);
             }
@@ -259,7 +260,8 @@ namespace AllWin.Adapter.Core.Engine
             Put(Collections.Fills, key, fillRecord);
             Emit(record, report);
 
-            if (record != null && (letter == 'e' || letter == 's' || letter == 't')) SyncBracket(record);
+            // Every fill can change what the brackets must cover: entries, protective legs, exits, external fills.
+            ReconcileProtection(account, execution.Instrument, position, letter == 'e' ? record : null);
             var flatten = ActiveFlatten(account, execution.Instrument);
             if (flatten != null) AdvanceFlatten(flatten);
         }
@@ -274,54 +276,88 @@ namespace AllWin.Adapter.Core.Engine
 
         // ------------------------------------------------------------------ brackets (ADR-0005 N1)
 
-        /// <summary>Submits, resizes or re-prices the stop/target that protect <paramref name="record"/>'s position.</summary>
-        private void SyncBracket(CommandRecord record)
-        {
-            var protection = record.Command.Place?.Protection;
-            if (record.Command.Kind != CommandKind.Place || protection == null) return;
-            if (protection.Mode == ProtectionMode.Shared) SyncSharedBracket(record);
-            else SyncIndividualBracket(record);
-        }
-
-        private void SyncIndividualBracket(CommandRecord record)
-        {
-            if (record.EntryFilled <= 0) return;
-            var account = record.PlatformAccount;
-            var legsFilled = LegFilled(account, record.CommandId, 's') + LegFilled(account, record.CommandId, 't');
-            var open = record.EntryFilled - legsFilled;
-            // Answer 7: prices from the VWAP of this entry order, re-priced on every partial fill.
-            var basePrice = TickMath.Vwap(record.EntryNotional, record.EntryFilled);
-            ApplyBracket(record, record.Command.Place!.Side, basePrice, open);
-        }
-
         /// <summary>
-        /// Shared mode (answer 1): the command that opened the position owns one stop/target sized to the
-        /// whole position and priced from its average; adds resize and re-price it with the owner's ticks.
+        /// Keeps every bracket on the contract consistent with the position after a fill. Invariant: the
+        /// protective quantity never exceeds the position it protects (answer B), so a stop or target can never
+        /// open or flip a position. Individual mode reduces protection oldest entry first (P2, FIFO); shared mode
+        /// sizes the owner's bracket to the position. Legs left with nothing to protect, or on the wrong side
+        /// after a flip, are cancelled with order.orphan_cancelled. <paramref name="position"/> must be the
+        /// position right after the fill being processed (execution PositionAfter), not a later one.
         /// </summary>
-        private void SyncSharedBracket(CommandRecord candidate)
+        private void ReconcileProtection(string account, Instrument instrument, PlatformPosition? position, CommandRecord? filledEntry)
         {
-            var account = candidate.PlatformAccount;
-            var instrument = candidate.Command.Instrument;
+            var quantity = position?.Quantity ?? 0;
+            if (quantity == 0) return; // flat: the orphan rule (HandlePosition) cancels every leg
+
             var key = OwnerKey(account, instrument);
             CommandRecord? owner = null;
             if (_owners.TryGetValue(key, out var ownerId)) _commands.TryGetValue(ownerId, out owner);
-            if (owner == null)
+            if (owner == null && filledEntry?.Command.Place?.Protection?.Mode == ProtectionMode.Shared && filledEntry.EntryFilled > 0)
             {
-                if (candidate.EntryFilled <= 0) return;
-                owner = candidate;
+                owner = filledEntry; // answer 1: the command that opened the position owns the shared bracket
                 _owners[key] = owner.CommandId;
                 Put(Collections.Owners, key, owner.CommandId);
             }
+            if (owner != null)
+            {
+                var ownerSide = owner.Command.Place!.Side;
+                var covered = (ownerSide == Side.Buy) == (quantity > 0) ? Math.Abs(quantity) : 0;
+                var basePrice = position!.AveragePrice ?? TickMath.Vwap(owner.EntryNotional, Math.Max(owner.EntryFilled, 1));
+                ApplyBracket(owner, ownerSide, basePrice, covered);
+            }
 
-            var position = CurrentPosition(account, instrument);
-            if (position == null || position.Quantity == 0) return; // flat: orphan protection handles it
-            var ownerSide = owner.Command.Place!.Side;
-            if ((ownerSide == Side.Buy) != (position.Quantity > 0)) return; // flipped (double fill): alert and wait, the Core decides
-            var basePrice = position.AveragePrice ?? TickMath.Vwap(owner.EntryNotional, Math.Max(owner.EntryFilled, 1));
-            ApplyBracket(owner, ownerSide, basePrice, Math.Abs(position.Quantity));
+            foreach (var allocation in IndividualAllocations(account, instrument, quantity))
+            {
+                var record = allocation.Key;
+                // Answer 7: prices from the VWAP of this entry order.
+                ApplyBracket(record, record.Command.Place!.Side, TickMath.Vwap(record.EntryNotional, record.EntryFilled), allocation.Value);
+            }
         }
 
-        private void ApplyBracket(CommandRecord owner, Side entrySide, decimal basePrice, int openQuantity)
+        /// <summary>
+        /// How much of the position each individual bracket may still protect. Protection is taken away from the
+        /// oldest entries first (FIFO), i.e. the newest entries keep theirs; brackets on the other side get 0.
+        /// </summary>
+        private List<KeyValuePair<CommandRecord, int>> IndividualAllocations(string account, Instrument instrument, int positionQuantity)
+        {
+            var result = new List<KeyValuePair<CommandRecord, int>>();
+            var brackets = _commands.Values.Where(r => r.PlatformAccount == account && r.Command.Kind == CommandKind.Place
+                && r.Command.Place!.Protection?.Mode == ProtectionMode.Individual && r.Command.Instrument.Equals(instrument) && r.EntryFilled > 0)
+                .OrderByDescending(r => r.Seq).ToList();
+            foreach (var side in new[] { Side.Buy, Side.Sell })
+            {
+                var remaining = side == Side.Buy ? Math.Max(positionQuantity, 0) : Math.Max(-positionQuantity, 0);
+                foreach (var record in brackets.Where(r => r.Command.Place!.Side == side))
+                {
+                    var open = Math.Max(0, record.EntryFilled - LegFilled(account, record.CommandId, 's') - LegFilled(account, record.CommandId, 't'));
+                    var allocated = Math.Min(open, remaining);
+                    remaining -= allocated;
+                    result.Add(new KeyValuePair<CommandRecord, int>(record, allocated));
+                }
+            }
+            return result;
+        }
+
+        /// <summary>The largest total quantity a protective leg may have now (filled part included).</summary>
+        private int AllowedLegQuantity(TrackedOrder leg)
+        {
+            if (leg.CommandId == null || !_commands.TryGetValue(leg.CommandId, out var record) || record.Command.Place?.Protection == null)
+                return leg.Order.Quantity;
+            var position = PositionQuantity(leg.Account, leg.Order.Instrument);
+            int covered;
+            if (record.Command.Place.Protection.Mode == ProtectionMode.Shared)
+                covered = (record.Command.Place.Side == Side.Buy) == (position > 0) ? Math.Abs(position) : 0;
+            else
+                covered = IndividualAllocations(leg.Account, leg.Order.Instrument, position).Where(a => a.Key == record).Select(a => a.Value).FirstOrDefault();
+            return leg.ExecFilled + covered;
+        }
+
+        /// <summary>
+        /// Submits the bracket, or resizes/re-prices its legs to <paramref name="covered"/>. During the restart
+        /// catch-up (answer A) nothing is submitted late and legs are only resized down: anything else is left
+        /// to the user as sync.bracket_incomplete (alert and wait).
+        /// </summary>
+        private void ApplyBracket(CommandRecord owner, Side entrySide, decimal basePrice, int covered)
         {
             var account = owner.PlatformAccount;
             var instrument = owner.Command.Instrument;
@@ -337,36 +373,53 @@ namespace AllWin.Adapter.Core.Engine
 
             if (!owner.BracketSubmitted)
             {
-                if (openQuantity <= 0) return;
+                if (covered <= 0) return;
+                if (owner.ProtectionWithheld) return; // decided once: alert and wait, never submitted later
                 var oco = stopPrice.HasValue && targetPrice.HasValue ? OrderName.Prefix + owner.CommandId : null;
                 var requests = new List<OrderRequest>();
                 if (stopPrice.HasValue)
-                    requests.Add(ProtectiveRequest(owner.CommandId, ChildRole.Stop, instrument, exitSide, OrderType.Stop, openQuantity, null, stopPrice, oco));
+                    requests.Add(ProtectiveRequest(owner.CommandId, ChildRole.Stop, instrument, exitSide, OrderType.Stop, covered, null, stopPrice, oco));
                 if (targetPrice.HasValue)
-                    requests.Add(ProtectiveRequest(owner.CommandId, ChildRole.Target, instrument, exitSide, OrderType.Limit, openQuantity, targetPrice, null, oco));
+                    requests.Add(ProtectiveRequest(owner.CommandId, ChildRole.Target, instrument, exitSide, OrderType.Limit, covered, targetPrice, null, oco));
+                if (_catchUp)
+                {
+                    // Answer A: no late bracket after a catch-up fill. Each withheld leg is reported; the Core
+                    // raises sync.bracket_incomplete (sync.* codes are Core-only; the local hint is display only).
+                    _log.Write(LogLevel.Warning, "bracket.not_submitted_late", owner.CommandId);
+                    owner.ProtectionWithheld = true;
+                    Save(owner);
+                    foreach (var request in requests) ReportLeg(owner, request, ReasonCodes.OrderProtectionNotSubmitted);
+                    AddStickyReason(account, ReasonCodes.SyncBracketIncomplete);
+                    return;
+                }
                 owner.BracketSubmitted = true;
                 Save(owner);
                 Flush();
+                // Answer G: a live leg that already exists under its exact reference is adopted, never submitted
+                // again; an ambiguous reference submits nothing.
+                var toSubmit = new List<OrderRequest>();
+                foreach (var request in requests)
+                {
+                    switch (AdoptExisting(account, request.Name))
+                    {
+                        case Adoption.None: toSubmit.Add(request); break;
+                        case Adoption.Ambiguous: ReportLeg(owner, request, ReasonCodes.OrderAmbiguousReference); break;
+                    }
+                }
+                if (toSubmit.Count == 0) return;
                 try
                 {
-                    var handles = GuardedSubmit(account, requests);
-                    for (var i = 0; i < requests.Count && i < handles.Count; i++) TrackSubmitted(account, handles[i], requests[i], null);
+                    var handles = GuardedSubmit(account, toSubmit);
+                    for (var i = 0; i < toSubmit.Count && i < handles.Count; i++) TrackSubmitted(account, handles[i], toSubmit[i], null);
                 }
                 catch (PlatformException e)
                 {
-                    _log.Write(LogLevel.Error, "bracket.submit_failed", owner.CommandId + ": " + e.Message);
-                    foreach (var request in requests)
+                    _log.Write(LogLevel.Error, "bracket.submit_failed", owner.CommandId + ": " + e.GetType().Name + " " + e.Message);
+                    foreach (var request in toSubmit)
                     {
-                        var report = NewReport(account, instrument);
-                        report.CommandId = owner.CommandId;
-                        report.Origin = OrderOrigin.AllWin;
-                        report.ChildRole = OrderName.RoleOf(request.Name[request.Name.Length - 1], false);
-                        report.Status = ReportStatus.Rejected;
-                        report.ReasonCode = ReasonCodes.OrderProtectionFailed;
-                        report.Side = request.Side;
-                        report.Order = new OrderSpec { Type = request.Type, LimitPrice = request.LimitPrice, StopPrice = request.StopPrice, TimeInForce = request.TimeInForce };
-                        report.Quantity = request.Quantity;
-                        Emit(owner, report);
+                        var adoption = e is PlatformOutcomeUnknownException ? AdoptExisting(account, request.Name) : Adoption.None;
+                        if (adoption == Adoption.Adopted) continue;
+                        ReportLeg(owner, request, adoption == Adoption.Ambiguous ? ReasonCodes.OrderAmbiguousReference : ReasonCodes.OrderProtectionFailed);
                     }
                 }
                 return;
@@ -376,17 +429,27 @@ namespace AllWin.Adapter.Core.Engine
             {
                 var leg = FindOrder(account, owner.CommandId, letter);
                 if (leg == null || leg.Order.IsTerminal || leg.CancelRequested) continue;
-                if (openQuantity <= 0)
+                if (covered <= 0)
                 {
-                    // AC-2 individual mode: the entry is fully closed by the other leg; cancel this one.
+                    // Nothing left to protect on this side (fully reduced, or flipped): cancel (answer B).
                     CancelOrphans(account, new[] { leg });
                     continue;
                 }
-                var desired = leg.ExecFilled + openQuantity;
+                var desired = leg.ExecFilled + covered;
                 var price = letter == 's' ? stopPrice : targetPrice;
                 var current = letter == 's' ? leg.Order.StopPrice : leg.Order.LimitPrice;
                 int? newQuantity = desired != leg.Order.Quantity ? desired : (int?)null;
                 decimal? newPrice = price.HasValue && price != current ? price : null;
+                if (_catchUp)
+                {
+                    if (newQuantity > leg.Order.Quantity)
+                    {
+                        // The position grew while we were down: do not extend protection on our own.
+                        AddStickyReason(account, ReasonCodes.SyncBracketIncomplete);
+                        newQuantity = null;
+                    }
+                    newPrice = null;
+                }
                 if (!newQuantity.HasValue && !newPrice.HasValue) continue;
                 try
                 {
@@ -399,6 +462,55 @@ namespace AllWin.Adapter.Core.Engine
                     ReportOrderIssue(leg, ReasonCodes.OrderProtectionFailed);
                 }
             }
+        }
+
+        /// <summary>A leg that does not exist: its submission failed (answer C), was withheld (A) or was ambiguous.</summary>
+        private void ReportLeg(CommandRecord owner, OrderRequest request, string reason)
+        {
+            var report = NewReport(owner.PlatformAccount, owner.Command.Instrument);
+            report.CommandId = owner.CommandId;
+            report.Origin = OrderOrigin.AllWin;
+            report.ChildRole = OrderName.RoleOf(request.Name[request.Name.Length - 1], false);
+            report.Status = ReportStatus.Rejected;
+            report.ReasonCode = reason;
+            report.Side = request.Side;
+            report.Order = new OrderSpec { Type = request.Type, LimitPrice = request.LimitPrice, StopPrice = request.StopPrice, TimeInForce = request.TimeInForce };
+            report.Quantity = request.Quantity;
+            Emit(owner, report);
+        }
+
+        private enum Adoption { None, Adopted, Ambiguous }
+
+        /// <summary>
+        /// Adopts the LIVE platform order carrying the exact reference <paramref name="name"/> (command_id +
+        /// role) as the submission (answer G). Terminal orders are ignored, so a flatten re-try that re-uses
+        /// aw:&lt;cmd&gt;:x still closes the rest. Two or more live orders are ambiguous: none is adopted.
+        /// </summary>
+        private Adoption AdoptExisting(string account, string name)
+        {
+            var live = SafeOrders(account).Where(o => o.Name == name && !o.IsTerminal).ToList();
+            if (live.Count == 0) return Adoption.None;
+            if (live.Count > 1)
+            {
+                _log.Write(LogLevel.Error, "order.ambiguous_reference", name + " count=" + live.Count.ToString(CultureInfo.InvariantCulture));
+                return Adoption.Ambiguous;
+            }
+            _log.Write(LogLevel.Warning, "order.adopted", name);
+            AdoptPlatformOrder(account, live[0]);
+            return Adoption.Adopted;
+        }
+
+        private void AdoptPlatformOrder(string account, PlatformOrder order)
+        {
+            if (!_orders.ContainsKey(order.Handle))
+            {
+                var tracked = Track(account, order);
+                // Fills already reported are not replayed; start from what the store knows for our orders.
+                tracked.ExecFilled = tracked.CommandId != null
+                    ? _fills.Values.Where(f => !f.Removed && f.CommandId == tracked.CommandId && f.RoleLetter == tracked.Letter.ToString()).Sum(f => f.Quantity)
+                    : order.FilledQuantity;
+            }
+            HandleOrderUpdate(account, order);
         }
 
         private static OrderRequest ProtectiveRequest(string ownerId, ChildRole role, Instrument instrument, Side side, OrderType type, int quantity,
@@ -421,7 +533,10 @@ namespace AllWin.Adapter.Core.Engine
         private int LegFilled(string account, string commandId, char letter) =>
             _orders.Values.Where(o => o.Account == account && o.CommandId == commandId && o.Letter == letter).Sum(o => o.ExecFilled);
 
-        /// <summary>A working order kept its old values (e.g. a failed resize): reported as is, with the reason.</summary>
+        /// <summary>
+        /// An operation on a working order failed (resize, re-price, cancel): rejected + reason under the owning
+        /// reference. The order keeps its last lifecycle state; the Core does not read this as "order gone" (answer C).
+        /// </summary>
         private void ReportOrderIssue(TrackedOrder order, string reason)
         {
             CommandRecord? record = null;
@@ -431,7 +546,7 @@ namespace AllWin.Adapter.Core.Engine
             report.Origin = order.Origin;
             report.ChildRole = order.CommandId != null ? RoleOf(order) : (ChildRole?)null;
             report.PlatformOrderId = NullIfEmpty(order.Order.PlatformOrderId);
-            report.Status = ReportStatus.Working;
+            report.Status = ReportStatus.Rejected;
             report.ReasonCode = reason;
             report.Side = order.Order.Side;
             report.Order = SpecOf(order.Order);
@@ -539,22 +654,32 @@ namespace AllWin.Adapter.Core.Engine
             }
         }
 
+        // Hosts should report refusals as PlatformException. Anything else thrown by a platform call is a call
+        // that died without a verdict: for Submit the outcome is unknown (never re-submitted blindly), for
+        // Change/Cancel it is treated as a failed operation and reported.
+
         private IReadOnlyList<string> GuardedSubmit(string account, IReadOnlyList<OrderRequest> orders)
         {
             EnsureWritable(account);
-            return _platform.Submit(account, orders);
+            try { return _platform.Submit(account, orders); }
+            catch (PlatformException) { throw; }
+            catch (Exception e) { throw new PlatformOutcomeUnknownException(e); }
         }
 
         private void GuardedChange(string account, string handle, int? quantity, decimal? limit, decimal? stop)
         {
             EnsureWritable(account);
-            _platform.Change(account, handle, quantity, limit, stop);
+            try { _platform.Change(account, handle, quantity, limit, stop); }
+            catch (PlatformException) { throw; }
+            catch (Exception e) { throw new PlatformException("change failed: " + e.GetType().Name, e); }
         }
 
         private void GuardedCancel(string account, IReadOnlyList<string> handles)
         {
             EnsureWritable(account);
-            _platform.Cancel(account, handles);
+            try { _platform.Cancel(account, handles); }
+            catch (PlatformException) { throw; }
+            catch (Exception e) { throw new PlatformException("cancel failed: " + e.GetType().Name, e); }
         }
 
         // ------------------------------------------------------------------ lookups

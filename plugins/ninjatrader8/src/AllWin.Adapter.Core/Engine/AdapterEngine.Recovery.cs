@@ -120,13 +120,43 @@ namespace AllWin.Adapter.Core.Engine
                 }
             }
 
-            foreach (var mapping in _welcome?.Accounts ?? new List<WelcomeAccount>())
+            // Catch-up (answer A): fills that happened while we were down are reported, but no bracket is
+            // submitted late and no leg is extended or re-priced; the user decides (alert and wait).
+            _catchUp = true;
+            try
             {
-                foreach (var execution in SafeExecutions(mapping.PlatformAccount).OrderBy(e => e.Time))
-                    HandleExecution(mapping.PlatformAccount, execution);
-                EvaluateIntegrity(mapping.PlatformAccount);
+                foreach (var mapping in _welcome?.Accounts ?? new List<WelcomeAccount>())
+                {
+                    foreach (var execution in SafeExecutions(mapping.PlatformAccount).OrderBy(e => e.Time))
+                        HandleExecution(mapping.PlatformAccount, execution);
+                    EvaluateIntegrity(mapping.PlatformAccount);
+                }
             }
+            finally { _catchUp = false; }
+
+            foreach (var record in _commands.Values.Where(r => r.Phase == CommandPhase.Dispatched && r.Command.Kind == CommandKind.Flatten).OrderBy(r => r.Seq).ToList())
+                RecoverFlatten(record);
             RaiseChanged();
+        }
+
+        /// <summary>
+        /// A flatten that was running when the process stopped. Cancelling resumes (cancels are idempotent).
+        /// Closing never sends another close order after a restart: we cannot tell whether the last one reached
+        /// the platform, so the outcome is decided from what the platform shows.
+        /// </summary>
+        private void RecoverFlatten(CommandRecord record)
+        {
+            if (record.FlattenStep != FlattenStep.Closing)
+            {
+                record.StepStartedAt = _clock.UtcNow;
+                AdvanceFlatten(record);
+                return;
+            }
+            var close = FindOrder(record.PlatformAccount, record.CommandId, 'x');
+            if (close != null && !close.Order.IsTerminal) return; // still working: AdvanceFlatten follows its events
+            if (close == null) ConcludeLostClose(record);
+            else if (PositionQuantity(record.PlatformAccount, record.Command.Instrument) == 0) Finish(record, true, null, null, ChildRole.Flatten);
+            else Finish(record, false, ReportStatus.Unknown, null, ChildRole.Flatten);
         }
 
         /// <summary>Re-reads platform orders of mapped accounts and reports any lifecycle change not yet reported.</summary>
@@ -137,18 +167,7 @@ namespace AllWin.Adapter.Core.Engine
                 var account = mapping.PlatformAccount;
                 if (onlyAccount != null && account != onlyAccount) continue;
                 if (SafeAccounts().All(a => a.Name != account)) continue;
-                foreach (var order in SafeOrders(account))
-                {
-                    if (!_orders.ContainsKey(order.Handle))
-                    {
-                        var tracked = Track(account, order);
-                        // Fills already reported are not replayed; start from what the store knows for our orders.
-                        tracked.ExecFilled = tracked.CommandId != null
-                            ? _fills.Values.Where(f => !f.Removed && f.CommandId == tracked.CommandId && f.RoleLetter == tracked.Letter.ToString()).Sum(f => f.Quantity)
-                            : order.FilledQuantity;
-                    }
-                    HandleOrderUpdate(account, order);
-                }
+                foreach (var order in SafeOrders(account)) AdoptPlatformOrder(account, order);
             }
         }
 

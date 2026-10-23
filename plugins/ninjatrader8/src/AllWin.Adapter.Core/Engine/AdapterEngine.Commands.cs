@@ -12,26 +12,10 @@ namespace AllWin.Adapter.Core.Engine
         /// <summary>Records the command durably (before the ack) and queues it. Returns the account to pump.</summary>
         private string? IntakeCommand(CommandPayload command, DateTime sentAt)
         {
-            _commands.TryGetValue(command.CommandId, out var known);
-            if (IsStale(sentAt))
+            if (_commands.TryGetValue(command.CommandId, out var known))
             {
-                // Checked before dedupe: a re-delivery that outlived its dedupe record is never executed.
-                _log.Write(LogLevel.Warning, "command.stale", command.CommandId);
-                if (known != null)
-                {
-                    var stale = NewReport(known.PlatformAccount, known.Command.Instrument, known.AccountId);
-                    stale.CommandId = known.CommandId;
-                    stale.Origin = OrderOrigin.AllWin;
-                    stale.ChildRole = DefaultRole(known.Command);
-                    stale.Status = ReportStatus.Rejected;
-                    stale.ReasonCode = ReasonCodes.CommandStale;
-                    EnqueueReport(stale); // the command's real latest state is kept
-                    return null;
-                }
-            }
-            else if (known != null)
-            {
-                // Business duplicate (new msg_id, same command_id): never executed again (ADR-0004 §4).
+                // Business duplicate (new msg_id, same command_id): never executed again (ADR-0004 §4). A known
+                // command_id is answered duplicate even when stale (Architect answer E): a non-transition.
                 ReportDuplicate(known);
                 return null;
             }
@@ -51,10 +35,14 @@ namespace AllWin.Adapter.Core.Engine
 
             if (IsStale(sentAt))
             {
+                // No record of it and older than the staleness limit: recorded as handled, never executed.
+                _log.Write(LogLevel.Warning, "command.stale", command.CommandId);
                 Finish(record, false, ReportStatus.Rejected, ReasonCodes.CommandStale);
                 return null;
             }
-            var refusal = CheckAccount(command);
+            // Before this session's welcome the mapping is not known yet: such a command is queued, never
+            // rejected (ADR-0004 §3 step 3); the queue re-checks the account at dispatch.
+            var refusal = Session == SessionState.Ready ? CheckAccount(command) : null;
             if (refusal != null)
             {
                 Finish(record, false, ReportStatus.Rejected, refusal);
@@ -102,7 +90,8 @@ namespace AllWin.Adapter.Core.Engine
 
         private bool IsBlocked(string accountId)
         {
-            return _limits.TryGetValue(accountId, out var limits) && limits.BlockedUntil.HasValue && limits.BlockedUntil.Value > _clock.UtcNow;
+            // blocked_until is a Core timestamp: compare on the skew-corrected clock.
+            return _limits.TryGetValue(accountId, out var limits) && limits.BlockedUntil.HasValue && limits.BlockedUntil.Value > CoreNow;
         }
 
         private List<string> Queue(string platformAccount)
@@ -128,6 +117,14 @@ namespace AllWin.Adapter.Core.Engine
         private void Pump(string platformAccount)
         {
             if (Session != SessionState.Ready) return; // commands only after the reconnect snapshot (answer 6)
+            // A dispatch can finish a command synchronously and trigger Pump again; the running loop sees it.
+            if (!_pumping.Add(platformAccount)) return;
+            try { PumpQueue(platformAccount); }
+            finally { _pumping.Remove(platformAccount); }
+        }
+
+        private void PumpQueue(string platformAccount)
+        {
             var queue = Queue(platformAccount);
             while (queue.Count > 0)
             {
@@ -164,15 +161,13 @@ namespace AllWin.Adapter.Core.Engine
                     Finish(record, false, ReportStatus.Expired, ReasonCodes.CommandExpired);
                     continue;
                 }
-                var info = SafeAccounts().FirstOrDefault(a => a.Name == platformAccount);
-                if (info == null || !info.Connected)
+                // The mapping and role come from the current session's welcome (S2 AC-5): re-checked here.
+                var refusal = CheckAccount(command);
+                if (refusal == null && SafeAccounts().FirstOrDefault(a => a.Name == platformAccount)?.Connected != true)
+                    refusal = ReasonCodes.CommandPlatformDisconnected;
+                if (refusal != null)
                 {
-                    Finish(record, false, ReportStatus.Rejected, ReasonCodes.CommandPlatformDisconnected);
-                    continue;
-                }
-                if (!IsExecutionAllowed(info))
-                {
-                    Finish(record, false, ReportStatus.Rejected, ReasonCodes.CommandAccountNotSimulation);
+                    Finish(record, false, ReportStatus.Rejected, refusal);
                     continue;
                 }
                 if (command.IsEntry && IsBlocked(record.AccountId))
@@ -189,7 +184,7 @@ namespace AllWin.Adapter.Core.Engine
                     case CommandKind.Flatten: DispatchFlatten(record); break;
                 }
                 if (command.Kind == CommandKind.Flatten && record.Phase != CommandPhase.Done) return;
-                queue.RemoveAt(0);
+                queue.Remove(record.CommandId);
             }
         }
 
@@ -238,26 +233,46 @@ namespace AllWin.Adapter.Core.Engine
                 TimeInForce = place.Order.TimeInForce ?? TimeInForce.Day,
             };
             record.EntryQuantity = quantity;
-            SubmitFor(record, new[] { request }, capReason);
+            SubmitFor(record, request, capReason);
         }
 
-        /// <summary>Write-ahead submit: the attempt is durable before the platform sees it, so it is never repeated.</summary>
-        private void SubmitFor(CommandRecord record, IReadOnlyList<OrderRequest> requests, string? workingReason)
+        /// <summary>
+        /// Write-ahead submit: the attempt is durable before the platform sees it, so it is never repeated.
+        /// A live order already on the platform with the exact reference is adopted instead (answer G); two or
+        /// more are ambiguous and nothing is submitted. When the call dies without a platform verdict, the
+        /// platform is asked again; if it does not hold the order the outcome is unknown, never a resubmission.
+        /// </summary>
+        private void SubmitFor(CommandRecord record, OrderRequest request, string? workingReason)
         {
             record.Phase = CommandPhase.Dispatched;
             record.SubmitAttempted = true;
             Save(record);
             Flush();
+            var role = OrderName.TryParse(request.Name, out _, out var letter) ? OrderName.RoleOf(letter, record.Command.Kind == CommandKind.Flatten) : ChildRole.Entry;
+            switch (AdoptExisting(record.PlatformAccount, request.Name))
+            {
+                case Adoption.Adopted: return;
+                case Adoption.Ambiguous:
+                    Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderAmbiguousReference, role);
+                    return;
+            }
             try
             {
-                var handles = GuardedSubmit(record.PlatformAccount, requests);
-                for (var i = 0; i < requests.Count && i < handles.Count; i++)
-                    TrackSubmitted(record.PlatformAccount, handles[i], requests[i], workingReason);
+                var handles = GuardedSubmit(record.PlatformAccount, new[] { request });
+                if (handles.Count > 0) TrackSubmitted(record.PlatformAccount, handles[0], request, workingReason);
+            }
+            catch (PlatformOutcomeUnknownException e)
+            {
+                _log.Write(LogLevel.Error, "platform.submit_unknown", record.CommandId + ": " + e.InnerException?.GetType().Name);
+                switch (AdoptExisting(record.PlatformAccount, request.Name))
+                {
+                    case Adoption.None: Finish(record, false, ReportStatus.Unknown, null, role); break;
+                    case Adoption.Ambiguous: Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderAmbiguousReference, role); break;
+                }
             }
             catch (PlatformException e)
             {
                 _log.Write(LogLevel.Warning, "platform.submit_failed", record.CommandId + ": " + e.Message);
-                var role = OrderName.TryParse(requests[0].Name, out _, out var letter) ? OrderName.RoleOf(letter, record.Command.Kind == CommandKind.Flatten) : ChildRole.Entry;
                 Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderPlatformRejected, role);
             }
         }
@@ -292,6 +307,21 @@ namespace AllWin.Adapter.Core.Engine
                     if (order.Order.StopPrice.HasValue && order.Order.Type != OrderType.Limit) stop = TickMath.Normalize(order.Order.StopPrice.Value + delta);
                 }
                 targetRecord.Quantity = modify.Quantity;
+                if (modify.Quantity.HasValue && order.IsProtective)
+                {
+                    // Protection never exceeds the position (answers B, D): cap and say so on the outcome.
+                    var allowed = AllowedLegQuantity(order);
+                    if (allowed <= order.ExecFilled)
+                    {
+                        FailTarget(record, targetRecord, order.Order.PlatformOrderId, ReasonCodes.CommandTargetNotFound);
+                        continue;
+                    }
+                    if (modify.Quantity.Value > allowed)
+                    {
+                        targetRecord.Quantity = allowed;
+                        targetRecord.Capped = true;
+                    }
+                }
                 targetRecord.LimitPrice = limit;
                 targetRecord.StopPrice = stop;
             }
@@ -393,6 +423,7 @@ namespace AllWin.Adapter.Core.Engine
             report.Side = order.Order.Side;
             report.Order = SpecOf(order.Order);
             report.Quantity = order.Order.Quantity;
+            if (target.Capped) report.ReasonCode = ReasonCodes.OrderQuantityCapped;
             Emit(record, report);
         }
 
@@ -499,13 +530,19 @@ namespace AllWin.Adapter.Core.Engine
                     TimeInForce = TimeInForce.Day,
                 };
                 // A re-try re-uses the name: the previous close order is terminal by then.
-                SubmitFor(record, new[] { request }, null);
+                SubmitFor(record, request, null);
                 if (record.Phase == CommandPhase.Done) Pump(account);
                 return;
             }
 
             // Closing
-            if (closeOrder == null) return;
+            if (closeOrder == null)
+            {
+                // The platform does not hold our close order (lost in a crash) and we may not send it again.
+                ConcludeLostClose(record);
+                Pump(account);
+                return;
+            }
             var flat = PositionQuantity(account, instrument) == 0;
             if (!closeOrder.Order.IsTerminal)
             {
@@ -538,8 +575,26 @@ namespace AllWin.Adapter.Core.Engine
             AdvanceFlatten(record);
         }
 
+        /// <summary>A close order the platform does not know: decided from the position, never re-sent.</summary>
+        private void ConcludeLostClose(CommandRecord record)
+        {
+            if (PositionQuantity(record.PlatformAccount, record.Command.Instrument) == 0)
+                Finish(record, true, ReportStatus.Cancelled, ReasonCodes.CommandAlreadyFlat, ChildRole.Flatten);
+            else
+                Finish(record, false, ReportStatus.Unknown, null, ChildRole.Flatten);
+        }
+
         private void CheckFlattenTimeouts(DateTime now)
         {
+            foreach (var record in _commands.Values.Where(r => r.Phase == CommandPhase.Dispatched && r.Command.Kind == CommandKind.Flatten
+                && r.FlattenStep == FlattenStep.Closing && r.StepStartedAt.HasValue && now - r.StepStartedAt.Value > _options.FlattenCloseTimeout).ToList())
+            {
+                // The close order is still not final: release the account queue. Later fills of that order are
+                // still reported under this command.
+                _log.Write(LogLevel.Error, "flatten.close_timeout", record.CommandId);
+                Finish(record, false, ReportStatus.Unknown, null, ChildRole.Flatten);
+                Pump(record.PlatformAccount);
+            }
             foreach (var record in _commands.Values.Where(r => r.Phase == CommandPhase.Dispatched && r.Command.Kind == CommandKind.Flatten
                 && r.FlattenStep == FlattenStep.Cancelling && r.StepStartedAt.HasValue && now - r.StepStartedAt.Value > _options.FlattenCancelTimeout).ToList())
             {

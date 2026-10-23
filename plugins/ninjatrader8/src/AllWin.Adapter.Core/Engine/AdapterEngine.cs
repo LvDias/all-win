@@ -10,7 +10,7 @@ namespace AllWin.Adapter.Core.Engine
 {
     public enum SessionState { Offline, AwaitingWelcome, Ready, Stopped }
 
-    public enum StopReason { None, PairAgain, UpdatePlugin, ConnectedElsewhere, StoreFailure }
+    public enum StopReason { None, PairAgain, UpdatePlugin, ConnectedElsewhere, StoreFailure, InternalError }
 
     /// <summary>Outbound side of the WebSocket. Implementations serialize sends (one at a time).</summary>
     public interface IFrameSink
@@ -28,7 +28,7 @@ namespace AllWin.Adapter.Core.Engine
     /// </summary>
     public sealed partial class AdapterEngine
     {
-        public static readonly IReadOnlyList<string> SupportedProtocolVersions = new[] { ProtocolCodec.Version };
+        public static readonly IReadOnlyList<string> SupportedProtocolVersions = ProtocolCodec.SupportedVersions;
 
         private readonly EngineOptions _options;
         private readonly ITradingPlatform _platform;
@@ -44,6 +44,7 @@ namespace AllWin.Adapter.Core.Engine
         private readonly Dictionary<string, DateTime> _inbound = new Dictionary<string, DateTime>(StringComparer.Ordinal);
         private readonly Dictionary<string, CommandRecord> _commands = new Dictionary<string, CommandRecord>(StringComparer.Ordinal);
         private readonly Dictionary<string, List<string>> _queues = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        private readonly HashSet<string> _pumping = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, FillRecord> _fills = new Dictionary<string, FillRecord>(StringComparer.Ordinal);
         private readonly Dictionary<string, AccountLimits> _limits = new Dictionary<string, AccountLimits>(StringComparer.Ordinal);
         private readonly Dictionary<string, string> _owners = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -55,6 +56,9 @@ namespace AllWin.Adapter.Core.Engine
         private long _nextCommandSeq = 1;
         private string _instanceId = "";
         private WelcomePayload? _welcome;
+
+        /// <summary>Envelope version for frames created in this session (answer F); "1.0" before welcome.</summary>
+        private string _sessionVersion = ProtocolCodec.Version;
         private IFrameSink? _sink;
         private TimeSpan _skew;
         private int _heartbeatMs;
@@ -65,6 +69,9 @@ namespace AllWin.Adapter.Core.Engine
         private DateTime _lastPruneAt;
         private bool _started;
         private bool _faulted;
+
+        /// <summary>True while executions that happened during a restart are being caught up (answer A).</summary>
+        private bool _catchUp;
 
         public AdapterEngine(EngineOptions options, ITradingPlatform platform, IDurableStore store, IClock? clock = null, IAdapterLog? log = null)
         {
@@ -119,6 +126,7 @@ namespace AllWin.Adapter.Core.Engine
                 if (!_started || Session == SessionState.Stopped) { sink.Close(1000, "stopped"); return; }
                 _sink = sink;
                 Session = SessionState.AwaitingWelcome;
+                _sessionVersion = ProtocolCodec.Version;
                 var now = _clock.UtcNow;
                 _lastFrameReceivedAt = now;
                 SendNow(BuildHello());
@@ -230,6 +238,9 @@ namespace AllWin.Adapter.Core.Engine
                     break;
                 case MessageTypes.Heartbeat:
                     break;
+                case MessageTypes.AccountState:
+                    HandleAccountState(envelope);
+                    break;
                 case MessageTypes.Command:
                 case MessageTypes.Limits:
                 case MessageTypes.InstructionResult:
@@ -262,6 +273,7 @@ namespace AllWin.Adapter.Core.Engine
 
             var now = _clock.UtcNow;
             _skew = envelope.SentAt - now;
+            _sessionVersion = welcome.ProtocolVersion;
             _heartbeatMs = welcome.HeartbeatIntervalMs;
             _ackTimeoutMs = welcome.AckTimeoutMs;
             _welcome = welcome;
@@ -285,6 +297,24 @@ namespace AllWin.Adapter.Core.Engine
             Flush();
             PumpAll();
             RaiseChanged();
+        }
+
+        /// <summary>Protocol 1.1 latest-wins sync state; only valid on a session that negotiated 1.1.</summary>
+        private void HandleAccountState(Envelope envelope)
+        {
+            if (Session != SessionState.Ready || _sessionVersion == "1.0")
+            {
+                _log.Write(LogLevel.Warning, "protocol.unexpected_account_state", _sessionVersion);
+                return;
+            }
+            var state = envelope.PayloadAs<AccountStatePayload>();
+            var mapping = MappingOf(state.PlatformAccount);
+            if (mapping == null || mapping.AccountId != state.AccountId)
+            {
+                _log.Write(LogLevel.Warning, "account_state.unmapped", state.AccountId);
+                return;
+            }
+            ApplyCoreAccountState(state.PlatformAccount, state.SyncState, state.SyncReasons, state.ChangedAt);
         }
 
         private void HandleAck(AckPayload ack)
@@ -398,7 +428,7 @@ namespace AllWin.Adapter.Core.Engine
                 Seq = _nextOutboxSeq++,
                 MsgId = msgId,
                 Type = ProtocolCodec.TypeOf(payload),
-                Frame = ProtocolCodec.Encode(payload, msgId, now),
+                Frame = ProtocolCodec.Encode(payload, msgId, now, _sessionVersion), // kept byte-identical for retransmission
                 CreatedAt = now,
             };
             _outbox[entry.Seq] = entry;
@@ -420,7 +450,9 @@ namespace AllWin.Adapter.Core.Engine
         private void SendNow(object payload)
         {
             if (_sink == null) return;
-            SendRaw(ProtocolCodec.Encode(payload, Ids.New(), _clock.UtcNow));
+            // hello always goes out as 1.0 (nothing is negotiated yet); later frames use the session's version.
+            var version = payload is HelloPayload ? ProtocolCodec.Version : _sessionVersion;
+            SendRaw(ProtocolCodec.Encode(payload, Ids.New(), _clock.UtcNow, version));
         }
 
         private void SendAck(string msgId) => SendNow(new AckPayload { MsgIds = { msgId } });
@@ -463,9 +495,17 @@ namespace AllWin.Adapter.Core.Engine
             }
             catch (Exception e)
             {
-                _log.Write(LogLevel.Error, "engine.error", what + ": " + e.GetType().Name + ": " + e.Message + "\n" + e.StackTrace);
-                try { Flush(); }
-                catch (Exception inner) { _log.Write(LogLevel.Error, "engine.flush_failed", inner.GetType().Name); }
+                // An unexpected exception is a bug: the in-memory state may be half-applied. Nothing more is
+                // committed or sent and the adapter stops trading (fail closed); a restart recovers from the
+                // last durable state. Platform-call failures never get here: they are mapped to reports.
+                _faulted = true;
+                _pending.Clear();
+                _afterCommit.Clear();
+                _log.Write(LogLevel.Error, "engine.fault", what + ": " + e.GetType().Name + ": " + e.Message + "\n" + e.StackTrace);
+                Stop(StopReason.InternalError);
+                try { _sink?.Close(1011, "adapter internal error"); } catch (Exception) { }
+                _sink = null;
+                RaiseChanged();
             }
         }
 
@@ -554,18 +594,36 @@ namespace AllWin.Adapter.Core.Engine
                 _inbound.Remove(pair.Key);
                 _pending.Add(new StoreOp(Collections.Inbound, pair.Key, null));
             }
-            foreach (var record in _commands.Values.Where(r => r.Phase == CommandPhase.Done && (r.DoneAt ?? r.ReceivedAt) < cutoff).ToList())
+            foreach (var record in _commands.Values.Where(r => r.Phase == CommandPhase.Done && (r.DoneAt ?? r.ReceivedAt) < cutoff && !StillProtecting(r)).ToList())
             {
                 _commands.Remove(record.CommandId);
                 _pending.Add(new StoreOp(Collections.Commands, record.CommandId, null));
             }
-            foreach (var pair in _fills.Where(p => p.Value.RecordedAt < cutoff).ToList())
+            // A fill record is kept while the platform still holds that execution, so a replay is never reported again.
+            var heldByPlatform = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var mapping in _welcome?.Accounts ?? new List<WelcomeAccount>())
+                if (SafeAccounts().Any(a => a.Name == mapping.PlatformAccount))
+                    foreach (var execution in SafeExecutions(mapping.PlatformAccount)) heldByPlatform.Add(mapping.PlatformAccount + "|" + execution.ExecutionId);
+            foreach (var pair in _fills.Where(p => p.Value.RecordedAt < cutoff && !heldByPlatform.Contains(p.Key)).ToList())
             {
                 _fills.Remove(pair.Key);
                 _pending.Add(new StoreOp(Collections.Fills, pair.Key, null));
             }
             // Keep the outbox sequence monotonic even after the outbox drains.
             Put(Collections.Meta, "next_outbox_seq", _nextOutboxSeq);
+        }
+
+        /// <summary>
+        /// A final place command is still needed while its bracket protects something: live legs, shared
+        /// ownership, or an individual entry with open quantity and a position on the contract (Code Review 6 H2).
+        /// </summary>
+        private bool StillProtecting(CommandRecord record)
+        {
+            if (record.Command.Kind != CommandKind.Place || record.Command.Place?.Protection == null) return false;
+            if (_orders.Values.Any(o => o.CommandId == record.CommandId && o.Account == record.PlatformAccount && !o.Order.IsTerminal)) return true;
+            if (_owners.ContainsValue(record.CommandId)) return true;
+            var open = record.EntryFilled - LegFilled(record.PlatformAccount, record.CommandId, 's') - LegFilled(record.PlatformAccount, record.CommandId, 't');
+            return open > 0 && SafeAccounts().Any(a => a.Name == record.PlatformAccount) && PositionQuantity(record.PlatformAccount, record.Command.Instrument) != 0;
         }
 
         private IReadOnlyList<PlatformAccountInfo> SafeAccounts()

@@ -64,6 +64,9 @@ namespace AllWin.Adapter.Core.Engine
         public bool EntryTerminal { get; set; }
         public bool BracketSubmitted { get; set; }
 
+        /// <summary>The bracket was deliberately not submitted after a catch-up fill (answer A): never later.</summary>
+        public bool ProtectionWithheld { get; set; }
+
         // flatten
         public FlattenStep FlattenStep { get; set; }
         public int FlattenAttempts { get; set; }
@@ -96,6 +99,9 @@ namespace AllWin.Adapter.Core.Engine
         public int? Quantity { get; set; }
         public decimal? LimitPrice { get; set; }
         public decimal? StopPrice { get; set; }
+
+        /// <summary>The requested quantity was capped so protection stays within the position.</summary>
+        public bool Capped { get; set; }
     }
 
     public sealed class FillRecord

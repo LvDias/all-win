@@ -63,6 +63,22 @@ namespace AllWin.Adapter.Core.Tests.Store
         }
 
         [Fact]
+        public void Complete_last_line_with_a_bad_crc_is_damage_not_a_torn_write()
+        {
+            using (var s = new FileJournalStore(_dir))
+            {
+                s.Commit(new[] { new StoreOp("a", "1", "one") });
+                s.Commit(new[] { new StoreOp("a", "2", "two") });
+            }
+            var journal = Path.Combine(_dir, FileJournalStore.JournalFile);
+            var bytes = File.ReadAllBytes(journal);
+            var i = Encoding.UTF8.GetString(bytes).LastIndexOf("two", StringComparison.Ordinal);
+            bytes[i] = (byte)'X'; // bit rot in a fsynced commit
+            File.WriteAllBytes(journal, bytes);
+            Assert.Throws<StoreCorruptException>(() => new FileJournalStore(_dir));
+        }
+
+        [Fact]
         public void Compaction_keeps_state_and_tolerates_crash_before_truncate()
         {
             using (var s = new FileJournalStore(_dir, compactThresholdBytes: 512))

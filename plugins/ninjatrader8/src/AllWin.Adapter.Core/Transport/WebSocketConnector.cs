@@ -76,12 +76,14 @@ namespace AllWin.Adapter.Core.Transport
                         }
                         _log.Write(LogLevel.Info, "transport.connected", _uri.Host + " key=" + TokenMask.Mask(token));
                         using (var sink = new SocketSink(socket, _log))
+                        using (var receive = CancellationTokenSource.CreateLinkedTokenSource(ct, sink.Aborted))
                         {
                             _loop.Post(e => e.OnConnected(sink));
-                            closeCode = await ReceiveAsync(socket, ct).ConfigureAwait(false);
+                            closeCode = await ReceiveAsync(socket, receive.Token).ConfigureAwait(false);
                         }
                     }
                     catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+                    catch (OperationCanceledException) { _log.Write(LogLevel.Warning, "transport.aborted", "engine close"); }
                     catch (Exception e) when (e is WebSocketException || e is IOException || e is OperationCanceledException)
                     {
                         _log.Write(LogLevel.Warning, "transport.error", e.GetType().Name);
@@ -134,9 +136,13 @@ namespace AllWin.Adapter.Core.Transport
         /// <summary>Serialized sender: the engine enqueues and returns; one task writes to the socket.</summary>
         private sealed class SocketSink : IFrameSink, IDisposable
         {
+            /// <summary>Grace for the close handshake before the socket is aborted (half-open TCP never answers).</summary>
+            private static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(2);
+
             private readonly ClientWebSocket _socket;
             private readonly IAdapterLog _log;
             private readonly BlockingCollection<Func<Task>> _sends = new BlockingCollection<Func<Task>>();
+            private readonly CancellationTokenSource _abort = new CancellationTokenSource();
             private readonly Task _pump;
 
             public SocketSink(ClientWebSocket socket, IAdapterLog log)
@@ -152,9 +158,30 @@ namespace AllWin.Adapter.Core.Transport
                 TryAdd(() => _socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None));
             }
 
+            /// <summary>Cancelled when the engine closed the session and the peer did not answer in time.</summary>
+            public CancellationToken Aborted => _abort.Token;
+
+            /// <summary>
+            /// The engine closes (e.g. 4005 heartbeat timeout, Code Review 6 M2). On a half-open connection
+            /// neither the close handshake nor the pending receive would complete before the OS TCP timeout,
+            /// so after a short grace the socket is aborted and the receive cancelled; the connector reconnects.
+            /// </summary>
             public void Close(int code, string reason)
             {
-                TryAdd(() => _socket.CloseAsync((WebSocketCloseStatus)code, reason, CancellationToken.None));
+                _ = Task.Run(async () =>
+                {
+                    using (var grace = new CancellationTokenSource(CloseGrace))
+                    {
+                        try { await _socket.CloseOutputAsync((WebSocketCloseStatus)code, reason, grace.Token).ConfigureAwait(false); }
+                        catch (Exception e) when (e is WebSocketException || e is OperationCanceledException || e is ObjectDisposedException || e is InvalidOperationException) { }
+                    }
+                    try { await Task.Delay(CloseGrace).ConfigureAwait(false); } catch (ObjectDisposedException) { }
+                    if (_socket.State != WebSocketState.Closed)
+                    {
+                        _socket.Abort();
+                        try { _abort.Cancel(); } catch (ObjectDisposedException) { }
+                    }
+                });
             }
 
             private void TryAdd(Func<Task> work)
@@ -182,6 +209,7 @@ namespace AllWin.Adapter.Core.Transport
                 try { _pump.Wait(TimeSpan.FromSeconds(2)); }
                 catch (AggregateException) { }
                 _sends.Dispose();
+                _abort.Dispose();
             }
         }
     }

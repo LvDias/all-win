@@ -35,10 +35,16 @@ namespace AllWin.Adapter.Core.Platform
         void Cancel(string account, IReadOnlyList<string> orderHandles);
     }
 
-    public sealed class PlatformException : Exception
+    public class PlatformException : Exception
     {
         public PlatformException(string message) : base(message) { }
         public PlatformException(string message, Exception inner) : base(message, inner) { }
+    }
+
+    /// <summary>A Submit call died without a platform verdict: the order may or may not exist.</summary>
+    public sealed class PlatformOutcomeUnknownException : PlatformException
+    {
+        public PlatformOutcomeUnknownException(Exception inner) : base("submit outcome unknown: " + inner.GetType().Name, inner) { }
     }
 
     public sealed class PlatformAccountInfo

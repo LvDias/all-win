@@ -21,6 +21,7 @@ namespace AllWin.Adapter.Core.Localization
             ["stop.update_plugin"] = new[] { "This plugin version is no longer supported. Update the plugin.", "Esta versão do plugin não é mais suportada. Atualize o plugin." },
             ["stop.connected_elsewhere"] = new[] { "This connection was opened on another NinjaTrader.", "Esta conexão foi aberta em outro NinjaTrader." },
             ["stop.store_failure"] = new[] { "The plugin could not save its local state and stopped trading. Contact support.", "O plugin não conseguiu gravar seu estado local e parou de operar. Fale com o suporte." },
+            ["stop.internal_error"] = new[] { "The plugin hit an internal error and stopped trading. Restart NinjaTrader and contact support.", "O plugin encontrou um erro interno e parou de operar. Reinicie o NinjaTrader e fale com o suporte." },
             ["notice.local_oco"] = new[]
             {
                 "Stop and target are only fully protected while NinjaTrader is running and connected.",
@@ -54,6 +55,8 @@ namespace AllWin.Adapter.Core.Localization
             [ReasonCodes.OrderOrphanCancelled] = new[] { "Cancelled: the position is closed.", "Cancelada: a posição foi fechada." },
             [ReasonCodes.OrderProtectionFailed] = new[] { "Stop or target could not be placed or changed.", "Não foi possível colocar ou alterar o stop ou alvo." },
             [ReasonCodes.OrderCancelFailed] = new[] { "Cancellation failed.", "O cancelamento falhou." },
+            [ReasonCodes.OrderProtectionNotSubmitted] = new[] { "Stop and target were not placed: the entry filled while the plugin was closed. Check the account.", "Stop e alvo não foram colocados: a entrada foi executada com o plugin fechado. Verifique a conta." },
+            [ReasonCodes.OrderAmbiguousReference] = new[] { "More than one order with the same All Win reference: nothing was sent. Check the account.", "Mais de uma ordem com a mesma referência do All Win: nada foi enviado. Verifique a conta." },
             [ReasonCodes.RiskAccountBlocked] = new[] { "Account blocked by its risk limit until the reset.", "Conta bloqueada pelo limite de risco até o reinício." },
         };
 

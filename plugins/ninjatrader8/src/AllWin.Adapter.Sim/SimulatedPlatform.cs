@@ -49,10 +49,16 @@ namespace AllWin.Adapter.Sim
         /// <summary>The next Submit dies abruptly (not a platform refusal): models a crash after the engine's write-ahead.</summary>
         public bool CrashNextSubmit { get; set; }
 
+        /// <summary>The next Submit creates the orders and then dies before returning (a crash after the platform accepted).</summary>
+        public bool CrashAfterSubmit { get; set; }
+
         /// <summary>Orders are accepted but rejected right after (e.g. broker rejection).</summary>
         public bool RejectNextOrder { get; set; }
 
         public bool FailNextCancel { get; set; }
+
+        /// <summary>Cancels stay in CancelSubmitted until <see cref="ConfirmCancels"/> (a slow broker).</summary>
+        public bool DeferCancels { get; set; }
         public bool FailNextChange { get; set; }
 
         public List<string> CallLog { get; } = new List<string>();
@@ -147,6 +153,11 @@ namespace AllWin.Adapter.Sim
                     RaiseOrder(account, order);
                 }
                 foreach (var handle in handles) TryFill(account, a.Orders[handle]);
+                if (CrashAfterSubmit)
+                {
+                    CrashAfterSubmit = false;
+                    throw new InvalidOperationException("simulated death after the platform accepted");
+                }
                 return handles;
             }
         }
@@ -191,6 +202,7 @@ namespace AllWin.Adapter.Sim
                     if (!a.Orders.TryGetValue(handle, out var order) || order.IsTerminal) continue;
                     order.State = PlatformOrderState.CancelSubmitted;
                     RaiseOrder(account, order);
+                    if (DeferCancels) continue;
                     order.State = PlatformOrderState.Cancelled;
                     RaiseOrder(account, order);
                 }
@@ -209,6 +221,12 @@ namespace AllWin.Adapter.Sim
                     foreach (var order in Account(account).Orders.Values.Where(o => o.Instrument.Symbol == symbol && !o.IsTerminal).OrderBy(o => o.Time).ToList())
                         TryFill(account, order);
             }
+        }
+
+        /// <summary>No market data for the symbol: market orders rest instead of filling.</summary>
+        public void ClearPrice(string symbol)
+        {
+            lock (_gate) _prices.Remove(symbol);
         }
 
         /// <summary>Fills part or all of a working order at <paramref name="price"/>.</summary>
@@ -288,6 +306,29 @@ namespace AllWin.Adapter.Sim
                 a.Executions.Clear();
                 a.Oco.Clear();
                 EventSink(new AccountResetEvent { Account = account });
+            }
+        }
+
+        public void ConfirmCancels()
+        {
+            lock (_gate)
+            {
+                foreach (var account in _accounts.Keys.ToList())
+                    foreach (var order in Account(account).Orders.Values.Where(o => o.State == PlatformOrderState.CancelSubmitted).ToList())
+                    {
+                        order.State = PlatformOrderState.Cancelled;
+                        RaiseOrder(account, order);
+                    }
+            }
+        }
+
+        /// <summary>The platform never received this order (e.g. the process died inside Submit).</summary>
+        public void ForgetOrder(string account, string name)
+        {
+            lock (_gate)
+            {
+                var a = Account(account);
+                foreach (var handle in a.Orders.Values.Where(o => o.Name == name).Select(o => o.Handle).ToList()) a.Orders.Remove(handle);
             }
         }
 

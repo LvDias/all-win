@@ -25,6 +25,9 @@ namespace AllWin.Adapter.Core.Protocol
         public const string RiskEvent = "risk_event";
         public const string RiskState = "risk_state";
 
+        /// <summary>Protocol 1.1, C→A, latest wins (not acked).</summary>
+        public const string AccountState = "account_state";
+
         /// <summary>Reliable messages stay in the sender's outbox until acked (ADR-0004 §3).</summary>
         public static bool IsReliable(string type) =>
             type == Command || type == Limits || type == InstructionResult || type == ExecutionReport
@@ -262,6 +265,19 @@ namespace AllWin.Adapter.Core.Protocol
     {
         public string ResetLocalTime { get; set; } = "";
         public string TimeZone { get; set; } = "";
+    }
+
+    /// <summary>Protocol 1.1: an account's sync state changed during the session (S11 AC-1).</summary>
+    public sealed class AccountStatePayload
+    {
+        public string AccountId { get; set; } = "";
+        public string PlatformAccount { get; set; } = "";
+        public SyncState SyncState { get; set; }
+
+        /// <summary>Complete current list; empty exactly when in sync.</summary>
+        public List<string> SyncReasons { get; set; } = new List<string>();
+
+        public DateTime ChangedAt { get; set; }
     }
 
     public sealed class InstructionResultPayload

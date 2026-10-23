@@ -137,6 +137,15 @@ namespace AllWin.FakeCore
 
         private readonly List<(string MsgId, string Frame, DateTime SentAt)> _sentLog = new List<(string, string, DateTime)>();
 
+        /// <summary>
+        /// Half-open connection: the current session stops reading and sending (TCP stays up), as when the
+        /// network path dies silently. The adapter must detect it by heartbeat and reconnect.
+        /// </summary>
+        public void FreezeCurrentSession()
+        {
+            lock (_gate) if (_session != null) _session.Frozen = true;
+        }
+
         public async Task CloseAsync(int code)
         {
             Session? session;
@@ -171,7 +180,7 @@ namespace AllWin.FakeCore
                 _session = session;
             }
             _trace("session " + session.Number + " open");
-            using var heartbeat = new Timer(_ => _ = session.SendAsync(ProtocolCodec.Encode(new HeartbeatPayload(), Ids.New(), DateTime.UtcNow)), null, HeartbeatIntervalMs, HeartbeatIntervalMs);
+            using var heartbeat = new Timer(_ => { if (!session.Frozen) _ = session.SendAsync(ProtocolCodec.Encode(new HeartbeatPayload(), Ids.New(), DateTime.UtcNow)); }, null, HeartbeatIntervalMs, HeartbeatIntervalMs);
             using var retransmit = new Timer(_ => RetransmitDue(session), null, AckTimeoutMs, AckTimeoutMs);
             try
             {
@@ -223,6 +232,9 @@ namespace AllWin.FakeCore
                 case MessageTypes.Hello:
                     if (session.HelloReceived) { lock (_gate) _violations.Add("second hello in a session"); return; }
                     session.HelloReceived = true;
+                    // ADR-0004 §3 step 4: the highest version both sides support.
+                    var offered = envelope.PayloadAs<HelloPayload>().SupportedProtocolVersions;
+                    session.Version = ProtocolCodec.SupportedVersions.Where(offered.Contains).Last();
                     _ = SendHandshakeAsync(session);
                     return;
                 case MessageTypes.Ack:
@@ -257,7 +269,7 @@ namespace AllWin.FakeCore
             {
                 SessionId = Ids.New(),
                 ConnectionId = "0192b3c4-0000-7000-8000-00000000c0de",
-                ProtocolVersion = ProtocolCodec.Version,
+                ProtocolVersion = session.Version,
                 HeartbeatIntervalMs = HeartbeatIntervalMs,
                 AckTimeoutMs = AckTimeoutMs,
                 SimulationOnly = SimulationOnly,
@@ -309,6 +321,8 @@ namespace AllWin.FakeCore
 
             public int Number { get; }
             public bool HelloReceived { get; set; }
+            public volatile bool Frozen;
+            public string Version { get; set; } = ProtocolCodec.Version;
             public bool SnapshotReceived { get; set; }
 
             public async Task SendAsync(string frame)
@@ -316,7 +330,7 @@ namespace AllWin.FakeCore
                 await _send.WaitAsync().ConfigureAwait(false);
                 try
                 {
-                    if (_socket.State != WebSocketState.Open) return;
+                    if (_socket.State != WebSocketState.Open || Frozen) return;
                     lock (_server._gate)
                     {
                         var decoded = ProtocolCodec.Decode(frame);
@@ -350,6 +364,7 @@ namespace AllWin.FakeCore
                 var message = new List<byte>();
                 while (_socket.State == WebSocketState.Open || _socket.State == WebSocketState.CloseSent)
                 {
+                    while (Frozen) await Task.Delay(100).ConfigureAwait(false); // read nothing: half-open
                     var result = await _socket.ReceiveAsync(buffer, CancellationToken.None).ConfigureAwait(false);
                     if (result.MessageType == WebSocketMessageType.Close)
                     {

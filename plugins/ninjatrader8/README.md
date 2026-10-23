@@ -17,7 +17,7 @@ The plugin connects a trader's NinjaTrader 8 to the All Win Core through adapter
 ## Build and test (Linux, .NET 10 SDK)
 
 ```bash
-dotnet test plugins/ninjatrader8 --nologo -v q            # 353 tests, includes the 10 fake-Core scenarios
+dotnet test plugins/ninjatrader8 --nologo -v q            # 403 tests, includes the fake-Core scenarios
 dotnet run --project plugins/ninjatrader8/tools/AllWin.FakeCore -- -with-sim   # scenarios with a readable summary
 python3 plugins/ninjatrader8/tools/gen-contract-schemas.py # after a contract change (a drift test fails otherwise)
 ```
@@ -28,7 +28,7 @@ python3 plugins/ninjatrader8/tools/gen-contract-schemas.py # after a contract ch
   - `AllWin.Adapter.Core` builds for `netstandard2.0` and `net48`, with warnings as errors.
   - All protocol fixtures pass: our in-process validator and an independent JSON Schema implementation agree on every fixture.
   - Engine behavior is unit-tested.
-  - The 10 harness scenarios pass over a real loopback WebSocket against the simulated platform.
+  - The 11 harness scenarios pass over a real loopback WebSocket against the simulated platform, plus a half-open connection test.
 - **Not verified (needs the Windows VPS, which does not exist yet):**
   - Anything inside NinjaTrader 8: the AddOn host, Account API mapping, event ordering, the `Order.Name` round-trip after a restart (E4), and the provider names used by the simulation guard.
   - Durable store behavior on NTFS and under NT8 (E12).

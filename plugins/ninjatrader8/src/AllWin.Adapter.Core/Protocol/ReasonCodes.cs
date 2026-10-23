@@ -30,6 +30,12 @@ namespace AllWin.Adapter.Core.Protocol
         public const string OrderOrphanCancelled = "order.orphan_cancelled";
         public const string OrderProtectionFailed = "order.protection_failed";
         public const string OrderCancelFailed = "order.cancel_failed";
+
+        /// <summary>A protective leg deliberately not submitted after a catch-up fill (answer A): rejected, under the entry.</summary>
+        public const string OrderProtectionNotSubmitted = "order.protection_not_submitted";
+
+        /// <summary>Two or more live platform orders carry the same reference: none adopted, nothing submitted.</summary>
+        public const string OrderAmbiguousReference = "order.ambiguous_reference";
         public const string RiskAccountBlocked = "risk.account_blocked";
         public const string ProtocolInvalidMessage = "protocol.invalid_message";
         public const string ProtocolUnsupportedValue = "protocol.unsupported_value";

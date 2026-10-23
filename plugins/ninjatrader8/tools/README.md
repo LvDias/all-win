@@ -27,7 +27,7 @@ This is not yet possible: the plugin host (`AllWin.NinjaTrader8`) is the next st
    ```
 
 3. Configure the plugin with the same test token file. The harness prints the key id only, never the token.
-4. Scenarios without `"requires_sim": true` run against NT8: entry-bracket, disconnect-reconnect, expiry, flatten-block, duplicates, stale. The others need price control and run with `-with-sim`. E11 covers the NT8 bracket-integrity case manually.
+4. Scenarios without `"requires_sim": true` run against NT8: entry-bracket, disconnect-reconnect, expiry, flatten-block, duplicates, stale, partial-exit. The others need price control and run with `-with-sim`. E11 covers the NT8 bracket-integrity case manually.
 
 ## Scenario format
 

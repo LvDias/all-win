@@ -40,7 +40,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
-        public void Stale_check_runs_even_while_a_dedupe_record_exists()
+        public void Known_command_id_is_answered_duplicate_even_when_stale()
         {
             using var h = new EngineHarness();
             h.Platform.SetPrice("MNQ", 21000m);
@@ -49,7 +49,9 @@ namespace AllWin.Adapter.Core.Tests.Engine
             h.Deliver(exit, sentAt: h.Clock.UtcNow);
             h.Clock.Advance(TimeSpan.FromDays(6.5)); // inside retention, past staleness
             h.Deliver(exit, sentAt: h.Clock.UtcNow - TimeSpan.FromDays(6.5));
-            Assert.Equal(ReasonCodes.CommandStale, h.Reports(C1).Last().ReasonCode);
+            // Architect answer E: a known command_id is a duplicate (non-transition), stale is only for unknown ones.
+            Assert.Equal(ReportStatus.Duplicate, h.Reports(C1).Last().Status);
+            Assert.DoesNotContain(h.Platform.CallLog, c => c.Contains(C1)); // flat at first: nothing_to_reduce, never executed
         }
 
         [Fact]

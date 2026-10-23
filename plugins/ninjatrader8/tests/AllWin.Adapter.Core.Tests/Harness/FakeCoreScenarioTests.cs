@@ -32,5 +32,33 @@ namespace AllWin.Adapter.Core.Tests.Harness
             Assert.True(result.Passed, result.Failure + "\n" + string.Join("\n", result.Steps) + "\n--- trace ---\n" + string.Join("\n", trace.TakeLast(80)));
             lock (trace) Assert.DoesNotContain(trace, l => l.Contains(token.Substring(17)));
         }
+
+        [Fact]
+        public async Task Half_open_connection_is_detected_by_heartbeat_and_the_adapter_reconnects()
+        {
+            // Code Review 6 M2: the peer stops answering while TCP stays up. Heartbeat 1 s → timeout after 3 s,
+            // then the close handshake gets a short grace and the socket is aborted.
+            var scenario = ProtocolJson.ParseObject("{\"name\":\"half-open\",\"accounts\":[{\"alias\":\"A\",\"platform_account\":\"Sim101\"}],\"steps\":[]}");
+            var token = "awd_TestKeyId001_" + new string('b', 43);
+            await using var core = new FakeCoreServer(ScenarioRunner.AccountsOf(scenario), token) { HeartbeatIntervalMs = 1000 };
+            await core.StartAsync();
+            using var sim = new SimAdapterHost(scenario, core.Endpoint!, token, _ => { });
+            sim.Start();
+            await WaitAsync(() => core.SessionReady, 10000);
+            core.FreezeCurrentSession();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await WaitAsync(() => core.SessionCount >= 2 && core.SessionReady, 20000);
+            Assert.True(watch.Elapsed < System.TimeSpan.FromSeconds(15), "reconnected after " + watch.Elapsed);
+        }
+
+        private static async Task WaitAsync(System.Func<bool> condition, int timeoutMs)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (!condition())
+            {
+                Assert.True(watch.ElapsedMilliseconds < timeoutMs, "timed out");
+                await Task.Delay(50);
+            }
+        }
     }
 }

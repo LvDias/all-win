@@ -29,7 +29,7 @@ namespace AllWin.Adapter.Core.Tests.Contracts
             Assert.True(result.IsOk, result.Detail);
             var envelope = result.Envelope!;
             var model = ToTyped(envelope);
-            var reencoded = ProtocolJson.ParseObject(ProtocolCodec.Encode(model, envelope.MsgId, envelope.SentAt));
+            var reencoded = ProtocolJson.ParseObject(ProtocolCodec.Encode(model, envelope.MsgId, envelope.SentAt, envelope.ProtocolVersion));
             AssertSemanticallyEqual(ProtocolJson.Parse(text), reencoded, "");
         }
 
@@ -37,8 +37,8 @@ namespace AllWin.Adapter.Core.Tests.Contracts
         public void Newer_minor_with_unknown_type_is_unsupported_value()
         {
             var frame = ProtocolJson.ParseObject(File.ReadAllText(Path.Combine(RepoPaths.AdapterExamples, "valid", "heartbeat.json")));
-            frame["protocol_version"] = "1.1";
-            frame["type"] = "account_state";
+            frame["protocol_version"] = "1.2";
+            frame["type"] = "account_limits_v2";
             var result = ProtocolCodec.Decode(ProtocolJson.Serialize(frame));
             Assert.Equal(ReasonCodes.ProtocolUnsupportedValue, result.ErrorCode);
             Assert.Equal((string?)frame["msg_id"], result.RefMsgId);
@@ -94,6 +94,7 @@ namespace AllWin.Adapter.Core.Tests.Contracts
             MessageTypes.Instruction => e.PayloadAs<InstructionPayload>(),
             MessageTypes.RiskEvent => e.PayloadAs<RiskEventPayload>(),
             MessageTypes.RiskState => e.PayloadAs<RiskStatePayload>(),
+            MessageTypes.AccountState => e.PayloadAs<AccountStatePayload>(),
             _ => throw new InvalidOperationException(e.Type),
         };
 

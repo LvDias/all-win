@@ -18,9 +18,15 @@ namespace AllWin.Adapter.Core.Protocol
     /// </summary>
     public static class ProtocolCodec
     {
+        /// <summary>Envelope version used before a version is negotiated (and for hello).</summary>
         public const string Version = "1.0";
         public const int Major = 1;
-        public const int Minor = 0;
+
+        /// <summary>Highest minor this adapter implements.</summary>
+        public const int Minor = 1;
+
+        /// <summary>Versions advertised in hello, lowest first (Architect answer F).</summary>
+        public static readonly string[] SupportedVersions = { "1.0", "1.1" };
 
         private static readonly JsonSerializer Serializer = JsonSerializer.Create(new JsonSerializerSettings
         {
@@ -53,6 +59,7 @@ namespace AllWin.Adapter.Core.Protocol
             [MessageTypes.Instruction] = typeof(InstructionPayload),
             [MessageTypes.RiskEvent] = typeof(RiskEventPayload),
             [MessageTypes.RiskState] = typeof(RiskStatePayload),
+            [MessageTypes.AccountState] = typeof(AccountStatePayload),
         };
 
         public static string TypeOf(object payload)
@@ -67,11 +74,11 @@ namespace AllWin.Adapter.Core.Protocol
         public static JObject ToJson(object payload) => JObject.FromObject(payload, Serializer);
 
         /// <summary>Builds and validates an outbound frame. Throws on a contract violation (a bug).</summary>
-        public static string Encode(object payload, string msgId, DateTime sentAt)
+        public static string Encode(object payload, string msgId, DateTime sentAt, string protocolVersion = Version)
         {
             var frame = new JObject
             {
-                ["protocol_version"] = Version,
+                ["protocol_version"] = protocolVersion,
                 ["msg_id"] = msgId,
                 ["type"] = TypeOf(payload),
                 ["sent_at"] = UtcTimestamp.Format(sentAt),

@@ -53,7 +53,8 @@ namespace AllWin.Adapter.Core.Tests.Engine
 
         private readonly string _dir = Path.Combine(Path.GetTempPath(), "allwin-engine-" + Guid.NewGuid().ToString("N"));
         private readonly Queue<PlatformEvent> _events = new Queue<PlatformEvent>();
-        private FileJournalStore _store;
+        private FileJournalStore _file;
+        private FaultInjectingStore _store;
 
         public EngineHarness(Action<SimulatedPlatform>? setup = null, EngineOptions? options = null)
         {
@@ -62,10 +63,14 @@ namespace AllWin.Adapter.Core.Tests.Engine
             Platform.AddAccount(Sim101);
             Platform.SetTickSize("MNQ", 0.25m);
             setup?.Invoke(Platform);
-            _store = new FileJournalStore(_dir);
+            _file = new FileJournalStore(_dir);
+            _store = new FaultInjectingStore(_file);
             Engine = NewEngine();
             Engine.Start();
         }
+
+        /// <summary>The next durable commit throws IOException (disk full, permission lost…).</summary>
+        public void FailNextCommit() => _store.FailNext = true;
 
         public ManualClock Clock { get; } = new ManualClock();
         public SimulatedPlatform Platform { get; }
@@ -76,7 +81,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
 
         public void Dispose()
         {
-            _store.Dispose();
+            _file.Dispose();
             if (Directory.Exists(_dir)) Directory.Delete(_dir, true);
         }
 
@@ -140,10 +145,11 @@ namespace AllWin.Adapter.Core.Tests.Engine
         /// <summary>Simulates a plugin/NT8 restart: new engine over the same store and platform.</summary>
         public void Restart(bool renewHandles = true)
         {
-            _store.Dispose();
+            _file.Dispose();
             if (renewHandles) Platform.RenewHandles();
             _events.Clear(); // events of the dead process are lost
-            _store = new FileJournalStore(_dir);
+            _file = new FileJournalStore(_dir);
+            _store = new FaultInjectingStore(_file);
             Engine = NewEngine();
             Engine.Start();
             Sink = new RecordingSink();
@@ -236,6 +242,30 @@ namespace AllWin.Adapter.Core.Tests.Engine
             Kind = CommandKind.Cancel,
             Cancel = new CancelSpec { Targets = { new OrderTarget { CommandId = target, ChildRole = role } } },
         };
+
+        /// <summary>Drops platform events that are queued but not yet delivered (the process died first).</summary>
+        public void LoseEvents() => _events.Clear();
+
+        private sealed class FaultInjectingStore : IDurableStore
+        {
+            private readonly IDurableStore _inner;
+            public FaultInjectingStore(IDurableStore inner) => _inner = inner;
+            public bool FailNext { get; set; }
+            public IReadOnlyDictionary<string, string> Collection(string name) => _inner.Collection(name);
+            public string? Get(string collection, string key) => _inner.Get(collection, key);
+
+            public void Commit(IReadOnlyList<StoreOp> ops)
+            {
+                if (FailNext)
+                {
+                    FailNext = false;
+                    throw new IOException("simulated disk failure");
+                }
+                _inner.Commit(ops);
+            }
+
+            public void Dispose() { }
+        }
 
         private sealed class ListLog : IAdapterLog
         {

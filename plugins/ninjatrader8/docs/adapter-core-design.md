@@ -29,17 +29,18 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
 
 | Layer | Mechanism |
 |---|---|
-| Store | `FileJournalStore` is an append-only journal plus an atomic snapshot (write tmp → fsync → rename). Each commit is one line, CRC-protected and fsynced before it returns. A torn last line is dropped on open. Damage anywhere else is a `StoreCorruptException`: the adapter stops (fail closed). An exclusive lock file prevents two processes from sharing a store |
+| Store | `FileJournalStore` is an append-only journal plus an atomic snapshot (write tmp → fsync → rename). Each commit is one line, CRC-protected and fsynced before it returns. A last line **without** its newline is a torn write and is dropped on open. Any complete line that fails its CRC, including the last one, is a `StoreCorruptException`: the adapter stops (fail closed). An exclusive lock file prevents two processes from sharing a store. The directory is not fsynced after the rename (NTFS is fine; ext4 is not the target), to be checked in E12 |
 | Write-ahead | State changes are committed before any frame is sent and before any platform call they cause. A command is marked `SubmitAttempted` and flushed before `Submit`. If the process dies after that point and the platform has no order with that name, recovery reports `unknown` and **never resubmits** |
+| Unknown outcomes | A host exception other than `PlatformException` during `Submit` means the call died without a verdict. The engine asks the platform again: if a **live** order carries the exact reference, it is adopted; otherwise the result is `unknown`. Before every submission, a live order with the same `(command_id, role)` is adopted instead of submitting. Terminal orders are ignored, so a flatten retry that reuses `aw:<cmd>:x` still works. Two or more live orders give `rejected` + `order.ambiguous_reference`, and nothing is submitted (answer G + addition 2/3). Any other unexpected exception is a bug: nothing more is committed or sent, and the adapter stops (`StopReason.InternalError`, fail closed) |
 | Transport | Reliable outbound messages stay in the outbox until acked. They are retransmitted after `ack_timeout_ms` and on reconnect, byte-identical: same `msg_id`, same `sent_at` |
-| Inbound dedupe | `msg_id` (transport) and `command_id` (business, answered `duplicate` with the last known state). Retention is 7 days (answer 8). Pruning only drops final commands |
-| Staleness | Any command whose envelope `sent_at` is older than 6 days on the skew-corrected clock is answered `rejected`/`command.stale` and recorded, with or without a dedupe record (ADR-0004 §4, "bounded re-delivery"). Invariant: 7 d > 6 d > Core horizon 72 h |
+| Inbound dedupe | `msg_id` (transport) and `command_id` (business, answered `duplicate` with the last known state, also when stale; answer E). Retention is 7 days (answer 8). Pruning only drops final commands that no longer protect anything: no live legs, no shared ownership, no open individual bracket on a non-flat contract (Code Review 6 H2). Fill records are kept while the platform still holds the execution |
+| Staleness | A command with **no** record whose envelope `sent_at` is older than 6 days on the skew-corrected clock is answered `rejected`/`command.stale` and recorded (ADR-0004 §4, "bounded re-delivery"). It is checked at intake and again at dispatch. Invariant: 7 d > 6 d > Core horizon 72 h |
 | Fills | `(account, fill_id)` is recorded. Replays after a restart are suppressed. A changed replay becomes `amend`. `remove` needs a known fill |
 | Events | `event_id` is generated once per report. It is persisted in the outbox frame before sending |
 
 ## 3. Session
 
-1. `hello` → `welcome`.
+1. `hello` → `welcome`. `hello` advertises `[1.0, 1.1]` and always travels as 1.0. Frames created after `welcome` use the negotiated version; outbox frames keep their original bytes (answer F). On 1.1 sessions, `account_state` updates the account view (`changed_at` rule).
 2. The skew is measured as `welcome.sent_at − local receipt`, giving `CoreNow = local + skew`.
 3. The mapping is persisted. The outbox is retransmitted in its original order. Then `position_snapshot(reconnect)` is sent. Only after that are commands dispatched (answer 6).
 4. A command that arrives before the snapshot is queued, never rejected, and a protocol warning is logged.
@@ -50,6 +51,7 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
    - 4004 stops it (connected elsewhere);
    - anything else reconnects. Backoff starts at 1 s, doubles, caps at 30 s, ±20 % jitter, and resets after a session that reached Ready.
 7. The transport refuses non-`wss` endpoints, except `ws://` on loopback for the harness.
+8. When the engine closes the session (e.g. 4005), the close handshake gets a 2 s grace. After that, the socket is aborted and the receive is cancelled, so a half-open TCP connection never delays the reconnect (Code Review 6 M2).
 
 ## 4. Commands
 
@@ -57,13 +59,14 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
   - The queue advances when the head command is handed to the platform.
   - `flatten` holds the queue until it is final.
   - `depends_on` waits for a final prerequisite. A failed or unknown prerequisite gives `command.prerequisite_failed`.
-- **Checks at intake and again at dispatch:**
+- **Pump.** It is not re-entrant: a command finishing during a dispatch does not run a nested loop. The queue removes commands by id.
+- **Checks at intake and again at dispatch.** The account checks are deferred to dispatch when the command arrives before this session's `welcome` (queued, never rejected):
   - staleness;
   - mapping and `destination` role;
   - the simulation guard;
   - platform connection (`command.platform_disconnected`);
   - entry expiry with the skew-corrected clock (`command.expired`; exits never expire);
-  - `risk.account_blocked`, for entries only.
+  - `risk.account_blocked`, for entries only, comparing `blocked_until` on the Core clock.
 - **Guard on every write.** `Submit`, `Change` and `Cancel` all go through `EnsureWritable`. Automatic actions are covered too: orphan cancels, bracket resizes and flatten steps.
 - **`reduce`.**
   - A reduce never opens or flips a position.
@@ -77,12 +80,16 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
 - **`flatten`.**
   1. Cancel every working order on the contract.
   2. Wait for the confirmations (10 s timeout → `order.cancel_failed`).
-  3. Close the remaining position with a market order (role `x`). If the position changed meanwhile, retry, up to 3 attempts.
+  3. Close the remaining position with a market order (role `x`). If the position changed meanwhile, retry, up to 3 attempts. A close order that is still not final after 60 s releases the account queue as `unknown`.
+  4. After a restart: Cancelling resumes. Closing never sends another close order. A close order the platform does not hold gives `already_flat` when flat, else `unknown`.
   4. Already flat → `cancelled`/`command.already_flat`, a terminal success (answer 4).
   5. `reason: orphan_fill` (Q-O1 b) is executed the same way.
-- **Entry orders** use `DAY`. Protective orders use `GTC` (approved).
+- **Entry orders** use `DAY`. Protective orders use `GTC` (approved). A `place` is a success for `depends_on` only when filled (registry §3).
 
 ## 5. Brackets and orphan protection
+
+- **Invariant (answer B).** After every fill on a contract (entry, protective leg, exit, flatten or external), the brackets are reconciled so the protective quantity never exceeds the position it protects. This uses the execution's own `position_after`. Individual brackets lose protection oldest entry first (FIFO, P2). The shared bracket is sized to `|position|`. A leg with nothing left to protect, or on the wrong side after a flip, is cancelled with `order.orphan_cancelled`. A modify that asks for more than this is capped (`order.quantity_capped`, answer D).
+- **Restart catch-up (answer A + addition 1).** Fills that happened while the plugin was down are reported. A bracket that was never submitted is not submitted late: each withheld leg is reported `rejected` + `order.protection_not_submitted`, and is never submitted later. Existing legs may only be resized down, never up and never re-priced. A position that grew counts as incomplete. `sync.*` codes stay Core-only; the plugin shows a local hint.
 
 - **Individual mode.**
   - The bracket is submitted on the entry's first fill, sized to the filled quantity, as a stop-market plus a limit sharing an OCO id (`aw:<command_id>`).
@@ -125,6 +132,13 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
 | 10 | Amend/remove keep the recomputed label and the original `fill_id` |
 | 11 | `command.nothing_to_reduce` / `order.quantity_capped`. GTC protection. Owner's ticks in shared mode |
 | CR-4 | `command.stale` (6 days), byte-identical retransmission |
+| A | No late bracket after a catch-up fill: `order.protection_not_submitted` per leg. Legs only resized down during catch-up |
+| B | Protective qty ≤ position: FIFO / resize, including manual closes. Wrong-side legs are cancelled (`order.orphan_cancelled`) |
+| C | `rejected` + `cancel_failed`/`protection_failed` = the operation failed; the order keeps its state |
+| D | Modify quantity above the position is capped (`order.quantity_capped`) |
+| E | A known `command_id` gets `duplicate` even when stale. `stale` only applies to unknown commands |
+| F | Protocol 1.1: `account_state`, negotiated envelope version, outbox bytes unchanged |
+| G | Adopt a live order with the exact reference before submitting. Ignore terminal ones. Several live ones → `order.ambiguous_reference` |
 
 ## 7. Limits of this step
 

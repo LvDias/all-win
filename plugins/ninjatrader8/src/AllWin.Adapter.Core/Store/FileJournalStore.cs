@@ -14,7 +14,7 @@ namespace AllWin.Adapter.Core.Store
     /// <para>
     /// Every <see cref="Commit"/> is one CRC-protected journal line flushed to disk before it returns,
     /// so a batch is all-or-nothing across crashes. A torn last line (crash mid-write) is dropped on
-    /// open; damage anywhere else is reported as <see cref="StoreCorruptException"/> and the adapter
+    /// open (no trailing newline); any complete line that fails its CRC is reported as <see cref="StoreCorruptException"/> and the adapter
     /// fails closed. The directory is locked so two processes cannot share one store.
     /// </para>
     /// </summary>
@@ -129,13 +129,12 @@ namespace AllWin.Adapter.Core.Store
             while (offset < bytes.Length)
             {
                 var newline = Array.IndexOf(bytes, (byte)'\n', (int)offset);
-                if (newline < 0) break; // torn tail: never completed
+                // Torn tail: a commit is one write ending with its newline, so only a line without one is
+                // an interrupted write. A complete line that fails its CRC is damage, even the last one.
+                if (newline < 0) break;
                 var line = Encoding.UTF8.GetString(bytes, (int)offset, (int)(newline - offset));
                 if (!TryDecodeLine(line, out var seq, out var ops))
-                {
-                    if (newline == bytes.Length - 1) break; // torn last line
-                    throw new StoreCorruptException("Journal is damaged before its end: " + path);
-                }
+                    throw new StoreCorruptException("Journal is damaged: " + path);
                 if (seq > _seq)
                 {
                     if (seq != _seq + 1) throw new StoreCorruptException("Journal sequence gap in " + path);

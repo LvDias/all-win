@@ -28,6 +28,9 @@ namespace AllWin.Adapter.Core.Engine
         /// <summary>A flatten fails if its cancels are not confirmed in this time (never closes over live orders).</summary>
         public TimeSpan FlattenCancelTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
+        /// <summary>A flatten whose close order is not final after this time releases the account queue as unknown.</summary>
+        public TimeSpan FlattenCloseTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
         /// <summary>Bounded re-tries when the position changed while a flatten was closing it.</summary>
         public int FlattenMaxAttempts { get; set; } = 3;
 

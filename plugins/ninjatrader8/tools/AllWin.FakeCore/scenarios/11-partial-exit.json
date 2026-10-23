@@ -1,0 +1,20 @@
+{
+  "name": "partial-exit",
+  "description": "Architect answer B (QA H1): a partial reduce resizes the bracket so protection never exceeds the position; oldest entry first in individual mode. NT8-compatible.",
+  "requires_sim": false,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21034.50" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "command", "id": "E1", "kind": "place",
+      "place": { "side": "buy", "quantity": 2, "order": { "type": "market" }, "position_effect": "open",
+                 "protection": { "mode": "individual", "stop_ticks": 40, "target_ticks": 80 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "stop", "quantity": 2 } },
+    { "do": "command", "id": "R1", "kind": "place", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "reduce" } },
+    { "do": "expect_report", "command": "R1", "match": { "status": "filled", "child_role": "exit", "position_after": { "quantity": 1 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "stop", "quantity": 1 } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "target", "quantity": 1 } },
+    { "do": "command", "id": "X1", "kind": "flatten", "flatten": { "reason": "close" } },
+    { "do": "expect_report", "command": "X1", "match": { "status": "filled", "position_after": { "quantity": 0 } } }
+  ]
+}
