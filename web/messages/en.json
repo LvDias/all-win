@@ -561,12 +561,12 @@
     "admin": "Administration",
     "invites": "Invitations",
     "menu": "Open menu",
-    "userMenu": "User menu",
     "signOut": "Sign out",
     "main": "Main navigation",
     "notFound": "Not found.",
     "signOutFailed": "Could not sign out. Your session may still be active.",
-    "accounts": "Accounts"
+    "accounts": "Accounts",
+    "userMenuName": "{email}, user menu"
   },
   "security": {
     "title": "Security",
