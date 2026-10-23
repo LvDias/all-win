@@ -46,19 +46,6 @@ done
 umask 002   # files created under the shared toolchain and caches stay group-writable (group devs)
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 TARGET_ROOT="${ALLWIN_HEAVY_TARGET_ROOT:-$HOME/.cache/allwin/cargo-target}"
-if [ "$FRESH" = 1 ]; then
-  # A snapshot of another SHA must never see this one's artifacts (same layout, same metadata hash):
-  # verdict runs get a target of their own, named by the commit, and remove it afterwards.
-  sha="$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)"
-  git diff --quiet HEAD 2>/dev/null || sha="$sha-dirty"
-  export CARGO_TARGET_DIR="$TARGET_ROOT/verify-$sha-$$"
-elif [ -z "${CARGO_TARGET_DIR:-}" ]; then
-  # One target per worktree: two worktrees with the same layout give our path crates the same metadata, so a shared
-  # target mixes their artifacts (false failures, and a test could pass against another worktree's code).
-  wt_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
-  export CARGO_TARGET_DIR="$TARGET_ROOT/wt-$(printf '%s' "${wt_root##*/}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-40)-$(printf '%s' "$wt_root" | sha1sum | cut -c1-10)"
-fi
-mkdir -p -- "$CARGO_TARGET_DIR"
 # Web Playwright (web/playwright.config.ts reuses any server already listening on PLAYWRIGHT_PORT when not in CI):
 # give every worktree its own free port so a run never talks to another worktree's server.
 if [ -z "${PLAYWRIGHT_PORT:-}" ]; then
@@ -99,6 +86,30 @@ if [ "${ALLWIN_HEAVY_SCCACHE_ENABLE:-0}" = 1 ] && [ "${ALLWIN_HEAVY_NO_SCCACHE:-
   fi
 fi
 
+SLOT_TARGET=0
+if [ "$SCCACHE_ON" = 1 ] && [ -z "${CARGO_TARGET_DIR:-}" ]; then
+  # With the compile cache on, the target path is what keys it: use ONE fixed path per (account, slot), identical for every
+  # worktree and every job, and empty it when the job starts. The slot gives exclusivity, the empty dir gives a clean
+  # build (nothing from another worktree or SHA can mix in), and the cache restores third-party crates by content.
+  export CARGO_TARGET_DIR="$TARGET_ROOT/slot-$held"
+  SLOT_TARGET=1
+elif [ "$FRESH" = 1 ]; then
+  # A snapshot of another SHA must never see this one's artifacts (same layout, same metadata hash):
+  # verdict runs get a target of their own, named by the commit, and remove it afterwards.
+  sha="$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)"
+  git diff --quiet HEAD 2>/dev/null || sha="$sha-dirty"
+  export CARGO_TARGET_DIR="$TARGET_ROOT/verify-$sha-$$"
+elif [ -z "${CARGO_TARGET_DIR:-}" ]; then
+  # One target per worktree: two worktrees with the same layout give our path crates the same metadata, so a shared
+  # target mixes their artifacts (false failures, and a test could pass against another worktree's code).
+  wt_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+  export CARGO_TARGET_DIR="$TARGET_ROOT/wt-$(printf '%s' "${wt_root##*/}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-40)-$(printf '%s' "$wt_root" | sha1sum | cut -c1-10)"
+fi
+mkdir -p -- "$CARGO_TARGET_DIR"
+if [ "$SLOT_TARGET" = 1 ]; then
+  case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/slot-[0-9]*) find "$CARGO_TARGET_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + ;; esac
+fi
+
 # dotnet: no resident MSBuild nodes or build servers holding memory (and the slot) after the command.
 export MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_CLI_USE_MSBUILD_SERVER=0
 export RUST_TEST_THREADS="${RUST_TEST_THREADS:-2}"
@@ -117,7 +128,7 @@ fi
 if [ "$FRESH" != 1 ] && [ "$SCCACHE_ON" != 1 ]; then exec "${run[@]}"; fi
 
 # The wrapper stays alive (the slot stays held) to stop this job's sccache server and remove the fresh target.
-if [ "$FRESH" = 1 ]; then
+if [ "$FRESH" = 1 ] && [ "$SLOT_TARGET" != 1 ]; then
   case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/verify-*) ;; *) echo "allwin-heavy: unexpected target dir" >&2; exit 1 ;; esac
 fi
 cleanup() {
@@ -125,7 +136,7 @@ cleanup() {
     "$SCCACHE_BIN" --stop-server >/dev/null 2>&1 || true
     rm -f -- "$SCCACHE_SERVER_UDS"
   fi
-  if [ "$FRESH" = 1 ] && [ "${ALLWIN_HEAVY_KEEP_TARGET:-0}" != 1 ]; then rm -rf -- "$CARGO_TARGET_DIR"; fi
+  if [ "$FRESH" = 1 ] && [ "$SLOT_TARGET" != 1 ] && [ "${ALLWIN_HEAVY_KEEP_TARGET:-0}" != 1 ]; then rm -rf -- "$CARGO_TARGET_DIR"; fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
