@@ -224,6 +224,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - **Precision:** prices, P&L, and money use exact numeric representations.
 - **Security and privacy:** strict per-user isolation; secrets and credentials never stored in plain text or logs.
 - **Transparency:** every automatic action (route, skip, flatten, block) is visible to the user with its reason.
+- **Long forms are step-by-step:** when a form gets long, it is split into steps (a stepper) so the user is not shown many fields at once. When a form counts as long, and the default step pattern, are defined by the Product Designer in the design system. The current visual design is kept. **[Decision 2026-10-23]**
 
 ## 12. Compliance notes (to verify with qualified professionals)
 
@@ -295,3 +296,4 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - **Exception 2 — Q46:** the **evaluation profit target** (how much is left to pass) is included in V1 as a new slice (V1-S13b); minimum trading days and payout rules come later.
 - **Details 2026-10-23f:** risk on net P&L; evaluation target start = user-given date (default registration), notice + notification only on reaching it; **U20 (a)** commission floor per account, prefilled by the preset, editable, warning when no commission exists.
 - **Q71 decided 2026-10-23f:** a manual trade with the commission left blank is filled automatically with the account's configured commission per contract per side (× quantity × 2 sides), labeled as estimated; with no configured commission it counts as zero, labeled "comissões não informadas". Manual trades never feed risk.
+- **UX rule (2026-10-23):** long forms become step-by-step flows (see §11); the threshold and the pattern belong to the design system.
