@@ -3,17 +3,21 @@
     Sets up the All Win Windows test host for the agents: hardened sshd, folders, logs, and on-demand NT8 tasks.
 
 .DESCRIPTION
-    nt8-spike-plan §6.3 / §6.5 step 9. Run as Administrator on the VPS, after Lock-Firewall.ps1 and after
-    the standard user `allwin-agent`, OpenSSH Server, Git for Windows and NinjaTrader 8 are installed.
+    nt8-spike-plan §6.3 / §6.5 step 10. Run as Administrator on the VPS, after Lock-Firewall.ps1 (run
+    AFTER the OpenSSH Server install) and after the standard user `allwin-agent`, Git for Windows and NinjaTrader 8
+    are installed. Lock-Firewall.ps1 must sit in the same folder: its -CheckOnly audit runs twice (before the sshd
+    config is touched and right before sshd starts) and the script stops if 22/3389 is exposed.
+    sshd must still be STOPPED when this script starts (it is never started before the lockdown, QA Security H1);
+    the script creates sshd_config (from sshd_config_default) and the host keys (ssh-keygen -A) without starting it.
 
     It does the following and nothing else:
       1. Checks the preconditions (allwin-agent exists, is enabled and is NOT an administrator; OpenSSH Server,
          Git Bash and the NT8 executable exist). It stops at the first failure.
-      2. sshd (backup of sshd_config first; validated with `sshd -t`; restored if the check fails):
+      2. sshd (backup of sshd_config first; validated with `sshd -t`; restored if the check fails; started only after the firewall audit passes):
          AllowUsers allwin-agent, PasswordAuthentication no, KbdInteractiveAuthentication no, PubkeyAuthentication yes,
-         StrictModes yes, no forwarding, and a dedicated AuthorizedKeysFile owned by SYSTEM/Administrators.
+         StrictModes yes, DisableForwarding yes, and a dedicated AuthorizedKeysFile owned by SYSTEM/Administrators.
          DefaultShell = Git Bash. The agents' public key is restricted to the tailnet range (from="100.64.0.0/10").
-      3. Folders C:\AllWin\{bin,work,logs,screenshots}. bin is writable by administrators only (the scheduled
+      3. Folders C:\AllWin\{bin,work,logs,screenshots,admin-logs}. admin-logs (this script's and Lock-Firewall's transcripts) is administrators-only. bin is writable by administrators only (the scheduled
          scripts live there, so the agent cannot change what the tasks run); the agent can modify work, logs and
          screenshots.
       4. Scheduled Tasks that run in allwin-agent's INTERACTIVE session (/it equivalent: LogonType Interactive, no
@@ -66,9 +70,12 @@ $sshDir = Join-Path $env:ProgramData 'ssh'
 $sshdConfig = Join-Path $sshDir 'sshd_config'
 $keysFile = Join-Path $sshDir 'allwin_authorized_keys'
 $sshdExe = Join-Path $env:WINDIR 'System32\OpenSSH\sshd.exe'
-$logDir = Join-Path $Root 'logs'
+$logDir = Join-Path $Root 'admin-logs'
 
 if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+# Admin-only: the agent user must not be able to alter or delete the admin audit trail.
+& icacls.exe $logDir /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "icacls failed on $logDir" }
 $logFile = Join-Path $logDir ('Install-AllWinTestHost-{0:yyyyMMdd-HHmmss}.log' -f (Get-Date))
 Start-Transcript -Path $logFile | Out-Null
 
@@ -88,17 +95,23 @@ try {
     if (-not (Test-PublicKeyLine $PublicKey)) { throw 'The public key must be a single bare "ssh-ed25519 AAAA... comment" line (a public key, not a private one).' }
 
     $user = Get-LocalUser -Name $AgentUser -ErrorAction SilentlyContinue
-    if (-not $user) { throw "Local user '$AgentUser' does not exist (checklist step 8)." }
+    if (-not $user) { throw "Local user '$AgentUser' does not exist (checklist step 9)." }
     if (-not $user.Enabled) { throw "Local user '$AgentUser' is disabled." }
     $isAdmin = Get-LocalGroupMember -SID 'S-1-5-32-544' -ErrorAction SilentlyContinue | Where-Object { $_.SID -eq $user.SID }
     if ($isAdmin) { throw "'$AgentUser' is an administrator. It must be a standard user (nt8-spike-plan §6)." }
     $rdpMember = Get-LocalGroupMember -SID 'S-1-5-32-555' -ErrorAction SilentlyContinue | Where-Object { $_.SID -eq $user.SID }
-    if (-not $rdpMember) { Write-Warning "'$AgentUser' is not in 'Remote Desktop Users' (needed for the one-time NT8 login in step 10)." }
+    if (-not $rdpMember) { Write-Warning "'$AgentUser' is not in 'Remote Desktop Users' (needed for the one-time NT8 login in step 11)." }
 
-    if (-not (Test-Path -LiteralPath $sshdExe)) { throw 'OpenSSH Server is not installed (checklist step 8).' }
-    if (-not (Get-Service -Name sshd -ErrorAction SilentlyContinue)) { throw 'The sshd service is missing (checklist step 8).' }
-    if (-not (Test-Path -LiteralPath $sshdConfig)) { throw "$sshdConfig not found. Start sshd once so it creates its default config, then rerun." }
-    if (-not (Test-Path -LiteralPath $GitBashPath)) { throw "Git Bash not found at $GitBashPath (checklist step 8)." }
+    if (-not (Test-Path -LiteralPath $sshdExe)) { throw 'OpenSSH Server is not installed (checklist step 5).' }
+    if (-not (Get-Service -Name sshd -ErrorAction SilentlyContinue)) { throw 'The sshd service is missing (checklist step 5).' }
+    # sshd must NOT have been started yet (QA Security H1): it would accept password logins on a public port 22.
+    $sshdSvc = Get-Service -Name sshd
+    if ($sshdSvc.Status -ne 'Stopped') { throw "The sshd service is $($sshdSvc.Status). It must stay stopped until this script has locked it down: stop it, rerun Lock-Firewall.ps1, then rerun this script." }
+    # Firewall audit BEFORE any sshd change or start (same audit as Lock-Firewall.ps1 -CheckOnly).
+    $lockScript = Join-Path $PSScriptRoot 'Lock-Firewall.ps1'
+    if (-not (Test-Path -LiteralPath $lockScript)) { throw "Lock-Firewall.ps1 must sit next to this script ($lockScript)." }
+    & $lockScript -CheckOnly
+    if (-not (Test-Path -LiteralPath $GitBashPath)) { throw "Git Bash not found at $GitBashPath (checklist step 9)." }
     if (-not (Test-Path -LiteralPath $Nt8Path)) { Write-Warning "NinjaTrader executable not found at $Nt8Path. The tasks are created anyway; fix -Nt8Path if NT8 lives elsewhere." }
 
     $fingerprint = '(ssh-keygen not found)'
@@ -115,11 +128,15 @@ try {
         $path = Join-Path $Root $name
         if ($PSCmdlet.ShouldProcess($path, "Create and set ACL (SYSTEM/Administrators full; $AgentUser $($folders[$name]))")) {
             if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
+            & icacls.exe $path /setowner $sidAdmins /T /C | Out-Null
+            & icacls.exe $path /reset /T /C | Out-Null
             & icacls.exe $path /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" "${AgentUser}:(OI)(CI)$($folders[$name])" | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "icacls failed on $path" }
         }
     }
     if ($PSCmdlet.ShouldProcess($Root, 'Set ACL on the root folder')) {
+        & icacls.exe $Root /setowner $sidAdmins | Out-Null
+        & icacls.exe $Root /reset | Out-Null
         & icacls.exe $Root /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" "${AgentUser}:(RX)" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "icacls failed on $Root" }
     }
@@ -170,6 +187,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "icacls failed on $keysFile" }
     }
 
+    $backup = $null
     $begin = '# BEGIN AllWin'
     $end = '# END AllWin'
     $block = @(
@@ -187,9 +205,20 @@ try {
         'X11Forwarding no',
         'PermitTunnel no',
         'GatewayPorts no',
+        'DisableForwarding yes',
         $end
     )
-    if ($PSCmdlet.ShouldProcess($sshdConfig, 'Apply the AllWin sshd block (backup, validate with sshd -t, restart)')) {
+    if ($PSCmdlet.ShouldProcess($sshdConfig, 'Create sshd_config and host keys if missing (without starting sshd)')) {
+        if (-not (Test-Path -LiteralPath $sshDir)) { New-Item -ItemType Directory -Path $sshDir -Force | Out-Null }
+        if (-not (Test-Path -LiteralPath $sshdConfig)) {
+            $default = Join-Path $env:WINDIR 'System32\OpenSSH\sshd_config_default'
+            if (-not (Test-Path -LiteralPath $default)) { throw "$default not found; cannot create $sshdConfig." }
+            Copy-Item -LiteralPath $default -Destination $sshdConfig
+        }
+        & (Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe') -A
+        if ($LASTEXITCODE -ne 0) { throw 'ssh-keygen -A failed.' }
+    }
+    if ($PSCmdlet.ShouldProcess($sshdConfig, 'Apply the AllWin sshd block (backup, validate with sshd -t; sshd is started only after the firewall audit)')) {
         $backup = "$sshdConfig.allwin-backup-{0:yyyyMMdd-HHmmss}" -f (Get-Date)
         Copy-Item -LiteralPath $sshdConfig -Destination $backup
         $lines = New-Object System.Collections.Generic.List[string]
@@ -203,7 +232,7 @@ try {
         $at = $lines.Count
         for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s*Match\s') { $at = $i; break } }
         # sshd uses the first value it sees for a keyword, so comment any active line for the same keys above the block.
-        $keys = 'AllowUsers', 'PasswordAuthentication', 'KbdInteractiveAuthentication', 'PubkeyAuthentication', 'AuthorizedKeysFile', 'StrictModes', 'MaxAuthTries', 'LoginGraceTime', 'AllowTcpForwarding', 'AllowAgentForwarding', 'X11Forwarding', 'PermitTunnel', 'GatewayPorts'
+        $keys = 'AllowUsers', 'PasswordAuthentication', 'KbdInteractiveAuthentication', 'PubkeyAuthentication', 'AuthorizedKeysFile', 'StrictModes', 'MaxAuthTries', 'LoginGraceTime', 'AllowTcpForwarding', 'AllowAgentForwarding', 'X11Forwarding', 'PermitTunnel', 'GatewayPorts', 'DisableForwarding'
         for ($i = 0; $i -lt $at; $i++) {
             foreach ($k in $keys) { if ($lines[$i] -match "^\s*$k\s") { $lines[$i] = "#AllWin-disabled# $($lines[$i])" } }
         }
@@ -218,9 +247,26 @@ try {
         if (-not (Test-Path $shellKey)) { New-Item -Path $shellKey -Force | Out-Null }
         New-ItemProperty -Path $shellKey -Name DefaultShell -Value $GitBashPath -PropertyType String -Force | Out-Null
         New-ItemProperty -Path $shellKey -Name DefaultShellCommandOption -Value '-c' -PropertyType String -Force | Out-Null
+        Write-Host "sshd_config written and validated (sshd not started yet). Previous config: $backup"
+    }
+
+    # Start sshd only now: the firewall audit must pass first, and again right before the service starts.
+    if ($PSCmdlet.ShouldProcess('sshd', 'Re-run the firewall audit, then set Automatic start and start the service')) {
+        & $lockScript -CheckOnly
         Set-Service -Name sshd -StartupType Automatic
-        Restart-Service -Name sshd
-        Write-Host "sshd restarted. Previous config: $backup"
+        try { Start-Service -Name sshd }
+        catch {
+            Set-Service -Name sshd -StartupType Disabled
+            if ($backup -and (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $backup -Destination $sshdConfig -Force }
+            throw "sshd failed to start; it is disabled again and the previous config was restored. $($_.Exception.Message)"
+        }
+        $hostPub = Join-Path $sshDir 'ssh_host_ed25519_key.pub'
+        Write-Host ''
+        Write-Host 'SSH host key for pinning on the dev server known_hosts (public values only; T-check b):'
+        if (Test-Path -LiteralPath $hostPub) {
+            Write-Host ("  fingerprint: " + ((& (Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe') -lf $hostPub) -join ' '))
+            Write-Host ("  known_hosts line: allwin-nt8-01 " + ((Get-Content -LiteralPath $hostPub -Raw).Trim() -replace ' [^ ]*$', ''))
+        }
     }
 
     # ---- 5. Scheduled Tasks in the agent's interactive session ----------------------------------------------------
@@ -240,14 +286,23 @@ try {
             $svc = New-Object -ComObject 'Schedule.Service'
             $svc.Connect()
             $task = $svc.GetFolder('\').GetTask($t.Name)
-            $sddl = $task.GetSecurityDescriptor(0xF)
-            $sid = $user.SID.Value
-            if ($sddl -notmatch [regex]::Escape($sid)) { $task.SetSecurityDescriptor(($sddl + "(A;;FRFX;;;$sid)"), 0) }
+            # DACL only (4): the full descriptor (0xF) would include the SACL. Insert the ACE through the object model.
+            $rsd = New-Object System.Security.AccessControl.RawSecurityDescriptor($task.GetSecurityDescriptor(4))
+            $sidObj = $user.SID
+            $has = @($rsd.DiscretionaryAcl | Where-Object { $_.SecurityIdentifier -eq $sidObj -and $_.AceQualifier -eq 'AccessAllowed' }).Count -gt 0
+            if (-not $has) {
+                # 0x1200A9 = SDDL FRFX (read + execute): the agent can run the task, not change it.
+                $ace = New-Object System.Security.AccessControl.CommonAce([System.Security.AccessControl.AceFlags]::None, [System.Security.AccessControl.AceQualifier]::AccessAllowed, 0x1200A9, $sidObj, $false, $null)
+                $rsd.DiscretionaryAcl.InsertAce($rsd.DiscretionaryAcl.Count, $ace)
+                $task.SetSecurityDescriptor($rsd.GetSddlForm([System.Security.AccessControl.AccessControlSections]::Access), 0)
+            }
+            $check = New-Object System.Security.AccessControl.RawSecurityDescriptor($svc.GetFolder('\').GetTask($t.Name).GetSecurityDescriptor(4))
+            if (-not (@($check.DiscretionaryAcl | Where-Object { $_.SecurityIdentifier -eq $sidObj -and $_.AceQualifier -eq 'AccessAllowed' }).Count)) { throw "Task ACL for $($t.Name) does not contain $AgentUser after the update." }
         }
     }
 
     Write-Host ''
-    Write-Host 'Done. Still to do by hand (checklist step 10): sign in to NT8 as allwin-agent over RDP, keep only Sim101/Playback and'
+    Write-Host 'Done. Still to do by hand (checklist step 11): sign in to NT8 as allwin-agent over RDP, keep only Sim101/Playback and'
     Write-Host 'the Simulated Data Feed connections, then DISCONNECT (do not sign out) so the interactive tasks have a session.'
     Write-Host "Verify from the dev server: ssh $AgentUser@allwin-nt8-01 'echo ok'   and, as $AgentUser: schtasks /run /tn AllWin-Screenshot"
     Write-Host "Log: $logFile"
