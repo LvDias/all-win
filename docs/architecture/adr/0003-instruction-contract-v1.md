@@ -5,7 +5,9 @@
   - `routing.platform_unbound` ([ADR-0008](0008-account-platform-binding.md));
   - `routing.no_bracket_profile` (Q43);
   - Q74, a reverse on an account barred for entries (user decision);
-  - §4.2, a reverse when the maximum position is 0.
+  - §4.2, a reverse when the maximum position is 0;
+  - (second delta) a reverse whose opening leg expires at routing (Crivo note; HTTP 5.1.0);
+  - (third delta, r4) Q75, exits on an out-of-sync account the Core believes flat, and Q76, a reduce in that case (user decisions); §4.1 contract resolution once per decision, and exits never waiting for the ports of gates 6–9 (S7 review).
 
   Acceptance deltas: §4.1 automation and copy opt-in gates (option A, Q24–Q26) and per-(source, account) signal filter; §7 token format; §5 command step codes
 - **Owner:** Software Architect
@@ -89,17 +91,36 @@ Gates are evaluated **in the order of this table**. The first gate that fails gi
 - An action that cannot be clearly classified as entry or exit counts as position-increasing (fail closed).
 - **Exits never expire at routing** (ADR-0004 T1): `close`, `reduce`, `cancel`, a protective `modify` and the closing leg of a `reverse` carry no `expires_at`. They wait for the connection and are audited as late when they execute late.
 - A disconnected connection is not a gate. The command is created and waits. An entry expires by gate 10 if the connection does not come back in time (never execute late); an exit waits and executes when it does.
+- **Contract resolution:** the decision resolves the contract once, before any gate: the instruction's contract month when present, otherwise the active contract of the rollover catalog (P5) at the decision time. That (symbol, contract month) is used for the position, every gate, the brackets and the commands, and is recorded in the decision's details. An instrument in the catalog with no active contract at that moment is skipped with `routing.instrument_unavailable`.
+- **Exits never wait for gates 6–9** (P1). Their inputs (sync state, risk block, limits, brackets) come from other modules' query ports. A `close` against a **non-flat** expected position is decided without them: gates 1–5 and the expected position only. A `close` against a **flat** expected position waits for gate 6, because Q75 decides between `routing.nothing_to_close` (in sync) and a flatten (out of sync). A `reverse` against an **opposite** position commits its closing leg at once (step 1) and decides the opening leg in a second, idempotent step when gates 6–9 answer: it opens, or ends close-only with the gate's code, or with `routing.expired` once the TTL has passed. A `reverse` against a **flat** expected position waits for gate 6 (Q75 decides whether a flatten is sent). If the expected-position port, or a port of gates 1–5 (accounts, binding, opt-ins, subscription), is unavailable, the whole instruction waits: gates 1–5 apply to exits too, and without the position exits cannot be told apart. A `reduce` against a flat or same-direction position is skipped (`routing.nothing_to_reduce`) without gates 6–9; whether it is notified (Q76: only on an out-of-sync account) is read from the sync state when the notification is produced, and if that state is unavailable it is notified (more transparency, never less).
+- **Entries while a gate port is unavailable:** nothing is committed and the routing consumer retries. When the TTL passes before gates 6–9 answer, the decision uses only the rules that do not need them (`routing.position_conflict`, `routing.nothing_to_*`), otherwise `routing.expired`; it never names a gate that did not answer, and its details carry `gates_unknown: true`. Never route an entry without the real answer of gates 6–9.
 - `routing.platform_unbound` and `routing.no_bracket_profile` are emitted only after the HTTP audit contract lists them (`KnownAuditCode`, `AuditDetailsByCode`).
 - `source_revoked` and `route_disabled` are not instruction gates. A revoked source is refused at ingress, and a disabled route produces no target account. They exist only as route status reasons (HTTP `RouteReasonCode`), whose display order (most severe first) is a UI order and does not change this evaluation order.
 
 > **Decided (P1):** risk and out-of-sync gates do **not** block exits (`close`, `reduce`, `cancel`, `modify` of a protective order). Refusing an exit while at a limit or out of sync would increase exposure, and a flatten is safe regardless of the Core's view of the position. Paused/disabled accounts block everything, because that is an explicit user choice.
+>
+> **Decided (Q75 b, 2026-10-23; extends P1):** on an out-of-sync account the Core's view of the position is not trusted for exits. A `close`, or the closing leg of a `reverse`, is sent as a `flatten` even when the expected position is flat. The platform decides: a flat account answers `command.already_flat` (ADR-0004 §5), a terminal success.
+>
+> - **Effect on a really flat account (Pêndulo M-Q75):** a flatten first cancels **every** working order on that contract, including manual orders and other All Win entries (ADR-0004 §4, orphan-order protection), and only then checks the position. So a Q75 flatten on a flat account is not a no-op: it can cancel a resting order the user placed while fixing the account. The user confirmed this effect (Q75-1, 2026-10-24).
+> - **Effect when the real position is already X (Crivo R1):** Q75 sends the flatten whenever the expected position is flat. When the Core believes flat but the account really holds X, a `reverse` to X is sent as a flatten and **closes the user's real X position**; the opening leg is skipped (gate 6). This reduces exposure (P1), and it is notified with `routing.reverse_close_only` whose `closed_side` is X. The user confirmed this effect (Q75-2, 2026-10-24).
+> - **Notification:** every Q75 flatten that ends in a terminal success is notified once. A reverse whose flatten filled uses `routing.reverse_close_only` (below). Every other case (a `close`, filled or `already_flat`, and a reverse with `already_flat`) uses `routing.out_of_sync_flatten`, with the action, the result and the closed quantity and side when filled. Its text says that any working orders on the contract were cancelled. The code is added by HTTP 5.2.0 (registry 1.3.0). The Core does not count the cancelled orders: the adapter does not correlate them with the flatten. A count would need a protocol change and is out of this delta.
+>
+> On an in-sync account a flat expected position is trusted (`routing.nothing_to_close`). A `reduce` is never turned into a flatten (Q76, §4.2).
 
 > **Decided (Q74 b, 2026-10-23; extends P1):** a `reverse` to side X never opens on an account barred by an entry gate (6–9). Its §4.2 position check runs first, and the result depends on the current position P:
 > - **P opposite to X:** the closing leg executes (flatten and cancel the protections), and the opening leg is skipped with the gate's code. The outcome is `capped` (open quantity 0). It is audited and **notified**, even for `routing.limits_pending`, whose plain skips are not alerted, because a position was closed.
-> - **P flat:** there is nothing to close, so the reverse is skipped with the gate's code, like any barred entry.
-> - **P already X:** rejected and notified with `routing.position_conflict`, exactly as on an account without a bar. It is never flattened.
+> - **P flat:** there is nothing to close, so the reverse is skipped with the gate's code, like any barred entry. **Exception, `routing.out_of_sync` (Q75):** the flat position is not trusted, so the closing leg is sent as a flatten and the opening leg is never created. The decision is `capped`; the entry carries `routing.out_of_sync`, outcome `partial`, `sizing.executed_qty` = 0, and no closed quantity is recorded at the decision. The other bars (gates 7–9, and gate 10 or `M` = 0 on an account without a bar) leave the account in sync, so flat is trusted and the rule above applies. With several bars, gate 6 comes first and wins.
+>   - **Notification (decision 4b, option A):** none at the decision, because the closed quantity is unknown. When the flatten is terminal: `filled` → `routing.reverse_close_only` with `reason_code` `routing.out_of_sync`, and `closed_qty`/`closed_side` taken from the flatten's fills; `command.already_flat` → no `routing.reverse_close_only`, since nothing was closed; `routing.out_of_sync_flatten` is sent (Q75 above), and the account's grouped `routing.out_of_sync` notification covers the skipped opening. A flatten that ends rejected, `unknown` or without a terminal report follows ADR-0004 (the account is already out of sync).
+> - **P already X:** rejected and notified with `routing.position_conflict`, exactly as on an account without a bar. An expected position already X is never flattened, also when out of sync: Q75 covers only a flat expected position. (A real X position the Core believes flat is a Q75 case, see above.)
 >
-> Tests cover the three cases for each of the four entry gates. They also check that a late `close` and a late Q74 closing leg still execute and are audited as late.
+> Tests cover the three cases for each of the four entry gates, plus the Q75 flat case (filled flatten → notified with the filled quantity; `already_flat` → no `reverse_close_only`). They also check that a late `close` and a late Q74 closing leg still execute and are audited as late.
+>
+> **The opening leg expires at routing (gate 10)** when the routing decision itself sees the TTL exceeded, for example a late webhook, on an account without a bar. The same per-position rule applies:
+> - P opposite: the closing leg executes and the opening leg is skipped with `routing.expired`; outcome `capped`, notified;
+> - P flat: outcome `expired`;
+> - P already X: `routing.position_conflict`.
+>
+> An opening leg that expires later, in the delivery queue, is not a routing decision; ADR-0004 §5 applies.
 
 ### 4.2 Actions
 
@@ -110,11 +131,11 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 | `buy`/`sell`, `open` | flat, or the same direction | Open/add `min(Q, M − abs(P))` with stop/target from the account profile (individual or shared mode). If capped, the excess is skipped (`routing.quantity_capped`); if there is no room, `routing.max_position_reached` |
 | `buy`/`sell`, `open` | opposite direction | **Rejected and notified:** `routing.position_conflict` (Q1-a). The source must send `close` or `reverse` explicitly |
 | `buy`/`sell`, `reduce` | opposite direction | Reduce by `min(Q, abs(P))`. **Never flips.** Protective orders are resized to the remaining position, oldest entries first in individual mode (P2, FIFO); at flat, orphan-order protection cancels the rest |
-| `buy`/`sell`, `reduce` | flat or same direction | Skipped: `routing.nothing_to_reduce` |
+| `buy`/`sell`, `reduce` | flat or same direction | Skipped: `routing.nothing_to_reduce`, also on an out-of-sync account (Q76): a reduce is never turned into a flatten, and without a known position it has no `position_ref` (U13). Audited; notified only when the account is out of sync (HTTP notification registry) |
 | `buy`/`sell`, `reduce` | opposite direction, but the Core holds no All Win identity for the position (opened externally, or identity lost) | Skipped: `routing.position_unknown`, audited. The reduce carries `refs.position_ref`; the adapter executes it only against that position (ADR-0004 §5 position-identity guard, U13) |
 | `buy`/`sell`, `reduce` | account's connection negotiated adapter protocol < 1.2 | Skipped: `routing.adapter_protocol_outdated`, audited, alert (a reduce never runs without the guard; ADR-0004 §9) |
 | `close` | any non-flat | **Flatten the whole position** in that contract and cancel all its stops/targets (Q1). `quantity`, if present, is ignored and the audit records `quantity_ignored`. A misconfigured close template must never leave a position open |
-| `close` | flat | No-op, audited: `routing.nothing_to_close` |
+| `close` | flat | In sync: no-op, audited: `routing.nothing_to_close`. **Out of sync (Q75):** sent as a flatten anyway, decision `routed`; the adapter cancels the contract's working orders, manual ones included, and checks the real position (flat → `command.already_flat`). Notified with `routing.out_of_sync_flatten` (§4.1, Q75). `routing.nothing_to_close` never applies to an out-of-sync account |
 | `reverse`, `side` = X | opposite to X | Flatten, cancel protections, then open X with `min(Q, M)` and profile stop/target. If `M` = 0, the flatten executes and the opening is skipped with `routing.max_position_reached` (outcome `capped`). On an account barred for entries, only the flatten executes (Q74, §4.1) |
 | `reverse`, `side` = X | flat | **Opens X** with `min(Q, M)` (Q1) |
 | `reverse`, `side` = X | already X | **Rejected and notified:** `routing.position_conflict` |
@@ -219,6 +240,9 @@ These are inputs for `docs/architecture/data/` (owner: Database Architect):
 | P4 | Expiry base | **`min(sent_at, received_at)`** |
 | P5 | Active contract month / rollover | **Global rollover catalog maintained by the admin**, with advance warning to users. The Core switches the active contract on the configured date |
 | Q74 | A reverse on an account barred for entries (out of sync, risk blocked, limits pending, no bracket profile) | **(b)**: only the closing leg executes (flatten + cancel protections); the opening is skipped, audited and notified. Extends P1. (a), skip the whole reverse, rejected |
+| Q75 | A `close`, or a reverse's closing leg, on an out-of-sync account the Core believes flat | **(b)**: always sent as a flatten; the adapter answers `command.already_flat` when flat. The flatten cancels every working order on the contract, manual ones included (confirmed by the user, Q75-1, 2026-10-24). (a), alert only, rejected |
+| Q75-2 | A reverse to X on an account the Core believes flat that really holds X | **Yes**: the flatten closes the real X position and nothing opens (2026-10-24) |
+| Q76 | A `reduce` in the same case | **(a)**: not sent; `routing.nothing_to_reduce`, audited, the user notified |
 
 Related decisions used by this ADR: Q-A1 (one maximum position per account in V1), Q-A2 (stop/target profiles keyed by instrument), Q-A4 (signal filter per (source, account)), Q-N1 (dollar distances rounded toward the entry, see ADR-0004 §5), Q17 (several named TradingView sources per user, each with its own token), and the per-account opt-ins for automation and copying (§4.1; option A, Q24, Q25, Q26; HTTP contract `setAccountOptIn`).
 
