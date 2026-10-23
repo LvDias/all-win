@@ -1,5 +1,5 @@
 //! The Core's own OpenAPI document, generated from handler annotations (`utoipa`) and
-//! drift-checked against `contracts/http/openapi.yaml` (tests/openapi_drift.rs).
+//! drift-checked against `contracts/http/openapi.bundled.yaml` (tests/openapi_drift.rs).
 //!
 //! Pattern for every module or adapter with HTTP handlers:
 //! - annotate each handler with `#[utoipa::path(...)]`, using the contract's

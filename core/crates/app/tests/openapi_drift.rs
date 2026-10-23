@@ -1,4 +1,6 @@
-//! Drift check: the Core's generated OpenAPI against `contracts/http/openapi.yaml`.
+//! Drift check: the Core's generated OpenAPI against `contracts/http/openapi.bundled.yaml`,
+//! the generated single-file bundle of the multi-file contract (root `openapi.yaml` plus
+//! `modules/*.yaml`; contracts/http/README.md). Its freshness is the contract self-check's job.
 //!
 //! Rules (Architect, 2026-10-23):
 //! - The generated spec is an exact subset of the contract. Every generated operation
@@ -25,6 +27,9 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+
+/// The contract file the check runs on (contracts/http/README.md, "Layout").
+const CONTRACT_FILE: &str = "openapi.bundled.yaml";
 
 const METHODS: [&str; 8] = [
     "get", "put", "post", "delete", "options", "head", "patch", "trace",
@@ -299,7 +304,7 @@ fn diff(generated: &Value, contract: &Value, pointer: String, out: &mut BTreeSet
 #[test]
 fn generated_spec_is_an_exact_subset_of_the_contract() {
     let dir = contract_dir();
-    let contract_doc = load_file(&dir.join("openapi.yaml"));
+    let contract_doc = load_file(&dir.join(CONTRACT_FILE));
     let contract_ops = operations(
         &contract_doc,
         &Ctx {
@@ -459,7 +464,7 @@ struct SharedSchemas;
 fn shared_schemas_match_the_contract_components() {
     use utoipa::OpenApi;
     let dir = contract_dir();
-    let contract = load_file(&dir.join("openapi.yaml"));
+    let contract = load_file(&dir.join(CONTRACT_FILE));
     let contract_ctx = Ctx {
         doc: contract.clone(),
         dir: dir.clone(),
