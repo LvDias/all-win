@@ -21,6 +21,7 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Spinner } from "@/shared/ui/spinner";
 import { Stepper } from "@/shared/ui/stepper";
+import { focusOnMount } from "@/shared/lib/focus";
 import { startEmailChange, verifyChannelChangeCode } from "./api";
 
 type Role = "current_value" | "new_value";
@@ -134,7 +135,7 @@ function ChangeEmailFlow({ onClose, currentEmail }: { onClose: () => void; curre
           </form>
         ) : done ? (
           <div className="grid gap-4">
-            <p role="status" tabIndex={-1} ref={(node) => node?.focus()} className="text-sm outline-none">
+            <p role="status" tabIndex={-1} ref={focusOnMount} className="text-sm outline-none">
               {change.status === "on_hold" && change.hold_until
                 ? t("security.email.onHold", { date: formatDateTime(change.hold_until, locale, timeZone, { zone: true }) })
                 : t("security.email.completed", { email: change.masked_new_value })}

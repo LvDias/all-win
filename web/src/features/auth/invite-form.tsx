@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Spinner } from "@/shared/ui/spinner";
 import { Stepper } from "@/shared/ui/stepper";
+import { focusOnMount } from "@/shared/lib/focus";
 import { completeSignup, startSignup, useLookupInvitation } from "./api";
 import { AuthCard } from "./auth-card";
 import { useFragmentToken } from "./use-fragment-token";
@@ -226,7 +227,7 @@ export function InviteForm() {
         <Stepper steps={steps} current={0} />
         <p className="text-sm text-muted-foreground">{t("auth.invite.intro")}</p>
         {failure ? (
-          <Alert tone="danger" tabIndex={-1} ref={(node) => node?.focus()}>
+          <Alert tone="danger" tabIndex={-1} ref={focusOnMount}>
             {failure}
           </Alert>
         ) : null}
