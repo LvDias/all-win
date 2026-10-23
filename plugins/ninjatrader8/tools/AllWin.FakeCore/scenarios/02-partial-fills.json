@@ -1,0 +1,18 @@
+{
+  "name": "partial-fills",
+  "description": "Architect answer 7: bracket on the first fill, resized on each further fill, priced from the entry VWAP.",
+  "requires_sim": true,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21000" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "sim", "market_fill_slices": 2 },
+    { "do": "command", "id": "E1", "kind": "place",
+      "place": { "side": "buy", "quantity": 4, "order": { "type": "market" }, "position_effect": "open",
+                 "protection": { "mode": "individual", "stop_ticks": 8, "target_ticks": 16 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "partially_filled", "fill": { "quantity": 2 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "filled", "position_after": { "quantity": 4 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "stop", "quantity": 4, "order": { "stop_price": "20998" } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "target", "quantity": 4, "order": { "limit_price": "21004" } } }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "bracket-integrity",
+  "description": "ADR-0004 §6.1 / Q-O1 (b): NT8 is down while both legs of a local-OCO bracket fill. After restart the snapshot shows the unintended position; the Core sends flatten(orphan_fill) and the adapter closes only that position.",
+  "requires_sim": true,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21034.50" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "command", "id": "E1", "kind": "place",
+      "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open",
+                 "protection": { "mode": "individual", "stop_ticks": 40, "target_ticks": 80 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "target" } },
+    { "do": "sleep", "ms": 300 },
+    { "do": "sim", "stop_adapter": true, "oco": false },
+    { "do": "sim", "set_price": { "MNQ": "21054.50" } },
+    { "do": "sim", "set_price": { "MNQ": "21024.50" } },
+    { "do": "sim", "start_adapter": true },
+    { "do": "expect_session", "count": 2 },
+    { "do": "expect_snapshot", "trigger": "reconnect", "positions": { "A": { "MNQ": -1 } }, "working_orders": { "A": 0 } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "filled", "child_role": "target" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "filled", "child_role": "stop", "position_after": { "quantity": -1 } } },
+    { "do": "command", "id": "F1", "kind": "flatten", "flatten": { "reason": "orphan_fill" } },
+    { "do": "expect_report", "command": "F1", "match": { "status": "filled", "child_role": "flatten", "side": "buy", "position_after": { "quantity": 0 } } }
+  ]
+}

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Platform-neutral adapter logic: protocol v1 client state machine, durable store, brackets.
+    No NinjaTrader references (ADR-0001 §7). Multi-target per ADR-0005 N2: NT8 loads net48,
+    Linux CI tests netstandard2.0.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net48</TargetFrameworks>
+    <RootNamespace>AllWin.Adapter.Core</RootNamespace>
+    <AssemblyName>AllWin.Adapter.Core</AssemblyName>
+    <Version>0.1.0</Version>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- ADR-0005 N3: compile against NT8's own Newtonsoft.Json 13; never ship it. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AllWin.Adapter.Core.Tests" />
+  </ItemGroup>
+</Project>
