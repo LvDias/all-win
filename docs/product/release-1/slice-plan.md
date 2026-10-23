@@ -163,15 +163,16 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 **New device and sensitive actions**
 
 - **AC-9** **New-device notice:** when a user signs in from a device not previously used with that account, an e-mail is sent to the account e-mail saying so, in the user's language (S4 AC-2). It is an account e-mail, not a notification (S18 AC-3). The sign-up session itself sends no notice **[Assumption]**. **[Open Q34]** exact content and "this was not me" handling.
-- **AC-10** **Step-up:** these actions require a **new code** at the time of the action: (i) turning automation on for an account (S5 AC-9 opt-in, S7), (ii) unpairing a NinjaTrader instance (AC-14), (iii) changing the e-mail or WhatsApp number (AC-11). Without a valid code the action is not performed and the attempt is audited. **[Open Q30]** whether a recent code covers several actions (the earlier 15-minute window, Q21). **[Open Q35]** the Architect's wider list (source token create/rotate, pairing code, enforcement off, raising max position, admin actions) is [Proposal] only until decided.
+- **AC-10** **Step-up:** these actions require a **new code** at the time of the action: (i) turning automation on for an account (S5 AC-9 opt-in, S7), (ii) unpairing a NinjaTrader instance (AC-15), (iii) changing the e-mail or WhatsApp number (AC-11). Without a valid code the action is not performed and the attempt is audited. **[Open Q30]** whether a recent code covers several actions (the earlier 15-minute window, Q21). **[Open Q35]** the Architect's wider list (source token create/rotate, pairing code, enforcement off, raising max position, admin actions) is [Proposal] only until decided.
 - **AC-11** **Changing the e-mail (or WhatsApp number, S3b):** the user enters the new value and must confirm a code sent to the **old** channel and a code sent to the **new** channel. The change takes effect only when both are confirmed; until then the old value stays in force. A pending change expires after 10 minutes **[Assumption: same as AC-5]**. Each channel value belongs to one account only **[Assumption]**; a clash is refused without revealing who owns it. **[Open Q28]** when the old channel is no longer reachable.
 - **AC-12** **[Blocked Q28]** Recovery when the user has lost access to every verified channel: no behavior is specified until the user decides.
 
 **Isolation, sources, pairing (unchanged by this change)**
 
 - **AC-13** Every Web view and Core request returns only the signed-in user's data; a two-user negative test exists for each data area, including code and session endpoints (X-2).
-- **AC-14** The user can generate, view once, and revoke a per-source secret; after revocation, instructions with the old secret are rejected (S1 AC-2). Secrets are stored only in non-reversible or encrypted form (X-4). The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others. Unpairing an instance whose accounts are destinations is allowed after a confirmation listing them (and the AC-10 code); those accounts become out of sync and nothing is closed (Q18).
-- **AC-15** Transparency: sign-ins, failed or rate-limited attempts, new-device notices, step-up successes and failures, and channel changes appear in the user's audit log with their reason (S10).
+- **AC-14** The user can generate, view once, and revoke a per-source secret; after revocation, instructions with the old secret are rejected (S1 AC-2). Secrets are stored only in non-reversible or encrypted form (X-4).
+- **AC-15** The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others. Unpairing an instance whose accounts are destinations is allowed after a confirmation listing them (and the AC-10 code); those accounts become out of sync and nothing is closed (Q18).
+- **AC-16** Transparency: sign-ins, failed or rate-limited attempts, new-device notices, step-up successes and failures, and channel changes appear in the user's audit log with their reason (S10).
 
 **Superseded by rev. 7 (do not implement):** password and password policy (D10), password reset (Q20 reset part, D9), optional TOTP and its suggestion banner (A5, D13), TOTP recovery codes and admin-assisted TOTP reset (Q22, D12), former AC-1b and AC-5 text. Still valid: Q6, Q19, Q21 (pending Q29), the transactional e-mail now also carries sign-in codes and new-device notices (Q8 still excludes e-mail *notifications*).
 
@@ -180,7 +181,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 ### V1-S3b — WhatsApp as a second code channel (blocked)
 
 **Goal / value:** the user can receive codes on WhatsApp as well as e-mail.
-**Surfaces:** Web, Core. **Depends on:** S3; **U17** (supplier and its cost: user decision); Q31 (is it mandatory). **Status:** blocked until U17 is decided; criteria below are complete.
+**Surfaces:** Web, Core. **Depends on:** S3; **U17** (supplier and its cost: user decision); Q31 (is it mandatory). **Status:** blocked until U17 is decided; criteria below are complete. **Supplier research (input to U17, not a decision; unconfirmed items marked in the file):** [whatsapp-otp-providers.md](../research/whatsapp-otp-providers.md).
 
 - **AC-1** A user can add a WhatsApp number (international format, country code required) and confirm it with a code sent to that number. Unconfirmed numbers are never used.
 - **AC-2** Sign-in offers a choice of channel (e-mail or WhatsApp) among the user's confirmed channels; the code rules, limits and wrong-attempt rules of S3 AC-5/AC-6 apply identically to both.
@@ -473,7 +474,7 @@ Pending answers from Prumo @ Dev3 are recorded in §9 when received.
 
 **2026-10-23 — Prumo @ Dev3** (incorporated in rev. 2):
 - M1 path is viable as walking skeleton. Order: ADR-0003 + ADR-0004 with fixtures → short NT8 spike → Core (against adapter-sim) and plugin in parallel. Web not needed before M1 (seed data).
-- Plugin (AddOn) sees all accounts of the instance, receives executions/positions/P&L, can cancel and flatten in Sim and Playback. Limits: block is reactive (→ S15 AC-6); Playback uses simulated clock (→ S15 AC-7); enforcement must work with Core offline (→ S15 AC-4); one connection + credential per instance (→ S3 AC-14).
+- Plugin (AddOn) sees all accounts of the instance, receives executions/positions/P&L, can cancel and flatten in Sim and Playback. Limits: block is reactive (→ S15 AC-6); Playback uses simulated clock (→ S15 AC-7); enforcement must work with Core offline (→ S15 AC-4); one connection + credential per instance (→ S3 AC-15).
 - ADR-0003 comes right after S0 approval; schema 1.0 reserves correlation fields so basic actions do not break later. Preliminary ids: `message_id` (dedupe), `position_ref`/`order_ref` (source), `instruction_id`/`command_id` per destination (Core), `platform_order_id` (execution report). Master replication blocked until ADR-0003 and ADR-0004 are accepted by the user.
 - Architect will recommend the webhook secret in the URL rather than the body (Pine inputs can leak via status line/shared layouts) — user decision; the plan says "per-source secret" without fixing position.
 - New product questions: Windows+NT8 machine (Q15), command TTL (Q16).
