@@ -9,6 +9,11 @@ export type ParseOptions = {
   scale?: number;
   /** Value must be a multiple of this decimal string (instrument tick, e.g. "0.25"). */
   tick?: string;
+  /**
+   * The value the field was prefilled with (the Core's own string). Text equal to it is returned verbatim: a value the user
+   * did not touch is never re-judged, so a Core amount such as "1.125" stays savable where typed "1.125" would be ambiguous.
+   */
+  unchanged?: string;
 };
 
 /**
@@ -18,6 +23,7 @@ export type ParseOptions = {
 export function parseDecimalInput(text: string, locale: Locale, options: ParseOptions = {}): ParseResult {
   const raw = text.trim();
   if (raw === "") return { ok: false, reason: "empty" };
+  if (options.unchanged !== undefined && raw === options.unchanged) return { ok: true, value: options.unchanged };
 
   const signMatch = /^[+-]/.exec(raw);
   if (signMatch && !options.allowSign) return { ok: false, reason: "sign" };
