@@ -1,6 +1,6 @@
 # Release 1 (V1) — Slice Plan — All Win
 
-> **Owner:** Product Owner (Bússola @ Dev2) · **Status:** approved by the user on 2026-10-23 ([decision log](../../delivery/decisions.md)) · **Revision:** 6 (R2 scope decisions: manual-only firms, VPS rules; [Decision 2026-10-23b/c/d] = second/third/fourth batch of user decisions) · **Date:** 2026-10-23
+> **Owner:** Product Owner (Bússola @ Dev2) · **Status:** approved by the user on 2026-10-23 ([decision log](../../delivery/decisions.md)) · **Revision:** 7 (passwordless sign-in replaces password + TOTP in S3; new slice S3b; Q28–Q36 open; rev. 6 = R2 scope decisions: manual-only firms, VPS rules; [Decision 2026-10-23b/c/d] = second/third/fourth batch of user decisions) · **Date:** 2026-10-23
 > **Baseline:** [product-vision.md](../product-vision.md) rev. 3 (user-approved). This plan does not change any decision there; gaps found are listed in §7 as questions.
 > Labels: **[Decision]** = from the vision · **[Proposal]** = recommendation still awaiting user approval (items approved on 2026-10-23 are now marked [Decision 2026-10-23]) · **[Assumption]** · **[Blocker]**.
 > Slice status vocabulary: `draft` (criteria incomplete or blocked by a question) · `blocked` (criteria complete, waiting on an external dependency) · `ready` (criteria complete, can start) · then specified → implemented → QA verified → deployed → business accepted (tracked by the Maestro on the board).
@@ -35,7 +35,7 @@ These are checked in QA for every slice that touches the relevant surface, inste
 - **X-1 Platform neutrality.** No Core behavior depends on a specific platform; platform specifics live only in adapters (TradingView Input, NinjaTrader plugin). Verified by Architect review on each Core slice. (§4, §5)
 - **X-2 Per-user isolation.** A user can never see, change, route to, or receive data about another user's accounts, keys, instructions, logs, or trades — in the Web, in the Core API, and in the plugin. Each slice touching data includes at least one negative test with two users. (§2, §11)
 - **X-3 Exact numbers.** Prices, P&L, money, and limits are stored and computed without floating-point rounding errors; displayed values match stored values. (§11)
-- **X-4 Secrets.** Source keys, plugin credentials, and passwords never appear in plain text in storage, logs, audit views, or error messages. (§11)
+- **X-4 Secrets.** Source keys, plugin credentials, and one-time sign-in codes never appear in plain text in storage, logs, audit views, or error messages. (§11)
 - **X-5 Transparency.** Every automatic action (route, skip, partial skip, flatten, block, reject, refuse) produces an audit entry with its reason, visible to the user (see V1-S10). (§11)
 - **X-6 Bilingual UI.** All user-visible text (Web and plugin) exists in pt-BR and en; no hard-coded single-language strings. (§2)
 - **X-7 Simulation only.** All development and QA use simulation, demo, or playback accounts. (§11)
@@ -50,7 +50,8 @@ These are checked in QA for every slice that touches the relevant surface, inste
 | V1-S1 | Webhook ingest: authenticated, validated, idempotent, logged | TradingView Input, Core | S0, ADR-0003 (JSON v1 + ids), adapter-sim | ready |
 | V1-S2 | NinjaTrader plugin: connect to Core and execute a routed entry on a sim account | NT plugin, Core | S0, ADR-0004 (Core↔plugin protocol v1), NT8 spike, Windows+NT8 machine (Q15) | ready |
 | **V1-M1** | **First end-to-end demo**: TradingView alert → Core → one NinjaTrader sim account, result back to Core | all | S1 + S2 | milestone |
-| V1-S3 | User sign-up/login, per-user isolation, source keys and plugin pairing | Web, Core, NT plugin | S0 | ready |
+| V1-S3 | Passwordless sign-up/login by e-mail code, per-user isolation, source keys and plugin pairing | Web, Core, NT plugin | S0 | ready (AC-10 blocked by Q28; open items Q29–Q36 do not block the rest) |
+| V1-S3b | WhatsApp as a second code channel (sign-up, login, step-up, channel change) | Web, Core | S3, **U17** (WhatsApp supplier, user cost decision), Q31 | blocked |
 | V1-S4 | Bilingual foundation (pt-BR/en) | Web, NT plugin | S0 | ready |
 | V1-S5 | Account registration and lifecycle (enable / disable / pause) | Web, Core, NT plugin | S3 | ready |
 | V1-S6 | Stop/target profiles by account size; individual mode | Web, Core, NT plugin | S5 | ready |
@@ -139,17 +140,55 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 
 **Given** a test TradingView alert (or an equivalent HTTP post of the same message) with a valid key and a `buy 1 MNQ` instruction, **when** it is sent, **then** within seconds one NinjaTrader sim account receives a market buy of 1 MNQ with stop and target from the profile, the fill and bracket are reported back, and the user can see the full chain (received → routed → filled) in the audit trail (minimal view acceptable). Sending the same message again produces no second order.
 
-### V1-S3 — Sign-up/login, isolation, source keys, plugin pairing (ready)
+### V1-S3 — Passwordless sign-up/login, isolation, source keys, plugin pairing (ready; AC-10 blocked by Q28)
 
-**Goal / value:** each trader has a private space; only they can send instructions to their accounts.
+**Goal / value:** each trader has a private space; only they can send instructions to their accounts; access is proven by a one-time code sent to a channel the user owns. **There is no password.**
 **Surfaces:** Web, Core, NT plugin.
+**Change record:** rev. 7 replaces the password + optional TOTP model (Q20 reset part, Q22, A5) by passwordless sign-in **[Decision 2026-10-23, user requirement change]**. In this slice the only channel is **e-mail**; WhatsApp is slice **V1-S3b**. Items marked [Open] depend on the questions in §7 (Q28–Q36) and on U16.
 
-- **AC-1** Sign-up is **invite-only** in V1 (Q6 [Decision 2026-10-23]): only a person with a valid, unused, unexpired invitation can create an account; without one, sign-up is refused with a clear message. Invited users can sign in and out. Invitations are issued **only by the admin**, single-use, bound to one e-mail, valid 7 days, delivered manually (Q19 [Decision 2026-10-23b]). Transactional e-mail is used only for invitations and password reset, with an admin-generated reset link as fallback (Q20). Sessions: 12 h idle / 24 h absolute, remember-me 7 d / 30 d, step-up after 15 min for sensitive actions (Q21). TOTP recovery: 10 single-use codes; password + code to enable/disable; admin-assisted reset (Q22).
-- **AC-1b** **Two-factor authentication (TOTP, authenticator app) is optional** and strongly suggested in the UI; once enabled, sign-in requires the code; the user can disable it only after re-authenticating (A5 [Decision 2026-10-23]).
-- **AC-2** Every Web view and Core request returns only the signed-in user's data; a two-user negative test exists for each data area (X-2).
-- **AC-3** The user can generate, view once, and revoke a per-source secret; after revocation, instructions with the old secret are rejected (S1 AC-2). Secrets are stored only in non-reversible or encrypted form (X-4).
-- **AC-4** The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others. Unpairing an instance whose accounts are destinations is allowed after a confirmation listing them; those accounts become out of sync and nothing is closed (Q18 [Decision 2026-10-23b]).
-- **AC-5** Password reset and session expiry exist; failed sign-in attempts do not reveal whether an email is registered.
+**Sign-up**
+
+- **AC-1** Sign-up is **invite-only** (Q6). Only a person with a valid, unused, unexpired invitation can start sign-up; otherwise it is refused with a clear message. Invitations are issued only by the admin, single-use, bound to one e-mail, valid 7 days, delivered manually (Q19, unchanged).
+- **AC-2** The invitee enters their e-mail and confirms it with a code sent to it (AC-5). The account is created, and the invitation consumed, only after the code is confirmed. A failed or abandoned confirmation leaves the invitation usable until it expires. **[Assumption from Q19]** the e-mail must equal the invited e-mail.
+- **AC-3** No password is ever requested, stored or reset. The WhatsApp number is not part of S3 sign-up (see S3b, Q31).
+
+**Sign-in and codes**
+
+- **AC-4** Sign-in: the user enters their e-mail, receives a code at that e-mail and enters it to be signed in. (When S3b ships, the user chooses e-mail or WhatsApp.) Sign out ends the current session.
+- **AC-5** Code rules **[Decision]**: single-use; expires after 10 minutes; invalidated after 5 wrong attempts (the user must request a new one); the code is never stored, logged or audited in plain text (X-4). **[Open U16]** format: 8 uppercase alphanumeric characters without ambiguous ones (Maestro's recommendation, pending Architect) vs. upper + lower + digits + specials; tests must not depend on the format until U16 closes. **[Assumption]** a new code request invalidates the previous code of the same purpose; code entry ignores case and surrounding spaces if the final format allows it.
+- **AC-6** Sending limits apply **per user and per IP** to every code request (sign-up, sign-in, step-up, channel change). When a limit is hit the request is refused with a stable error code and the user is told to wait; no code is sent. **[Open Q33]** the numeric limits and resend cooldown (Architect proposes, user approves).
+- **AC-7** Failed or unknown-account sign-in attempts do not reveal whether an e-mail is registered: the visible response and timing are the same, and no code is sent to an unregistered e-mail. Delivery failure for a registered e-mail is shown to that user only after they are signed in or via a generic "if the account exists…" message (no enumeration).
+- **AC-8** Sessions: 12 h idle / 24 h absolute; "keep me signed in" 7 d idle / 30 d absolute (Q21, carried over from the password model **[Open Q29: confirm as is]**). Expiry returns to sign-in with a clear message.
+
+**New device and sensitive actions**
+
+- **AC-9** **New-device notice:** when a user signs in from a device not previously used with that account, an e-mail is sent to the account e-mail saying so, in the user's language (S4 AC-2). It is an account e-mail, not a notification (S18 AC-3). The sign-up session itself sends no notice **[Assumption]**. **[Open Q34]** exact content and "this was not me" handling.
+- **AC-10** **Step-up:** these actions require a **new code** at the time of the action: (i) turning automation on for an account (S5 AC-9 opt-in, S7), (ii) unpairing a NinjaTrader instance (AC-14), (iii) changing the e-mail or WhatsApp number (AC-11). Without a valid code the action is not performed and the attempt is audited. **[Open Q30]** whether a recent code covers several actions (the earlier 15-minute window, Q21). **[Open Q35]** the Architect's wider list (source token create/rotate, pairing code, enforcement off, raising max position, admin actions) is [Proposal] only until decided.
+- **AC-11** **Changing the e-mail (or WhatsApp number, S3b):** the user enters the new value and must confirm a code sent to the **old** channel and a code sent to the **new** channel. The change takes effect only when both are confirmed; until then the old value stays in force. A pending change expires after 10 minutes **[Assumption: same as AC-5]**. Each channel value belongs to one account only **[Assumption]**; a clash is refused without revealing who owns it. **[Open Q28]** when the old channel is no longer reachable.
+- **AC-12** **[Blocked Q28]** Recovery when the user has lost access to every verified channel: no behavior is specified until the user decides.
+
+**Isolation, sources, pairing (unchanged by this change)**
+
+- **AC-13** Every Web view and Core request returns only the signed-in user's data; a two-user negative test exists for each data area, including code and session endpoints (X-2).
+- **AC-14** The user can generate, view once, and revoke a per-source secret; after revocation, instructions with the old secret are rejected (S1 AC-2). Secrets are stored only in non-reversible or encrypted form (X-4). The user can pair each NinjaTrader instance to their user (each instance has its own credential) and unpair it; an unpaired instance receives nothing; revoking one instance does not affect the others. Unpairing an instance whose accounts are destinations is allowed after a confirmation listing them (and the AC-10 code); those accounts become out of sync and nothing is closed (Q18).
+- **AC-15** Transparency: sign-ins, failed or rate-limited attempts, new-device notices, step-up successes and failures, and channel changes appear in the user's audit log with their reason (S10).
+
+**Superseded by rev. 7 (do not implement):** password and password policy (D10), password reset (Q20 reset part, D9), optional TOTP and its suggestion banner (A5, D13), TOTP recovery codes and admin-assisted TOTP reset (Q22, D12), former AC-1b and AC-5 text. Still valid: Q6, Q19, Q21 (pending Q29), the transactional e-mail now also carries sign-in codes and new-device notices (Q8 still excludes e-mail *notifications*).
+
+**Dependencies / risk:** sign-in now depends on e-mail delivery being available; if it is down nobody can sign in (SRE/availability input requested through the Maestro; see §6).
+
+### V1-S3b — WhatsApp as a second code channel (blocked)
+
+**Goal / value:** the user can receive codes on WhatsApp as well as e-mail.
+**Surfaces:** Web, Core. **Depends on:** S3; **U17** (supplier and its cost: user decision); Q31 (is it mandatory). **Status:** blocked until U17 is decided; criteria below are complete.
+
+- **AC-1** A user can add a WhatsApp number (international format, country code required) and confirm it with a code sent to that number. Unconfirmed numbers are never used.
+- **AC-2** Sign-in offers a choice of channel (e-mail or WhatsApp) among the user's confirmed channels; the code rules, limits and wrong-attempt rules of S3 AC-5/AC-6 apply identically to both.
+- **AC-3** Step-up (S3 AC-10) may use any confirmed channel. Changing the WhatsApp number follows S3 AC-11 (code to old and new number).
+- **AC-4** The new-device notice is still sent by e-mail even if the sign-in used WhatsApp.
+- **AC-5** If WhatsApp delivery fails, the user is told and can request a code by e-mail; the Core never silently sends the same code through another channel **[Proposal]**.
+- **AC-6** Sign-up and sign-in for users who have no confirmed WhatsApp number keep working with e-mail only **[Open Q31]**: whether WhatsApp becomes mandatory for new invitations or existing users once S3b ships.
+- **AC-7** Every WhatsApp send is audited (without the code); per-message cost is visible to the admin **[Open U17]**.
 
 ### V1-S4 — Bilingual foundation (ready)
 
@@ -302,7 +341,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 
 - **AC-1** Skipped excess, refusals, 80% warnings, blocks, out-of-sync flags, and disconnects create notifications visible in the Web and in the plugin.
 - **AC-2** The user can mark notifications as read; unread count is visible.
-- **AC-3** V1 has **in-app notifications only** (Web + plugin); no email or messaging-app channels (Q8 [Decision 2026-10-23]). Account e-mails needed by S3 (invite, password reset) are not notifications.
+- **AC-3** V1 has **in-app notifications only** (Web + plugin); no email or messaging-app channels (Q8 [Decision 2026-10-23]). Account e-mails needed by S3 (invitation, sign-in codes, new-device notices) are not notifications.
 
 ### V1-S19 — Master replication: entries and exits (ready — V1.1)
 
@@ -346,6 +385,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 | Firms that forbid copying or automation | User account violations | Stance shown at registration and routing (S16 AC-4); not legal advice (§12) |
 | Core accidentally becomes NinjaTrader-specific | Rework for Tradovate in release 2 | X-1 review on every Core slice |
 | Risk state in Core diverges from platform's real P&L | Wrong blocks or missed limits | Plugin is the second barrier (§5); S15 AC-4 |
+| Sign-in depends on e-mail (and later WhatsApp) delivery; a provider outage or spam-foldering locks users out | Nobody can sign in or confirm sensitive actions | SRE/availability input; Q28 recovery path; resend rules (Q33) |
 | Terms of use / privacy policy not ready | Launch blocked | Flagged now as user-owned release gate |
 
 ---
@@ -382,9 +422,9 @@ All accepted per recommendation [Decision 2026-10-23b]; Q21 = 12 h idle / 24 h a
 | Q17 | How many TradingView sources (each with its own secret URL) per user? | (a) Several named sources (e.g., one per chart/alert); (b) one per user in V1 | **(a)** — the routine is "one alert per chart", and per-source routing (S7) and revocation then stay independent |
 | Q18 | Unpairing a NinjaTrader instance whose accounts are routing destinations, possibly with an open position | (a) Allow after a confirmation listing affected accounts; with an open position, a stronger warning that the position stays open in NinjaTrader without platform monitoring/enforcement, and the accounts are flagged out of sync; (b) block unpairing while a position is open | **(a)** — the user stays in control; nothing is closed automatically |
 | Q19 | Who issues invitations (Q6) and how? | (a) A platform-admin role (held by the user), single-use link bound to one e-mail, valid 7 days, delivered manually (copy link); (b) any user can invite | **(a)** |
-| Q20 | Transactional e-mail in V1 for password reset (and invitations)? Q8 excluded e-mail *notifications* only | (a) Yes, transactional e-mail only for invite and password reset; (b) no e-mail: the admin generates a one-time reset link | **(a)** — self-service reset; (b) as fallback if e-mail is not wanted |
-| Q21 | Session length / "keep me signed in" | Architect proposes values (idle and absolute timeout); user approves | Architect proposal → user |
-| Q22 | Optional TOTP recovery | (a) 10 single-use recovery codes shown once at activation; enabling/disabling requires password + current code; lost device without codes → admin-assisted reset after identity check; (b) no recovery codes, admin reset only | **(a)** |
+| Q20 | Transactional e-mail in V1 for password reset (and invitations)? Q8 excluded e-mail *notifications* only | (a) Yes, transactional e-mail only for invite and password reset; (b) no e-mail: the admin generates a one-time reset link | **(a)** — self-service reset; (b) as fallback if e-mail is not wanted | **Superseded rev. 7 — password reset no longer exists; transactional e-mail now carries invitations, sign-in codes and new-device notices.**
+| Q21 | Session length / "keep me signed in" | Architect proposes values (idle and absolute timeout); user approves | Architect proposal → user | **Superseded rev. 7 — values carried over to the passwordless model, pending Q29.**
+| Q22 | Optional TOTP recovery | (a) 10 single-use recovery codes shown once at activation; enabling/disabling requires password + current code; lost device without codes → admin-assisted reset after identity check; (b) no recovery codes, admin reset only | **(a)** | **Superseded rev. 7 — TOTP and recovery codes no longer exist (passwordless sign-in).**
 | Q23 | Locale defaults: first-visit language, display time zone, time format | (a) Language from the browser (pt or en, else pt-BR); time zone from the profile (default = browser), always shown next to reset/session times; 24-hour clock in both languages; (b) always pt-BR, fixed America/Chicago | **(a)** |
 
 ### Questions for the user — 2026-10-23 (rev. 4) — decided
@@ -400,6 +440,22 @@ Q24–Q27 accepted as recommended [Decision 2026-10-23c]. R1 conflict list: reco
 | — | Preset conflicts R1 (31 items) | See [r1-conflicts-for-user.md](../presets/r1-conflicts-for-user.md) | Recommendations accepted [Decision 2026-10-23c]; item-by-item review later |
 | — | R2 scope findings | See [r2-conflicts-for-user.md](../presets/r2-conflicts-for-user.md) | S-1..S-5 decided [Decision 2026-10-23d]; later R2 items open |
 
+### Questions for the user — passwordless sign-in (rev. 7) — open
+
+User requirement 2026-10-23: no password; e-mail/WhatsApp codes ([S3](#v1-s3--passwordless-sign-uplogin-isolation-source-keys-plugin-pairing-ready-ac-10-blocked-by-q28)). Items **U16** (code format) and **U17** (WhatsApp supplier/cost) are already open with the Maestro/Architect and are **not decided here**. New gaps:
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| Q28 | What happens if the user loses access to **all** verified channels (or to the old channel when changing e-mail/WhatsApp)? | (a) Admin-assisted recovery after an identity check by the admin; the admin issues a one-time recovery for a new e-mail; audited; the old e-mail gets a notice; (b) none — the user asks for a new invitation and starts over (old data stays inaccessible or is merged by the admin manually); (c) a pre-registered third channel/recovery contact | **(a)** — same spirit as the former admin-assisted TOTP reset; (c) adds a channel to secure |
+| Q29 | Sessions: keep the Q21 values (12 h idle / 24 h absolute; "keep me signed in" 7 d / 30 d)? Does "remember this device" also skip the new-device notice? | (a) Keep Q21 values; the new-device notice still fires on any first use of a device; (b) shorter sessions now that each sign-in needs an external code; (c) longer | **(a)** |
+| Q30 | Step-up frequency: new code on **every** sensitive action, or one code valid for a short window (e.g. the earlier 15 min) covering several actions? | (a) Every action asks a new code (literal reading of the requirement); (b) 15-min window | **(a)** for V1 — sensitive actions are rare; revisit if it annoys the user |
+| Q31 | WhatsApp at sign-up before S3b exists, and after: is it mandatory? | (a) Optional: sign up with e-mail only; WhatsApp is added later in the profile; after S3b, a reminder but never forced; (b) mandatory for new invitations once S3b ships, existing users get a deadline; (c) mandatory from day 1 (blocks release until a supplier exists) | **(a)** — the requirement says WhatsApp "may come after e-mail"; the e-mail path must work alone |
+| Q32 | Can an e-mail/WhatsApp number be used by more than one account (e.g. a shared family number)? | (a) One account per e-mail and per number; (b) numbers may be shared | **(a)** — a shared channel breaks per-user isolation of codes |
+| Q33 | Code sending limits (per user, per IP, resend cooldown)? | (a) Architect proposes numbers; user approves; (b) user sets them | **(a)** |
+| Q34 | New-device notice: content and handling | (a) Time, browser/OS summary and approximate location, plus a "this was not me" instruction that leads to ending all sessions; no automatic action; (b) plain information only | **(a)** if the Architect confirms feasibility; "sign out of all devices" was a PO item outside S3 and would enter S3 here |
+| Q35 | Step-up list: keep only the user's three actions (automation on, unpair NT8, change e-mail/WhatsApp), or also the Architect's earlier list (source token create/rotate, pairing code, enforcement off, raising max position, admin actions)? | (a) The three now; add the others if the user asks; (b) all of them | **(a)** minimum as stated; the Architect to say which extras are a security must |
+| Q36 | Does the invitation e-mail have to equal the sign-up e-mail, and may the invitee change it at sign-up? | (a) Must be equal (Q19 binding); (b) invitee may use another e-mail, confirmed by code | **(a)** |
+
 ## 8. Architect inputs requested
 
 Pending answers from Prumo @ Dev3 are recorded in §9 when received.
@@ -413,11 +469,11 @@ Pending answers from Prumo @ Dev3 are recorded in §9 when received.
 
 **2026-10-23 — Local OCO (F5), Prumo (rev. 4):** S9 AC-4 and S11 AC-5 agreed; plugin reports `oco_location` (local/server/unknown, unknown = local) in hello; reconnect snapshot carries order states and correlation via order name; cases (iii) double fill → Q27, (iv) broker disconnection; Sim reset/Playback rewind = discontinuity (S11 AC-6). S19 needs two Windows machines/VMs.
 
-**2026-10-23 — User decisions on architecture items (rev. 3):** A1 stack per ADR-0001; A2 production in the US central region (near Chicago) — no product AC impact; A3 secret in the URL, masked in every log (→ S1 AC-1, AC-6); A4 replication always via Core in V1 (→ S19 AC-3); A5 optional TOTP (→ S3 AC-1b); A6 private GitHub + CI (push only with authorization).
+**2026-10-23 — User decisions on architecture items (rev. 3):** A1 stack per ADR-0001; A2 production in the US central region (near Chicago) — no product AC impact; A3 secret in the URL, masked in every log (→ S1 AC-1, AC-6); A4 replication always via Core in V1 (→ S19 AC-3); A5 optional TOTP (→ superseded by passwordless sign-in, S3 rev. 7); A6 private GitHub + CI (push only with authorization).
 
 **2026-10-23 — Prumo @ Dev3** (incorporated in rev. 2):
 - M1 path is viable as walking skeleton. Order: ADR-0003 + ADR-0004 with fixtures → short NT8 spike → Core (against adapter-sim) and plugin in parallel. Web not needed before M1 (seed data).
-- Plugin (AddOn) sees all accounts of the instance, receives executions/positions/P&L, can cancel and flatten in Sim and Playback. Limits: block is reactive (→ S15 AC-6); Playback uses simulated clock (→ S15 AC-7); enforcement must work with Core offline (→ S15 AC-4); one connection + credential per instance (→ S3 AC-4).
+- Plugin (AddOn) sees all accounts of the instance, receives executions/positions/P&L, can cancel and flatten in Sim and Playback. Limits: block is reactive (→ S15 AC-6); Playback uses simulated clock (→ S15 AC-7); enforcement must work with Core offline (→ S15 AC-4); one connection + credential per instance (→ S3 AC-14).
 - ADR-0003 comes right after S0 approval; schema 1.0 reserves correlation fields so basic actions do not break later. Preliminary ids: `message_id` (dedupe), `position_ref`/`order_ref` (source), `instruction_id`/`command_id` per destination (Core), `platform_order_id` (execution report). Master replication blocked until ADR-0003 and ADR-0004 are accepted by the user.
 - Architect will recommend the webhook secret in the URL rather than the body (Pine inputs can leak via status line/shared layouts) — user decision; the plan says "per-source secret" without fixing position.
 - New product questions: Windows+NT8 machine (Q15), command TTL (Q16).

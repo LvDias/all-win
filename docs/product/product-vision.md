@@ -2,7 +2,7 @@
 
 > **Canonical location:** `docs/product/product-vision.md`
 > **Owner:** the user (business decisions). The Product Owner maintains this document; every agent reads it before working on this project.
-> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 6 — opt-ins, preset rules, items 1–22, Q24–Q27 recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
+> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 7 — passwordless sign-in; rev. 6 — opt-ins, preset rules, items 1–22, Q24–Q27 recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
 > Labels used below: **[Decision]** confirmed by the user · **[Proposal]** recommended, awaiting user confirmation · **[Open]** unresolved question.
 
 ---
@@ -21,7 +21,7 @@ This platform gives the trader one place to:
 - Individual traders who trade US index futures across multiple accounts they own. **[Decision]**
 - Interface in **Brazilian Portuguese and English**. **[Decision]**
 - Every user sees and controls only their own accounts and data.
-- Release 1 sign-up is **invite-only**; two-factor authentication (authenticator app) is optional and strongly suggested. **[Decision 2026-10-23]**
+- Release 1 sign-up is **invite-only**; there is **no password**: users prove access with a one-time code sent to their e-mail (first) or WhatsApp (later slice); sensitive actions ask for a new code. Details in [release-1/slice-plan.md](release-1/slice-plan.md) S3/S3b. **[Decision 2026-10-23, supersedes password + optional authenticator-app 2FA]**
 - Notifications in release 1 are in-app only (web application and platform adapter). **[Decision 2026-10-23]**
 - The platform adapter's language follows the user's web language. **[Decision 2026-10-23]**
 
@@ -261,7 +261,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 ## 15. Decision log (2026-10-23)
 
 - V1 slice plan approved ([release-1/slice-plan.md](release-1/slice-plan.md)); all recommendations Q1–Q16 and A1–A6 accepted ([delivery decision log](../delivery/decisions.md)).
-- Stack per ADR-0001; production in the US central region; webhook secret in the URL, masked in every log; replication always via the Core in V1; optional TOTP; invite-only sign-up.
+- Stack per ADR-0001; production in the US central region; webhook secret in the URL, masked in every log; replication always via the Core in V1; ~~optional TOTP~~ (superseded, see §17); invite-only sign-up.
 - Conflicting instructions rejected; `close` flattens all; no `modify`/`cancel` from TradingView in V1; followers' initial stop/target from their own profile; master replication as V1.1.
 - Profit target per account (notify only by default); consistency rules tracked only; Core gate refuses new instructions at limit even with enforcement off; out-of-sync accounts stop receiving until cleared; short command expiry, editable per account.
 - In-app notifications only; plugin follows web language; real accounts of any size; pause vs disable defined; firms forbidding copying still ship with stance shown.
@@ -272,8 +272,15 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 
 - Firms that forbid automation: explicit per-account opt-in, no default, warning with the firm's rule text, audited (option A). Master replication stays V1.1.
 - Presets: stance with source and date; conflicting items ship "not confirmed"; platform stored.
-- ADR-0003/0004 accepted (P1–P5, T1–T3); audit retention 24 months; one max position per account; profiles keyed by instrument; signal filter per (source, account); several named TradingView sources; invite/e-mail/session/TOTP/locale rules per slice-plan Q17–Q23.
+- ADR-0003/0004 accepted (P1–P5, T1–T3); audit retention 24 months; one max position per account; profiles keyed by instrument; signal filter per (source, account); several named TradingView sources; invite/e-mail/session/~~TOTP~~/locale rules per slice-plan Q17–Q23 (password reset, TOTP and recovery codes superseded, see §17).
 - User-owned pending: review NinjaTrader terms (ToS §5(a)(viii), EULA) before offering the product to other people.
 - Third batch: Q24–Q27 accepted (copy opt-in, opt-in for any non-"allowed" stance, suspension on stance change, auto-flatten only the orphan-leg position); R1 conflict recommendations accepted with Apex Legacy and Phidias LIVE excluded, the 31 conflicts reviewed later ("not confirmed" until then).
 - Fourth batch: Topstep manual-only preset; TPT conditional copying; Topstep Labs/Pro and TPT PRO+ excluded; VPS/personal-device rules recorded per firm.
 - Open: remaining R2 items ([presets/r2-conflicts-for-user.md](presets/r2-conflicts-for-user.md)).
+
+## 17. Decision log (2026-10-23, fifth batch) — passwordless sign-in
+
+- **[Decision 2026-10-23, user requirement change]** Replaces password + optional TOTP (Q20 reset part, Q22, A5). Sign-up is invite-only; the user gives e-mail and WhatsApp number and confirms each with a code. Sign-in: the user picks e-mail or WhatsApp to receive a code; **no password exists**.
+- Code: single-use, valid 10 minutes, invalidated after 5 wrong attempts, send limits per user and per IP. A new-device sign-in sends an e-mail notice. Sensitive actions (turning automation on for an account, unpairing NinjaTrader, changing e-mail or WhatsApp) ask for a new code. Changing e-mail or WhatsApp needs a code on both the old and the new channel.
+- Slicing: e-mail first (V1-S3); WhatsApp later (V1-S3b), after the supplier decision.
+- **Open:** U16 (code format), U17 (WhatsApp supplier/cost), and Q28–Q36 in the slice plan (loss of all channels, sessions, step-up window, WhatsApp mandatory or not, shared channels, send limits, new-device notice, step-up list, invitation e-mail).
