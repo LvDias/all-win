@@ -26,6 +26,7 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
    - Mapping from the stored records:
      - `routing_decision.outcome`: `routed` → `routed`; `capped` → `partial`; `skipped` / `refused` / `rejected` / `expired` keep their names.
      - Ingress: `ingress.received` → `received`; `ingress.duplicate_ignored` → `skipped`; `ingress.rejected` / `ingress.rate_limited` → `rejected`.
+     - `security.*` (S3, Esquadro): `info`, except `security.sign_in_failed`, `security.step_up_failed` and `security.code_rate_limited` → `rejected`.
      - `execution_report.status`: `filled` → `executed`; `partially_filled` → `partial`; `rejected` → `rejected`; `expired` → `expired`; `unknown` → `unknown`; `received` / `working` / `cancelled` → `info`; `duplicate` is not audited.
 2. **Codes are open; `KnownAuditCode` is the list so far.** `AuditEntry.code` is a pattern, not an enum, so a new slice's code never breaks an older client: it falls back to "Evento {code}". The i18n parity check (QA) iterates over `KnownAuditCode`.
    - Defined here: `ingress.*` (S1), `routing.*` decisions (ADR-0003 §4.1), `execution.*`, `connection.status_changed`, and the S5/S6/S7 config codes.
