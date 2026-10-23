@@ -118,12 +118,15 @@ Texts are examples (pt-BR / en); the Core sends `code` + `details`, and the web 
 | Risco | `risk.reactive_block_action` (S15 AC-6) | danger | "Ordem manual cancelada em {account}: conta bloqueada" | S10 entry |
 | Sincronia | `sync.*` flag set (S11 AC-1): `sync.command_undelivered`, `sync.bracket_incomplete`, `sync.simulation_reset`, … | danger | "{account} fora de sincronia" / reason text per code | account detail (S11) |
 | Sincronia | `sync.disconnected_in_trade` (S11 AC-2) | **critical** | "{account} desconectou com posição aberta" / "O All Win não reabre nem ressincroniza sozinho. Decida o que fazer." | account detail |
+| Sincronia | `sync.disconnected_by_user` (ADR-0004 §6, only with an open position or a command in flight) | danger | "Você desconectou o plugin com posição aberta; o All Win não está acompanhando esta conta" / "{account}" fora de sincronia / en: "You disconnected the plugin with an open position; All Win is not tracking this account" | account detail (S11) |
 | Sincronia | `sync.bracket_orphan_leg` (S11 AC-5 i) | danger | "Ordens órfãs canceladas em {account}" / list of what was cancelled | S10 entry |
 | Sincronia | `sync.bracket_double_fill` (S11 AC-5 iii, Q27) | **critical** | "Posição aberta pela perna órfã fechada automaticamente em {account}" | S10 entry |
 | Sincronia | `sync.bracket_integrity_unknown` | warning | "Integridade das ordens de proteção desconhecida em {account}" | account detail |
 | Conexão | `connection.status_changed` to `disconnected` / `outdated` (S3) | danger / warning | "NinjaTrader {name} desconectado" · "…precisa de atualização" | Connections |
 | Presets e opt-ins | `accounts.opt_in_suspended` (S5 §6) | warning | "Regra de automação da {firm} mudou: {k} contas com ordens automatizadas suspensas." | `/accounts?state=choice_pending` |
 | Presets e opt-ins | `presets.new_version` (S16 §8.2, one per firm) | info | "Nova versão do preset da {firm}: {k} contas podem ser atualizadas." | `/accounts?preset_update=1` |
+
+**Not notified for `sync.disconnected_by_user`:** when the user disconnects the plugin with **no** open position and no command in flight, there is only the connection status and the audit entry, no alert and no notification.
 
 **Not notified (audit only, PO):** skips because the account does not accept automation (S7 AC-6) or the signal type is not selected (S7 AC-2), and duplicates. **Skip for a missing stop/target profile** (S6 Q43): notify, grouped, `warning` — **[Provisional, Q50 rec. (a); user decides]**; code `routing.no_bracket_profile`, link to the account's profile tab.
 

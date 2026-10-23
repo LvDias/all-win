@@ -13,7 +13,7 @@
 
 1. **The trader is trading.** The window never steals focus, never opens a modal dialog on its own, and never covers NinjaTrader's order or chart windows. The only dialogs are the ones the user starts (pair, unpair, allow live accounts).
 2. **State is never ambiguous** (F§1): every state is text + icon + color; color alone never carries meaning, including in NinjaTrader's dark and light skins.
-3. **The plugin shows, the web decides.** The plugin has **no control that changes limits, turns enforcement on or off, clears an out-of-sync flag, or unblocks an account** (S15 AC-3; S11 and S13 controls live in the web). Its controls are: pair/unpair this computer, allow live accounts on this computer (N11), read and mark notifications.
+3. **The plugin shows, the web decides.** The plugin has **no control that changes limits, turns enforcement on or off, clears an out-of-sync flag, or unblocks an account** (S15 AC-3; S11 and S13 controls live in the web). Its controls are: pair this computer, **disconnect/reconnect this computer** (§4.5; revoking a pairing is done in the web), allow live accounts on this computer (N11), read and mark notifications.
 4. **Honest about freshness.** Risk values are computed in the plugin from live account events and the cached limits, so they stay current when the Core is unreachable; everything that comes from the Core (account sync state, notifications from other sources, the connection name) shows `Sem dados recentes` / `Desatualizado` when the Core is not reachable. Nothing stale is shown as current.
 5. **Exact numbers.** Money and prices are `decimal` strings from `AllWin.Adapter.Core` view models; the WPF layer formats them and never converts to `double` (X-3).
 6. **No secrets.** The device token and the pairing code history are never displayed or logged (ADR-0004 §8; X-4). A pairing code is shown only while the user types it.
@@ -24,9 +24,9 @@
 
 ### 2.1 Host
 
-- One AddOn window per NinjaTrader instance (`NTWindow`), opened from a Control Center menu item named `All Win` **[Elo: which menu — New or Tools — and singleton behavior, profile §3]**. Opening it again focuses the existing window.
+- One AddOn window per NinjaTrader instance (`NTWindow` with `IWorkspacePersistence`), opened from the Control Center **New** menu, item `All Win` (the documented host; Elo, profile §3). Opening it again with the window open activates it (the user clicked, so focus is expected). If NinjaTrader restores a duplicate window from a second workspace, the duplicate closes itself without activating anything [EXP].
 - The AddOn keeps running (pairing, WebSocket, enforcement, warnings) when the window is closed (profile §3: "does not require its own window"). Closing the window never stops enforcement; the window says so in its footer: "Fechar esta janela não desliga o All Win." / "Closing this window doesn't turn All Win off."
-- Window restores its position and size with the NinjaTrader workspace **[Elo]**. Minimum size 640 × 440 px; resizable; content scrolls vertically, never horizontally. DPI scaling follows WPF (device-independent units).
+- The window position and size are saved and restored with the NinjaTrader workspace (`WorkspaceOptions`, including the off-screen check). Minimum size 640 × 440 px; resizable; content scrolls vertically, never horizontally. DPI scaling follows WPF; per-monitor behavior depends on NinjaTrader's own manifest, which the plugin does not control [EXP]. The unread count is shown in the **window title** (`All Win (3)`, visible in the taskbar), not in the menu item.
 
 ### 2.2 Layout
 
@@ -45,7 +45,7 @@
 - **Tabs:** `Contas` (default when paired), `Avisos`, `Conexão`. When not paired, only `Conexão` is available and is shown full-window (the other tabs are hidden, not disabled).
 - **Footer:** the line above and the plugin version.
 
-Tab order: header buttons → critical strip → tabs → content → footer. Keyboard: `Ctrl+Tab` switches tabs (NTTabControl default), `F6` cycles regions **[Elo]**.
+Tab order: header buttons → critical strip → tabs → content → footer. Keyboard: `Ctrl+Tab` switches tabs (NTTabControl default); `F6` cycles regions via a `KeyBinding` on our window [EXP: conflict with NinjaTrader hot keys].
 
 ---
 
@@ -54,11 +54,13 @@ Tab order: header buttons → critical strip → tabs → content → footer. Ke
 ### 3.1 Skin
 
 - Backgrounds, text, borders and controls use the **NinjaTrader theme resources** (`DynamicResource`), so the window follows the user's skin. The exact resource keys are the Plugin Engineer's choice; no hard-coded window/background colors.
-- Typography: NinjaTrader's default UI font. Body 12 px, section titles 14 px semibold, key figures 18 px semibold. Numbers use a tabular-figure setting (`Typography.NumeralAlignment=Tabular`) if the font supports it, else a monospaced font for numeric columns **[Elo]**.
+- Typography: NinjaTrader's effective UI font (read at load; Segoe UI digits are already fixed-width). Body 12 px, section titles 14 px semibold, key figures 18 px semibold. Numbers use `Typography.NumeralAlignment=Tabular` (harmless if the font lacks it); fallback **Consolas, only in numeric columns** [EXP: test that `1111` and `0000` have the same width].
 
 ### 3.2 Status colors (fixed sRGB values of the web tokens)
 
-Converted from the OKLCH tokens of F§3.2. The plugin picks the **light** set when the skin's window background is light and the **dark** set when it is dark (by relative luminance). Contrast measured against `#FFFFFF` (light) and `#0A0A0A` (dark); **QA re-checks against the real NinjaTrader skin backgrounds** (the skin may not be pure white or near-black).
+Converted from the OKLCH tokens of F§3.2. The plugin chooses between the **light** and the **dark** set **by measured contrast, not by a luminance threshold**: at load it reads the window's resolved `Background` (for a non-solid brush, the average of its stops), computes the contrast of **both** sets against that real color, and uses the set whose lowest contrast is higher; it recomputes if the resource changes (whether a skin change needs a NinjaTrader restart is [EXP]). Reference contrast below is against `#FFFFFF` (light) and `#0A0A0A` (dark); **QA re-checks on the real skins**.
+
+Standard controls inside the `NTWindow` inherit the skin's implicit styles (background, text, border need no resource keys); resource keys are only needed for our own elements (badge, meter, critical strip). They live in the skin's `BluePrint.xaml` and are undocumented, so Elo lists the keys on the Windows machine and fixes a list with `TryFindResource` → `SystemColors` fallback [EXP].
 
 | Status | Light set (text/icon) | Contrast | Dark set (text/icon) | Contrast |
 |---|---|---|---|---|
@@ -78,7 +80,7 @@ Same icon names as the web (lucide: `Plug`, `PlugZap`, `Unplug`, `TriangleAlert`
 
 - **Language:** `welcome.locale` (`pt-BR` or `en`); before the first pairing, the Windows UI language if pt or en, else pt-BR (S4 §6). A change in the web applies on the next connection (S4 AC-3). All strings in resource dictionaries; no hard-coded text; a missing key is a test failure, never shown as the key.
 - **Money / prices / quantities:** F§6.2 formats using the active locale's culture over `decimal` values: `US$ 1.234,50` / `$1,234.50`, `3 contratos` / `3 contracts`, percent truncated (`79 %`/`79%`). **No `double` anywhere** (X-3; ADR-0001 §8).
-- **Time:** 24-hour clock, always with the time zone name next to reset and block times (`17:00 (GMT-3)`). The plugin does not receive the user's profile time zone today (§10 gap), so by default it shows the **computer's Windows time zone**, always labeled; the firm's own reset zone comes from `trading_day.time_zone` (IANA) and is shown in a tooltip like the web (`17:00 CT (19:00 GMT-3)`). **In Playback**, reset and daily P&L use the connection's simulated clock and the UI says so (S15 AC-7, §5.5).
+- **Time:** 24-hour clock, always with the time zone name next to reset and block times (`17:00 (GMT-3)`). From protocol 1.3 the plugin receives the user's profile time zone (`welcome.time_zone`, applied at the next reconnection); before 1.3 it shows the **time zone configured in NinjaTrader** (Tools > Options > General; the same one the Log tab uses, [EXP: `Globals.GeneralOptions`]) and, as a last resort, the Windows zone, always labeled; IANA names are mapped to Windows ids with a generated CLDR table in `AllWin.Adapter.Core` (already needed for `trading_day.time_zone`); the firm's own reset zone comes from `trading_day.time_zone` (IANA) and is shown in a tooltip like the web (`17:00 CT (19:00 GMT-3)`). **In Playback**, reset and daily P&L use the connection's simulated clock and the UI says so (S15 AC-7, §5.5).
 
 ---
 
@@ -92,6 +94,7 @@ Same icon names as the web (lucide: `Plug`, `PlugZap`, `Unplug`, `TriangleAlert`
 | Pairing | `Pareando…` / `Pairing…` | info, `Hourglass` | |
 | Connected | `Conectado` / `Connected` | success, `PlugZap` | |
 | Disconnected / reconnecting | `Sem conexão` / `Disconnected` | danger, `Unplug` | "Tentando reconectar…" |
+| Disconnected by you | `Desconectado por você` / `Disconnected by you` | neutral, `Unplug` | after `Desconectar este computador` (§4.5); stays until `Reconectar` |
 | Revoked | `Despareado` / `Unpaired` | neutral, `Ban` | unpaired in the web or moved to another machine (close 4002) |
 | Update required | `Atualização necessária` / `Update required` | warning, `CircleArrowUp` | close 4003 |
 
@@ -102,10 +105,10 @@ The texts in the S3-11 table are the contract between web and plugin and are use
 - **Not paired:** title "Parear este computador" / "Pair this computer"; steps: "1. No All Win, abra Conexões → NinjaTrader e crie uma conexão. 2. Digite aqui o código mostrado." (and en). Code field: single `TextBox`, `MaxLength` tolerant of paste (spaces and hyphens ignored), case-insensitive, shown as `XXXX-XXXX` while typing; maps O→0 and I/L→1 as ADR-0004 §8; button `Parear` enabled when 8 valid characters are present, default button (Enter). No code is ever written to a log.
 - **Pairing:** field and button disabled, "Pareando…" with an indeterminate `ProgressBar` (static "Pareando…" text under reduced animation / high contrast).
 - **Invalid code** (`pairing.invalid_code`): one message for every cause: "Código inválido ou expirado. Confira o código ou gere um novo no All Win." The field keeps its text and takes focus. **Rate limited / temporarily locked:** "Muitas tentativas. Aguarde {time} e tente de novo." with a visible countdown (text updates every second but is not announced each tick) and the field disabled.
-- **Connected:** section **Estado** (badge, connection name as defined in the web [§10 gap], plugin version and build, last connected time with zone), section **Contas do NinjaTrader** (§4.3), section **Segurança deste computador** (§4.4), and the `Desparear este computador` button (§4.5).
+- **Connected:** section **Estado** (badge, connection name as defined in the web (`welcome.connection_name`, protocol 1.3), plugin version and build, last connected time with zone), section **Contas do NinjaTrader** (§4.3), section **Segurança deste computador** (§4.4), and the `Desconectar este computador` button (§4.5).
 - **Disconnected:** "Sem conexão com o All Win. Tentando reconectar…" + "Última conexão: {time}". Below, a fixed note: "Se a aplicação automática estiver ligada, o NinjaTrader continua aplicando os últimos limites recebidos." / "If automatic enforcement is on, NinjaTrader keeps applying the last limits received." (S15 AC-4). No other action.
-- **Revoked:** "Esta instância foi despareada ou movida para outra máquina no All Win. Gere um novo código para conectar." The pairing form appears below. State and notifications cache cleared (the unread count shows `—`).
-- **Update required:** "Versão do plugin não suportada. Atualize o plugin." + a link to the download page **[dependency: download page URL, S3 spec]**.
+- **Revoked:** "Esta instância foi despareada ou movida para outra máquina no All Win. Gere um novo código para conectar." and "A aplicação automática de risco deixou de funcionar neste computador para as contas desvinculadas." (G7). The pairing form appears below. State and notifications cache cleared (the unread count shows `—`).
+- **Update required:** "Versão do plugin não suportada. Atualize o plugin." + a link to `/<locale>/download` on the paired origin (G8).
 
 ### 4.3 NinjaTrader accounts list
 
@@ -119,9 +122,14 @@ A section "Segurança deste computador" with the always-visible state: "Contas r
 - Every change is written to the local log with the time (ADR-0005 N11). Development builds do not show this section and never act on live accounts (N4).
 - `kind: unknown` accounts are always refused; the account row says "Tipo desconhecido: o All Win não opera nesta conta."
 
-### 4.5 Unpair (local)
+### 4.5 Disconnect this computer (local) **[Provisional, Q66 rec. (a); user decides]**
 
-`Desparear este computador` opens a confirmation dialog: "Desparear este computador? O plugin esquece a credencial e para de receber ordens." and, **when applicable (the plugin knows its mapped accounts' positions and enforcement state)**: danger text "Há posição aberta em: {accounts}. A posição continua aberta no NinjaTrader, sem monitoramento nem proteção do All Win." and "A aplicação automática de risco deixa de funcionar neste computador." (unmapped accounts are ignored, ADR-0004 §3). A checkbox "Entendo" is required only when a position is open. Buttons `Desparear` (destructive style) / `Cancelar` (default). The web is not told (the Core sees a disconnect; the user finishes in the web, S3-10). **[Rumo: is local unpair allowed with open positions? S3 Q18 covers the web side.]**
+The plugin does **not** revoke the pairing. `Desconectar este computador` only **stops the connection from this computer**; the pairing stays in the Core as `Desconectada` with the usual out-of-sync rules (S11), and **revoking the pairing is done in the web with a code** (S3-10; Q18 stays: confirmation listing the accounts, strong warning with an open position or enforcement on, nothing is closed).
+- Dialog: title "Desconectar este computador?"; body "O All Win para de enviar ordens e de receber as suas execuções neste computador. No All Win a conexão aparece como desconectada. Para encerrar o pareamento de vez, desparear no All Win → Conexões." and, when applicable (the plugin knows its mapped accounts' positions and orders): danger text "Há posição aberta em: {accounts}. Ela continua aberta no NinjaTrader e o All Win não a acompanhará; as contas ficarão fora de sincronia no All Win." with a required checkbox "Entendo" only in that case. If enforcement is on: "Com a aplicação automática ligada, o NinjaTrader continua aplicando os últimos limites recebidos, como em uma queda de conexão." **[Elo: confirm that local enforcement keeps running with the cached limits after a user disconnect, ADR-0004 §7]**
+- With an open position or a command in flight, the account is flagged out of sync and an alert is raised (`sync.disconnected_by_user`: "Você desconectou o plugin com posição aberta; o All Win não está acompanhando esta conta"); without a position there is only the status and the audit entry, no alert (ADR-0004 §6).
+- Buttons `Desconectar` (destructive style) / `Cancelar` (default).
+- Result: badge `Desconectado por você`, the plugin does not reconnect on its own, a `Reconectar` button reconnects with the stored credential (no code needed). The credential stays in the protected store; **[Elo/PO: whether to forget it]**. The same state survives a NinjaTrader restart until the user reconnects **[Elo]**.
+- To remove the credential from this computer the user revokes in the web (state `Despareado`, back to the pairing form).
 
 ---
 
@@ -131,7 +139,7 @@ A section "Segurança deste computador" with the always-visible state: "Contas r
 
 A vertical list of **account cards**, one per mapped account, each collapsible (`Expander`). Order: blocked first, then limit reached, then warning, then out of sync, then name. Empty (no mapped account): "Nenhuma conta vinculada. Vincule contas no All Win para ver o risco aqui." Loading before the first limits/state: skeleton lines ("Carregando…").
 
-**Card header (always visible):** NinjaTrader account name (and the All Win name when available [§10 gap]) · kind badge · sync badge (`Fora de sincronia`, F§7.2) · enforcement badge (`Aplicação automática: ligada` / `desligada`) · the account's worst risk badge (`Alerta (80 %)`, `Limite atingido`, `Bloqueada até {time}`, `Meta atingida`) · expand chevron. Cards with a warning or worse start expanded.
+**Card header (always visible):** NinjaTrader account name (and the All Win name, `display_name`, protocol 1.3) · kind badge · sync badge (`Fora de sincronia`, F§7.2) · enforcement badge (`Aplicação automática: ligada` / `desligada`) · the account's worst risk badge (`Alerta (80 %)`, `Limite atingido`, `Bloqueada até {time}`, `Meta atingida`) · expand chevron. Cards with a warning or worse start expanded.
 
 ### 5.2 Card body
 
@@ -193,11 +201,12 @@ Shown from `limits.enforcement_enabled`: `Aplicação automática: ligada` (info
 The notification list in the plugin is the same set and the same unread count as the web (PO: one set, one count; reading on either side counts on both).
 
 - **Toolbar:** `ToggleButton`s `Todas` / `Não lidas`; button `Marcar todas como lidas`; the unread count.
-- **List** (`ListView`, virtualized, newest first; critical unread pinned first, then unread by time, then read): each item shows severity icon + sr-only/automation name ("Crítica", "Atenção", …), title, body (1–2 lines), account, absolute time with zone, `×{n}` and "última às {time}" when grouped, a text badge `Nova` when unread, and the buttons `Marcar como lida` (read items show "Lida"). A hint "Abrir no All Win" (text) names where to continue; if opening the default browser to the signed-in app is feasible it becomes a link **[Elo]**.
+- **List** (`ListView`, virtualized, newest first; critical unread pinned first, then unread by time, then read): each item shows severity icon + sr-only/automation name ("Crítica", "Atenção", …), title, body (1–2 lines), account, absolute time with zone, `×{n}` and "última às {time}" when grouped, a text badge `Nova` when unread, and the buttons `Marcar como lida` (read items show "Lida"). `Abrir no All Win` opens `https://<origin>/<locale>/accounts/<account_id>` (origin of the paired Core, no secret, G6) in the default browser **[Elo: feasibility]**; items without an account open the notifications list in the web.
+- **Source and rendering (protocol 1.3, G1):** the Core sends the snapshot (`notifications`, up to 200) after `welcome` and upserts (`notification`); the plugin renders each item from `code` + `params` (codes and values, not text) with its own pt-BR/en catalog, and marks read with `notification_read`.
 - **Catalog:** the codes, severities, titles and bodies are those of the S18 catalog (§6 of the S18 spec) and S10 catalog; the plugin keeps its own pt-BR/en resource copy for the codes it can render; an unknown code renders "Aviso {code}" with the details collapsed. Grouping (same code + account + trading day) is done by the Core.
-- **Window limits:** the last 200 items are cached; below the list "Mostrando os últimos 200 avisos. Os mais antigos estão no All Win."
+- **Window limits:** the last 200 items are a display cache (the record is the audit log, PO); below the list "Mostrando os últimos 200 avisos. Os mais antigos estão no All Win."
 - **States:** loading (first sync) "Carregando…"; empty "Nenhum aviso." ; disconnected: banner "Sem conexão: a lista pode estar incompleta." and the count shows `3*` with the tooltip "Alguns avisos podem ainda não ter sido sincronizados."; Revoked/Not paired: tab hidden.
-- **Offline behavior:** events the plugin itself raised while the Core was unreachable (warnings, flatten, block, reactive cancels, `while_disconnected: true`) appear locally with the tag `Ainda não sincronizado`; after reconnection the Core creates the notifications from the delivered `risk_event`s and the local copies are replaced (matched by `event_id`). Marking read while offline is queued and sent on reconnect.
+- **Offline behavior:** events the plugin itself raised while the Core was unreachable (warnings, flatten, block, reactive cancels, `while_disconnected: true`) appear locally with the tag `Ainda não sincronizado`; after reconnection the Core creates the notifications from the delivered `risk_event`s and each local copy is replaced by the Core's notification when the notification's optional `source_event_id` (protocol 1.3, a dedicated field, not in `params`) equals the local copy's adapter `event_id`: it is the same list item and keeps its position. A notification without `source_event_id` (born in the Core, e.g. consistency or Core `sync.*`) is always a new item. Never match by time + code. Marking read while offline is queued and sent on reconnect.
 - **Critical items:** `critical` notifications also drive the header strip (§2.2). The strip uses `AutomationProperties.LiveSetting=Assertive` only when the item arrives while the window is open; on window load it is a labeled region and does not re-announce.
 
 ---
@@ -208,12 +217,26 @@ Enforcement, warnings and notifications keep running without the window (§2.1).
 
 | Surface | Use | Status |
 |---|---|---|
-| NinjaTrader Control Center **Log** tab | every warning, limit reached, block, reactive cancel, disconnect with open position, pairing change | **[Elo: `NinjaScript.Log` levels and wording]** |
-| **Non-modal toast** (small, `ShowActivated=false`, topmost only while shown, bottom-right corner, never over the order entry window if it can be avoided) | warnings (10 s), and persistent for limit reached / block / reactive cancel / critical until `Entendi` is pressed; the toast has `Abrir All Win` which opens the window; dismissing the toast does not mark the notification read | **[Elo: feasibility and focus behavior in NT8]** |
-| Window icon / menu item state | optional unread count on the Control Center menu item | **[Elo: probably not possible]** |
-| Sounds | none in V1 (not in the ACs) | |
+| NinjaTrader Control Center **Log** tab (`NinjaScript.Log`) | see the level table below | feasible (Elo) |
+| **Non-modal toast**: a plain WPF `Window` (not an `NTWindow`, so it is not saved in the workspace) on its own STA thread and `Dispatcher`, `WindowStyle=None`, `ShowActivated=false`, `ShowInTaskbar=false`, `Topmost` only while visible, with `WS_EX_NOACTIVATE \| WS_EX_TOOLWINDOW` so even clicking its buttons never takes activation from the order window | warnings auto-hide after 10 s; limit reached, block, reactive cancel and critical stay until `Entendi`; `Abrir All Win` opens the window; dismissing a toast never marks the notification read | feasible [INF]; **[EXP]** on the Windows machine |
+| Window title count | `All Win (3)` in the taskbar | feasible |
+| Sounds | none in V1 | |
 
-If the toast cannot be non-activating, the fallback is the Log only plus the window left open; the spec then recommends instructing the user to keep the All Win window in the workspace. That is a product question for the PO (§12).
+**Toast rules.** Bottom-right corner of the work area of the monitor that hosts the Control Center; at most **3 stacked**, then "+n"; small. A topmost toast can still intercept a click aimed at an order ticket below it, so it stays small and capped; avoiding the order window by detecting overlap is **phase 2** (fixed corner in V1). Because it has no keyboard focus, **every toast has a mirror in the window** (`Avisos` and the critical strip, §6) with the same `Entendi`. It raises a UI Automation notification for screen readers.
+
+**Log levels (never `LogLevel.Alert`, which opens a pop-up window and would steal focus):**
+
+| Level | Events |
+|---|---|
+| Warning | 80 % warning |
+| Error | limit reached; flattened, orders cancelled, blocked; reactive cancel; failure to flatten or cancel; disconnect with an open position |
+| Information | unblocked at the reset; paired, unpaired, revoked, connected; live accounts allowed or blocked (N11) |
+
+One log line per state change (same dedupe key as the warning); reactive-cancel bursts collapse to at most one line per account every 5 s with "(+n)", plus a global per-minute cap, because each entry costs memory in the Control Center. Text follows `welcome.locale` and never contains a pairing code or token (Adapter.Core redaction). The Log timestamp follows NinjaTrader's configured time zone.
+
+**The plugin never steals focus [Provisional, Q65 rec. (a)]**: Log + non-activating toast + the permanent status on each account in the `Contas` tab (badge and block card). The window never opens itself. The user is advised to keep the All Win window in their workspace (footer hint).
+
+**Alternative to evaluate (Q-P7, PO):** `NinjaScript.Alert.AlertCallback` writes to NinjaTrader's **Alerts Log** window (priority, colors, re-arm, optional sound; none in V1), which traders already watch. It could complement the toast for limit reached and block. [EXP] whether the Alerts window opens by itself or takes focus; not the default until verified.
 
 ---
 
@@ -223,9 +246,9 @@ If the toast cannot be non-activating, the fallback is the Log only plus the win
 |---|---|---|
 | Window title | All Win | All Win |
 | Tabs | Contas · Avisos · Conexão | Accounts · Notices · Connection |
-| Connection states | Não pareado · Pareando… · Conectado · Sem conexão · Despareado · Atualização necessária | Not paired · Pairing… · Connected · Disconnected · Unpaired · Update required |
+| Connection states | Não pareado · Pareando… · Conectado · Sem conexão · Desconectado por você · Despareado · Atualização necessária | Not paired · Pairing… · Connected · Disconnected · Disconnected by you · Unpaired · Update required |
 | Pair | Parear | Pair |
-| Unpair | Desparear este computador | Unpair this computer |
+| Disconnect / reconnect | Desconectar este computador · Reconectar | Disconnect this computer · Reconnect |
 | Live accounts | Contas reais: bloqueadas neste computador / permitidas | Real accounts: blocked on this computer / allowed |
 | Risk | Alerta (80 %) · Limite atingido · Meta atingida | Warning (80%) · Limit reached · Target reached |
 | Blocked | Bloqueada até {time} · motivo: {reason} | Blocked until {time} · reason: {reason} |
@@ -243,8 +266,8 @@ Terms follow F§5 (conta, limite, alerta, fora de sincronia, parear/desparear, p
 ## 9. Accessibility and keyboard (WPF / UI Automation)
 
 - Standards: WCAG 2.2 AA intent applied to a desktop app (the project baseline); native accessibility via UI Automation. Every control has `AutomationProperties.Name`; badges expose their text; icons are `Raw` (not exposed).
-- Full keyboard use: logical tab order (§2.2), visible focus rectangle (high-contrast capable), `Enter` activates the default button, `Esc` closes dialogs and the toast, arrow keys move in lists and tabs; no mouse-only action.
-- Contrast: §3.2; the window respects Windows **High Contrast** by falling back to system brushes **[Elo]**; no information in color alone (every state has text + icon).
+- Full keyboard use: logical tab order (§2.2), visible focus rectangle, `Enter` activates the default button, `Esc` closes dialogs, arrow keys move in lists and tabs; no mouse-only action in the window. **The toast never takes keyboard focus** (non-activating), so `Esc`/`Tab` do not reach it: every toast is mirrored in the window (`Avisos` tab and the critical strip) with the same `Entendi` action, and that is the keyboard-accessible path.
+- Contrast: §3.2; with Windows **High Contrast** (`SystemParameters.HighContrast`) our window swaps status and text colors for `SystemColors` (NinjaTrader's own chrome does not follow High Contrast; QA checks); no information in color alone (every state has text + icon). Screen readers: toasts raise `AutomationPeer.RaiseNotificationEvent` since a non-activated window is not announced by itself [EXP: Narrator/NVDA].
 - Live changes: UIA live regions as in §5.4 and §6; no per-tick announcements; the countdown of the pairing lock updates its text but is not announced each second.
 - Targets: buttons ≥ 28 × 28 px at 100 % DPI (desktop pointer, WCAG 2.5.8 minimum 24 px); touch is not a target of the NinjaTrader window.
 - Text scaling: layouts use `*` and `Auto` sizing, no fixed-width labels, so the ~35 % growth between pt-BR and en and Windows text scaling do not clip (F§1).
@@ -253,7 +276,7 @@ Terms follow F§5 (conta, limite, alerta, fora de sincronia, parear/desparear, p
 
 ---
 
-## 10. Data the panels need and protocol gaps (for the Architect and the Plugin Engineer)
+## 10. Data the panels need and protocol decisions (G1–G8)
 
 **Already in the protocol (ADR-0004 / `messages.schema.json`):**
 
@@ -267,53 +290,77 @@ Terms follow F§5 (conta, limite, alerta, fora de sincronia, parear/desparear, p
 | Risk events (warning, limit reached, flattened, orders cancelled, blocked, unblocked, blocked order cancelled), `while_disconnected`, `platform_time` | `risk_event` |
 | Pairing errors | S3-11 / ADR-0004 §8 codes |
 
-**Gaps (not in the protocol today; proposals for the Architect, plugin feasibility for Elo):**
+**Gaps G1–G8: answered by the protocol owner (Esquadro), protocol 1.3, additive:**
 
-| # | Gap | Needed for | Proposal |
-|---|---|---|---|
-| G1 | **Notifications to the plugin** and **read-state sync**: there is no C→A notification message and no read acknowledgement | S18 in the plugin (one set, one unread count) | New reliable messages: `notification` (C→A: id, created/updated at, code, severity, details, account_id, count, read_at) and `notification_read` (both ways: ids, read_at); plus an initial sync of the last 200 on connect (a protocol 1.x minor, ADR-0004 versioning) |
-| G2 | **Connection name** (as the user named it in the web) | `Conexão` tab | Add to `welcome` |
-| G3 | **All Win account name** for each mapped account (the plugin knows only `platform_account`) | account cards and notices | Add `display_name` to `welcome.accounts[]` |
-| G4 | **User display time zone** (profile) | times in the plugin match the web (S4 AC-1) | Add to `welcome` (otherwise the Windows zone is used, labeled) |
-| G5 | **Consistency rule state** (S13 AC-6: tracked and warned by the Core, not in `limits`) | the 80 % warning for consistency in the plugin (S13 AC-3 says warnings appear in both) | Deliver as notifications (G1); no meter in the plugin |
-| G6 | **App base URL** and account deep links | "Abrir no All Win" | Plugin config (not a secret); Elo to confirm acceptable |
-| G7 | **Enforcement explanation for the offline/unmapped case** | §4.5 | Document in ADR-0004 §7 that unpairing stops enforcement |
-| G8 | **Download page URL** for "Update required" | S3-11 dependency | Static link in the plugin |
-
----
-
-## 11. Feasibility questions for the Plugin Engineer (Elo)
-
-1. **Menu entry:** which Control Center menu (New / Tools) hosts `All Win`, and can the AddOn keep a singleton `NTWindow` restoring position/size with the workspace?
-2. **Skin colors:** which NinjaTrader theme resource keys give background, text, border, and the light/dark luminance so §3.2 can pick its set? Is high-contrast handled by the theme?
-3. **Tabular numerals:** does the default NinjaTrader font support `Typography.NumeralAlignment=Tabular`; else which monospaced font?
-4. **Toasts:** can the AddOn open a small non-activating, non-modal topmost window (`ShowActivated=false`) without stealing focus from order entry, and does it behave on multi-monitor setups?
-5. **Log:** `NinjaScript.Log` / `Print`: severity levels shown in the Control Center Log tab, and rate limits to avoid flooding.
-6. **UIA:** can `AutomationProperties.LiveSetting` and a `RangeValue` provider be used inside `NTWindow` content without fighting the host?
-7. **Open browser:** is launching the default browser to the app URL acceptable from the AddOn (no secrets in the URL)?
-8. **DPI and size:** minimum window size 640 × 440, scrolling, per-monitor DPI inside NT8.
-9. **Threading:** 2 updates per second per account for up to N accounts through `Dispatcher.InvokeAsync` with a single UI-bound view model (ADR-0005 N6); any measured limit on the number of cards?
-10. **Pairing field:** paste handling and masking of the code in the field (it is short-lived, not masked) and log redaction.
-11. **Local record:** the "recent events" and offline notices need a small durable local store of `risk_event`s (the plugin already keeps an outbox); acceptable size and retention (one trading day for the UI, the outbox for delivery)?
-
----
-
-## 12. Open questions for the PO (Rumo)
-
-| ID | Question | Spec default |
+| # | Decision | Effect on the panels |
 |---|---|---|
-| Q-P1 | If a non-activating toast is not feasible, is the Log plus a window kept open acceptable for warnings and blocks? Or does the PO want the window to open itself on a block (it would take focus)? | Log + toast if feasible; never steal focus |
-| Q-P2 | Local unpair with an open position or enforcement on: allowed with the warning in §4.5? | Allowed with the checkbox |
-| Q-P3 | Should the plugin offer a way to clear the out-of-sync flag, or only the web (S11 AC-3)? | Web only |
-| Q-P4 | Consistency warnings in the plugin as notifications only (no meter) | Yes |
-| Q-P5 | Notification retention in the plugin: last 200 items | Yes |
-| Q-P6 | Sound for warnings and blocks | None in V1 |
+| G1 | **In V1 (1.3):** C→A `notifications` (snapshot after `welcome`, up to 200 items, read and unread); C→A `notification` (reliable, upsert by `notification_id` with `code`, `severity`, optional `account_id`, `params` as codes and values, `count`, `created_at`, `updated_at`, optional `read_at`); A→C `notification_read` (`notification_ids[]`, `read_at`). Reading in the web arrives as a `notification` with `read_at`. One set, one count | §6 renders from `code` + `params` with the plugin's own pt-BR/en catalog (the plugin translates); read state shared both ways |
+| G2 | `welcome.connection_name` (1.3) | `Conexão` tab shows the name; before 1.3 the line is omitted |
+| G3 | `welcome.accounts[].display_name` (1.3) | account cards show it; before 1.3 only `platform_account` |
+| G4 | `welcome.time_zone` (IANA, profile) (1.3). Renaming or changing the zone applies at the next `welcome` (reconnection) | §3.4 uses it; before 1.3 the Windows time zone, always labeled |
+| G5 | Consistency goes as a **notification** (no meter, Q-P4) | §6 catalog row only |
+| G6 | No protocol change: base URL = origin of the paired Core; deep link `https://<origin>/<locale>/accounts/<account_id>`, no secret | `Abrir no All Win` is a real link (Elo still confirms launching the default browser) |
+| G7 | No protocol change: unpairing (or an unmapped account) **stops the local enforcement of that account** (ADR-0004 §7) | `Revoked` state and the web unpair say so; see §4.2 |
+| G8 | No protocol change: static link `/<locale>/download` on the paired origin | `Update required` link |
+
+**Plugin Engineer's technical preferences (decision belongs to the protocol owner; the minor version is the owner's call):**
+- G1: `notification` as an idempotent upsert with a monotonic `revision` per id (grouping updates count and last time); `source_event_ids` (a list) instead of a single id if one notification can come from several events; a snapshot message with an **authoritative `unread_count`** (it can exceed 200); the pt-BR/en catalog as a data file under `contracts/` consumed by both clients with a drift test, fallback "Aviso {code}" only for new codes.
+- G2: treat `connection_name` as untrusted text (maximum length, no markup). G3: also send `display_name` in `account_state` so renames appear without reconnecting.
+- G4: IANA → Windows ids need a generated CLDR table in `AllWin.Adapter.Core` (already needed today for `trading_day.time_zone`).
+- G6: prefers `welcome.app_url` over deriving the origin (staging and production differ); the plugin accepts only `https` and logs only the host. Protocol owner's current answer is the Core's origin; to be settled between them.
+- G8: a per-build constant (the 4003 close arrives before `welcome`), from the same compile-time source as `AdapterBuild`.
+
+**Out of V1 (protocol owner):** live propagation of a changed name or time zone (next `welcome` only), history beyond 200 items and search in the plugin, a consistency meter, sound, clearing `out_of_sync` in the plugin, editing any configuration from the plugin.
+
+**Correlation (answered by the protocol owner):** the 1.3 `notification` carries an optional `source_event_id` = the `event_id` of the A→C message that produced it (the `risk_event`, or the `execution_report` when that is the source); the key is always the adapter's durable `event_id`.
+
+
+---
+
+## 11. Feasibility (answered by the Plugin Engineer, Elo)
+
+Legend: [OFF] official NinjaScript docs, [INF] WPF/.NET 4.8 inference, [EXP] needs an experiment on the Windows machine (none of this has run in NT8 yet: the Windows VPS does not exist). Every [INF] and [EXP] item becomes a checklist item for QA [Plugins]. **Everything in this spec is feasible, with three adjustments, now applied:** the toast never has keyboard focus (so every toast is mirrored in the window, §7, §9); never `LogLevel.Alert` (§7); the light/dark set is chosen by measured contrast (§3.2).
+
+| # | Topic | Answer |
+|---|---|---|
+| 1 | Menu and single window | Control Center **New** menu (documented); `NTWindow` + `IWorkspacePersistence`/`WorkspaceOptions` saves and restores position and size; duplicate restore closes itself without activating [EXP]; count in the window title instead of the menu item; `F6` via `KeyBinding` [EXP] (§2.1, §2.2) |
+| 2 | Skin | Standard controls inherit the skin; keys only for our own elements, listed on the Windows machine with `SystemColors` fallback [EXP]; set chosen by measured contrast; High Contrast handled in our window only (§3.2, §9) |
+| 3 | Numerals | `Tabular` setting plus a Consolas fallback in numeric columns; width test [EXP] (§3.1) |
+| 4 | Toast | Plain WPF window, own STA thread, `WS_EX_NOACTIVATE`; no keyboard focus; UIA notification; max 3 stacked; fixed corner in V1 (§7) |
+| 5 | Log | `NinjaScript.Log` Information/Warning/Error; never Alert; collapsing and caps (§7); `AlertCallback` is an option for the PO (Q-P7) |
+| 6 | UIA | `LiveSetting` and `LiveRegionChanged` exist since .NET 4.7.1; `ProgressBar` already exposes read-only `RangeValue`, so only `Name`, `HelpText` and `ItemStatus` (state) are set [EXP: Narrator/NVDA with Accessibility Insights] |
+| 7 | Browser | `Process.Start` with `UseShellExecute` only for an absolute `https` URI whose host equals the Core's app host; the path is built only from validated ids; no token or secret; the user's browser session, the plugin authenticates nothing |
+| 8 | DPI and size | Minimum 640 × 440 with vertical scroll: ok; per-monitor DPI depends on NinjaTrader's manifest, not ours [EXP] |
+| 9 | Threading | Each NT window has its own `Dispatcher`; the engine publishes immutable snapshots, windows and toast pull the latest via `InvokeAsync(Background)`, coalesced to **2 Hz per window** (one batch with all accounts), never a synchronous `Invoke`; no virtualization in the account list; target to measure: 20 accounts at 2 Hz under 5 % of one core without affecting Chart Trader [EXP] |
+| 10 | Pairing field | Plain `TextBox` (not `PasswordBox`), `CharacterCasing=Upper`, undo and spell check off, paste normalized in `AllWin.Adapter.Core` (Linux-tested), cleared on success, revocation and window close, never bound to logged properties |
+| 11 | Local record | Own file on the existing journal store (CRC journal + atomic snapshot), separate from the outbox; current and previous trading day, at most 500 `risk_event`s per account, display cache of 200 notices, under about 1 MB; derived, not authoritative; marks-as-read made offline go through the durable outbox; UI writes batched |
+
+**Dependency:** `risk_state`, `risk_event` and `limits`/enforcement do not yet exist in `AllWin.Adapter.Core` (S13/S15 work); the panels depend on them. Today the Core has session, commands and protection.
+
+---
+
+## 12. Decisions and open questions
+
+**Accepted by the PO (Rumo, 2026-10-23):** Q-P3 clearing an out-of-sync flag is web-only in V1; Q-P4 consistency in the plugin is a notification only, no meter; Q-P5 the last 200 items are a **display cache** (the record is the audit log); Q-P6 no sound in V1.
+
+**User questions drawn as recommendation (a), provisional:**
+
+| ID | Question | Spec default (provisional) |
+|---|---|---|
+| Q65 | The plugin never steals focus | Log + non-activating toast (if feasible) + permanent per-account status in the panel; the window never opens itself |
+| Q66 | Unpair in the plugin | Only **disconnects** locally (warning + checkbox when a position is open); the pairing stays in the Core as disconnected with the out-of-sync rules; revoking is in the web with a code (Q18 unchanged) |
+
+**For the PO:** Q-P7 — complement the toast with NinjaTrader's Alerts Log (`AlertCallback`, no sound) for limit reached and block? Default: no, until the [EXP] shows it does not open by itself or take focus.
+
+**For the Plugin Engineer (Elo):** §11 answered; still open: does local enforcement keep running after a user disconnect, does the disconnect survive a NinjaTrader restart, and whether the credential is kept (§4.5).
+
+**Consequence for other specs:** the S3 spec's S3-11 table says the plugin's `Desparear` "forgets the token after confirmation"; under Q66 it becomes `Desconectar` (credential kept). Aquarela updates S3-11 when Q66 is decided.
 
 ## 13. AC traceability
 
 | AC | Where |
 |---|---|
-| S3 AC-4 / S3-11 pair, unpair, states, one message for invalid codes | §4 |
+| S3 AC-4 / S3-11 pair, disconnect (Q66), states, one message for invalid codes | §4 |
 | N11 (U15) live accounts opt-in, state always visible | §2.2 header, §4.4 |
 | S13 AC-2, AC-3 live risk state, 80 % warning in the plugin | §5.2, §5.4 |
 | S13 AC-4 trading-day reset (firm / CME), time zone shown | §5.2 trading-day line, §3.4 |

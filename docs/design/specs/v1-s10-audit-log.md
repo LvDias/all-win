@@ -46,7 +46,7 @@
 | Conta / Account | multi-select `Combobox` of the user's accounts, **including deleted ones** (shown with `(excluída)`, from the name snapshot) | |
 | Fonte / Source | multi-select, includes revoked sources | by name |
 | Tipo de sinal / Signal type | `Gatilhos`, `Trade Plan`, `Gatilhos NQ`, `Master` | as in S7 |
-| Resultado / Outcome | multi-select: `Recebida`, `Roteada`, `Executada`, `Parcial`, `Ignorada`, `Recusada`, `Rejeitada`, `Expirada` | see §3.3 |
+| Resultado / Outcome | multi-select: `Recebida`, `Roteada`, `Executada`, `Parcial`, `Ignorada`, `Recusada`, `Rejeitada`, `Expirada`, `Indeterminada` (`info` entries have no outcome filter) | final list from the Architect, see §3.3 |
 | Categoria / Category | `Entrada`, `Roteamento`, `Execução`, `Risco`, `Conexão`, `Segurança`, `Configuração` | the `category` field |
 | Busca / Search | `Input` for an instruction id or `message_id` (exact) | not free-text search |
 
@@ -95,9 +95,12 @@ Outcomes are **fields from the Core** (`outcome`), not guessed from the code.
 | `refused` | Recusada / Refused | warning, `Ban` | risk or out-of-sync gate, position conflict |
 | `rejected` | Rejeitada / Rejected | danger, `OctagonX` | ingress rejection, platform rejection |
 | `expired` | Expirada / Expired | danger, `Clock` | `routing.expired` |
-| `info` | — (no badge) | — | configuration, connection, security events |
+| `unknown` | Indeterminada / Unknown | warning, `CircleHelp` | order state unknown after recovery (`execution.state_unknown`) |
+| `info` | — (no badge) | — | configuration, connection, security events and neutral steps |
 
-**[Q-S10-2: the outcome taxonomy is a proposal; the Architect owns the final list.]**
+The ten values are the Architect's final list (Compasso, 2026-10-23): `received`, `routed`, `executed`, `partial`, `skipped`, `refused`, `rejected`, `expired`, `unknown`, `info`.
+
+**How the Core sets `outcome` (contract s10-audit §2; the client never derives it from the code):** routing decisions `routed` → `routed`, `capped` → `partial`, and `skipped` / `refused` / `rejected` / `expired` keep their names; `ingress.received` → `received`, `ingress.duplicate_ignored` → `skipped`, `ingress.rejected` and `ingress.rate_limited` → `rejected`; execution reports `filled` → `executed`, `partially_filled` → `partial`, `rejected` → `rejected`, `expired` → `expired`, `unknown` (`execution.state_unknown`, which also flags the account out of sync) → `unknown`, and `received` / `working` / `cancelled` (and, by default, `command_sent`, `bracket_calculated`, `fill_corrected`) → `info`; `duplicate` reports are not audited. A step with `info` shows its icon and text without a badge.
 
 ---
 
@@ -108,7 +111,7 @@ Outcomes are **fields from the Core** (`outcome`), not guessed from the code.
 1. **Resumo:** time with zone and seconds, outcome badge, category, account, source (name), signal type, `Ver instrução` link when applicable.
 2. **Motivo / Why:** the translated reason for skips, refusals, rejections and automatic actions, plus one explanatory sentence from the catalog (§7).
 3. **Detalhes:** a definition list of the fields the catalog says to show for that code (for example previous and new state, rule version, source URL and access date of a displayed rule, quantity requested vs executed, price, latency). Money and prices are strings formatted per F§6; source URLs open in a new tab with `rel="noopener noreferrer"`.
-4. **Dados técnicos** (`Collapsible`, closed): entry id, `instruction_id`, `command_id`, `message_id`, `source_key_id`, code, recorded-at time; the JSON `details` **only if the Core marks it `safe_to_display`**. Mono font, `Copiar` button for the entry id (support).
+4. **Dados técnicos** (`Collapsible`, closed): entry id, `instruction_id`, `command_id`, `message_id`, `source_key_id`, code, recorded-at time. The fields rendered by the catalog (§7) are **always** shown in section 3; the raw JSON `details` appears here **only when the entry has `safe_to_display = true`**. Mono font, `Copiar` button for the entry id (support).
 
 No actions other than `Fechar`, `Copiar id` and links. States: loading skeleton; error `ErrorState`; entry not found (`common.not_found`).
 
@@ -181,25 +184,44 @@ Texts use `{placeholders}` filled from `details`. Codes marked *(proposal)* are 
 | routing | `routing.risk_blocked` | Recusada para {account}: limite de risco atingido | Refused for {account}: risk limit reached | limit, value |
 | routing | `routing.expired` | Comando expirado para {account}: não foi executado | Command expired for {account}: not executed | TTL, base time |
 | routing | `routing.quantity_capped` | Quantidade cortada em {account}: {executed} de {requested} | Quantity capped on {account}: {executed} of {requested} | requested, multiplier, maximum position, skipped excess |
-| routing | `routing.no_bracket_profile` *(proposal, Q43 provisional)* | Entrada ignorada para {account}: sem perfil de stop/alvo (saídas continuam) | Entry skipped for {account}: no stop/target profile (exits continue) | account size |
+| routing | `routing.routed` *(new)* | Roteada para {account}: {quantity} (instrução × {multiplier}) | Routed to {account}: {quantity} (instruction × {multiplier}) | requested quantity, multiplier, maximum position, signal type |
+| routing | `routing.no_bracket_profile` *(new; Q43 provisional)* | Entrada ignorada para {account}: sem perfil de stop/alvo (saídas continuam) | Entry skipped for {account}: no stop/target profile (exits continue) | account size |
 | routing | `routing.max_position_reached` | Ignorada para {account}: posição máxima atingida | Skipped for {account}: maximum position reached | maximum |
 | routing | `routing.position_conflict` | Recusada para {account}: a entrada é oposta à posição atual | Refused for {account}: entry opposes the current position | position, action |
 | routing | `routing.nothing_to_close` / `.nothing_to_reduce` | Nada a {fechar / reduzir} em {account} | Nothing to {close / reduce} on {account} | |
 | routing | `routing.no_correlated_order` | Ignorada para {account}: nenhuma ordem correspondente | Skipped for {account}: no matching order | |
-| execution | `execution.report` *(proposal)* | {account}: ordem {recebida / em andamento / preenchida / parcialmente preenchida / cancelada / rejeitada} | {account}: order {received / working / filled / partially filled / cancelled / rejected} | status, quantity, price, time, platform reason, `child_role` (stop/target), `origin` |
-| execution | `execution.bracket_calculated` *(proposal)* | Stop e alvo calculados em {account} | Stop and target calculated on {account} | unit, requested distance, whole ticks used, **rounding adjustment**, resulting prices (S6 AC-4) |
+| execution | `execution.command_sent` | Comando enviado para {account}: {action} {quantity} | Command sent to {account}: {action} {quantity} | `command_id`, expiry time |
+| execution | `execution.bracket_calculated` | Stop e alvo calculados em {account} | Stop and target calculated on {account} | unit, requested distance, whole ticks used, **rounding adjustment**, resulting prices (S6 AC-4) |
+| execution | `execution.order_received` | {account}: ordem recebida pela plataforma | {account}: order received by the platform | order role (entry / stop / target / exit), time |
+| execution | `execution.order_working` | {account}: ordem em andamento | {account}: order working | role, type, price |
+| execution | `execution.partially_filled` | {account}: preenchimento parcial — {filled} de {quantity} a {price} | {account}: partially filled — {filled} of {quantity} at {price} | fill price, quantity, time, remaining |
+| execution | `execution.filled` | {account}: ordem preenchida — {quantity} a {price} | {account}: order filled — {quantity} at {price} | fill price (string), quantity, time, latency |
+| execution | `execution.cancelled` | {account}: ordem cancelada | {account}: order cancelled | role, reason (for example orphan protection, enforcement) |
+| execution | `execution.rejected` | {account}: ordem rejeitada pela plataforma — {reason} | {account}: order rejected by the platform — {reason} | platform reason, role |
+| execution | `execution.expired` | {account}: comando expirado antes de chegar — não foi executado | {account}: command expired before delivery — not executed | TTL, expiry base |
+| execution | `execution.state_unknown` | {account}: estado da ordem indeterminado após a reconexão | {account}: order state unknown after reconnection | role, last known state; the account stays out of sync until you clear it |
+| execution | `execution.fill_corrected` | {account}: preenchimento corrigido pela plataforma — de {old} para {new} | {account}: fill corrected by the platform — {old} to {new} | previous and new price/quantity, correction type (amend / remove) |
 | risk | `risk.warning` / `risk.limit_reached` *(S13/S14)* | {account}: alerta de 80 % de {limit} / limite {limit} atingido | … | limit, value, percent |
 | risk | `risk.flatten` / `risk.blocked` *(S15)* | {account}: posições fechadas e conta bloqueada até {time} | … | limit, value, reset time |
 | risk | `risk.unblocked` *(S15, PO)* | {account} liberada no reset | {account} released at the reset | reset time, clock (real or simulated) |
+| sync | `sync.disconnected_by_user` | {account}: plugin desconectado por você{ com posição aberta; o All Win não está acompanhando esta conta} | {account}: plugin disconnected by you{ with an open position; All Win is not tracking this account} | had open position / command in flight (yes/no), time; audited in both cases |
 | connection | `connection.status_changed` | Conexão {name}: {status} | Connection {name}: {status} | previous status |
 | connection | `sync.*` (`sync.bracket_incomplete`, `sync.disconnected_in_trade`, …) | per S11 spec | | |
-| security | sign-in, failed or rate-limited attempt, new-device notice, step-up result, channel change (S3 AC-16) | per S3 spec | | never a code or address beyond what S3 allows |
+| security | `security.signed_in` | Entrada na conta ({channel}){; novo dispositivo} | Signed in ({channel}){; new device} | channel, `new_device`, device label (coarse browser/OS family, never a full user agent) |
+| security | `security.sign_in_failed` | Tentativa de entrada falhou ({channel}) | Sign-in attempt failed ({channel}) | channel only; the reason is never detailed |
+| security | `security.code_rate_limited` | Envio de código limitado ({purpose}) | Code sending rate-limited ({purpose}) | purpose (`login`, `signup`, `step_up`, `channel_change`) |
+| security | `security.code_delivery_failed` | Falha ao enviar o código por {channel} ({purpose}) | Failed to deliver the code by {channel} ({purpose}) | channel, purpose |
+| security | `security.new_device_notice_sent` | Aviso de novo dispositivo enviado | New-device notice sent | device label |
+| security | `security.step_up_succeeded` / `.step_up_failed` | Confirmação de segurança concluída / falhou: {action} | Security confirmation succeeded / failed: {action} | action, target id, reason (`missing`, `code_invalid`) |
+| security | `security.channel_change_requested` / `.on_hold` / `.completed` / `.cancelled` / `.not_completed` | Troca de {channel}: solicitada / em espera até {time} / concluída / cancelada ({by}) / não concluída | {Channel} change: requested / on hold until {time} / completed / cancelled ({by}) / not completed | change id, **masked** old and new values (always contain `*`, e.g. `j***@d***.com`), `hold_until`, `by`; the reason of `not_completed` is never shown |
+| security | `security.device_forgotten` | Dispositivo esquecido: {device label} | Device forgotten: {device label} | device id, label |
+| security | `security.signed_out_everywhere` | Sessões encerradas em todos os dispositivos | Signed out everywhere | — |
 | config | `accounts.created` / `.updated` / `.archived` / `.lifecycle_changed` | S5 §13 | | |
 | config | `accounts.opt_in_chosen` / `.opt_in_suspended` | S5 §13 | | rule version, source URL(s), access date(s), `firm_stance` |
 | config | `routing.subscription_changed` | S7 §9 | | |
 | config | `profiles.default_changed` / `.account_changed` | S6 §8 | | |
 
-Rules for the catalog: skip/refusal texts always name the account; texts for exits say "saída" when the Core flags it; wording must not sound like legal advice (vision §12). Detail fields that cannot be shown (secret-like) are removed by the Core before sending.
+Rules for the catalog: skip/refusal texts always name the account; texts for exits say "saída" when the Core flags the entry with `is_exit` (the client does not know the action rules); security entries never show a code, challenge id, token, cookie, or an unmasked e-mail or number (X-4, S3 AC-5), only the Core's masked values; wording must not sound like legal advice (vision §12). Detail fields that cannot be shown (secret-like) are removed by the Core before sending.
 
 ---
 
@@ -215,25 +237,26 @@ Rules for the catalog: skip/refusal texts always name the account; texts for exi
 
 ## 9. Data and actions this slice needs (for the Architect)
 
-**Reads**
+**Contract (draft 2.4.0, [s10-audit.md](../../architecture/contracts/s10-audit.md), `audit.yaml`):** read-only by construction (no write operation exists, AC-3).
 
-| Need | Notes |
+| Operation | Use |
 |---|---|
-| `listActivity`: filters `from`, `to`, `account_ids`, `source_ids`, `signal_types`, `outcomes`, `categories`, `codes`, `q` (instruction id / `message_id`), cursor, limit (50) | Newest first. `from/to` as instants (X-8). Served by the user/time and user/account indexes |
-| Entry fields: `id`, `occurred_at`, `category`, `code`, **`outcome`**, `instruction_id`, `account_id`, `account_name` (snapshot), `account_deleted`, `source_id`, `source_name`, `source_key_id`, `signal_type`, `command_id`, `details` (typed per code), `safe_to_display` | The UI never receives a secret (CHECK in the data model) |
-| `getInstructionTimeline(instruction_id)`: instruction summary + steps grouped by account, ordered, with each account's final outcome and the instruction's overall status | One call; no N+1 |
-| Filter option lists: accounts incl. archived, sources incl. revoked | |
-| Retention horizon (months) | for the info lines |
+| `listActivity` `GET /api/v1/activity` | filters `from`, `to`, `account_id[]`, `source_id[]`, `signal_type[]`, `outcome[]`, `category[]`, `code[]`, `q` (instruction id or `message_id`, resolved through the receipt table); opaque `cursor` bound to the filters, `limit` ≤ 100 (UI uses 50), newest first; **no total count** (none is drawn); the page carries `retention_months` and `horizon` for the info lines |
+| `getActivityFilterOptions` | accounts including archived, sources including revoked, signal types present |
+| `getActivityEntry` | the detail panel |
+| `getInstructionTimeline` | one call: summary, `intake` (receipt and duplicates), one block per account sorted by name with `outcome`, `final` and `quantity` (instruction → × multiplier → cap → executed), overall `status` (`completed` once every block is final) |
 
-**Events (SSE):** `audit.entry_recorded` (id, category, outcome, account id, instruction id) to drive the banner and the in-progress timeline.
-
-**Codes the UI needs from the Architect:** the final `outcome` list, `execution.*` codes, the `details` fields per code (§7), `safe_to_display`.
+- **Entry fields** include `outcome`, `is_exit`, `message_id`, `source_name` (snapshot), `account_deleted` (computed), typed `details` (`AuditDetailsByCode`: the client types `details` by `code`; codes without a schema have empty details) and `safe_to_display`.
+- **Open codes:** `code` is a pattern, not an enum, so a new slice's code never breaks an older client: it renders "Evento {code}" (§2). `KnownAuditCode` is the list the i18n parity check (QA) iterates over; `sync.*` (S11), `risk.*` (S13–S15) and `notifications.*` (S18) join with their own contracts.
+- **SSE** `audit.entry_recorded` carries no details (`entry_id`, `category`, `outcome`, `account_id`, `instruction_id`); the client refetches. It drives the "novas entradas" banner and the live timeline.
+- Isolation: unknown, foreign and purged ids give the same 404; foreign ids in filters match nothing.
+- CSV export is not in V1 (Q44).
 
 ## 10. Decisions and open questions
 
 **Closed by the PO (Rumo, 2026-10-23):** Q-S10-3 exact search by `message_id` accepted; Q-S10-5 security events share this list under category `Segurança` (S3 AC-16: sign-ins, failed or rate-limited attempts, new-device notice, step-up, channel change), and **no code is ever shown** (X-4, S3 AC-5); Q-S10-7 the `Master` signal filter appears only when the Core returns such entries (S19 is V1.1).
 
-**Architect (Compasso), no product objection:** Q-S10-2 final outcome taxonomy (§3.3); Q-S10-6 duplicate shown inside the original instruction's timeline.
+**Architect (Compasso):** Q-S10-2 closed — final outcome list, `execution.*` codes, `details` per code and `safe_to_display` are in the contract (§3.3, §7, §9); Q-S10-6 duplicate shown inside the original instruction's timeline.
 
 **User questions drawn as recommendation (a), provisional:**
 
