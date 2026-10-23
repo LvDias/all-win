@@ -15,7 +15,7 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use http_body_util::Channel;
-use identity_application::auth::{Activity, AuthenticateSession, Requirement};
+use identity_application::auth::{Activity, AuthenticateSession};
 use identity_application::deps::IdentityDeps;
 use identity_enterprise::ids::SessionId;
 use serde_json::{Value, json};
@@ -195,7 +195,7 @@ pub fn open(
                     Err(_) => return,
                 },
                 _ = beat.tick() => {
-                    if auth.handle(Some(&cookie), Requirement::Full, Activity::Background).await.is_err() {
+                    if auth.handle(Some(&cookie), Activity::Background).await.is_err() {
                         let data = json!({ "type": "session.ended", "at": at(deps.clock.now()), "reason": "expired" }).to_string();
                         let _ = tx.send_data(frame("session.ended", &data)).await;
                         return;

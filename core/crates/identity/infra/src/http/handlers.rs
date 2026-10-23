@@ -13,30 +13,24 @@ use axum::response::{IntoResponse, Response};
 use contracts::http::{Error, RetryAfterSeconds};
 use identity_application::error::IdentityError;
 use identity_application::ports::UserSummary;
-use identity_application::usecases::admin::{AdminResetTotp, ListUsers};
+use identity_application::usecases::admin::ListUsers;
 use identity_application::usecases::connections::*;
 use identity_application::usecases::invitations::*;
 use identity_application::usecases::me::*;
 use identity_application::usecases::pairing::{PairAdapter, PairAdapterCommand};
-use identity_application::usecases::password_reset::*;
 use identity_application::usecases::signin::*;
 use identity_application::usecases::sources::*;
-use identity_application::usecases::totp::*;
-use identity_application::views::{
-    ConnectionView, InvitationView, LoginOutcome, SessionCookie, SourceView,
-};
+use identity_application::views::{ConnectionView, InvitationView, SourceView};
 use identity_enterprise::connection::{AdapterBuild, AdapterInfo, ConnectionStatus};
 use identity_enterprise::ids::{ConnectionId, InvitationId, SourceId};
 use identity_enterprise::invitation::InvitationStatus;
-use identity_enterprise::secret::SecretString;
 use identity_enterprise::source::{SourceStatus, SourceType};
 use identity_enterprise::user::UserStatus;
 use serde::Serialize;
-use shared_kernel::UserId;
 
 use super::IdentityHttpState;
-use super::error::{ApiError, respond};
-use super::extract::{AdminSession, Client, PendingSession, PublicOrigin, Session, StreamSession};
+use super::error::ApiError;
+use super::extract::{AdminSession, Client, PublicOrigin, Session, StreamSession};
 use super::guard::{Rejection, ValidJson, path_uuid, query_bool};
 use super::schemas::*;
 
@@ -50,13 +44,6 @@ fn json<T: Serialize>(status: StatusCode, body: &T) -> Response {
 fn no_store(mut r: Response) -> Response {
     r.headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    r
-}
-
-fn with_cookie(mut r: Response, cookie: &SessionCookie, s: &IdentityHttpState) -> Response {
-    if let Some(v) = super::cookie::set(cookie, s.deps.clock.now()) {
-        r.headers_mut().append(header::SET_COOKIE, v);
-    }
     r
 }
 
@@ -74,37 +61,6 @@ fn path_id(params: PathParams, name: &str) -> Result<uuid::Uuid, Response> {
         .map(|(k, v)| (k.to_owned(), v.to_owned()))
         .collect();
     path_uuid(&map, name).map_err(IntoResponse::into_response)
-}
-
-fn login_response(s: &IdentityHttpState, status: StatusCode, outcome: LoginOutcome) -> Response {
-    let (body, cookie) = match outcome {
-        LoginOutcome::Authenticated {
-            user,
-            cookie,
-            recovery_codes_remaining,
-        } => (
-            LoginResult {
-                state: LoginState::Authenticated,
-                user: Some(Me::from(&user)),
-                pending_expires_at: None,
-                recovery_codes_remaining,
-            },
-            cookie,
-        ),
-        LoginOutcome::Pending2fa {
-            cookie,
-            pending_expires_at,
-        } => (
-            LoginResult {
-                state: LoginState::Pending2fa,
-                user: None,
-                pending_expires_at: Some(ts(pending_expires_at)),
-                recovery_codes_remaining: None,
-            },
-            cookie,
-        ),
-    };
-    with_cookie(json(status, &body), &cookie, s)
 }
 
 fn invitation_dto(v: &InvitationView) -> Invitation {
@@ -132,7 +88,6 @@ fn admin_user(u: &UserSummary) -> AdminUser {
             UserStatus::Active => UserStatusDto::Active,
             UserStatus::Closed => UserStatusDto::Closed,
         },
-        totp_enabled: u.totp_enabled,
         is_platform_admin: Some(u.user.is_platform_admin),
         created_at: ts(u.user.created_at),
         last_sign_in_at: u.last_sign_in_at.map(ts),
@@ -267,89 +222,6 @@ struct IncludeUnpairedParam {
 
 // ---------------- auth ----------------
 
-/// Sign in with e-mail and password.
-#[utoipa::path(post, path = "/api/v1/auth/login", operation_id = "login", tag = "auth", security(()),
-    request_body = LoginRequest,
-    responses(
-        (status = 200, description = "Authenticated, or second factor required.", body = LoginResult, headers(("Set-Cookie" = String))),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.invalid_credentials.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn login(
-    State(s): S,
-    _o: PublicOrigin,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<LoginRequest>,
-) -> Response {
-    let cmd = LoginCommand {
-        email: r.email,
-        password: SecretString::new(r.password),
-        remember_me: r.remember_me,
-        meta,
-    };
-    match Login::new(s.deps.clone()).handle(cmd).await {
-        Ok(out) => login_response(&s, StatusCode::OK, out),
-        Err(e) => err(e),
-    }
-}
-
-/// Complete sign-in with a TOTP code.
-#[utoipa::path(post, path = "/api/v1/auth/login/totp", operation_id = "verifyLoginTotp", tag = "auth",
-    security(("pendingSession" = [])),
-    request_body = TotpCodeRequest,
-    responses(
-        (status = 200, description = "Authenticated; session id rotated.", body = LoginResult, headers(("Set-Cookie" = String))),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.invalid_code or auth.pending_expired.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn verify_login_totp(
-    State(s): S,
-    PendingSession(ctx): PendingSession,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<TotpCodeRequest>,
-) -> Response {
-    match VerifyLoginTotp::new(s.deps.clone())
-        .handle(&ctx, &r.code, &meta)
-        .await
-    {
-        Ok(out) => login_response(&s, StatusCode::OK, out),
-        Err(e) => err(e),
-    }
-}
-
-/// Complete sign-in with a single-use recovery code (Q22).
-#[utoipa::path(post, path = "/api/v1/auth/login/recovery-code", operation_id = "verifyLoginRecoveryCode", tag = "auth",
-    security(("pendingSession" = [])),
-    request_body = RecoveryCodeRequest,
-    responses(
-        (status = 200, description = "Authenticated; recovery_codes_remaining included.", body = LoginResult, headers(("Set-Cookie" = String))),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.invalid_code or auth.pending_expired.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn verify_login_recovery_code(
-    State(s): S,
-    PendingSession(ctx): PendingSession,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<RecoveryCodeRequest>,
-) -> Response {
-    match VerifyLoginRecoveryCode::new(s.deps.clone())
-        .handle(&ctx, &r.code, &meta)
-        .await
-    {
-        Ok(out) => login_response(&s, StatusCode::OK, out),
-        Err(e) => err(e),
-    }
-}
-
 /// End the current session (server-side). Idempotent.
 #[utoipa::path(post, path = "/api/v1/auth/logout", operation_id = "logout", tag = "auth",
     security(("session" = []), ("pendingSession" = []), ()),
@@ -371,34 +243,6 @@ pub(super) async fn logout(
                 .insert(header::SET_COOKIE, super::cookie::clear());
             r
         }
-        Err(e) => err(e),
-    }
-}
-
-/// Re-authenticate before a sensitive action (15-minute rule).
-#[utoipa::path(post, path = "/api/v1/auth/step-up", operation_id = "stepUp", tag = "auth",
-    request_body = StepUpRequest,
-    responses(
-        (status = 204, description = "Re-authenticated."),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.unauthenticated, auth.reauth_failed or auth.invalid_code.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn step_up(
-    State(s): S,
-    Session(ctx): Session,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<StepUpRequest>,
-) -> Response {
-    let cmd = StepUpCommand {
-        password: SecretString::new(r.password),
-        code: r.code,
-        meta,
-    };
-    match StepUp::new(s.deps.clone()).handle(&ctx, cmd).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => err(e),
     }
 }
@@ -432,88 +276,6 @@ pub(super) async fn lookup_invitation(
                 expires_at: ts(v.expires_at),
             },
         ),
-        Err(e) => err(e),
-    }
-}
-
-/// Create the account from an invitation and sign in (S3 AC-1).
-#[utoipa::path(post, path = "/api/v1/auth/invitations/accept", operation_id = "acceptInvitation", tag = "auth", security(()),
-    request_body = AcceptInvitationRequest,
-    responses(
-        (status = 201, description = "Account created; session started.", body = LoginResult, headers(("Set-Cookie" = String))),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 404, description = "auth.invitation_invalid.", body = Error),
-        (status = 422, description = "Password rejected.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn accept_invitation(
-    State(s): S,
-    _o: PublicOrigin,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<AcceptInvitationRequest>,
-) -> Response {
-    let cmd = AcceptInvitationCommand {
-        token: r.token,
-        password: SecretString::new(r.password),
-        locale: locale_in(r.locale),
-        time_zone: r.time_zone,
-        meta,
-    };
-    match AcceptInvitation::new(s.deps.clone()).handle(cmd).await {
-        Ok(out) => login_response(&s, StatusCode::CREATED, out),
-        Err(e) => err(e),
-    }
-}
-
-/// Request a reset link by e-mail (always 202, Q20).
-#[utoipa::path(post, path = "/api/v1/auth/password-reset/request", operation_id = "requestPasswordReset", tag = "auth", security(()),
-    request_body = EmailRequest,
-    responses(
-        (status = 202, description = "Returned for every well-formed same-origin request."),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn request_password_reset(
-    State(s): S,
-    _o: PublicOrigin,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<EmailRequest>,
-) -> Response {
-    match RequestPasswordReset::new(s.deps.clone())
-        .handle(&r.email, &meta)
-        .await
-    {
-        Ok(()) => StatusCode::ACCEPTED.into_response(),
-        Err(e) => err(e),
-    }
-}
-
-/// Set a new password with a reset token; ends ALL sessions.
-#[utoipa::path(post, path = "/api/v1/auth/password-reset/confirm", operation_id = "confirmPasswordReset", tag = "auth", security(()),
-    request_body = ConfirmPasswordResetRequest,
-    responses(
-        (status = 204, description = "Password changed; every session ended."),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 404, description = "auth.reset_token_invalid.", body = Error),
-        (status = 422, description = "Password rejected.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn confirm_password_reset(
-    State(s): S,
-    _o: PublicOrigin,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<ConfirmPasswordResetRequest>,
-) -> Response {
-    match ConfirmPasswordReset::new(s.deps.clone())
-        .handle(&r.token, &SecretString::new(r.new_password), &meta)
-        .await
-    {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => err(e),
     }
 }
@@ -561,168 +323,21 @@ pub(super) async fn update_me(
         (status = 401, description = "auth.unauthenticated.", body = Error),
         (status = 500, description = "Internal error.", body = Error),
     ))]
-pub(super) async fn get_my_security(State(s): S, Session(ctx): Session) -> Response {
-    match GetMySecurity::new(s.deps.clone()).handle(&ctx).await {
-        Ok(v) => json(
-            StatusCode::OK,
-            &SecurityState {
-                totp_enabled: v.totp_enabled,
-                recovery_codes_remaining: v.recovery_codes_remaining,
-                session: SessionInfo {
-                    persistent: v.session.persistent,
-                    idle_timeout_s: v.session.idle_timeout_s,
-                    absolute_timeout_s: v.session.absolute_timeout_s,
-                    idle_expires_at: ts(v.session.idle_expires_at),
-                    absolute_expires_at: ts(v.session.absolute_expires_at),
-                    step_up_valid_until: ts(v.session.step_up_valid_until),
-                },
+pub(super) async fn get_my_security(Session(ctx): Session) -> Response {
+    let v = GetMySecurity::new().handle(&ctx);
+    json(
+        StatusCode::OK,
+        &SecurityState {
+            session: SessionInfo {
+                persistent: v.session.persistent,
+                idle_timeout_s: v.session.idle_timeout_s,
+                absolute_timeout_s: v.session.absolute_timeout_s,
+                idle_expires_at: ts(v.session.idle_expires_at),
+                absolute_expires_at: ts(v.session.absolute_expires_at),
+                step_up_valid_until: ts(v.session.step_up_valid_until),
             },
-        ),
-        Err(e) => err(e),
-    }
-}
-
-/// Start TOTP enrolment (step-up).
-#[utoipa::path(post, path = "/api/v1/me/totp/setup", operation_id = "startTotpSetup", tag = "me",
-    responses(
-        (status = 200, description = "Enrolment secret, shown once.", body = TotpSetup, headers(("Cache-Control" = NoStore))),
-        (status = 401, description = "auth.unauthenticated.", body = Error),
-        (status = 403, description = "auth.step_up_required or common.forbidden_origin.", body = Error),
-        (status = 409, description = "auth.totp_already_enabled.", body = Error),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn start_totp_setup(State(s): S, Session(ctx): Session) -> Response {
-    match StartTotpSetup::new(s.deps.clone()).handle(&ctx).await {
-        Ok(v) => no_store(json(
-            StatusCode::OK,
-            &TotpSetup {
-                otpauth_uri: v.otpauth_uri.expose().to_owned(),
-                secret: v.secret.expose().to_owned(),
-                expires_at: ts(v.expires_at),
-            },
-        )),
-        Err(e) => err(e),
-    }
-}
-
-/// Confirm enrolment with a code; returns recovery codes once; ends other sessions.
-#[utoipa::path(post, path = "/api/v1/me/totp/confirm", operation_id = "confirmTotpSetup", tag = "me",
-    request_body = TotpCodeRequest,
-    responses(
-        (status = 200, description = "TOTP enabled.", body = RecoveryCodes, headers(("Cache-Control" = NoStore))),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.unauthenticated.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 422, description = "auth.invalid_code or auth.totp_setup_expired.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn confirm_totp_setup(
-    State(s): S,
-    Session(ctx): Session,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<TotpCodeRequest>,
-) -> Response {
-    match ConfirmTotpSetup::new(s.deps.clone())
-        .handle(&ctx, &r.code, &meta)
-        .await
-    {
-        Ok(v) => no_store(json(
-            StatusCode::OK,
-            &RecoveryCodes {
-                recovery_codes: v.codes.iter().map(|c| c.expose().to_owned()).collect(),
-            },
-        )),
-        // The contract answers a wrong enrolment code with 422, not 401.
-        Err(e @ IdentityError::InvalidCode) => respond(&e, StatusCode::UNPROCESSABLE_ENTITY),
-        Err(e) => err(e),
-    }
-}
-
-/// Disable TOTP (password + current code, Q22); ends other sessions.
-#[utoipa::path(post, path = "/api/v1/me/totp/disable", operation_id = "disableTotp", tag = "me",
-    request_body = PasswordAndCode,
-    responses(
-        (status = 204, description = "TOTP disabled; recovery codes deleted."),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.unauthenticated, auth.reauth_failed or auth.invalid_code.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn disable_totp(
-    State(s): S,
-    Session(ctx): Session,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<PasswordAndCode>,
-) -> Response {
-    match DisableTotp::new(s.deps.clone())
-        .handle(&ctx, &SecretString::new(r.password), &r.code, &meta)
-        .await
-    {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => err(e),
-    }
-}
-
-/// Replace the recovery code batch (password + current code).
-#[utoipa::path(post, path = "/api/v1/me/recovery-codes/regenerate", operation_id = "regenerateRecoveryCodes", tag = "me",
-    request_body = PasswordAndCode,
-    responses(
-        (status = 200, description = "New batch, shown once.", body = RecoveryCodes, headers(("Cache-Control" = NoStore))),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.unauthenticated, auth.reauth_failed or auth.invalid_code.", body = Error),
-        (status = 403, description = "common.forbidden_origin.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn regenerate_recovery_codes(
-    State(s): S,
-    Session(ctx): Session,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<PasswordAndCode>,
-) -> Response {
-    match RegenerateRecoveryCodes::new(s.deps.clone())
-        .handle(&ctx, &SecretString::new(r.password), &r.code, &meta)
-        .await
-    {
-        Ok(v) => no_store(json(
-            StatusCode::OK,
-            &RecoveryCodes {
-                recovery_codes: v.codes.iter().map(|c| c.expose().to_owned()).collect(),
-            },
-        )),
-        Err(e) => err(e),
-    }
-}
-
-/// Change password (step-up); ends other sessions.
-#[utoipa::path(post, path = "/api/v1/me/password", operation_id = "changePassword", tag = "me",
-    request_body = ChangePasswordRequest,
-    responses(
-        (status = 204, description = "Changed; current session rotated, other sessions ended."),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.unauthenticated or auth.reauth_failed.", body = Error),
-        (status = 403, description = "auth.step_up_required or common.forbidden_origin.", body = Error),
-        (status = 422, description = "Password rejected.", body = Error),
-        (status = 429, description = "auth.rate_limited.", body = Error, headers(("Retry-After" = RetryAfterSeconds))),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn change_password(
-    State(s): S,
-    Session(ctx): Session,
-    Client(meta): Client,
-    ValidJson(r): ValidJson<ChangePasswordRequest>,
-) -> Response {
-    let cmd = ChangePasswordCommand {
-        current_password: SecretString::new(r.current_password),
-        new_password: SecretString::new(r.new_password),
-        meta,
-    };
-    match ChangePassword::new(s.deps.clone()).handle(&ctx, cmd).await {
-        Ok(cookie) => with_cookie(StatusCode::NO_CONTENT.into_response(), &cookie, &s),
-        Err(e) => err(e),
-    }
+        },
+    )
 }
 
 // ---------------- admin ----------------
@@ -830,72 +445,6 @@ pub(super) async fn list_users(State(s): S, AdminSession(ctx): AdminSession) -> 
             StatusCode::OK,
             &list.iter().map(admin_user).collect::<Vec<_>>(),
         ),
-        Err(e) => err(e),
-    }
-}
-
-/// Generate a reset link when e-mail is unavailable (Q20 fallback; step-up).
-#[utoipa::path(post, path = "/api/v1/admin/users/{user_id}/password-reset-link", operation_id = "adminCreateResetLink", tag = "admin",
-    params(UserIdParam),
-    responses(
-        (status = 201, description = "Link returned once.", body = ResetLink, headers(("Cache-Control" = NoStore))),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.unauthenticated.", body = Error),
-        (status = 403, description = "auth.forbidden, auth.step_up_required or common.forbidden_origin.", body = Error),
-        (status = 404, description = "common.not_found.", body = Error),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn admin_create_reset_link(
-    State(s): S,
-    AdminSession(ctx): AdminSession,
-    Client(meta): Client,
-    p: PathParams,
-) -> Response {
-    let id = match path_id(p, "user_id") {
-        Ok(id) => UserId::from_uuid(id),
-        Err(r) => return r,
-    };
-    match AdminCreateResetLink::new(s.deps.clone())
-        .handle(&ctx, id, &meta)
-        .await
-    {
-        Ok(v) => no_store(json(
-            StatusCode::CREATED,
-            &ResetLink {
-                reset_url: v.reset_url.expose().to_owned(),
-                expires_at: ts(v.expires_at),
-            },
-        )),
-        Err(e) => err(e),
-    }
-}
-
-/// Remove a user's TOTP after an identity check (Q22; step-up); ends that user's sessions.
-#[utoipa::path(post, path = "/api/v1/admin/users/{user_id}/totp-reset", operation_id = "adminResetTotp", tag = "admin",
-    params(UserIdParam),
-    responses(
-        (status = 204, description = "TOTP and recovery codes removed."),
-        (status = 400, description = "Invalid request.", body = Error),
-        (status = 401, description = "auth.unauthenticated.", body = Error),
-        (status = 403, description = "auth.forbidden, auth.step_up_required or common.forbidden_origin.", body = Error),
-        (status = 404, description = "common.not_found.", body = Error),
-        (status = 500, description = "Internal error.", body = Error),
-    ))]
-pub(super) async fn admin_reset_totp(
-    State(s): S,
-    AdminSession(ctx): AdminSession,
-    Client(meta): Client,
-    p: PathParams,
-) -> Response {
-    let id = match path_id(p, "user_id") {
-        Ok(id) => UserId::from_uuid(id),
-        Err(r) => return r,
-    };
-    match AdminResetTotp::new(s.deps.clone())
-        .handle(&ctx, id, &meta)
-        .await
-    {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => err(e),
     }
 }

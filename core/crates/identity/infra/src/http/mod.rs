@@ -34,34 +34,10 @@ pub fn router(state: Arc<IdentityHttpState>) -> Router {
     guard::register_components(&IdentityApi::openapi());
     use handlers::*;
     Router::new()
-        .route("/api/v1/auth/login", post(login))
-        .route("/api/v1/auth/login/totp", post(verify_login_totp))
-        .route(
-            "/api/v1/auth/login/recovery-code",
-            post(verify_login_recovery_code),
-        )
         .route("/api/v1/auth/logout", post(logout))
-        .route("/api/v1/auth/step-up", post(step_up))
         .route("/api/v1/auth/invitations/lookup", post(lookup_invitation))
-        .route("/api/v1/auth/invitations/accept", post(accept_invitation))
-        .route(
-            "/api/v1/auth/password-reset/request",
-            post(request_password_reset),
-        )
-        .route(
-            "/api/v1/auth/password-reset/confirm",
-            post(confirm_password_reset),
-        )
         .route("/api/v1/me", get(get_me).patch(update_me))
         .route("/api/v1/me/security", get(get_my_security))
-        .route("/api/v1/me/totp/setup", post(start_totp_setup))
-        .route("/api/v1/me/totp/confirm", post(confirm_totp_setup))
-        .route("/api/v1/me/totp/disable", post(disable_totp))
-        .route(
-            "/api/v1/me/recovery-codes/regenerate",
-            post(regenerate_recovery_codes),
-        )
-        .route("/api/v1/me/password", post(change_password))
         .route(
             "/api/v1/admin/invitations",
             get(list_invitations).post(create_invitation),
@@ -71,14 +47,6 @@ pub fn router(state: Arc<IdentityHttpState>) -> Router {
             post(revoke_invitation),
         )
         .route("/api/v1/admin/users", get(list_users))
-        .route(
-            "/api/v1/admin/users/{user_id}/password-reset-link",
-            post(admin_create_reset_link),
-        )
-        .route(
-            "/api/v1/admin/users/{user_id}/totp-reset",
-            post(admin_reset_totp),
-        )
         .route("/api/v1/sources", get(list_sources).post(create_source))
         .route("/api/v1/sources/{source_id}", patch(rename_source))
         .route("/api/v1/sources/{source_id}/rotate", post(rotate_source))
@@ -108,29 +76,15 @@ pub fn router(state: Arc<IdentityHttpState>) -> Router {
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        handlers::login,
-        handlers::verify_login_totp,
-        handlers::verify_login_recovery_code,
         handlers::logout,
-        handlers::step_up,
         handlers::lookup_invitation,
-        handlers::accept_invitation,
-        handlers::request_password_reset,
-        handlers::confirm_password_reset,
         handlers::get_me,
         handlers::update_me,
         handlers::get_my_security,
-        handlers::start_totp_setup,
-        handlers::confirm_totp_setup,
-        handlers::disable_totp,
-        handlers::regenerate_recovery_codes,
-        handlers::change_password,
         handlers::list_invitations,
         handlers::create_invitation,
         handlers::revoke_invitation,
         handlers::list_users,
-        handlers::admin_create_reset_link,
-        handlers::admin_reset_totp,
         handlers::list_sources,
         handlers::create_source,
         handlers::rename_source,

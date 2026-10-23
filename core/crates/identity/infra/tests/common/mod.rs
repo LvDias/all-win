@@ -14,32 +14,27 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use identity_application::auth::{Activity, AuthContext, AuthenticateSession, Requirement};
+use identity_application::auth::{Activity, AuthContext, AuthenticateSession};
 use identity_application::changes::{ChangeSet, Write};
 use identity_application::deps::{IdentityDeps, IdentitySettings, RequestMeta};
 use identity_application::ports::*;
-use identity_application::usecases::signin::*;
-use identity_application::views::LoginOutcome;
 use identity_enterprise::connection::AdapterInfo;
 use identity_enterprise::email::EmailAddress;
-use identity_enterprise::ids::SourceId;
+use identity_enterprise::ids::{SessionId, SourceId};
 use identity_enterprise::profile::{Locale, TimeZoneName};
 use identity_enterprise::secret::SecretString;
+use identity_enterprise::session::{ClientInfo, NewSession, Session};
+use identity_enterprise::tokens::SecretBytes;
 use identity_enterprise::user::{User, UserStatus};
-use identity_infra::crypto::{
-    AesGcmCipher, Argon2Cost, Argon2Passwords, OsRandom, PepperedHasher, VersionedKeys,
-};
+use identity_infra::crypto::{OsRandom, PepperedHasher, VersionedKeys};
 use identity_infra::store::PgIdentityStore;
 use identity_infra::throttle::{
-    LogPairingAlerts, LoginPolicy, PairingThrottlePolicy, PerIpPublicThrottle, PolicyLoginThrottle,
-    PrefixPairingThrottle,
+    LogPairingAlerts, PairingThrottlePolicy, PerIpPublicThrottle, PrefixPairingThrottle,
 };
 use shared_kernel::{SystemClock, UserId};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{AssertSqlSafe, PgPool};
 use uuid::Uuid;
-
-pub const PASSWORD: &str = "correct horse battery";
 
 pub struct Db {
     pub admin_url: String,
@@ -177,14 +172,6 @@ impl Mailer for NoMail {
     async fn send_invitation(&self, _: &str, _: Locale, _: &SecretString) -> Result<(), MailError> {
         Err(MailError)
     }
-    async fn send_password_reset(
-        &self,
-        _: &str,
-        _: Locale,
-        _: &SecretString,
-    ) -> Result<(), MailError> {
-        Err(MailError)
-    }
 }
 pub struct NoPresence;
 #[async_trait]
@@ -218,13 +205,6 @@ impl AdapterCompatibility for AllAdapters {
         true
     }
 }
-pub struct NotBreached;
-impl BreachedPasswords for NotBreached {
-    fn contains(&self, _: &str) -> bool {
-        false
-    }
-}
-
 pub fn keys() -> VersionedKeys {
     VersionedKeys::new(1, BTreeMap::from([(1, vec![7u8; 32])])).unwrap()
 }
@@ -234,20 +214,13 @@ pub fn deps(db: &Db) -> (IdentityDeps, Arc<PgIdentityStore>) {
     let deps = IdentityDeps {
         store: store.clone(),
         clock: Arc::new(SystemClock),
-        passwords: Arc::new(Argon2Passwords::new(Argon2Cost::MINIMUM).unwrap()),
         hasher: Arc::new(PepperedHasher::new(keys())),
-        cipher: Arc::new(AesGcmCipher::new(keys()).unwrap()),
         random: Arc::new(OsRandom),
-        breached: Arc::new(NotBreached),
         mailer: Arc::new(NoMail),
         presence: Arc::new(NoPresence),
         source_activity: Arc::new(NoActivity),
         source_keys: Arc::new(NoKeyListener),
         adapters: Arc::new(AllAdapters),
-        login_throttle: Arc::new(PolicyLoginThrottle::new(LoginPolicy {
-            per_ip_per_minute: 1000,
-            ..LoginPolicy::default()
-        })),
         pairing_throttle: Arc::new(PrefixPairingThrottle::new(
             PairingThrottlePolicy {
                 per_ip_per_minute: 1000,
@@ -271,45 +244,63 @@ pub fn meta() -> RequestMeta {
     }
 }
 
-/// Seeds a user directly (users are normally created by accepting an invitation).
-pub async fn seed_user(deps: &IdentityDeps, email: &str, admin: bool) -> User {
+/// Seeds a user directly (sign-up is being replaced, contract 2.0.0). Superuser insert: the row
+/// is test data, not a use-case write.
+pub async fn seed_user(db: &Db, email: &str, admin: bool) -> User {
     let user = User {
         id: UserId::new_v7(),
         email: EmailAddress::parse(email).unwrap(),
-        password_hash: deps
-            .passwords
-            .hash(&SecretString::new(PASSWORD))
-            .await
-            .unwrap(),
         locale: Locale::En,
         time_zone: TimeZoneName::parse("UTC").unwrap(),
         is_platform_admin: admin,
         status: UserStatus::Active,
         created_at: Utc::now(),
     };
-    deps.store
-        .commit(ChangeSet::new(user.id).write(Write::InsertUser(user.clone())))
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO identity.app_user (id, email, email_normalized, password_hash, locale, time_zone, is_platform_admin, created_at)
+         VALUES ($1, $2, $3, 'unused', 'en', 'UTC', $4, $5)",
+    )
+    .bind(user.id.as_uuid())
+    .bind(user.email.as_entered())
+    .bind(user.email.normalized())
+    .bind(admin)
+    .bind(user.created_at)
+    .execute(&db.inspect)
+    .await
+    .unwrap();
     user
 }
 
+/// Starts a session through the store, as the sign-in use case would.
 pub async fn sign_in(deps: &IdentityDeps, email: &str) -> (String, AuthContext) {
-    let out = Login::new(deps.clone())
-        .handle(LoginCommand {
-            email: email.into(),
-            password: SecretString::new(PASSWORD),
-            remember_me: false,
-            meta: meta(),
-        })
+    let normalized = EmailAddress::parse(email).unwrap();
+    let user = deps
+        .store
+        .user_for_login(normalized.normalized())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut secret = [0u8; 32];
+    deps.random.fill(&mut secret);
+    let secret = SecretBytes::from_random(secret);
+    let new = NewSession {
+        id: SessionId::new_v7(),
+        user_id: user.id,
+        token_hash: deps.hasher.sha256(secret.as_bytes()),
+        persistent: false,
+        client: ClientInfo {
+            ip: Some(meta().ip),
+            user_agent: meta().user_agent,
+        },
+    };
+    let session = Session::start(new, false, Utc::now());
+    deps.store
+        .commit(ChangeSet::new(user.id).write(Write::InsertSession(session)))
         .await
         .unwrap();
-    let LoginOutcome::Authenticated { cookie, .. } = out else {
-        panic!("expected full session")
-    };
-    let value = cookie.value.expose().to_owned();
+    let value = secret.encode().expose().to_owned();
     let ctx = AuthenticateSession::new(deps.clone())
-        .handle(Some(&value), Requirement::Full, Activity::UserInitiated)
+        .handle(Some(&value), Activity::UserInitiated)
         .await
         .unwrap();
     (value, ctx)

@@ -9,14 +9,12 @@ use identity_enterprise::codes::NormalizedCode;
 use identity_enterprise::connection::{AdapterInfo, Connection, PairingCode};
 use identity_enterprise::ids::{ConnectionId, InvitationId, SourceId};
 use identity_enterprise::invitation::Invitation;
-use identity_enterprise::password_reset::PasswordReset;
 use identity_enterprise::profile::Locale;
 use identity_enterprise::secret::SecretString;
 use identity_enterprise::session::Session;
 use identity_enterprise::source::Source;
 use identity_enterprise::tokens::{CodeHmac, TokenHash};
-use identity_enterprise::totp::TotpCredential;
-use identity_enterprise::user::{PasswordHash, User};
+use identity_enterprise::user::User;
 use shared_kernel::UserId;
 use thiserror::Error;
 
@@ -26,10 +24,6 @@ use crate::changes::ChangeSet;
 pub enum StoreConflict {
     EmailTaken,
     InvitationGone,
-    ResetGone,
-    TotpNotPending,
-    TotpStepReplayed,
-    RecoveryCodeInvalid,
     NameTaken,
     KeyIdTaken,
     CodeHmacTaken,
@@ -51,7 +45,6 @@ pub enum StoreError {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSummary {
     pub user: User,
-    pub totp_enabled: bool,
     pub last_sign_in_at: Option<DateTime<Utc>>,
 }
 
@@ -103,14 +96,6 @@ pub trait IdentityStore: Send + Sync {
     ) -> Result<Option<Invitation>, StoreError>;
     async fn invitations(&self) -> Result<Vec<Invitation>, StoreError>;
 
-    async fn password_reset_by_token(
-        &self,
-        token_hash: &TokenHash,
-    ) -> Result<Option<PasswordReset>, StoreError>;
-
-    async fn totp(&self, user_id: UserId) -> Result<Option<TotpCredential>, StoreError>;
-    async fn recovery_codes_remaining(&self, user_id: UserId) -> Result<u8, StoreError>;
-
     async fn sources(
         &self,
         user_id: UserId,
@@ -146,25 +131,6 @@ pub trait IdentityStore: Send + Sync {
     async fn commit(&self, changes: ChangeSet) -> Result<(), StoreError>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PasswordCheck {
-    Valid { needs_rehash: bool },
-    Invalid,
-}
-
-/// argon2id (auth policy §2). CPU-heavy: implementations run off the async executor.
-#[async_trait]
-pub trait PasswordHasher: Send + Sync {
-    async fn hash(&self, password: &SecretString) -> Result<PasswordHash, String>;
-    async fn verify(
-        &self,
-        hash: &PasswordHash,
-        password: &SecretString,
-    ) -> Result<PasswordCheck, String>;
-    /// Same cost as `verify`, against a fixed dummy hash, so unknown e-mails take the same time.
-    async fn verify_dummy(&self, password: &SecretString);
-}
-
 /// Hashes of secrets: SHA-256 for 256-bit tokens, HMAC-SHA-256 with a versioned pepper for
 /// low-entropy codes (ALIGN-4).
 pub trait SecretHasher: Send + Sync {
@@ -175,20 +141,9 @@ pub trait SecretHasher: Send + Sync {
     fn code_hmac_candidates(&self, code: &NormalizedCode) -> Vec<CodeHmac>;
 }
 
-/// AES-256-GCM for TOTP seeds (key from the environment, `key_version` for rotation).
-pub trait SecretCipher: Send + Sync {
-    fn encrypt(&self, plaintext: &[u8]) -> Result<(Vec<u8>, i16), String>;
-    fn decrypt(&self, ciphertext: &[u8], key_version: i16) -> Result<Vec<u8>, String>;
-}
-
 /// Cryptographically secure randomness.
 pub trait RandomSource: Send + Sync {
     fn fill(&self, buf: &mut [u8]);
-}
-
-/// Bundled list of common/breached passwords (auth policy §2).
-pub trait BreachedPasswords: Send + Sync {
-    fn contains(&self, normalized_password: &str) -> bool;
 }
 
 #[derive(Debug, Error)]
@@ -203,12 +158,6 @@ pub trait Mailer: Send + Sync {
         to: &str,
         locale: Locale,
         invite_url: &SecretString,
-    ) -> Result<(), MailError>;
-    async fn send_password_reset(
-        &self,
-        to: &str,
-        locale: Locale,
-        reset_url: &SecretString,
     ) -> Result<(), MailError>;
 }
 

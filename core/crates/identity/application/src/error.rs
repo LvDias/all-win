@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use identity_enterprise::password::PasswordRejection;
 use thiserror::Error;
 
 use crate::ports::StoreError;
@@ -15,29 +14,12 @@ pub enum IdentityError {
     Forbidden,
     #[error("auth.step_up_required")]
     StepUpRequired,
-    #[error("auth.invalid_credentials")]
-    InvalidCredentials,
     #[error("auth.invalid_code")]
     InvalidCode,
-    #[error("auth.pending_expired")]
-    PendingExpired,
-    #[error("auth.reauth_failed")]
-    ReauthFailed,
     #[error("auth.rate_limited")]
     RateLimited { retry_after: Duration },
     #[error("auth.invitation_invalid")]
     InvitationInvalid,
-    #[error("auth.reset_token_invalid")]
-    ResetTokenInvalid,
-    #[error("{}", .rejection.code())]
-    PasswordRejected {
-        rejection: PasswordRejection,
-        pointer: &'static str,
-    },
-    #[error("auth.totp_already_enabled")]
-    TotpAlreadyEnabled,
-    #[error("auth.totp_setup_expired")]
-    TotpSetupExpired,
     #[error("me.invalid_time_zone")]
     InvalidTimeZone,
     /// Unknown resource or another user's resource (never 403, S3 AC-2).
@@ -78,9 +60,7 @@ impl IdentityError {
     /// `error.pointer`, when the contract defines one for this error.
     pub fn pointer(&self) -> Option<&'static str> {
         match self {
-            Self::PasswordRejected { pointer, .. } | Self::InvalidRequest { pointer } => {
-                Some(pointer)
-            }
+            Self::InvalidRequest { pointer } => Some(pointer),
             _ => None,
         }
     }
@@ -124,12 +104,6 @@ mod tests {
             IdentityError::Internal("db down at 10.0.0.1".into()).code(),
             "common.internal"
         );
-        let e = IdentityError::PasswordRejected {
-            rejection: PasswordRejection::Breached,
-            pointer: "/password",
-        };
-        assert_eq!(e.code(), "auth.password_breached");
-        assert_eq!(e.pointer(), Some("/password"));
         assert_eq!(
             IdentityError::PairingRateLimited {
                 retry_after: Duration::from_secs(1)

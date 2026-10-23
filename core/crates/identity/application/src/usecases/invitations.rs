@@ -1,24 +1,18 @@
 //! `createInvitation`, `revokeInvitation`, `listInvitations` (admin) and the public
-//! `lookupInvitation`, `acceptInvitation` (S3 AC-1, Q6/Q19).
+//! `lookupInvitation` (S3 AC-1, Q6/Q19).
 
 use identity_enterprise::email::EmailAddress;
-use identity_enterprise::ids::{InvitationId, SessionId};
+use identity_enterprise::ids::InvitationId;
 use identity_enterprise::invitation::{Invitation, InvitationStatus};
-use identity_enterprise::profile::{Locale, TimeZoneName};
-use identity_enterprise::secret::SecretString;
-use identity_enterprise::session::{ClientInfo, NewSession, Session};
-use identity_enterprise::user::{User, UserStatus};
-use shared_kernel::UserId;
+use identity_enterprise::profile::Locale;
 
 use crate::auth::AuthContext;
-use crate::changes::{Actor, AuditAction, ChangeSet, Write};
+use crate::changes::{AuditAction, ChangeSet, Write};
 use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
 use crate::ports::{StoreConflict, StoreError};
-use crate::usecases::common::{
-    admin_audit, check_public_throttle, cookie, fragment_link, user_audit, validate_new_password,
-};
-use crate::views::{CreatedInvitation, InvitationLookup, InvitationView, LoginOutcome};
+use crate::usecases::common::{admin_audit, check_public_throttle, fragment_link};
+use crate::views::{CreatedInvitation, InvitationLookup, InvitationView};
 
 pub struct CreateInvitationCommand {
     pub email: String,
@@ -214,99 +208,5 @@ impl LookupInvitation {
             locale: invitation.locale,
             expires_at: invitation.expires_at,
         })
-    }
-}
-
-pub struct AcceptInvitationCommand {
-    pub token: String,
-    pub password: SecretString,
-    pub locale: Locale,
-    pub time_zone: String,
-    pub meta: RequestMeta,
-}
-
-/// Creates the account bound to the invitation's e-mail and signs it in.
-pub struct AcceptInvitation {
-    deps: IdentityDeps,
-}
-
-impl AcceptInvitation {
-    pub fn new(deps: IdentityDeps) -> Self {
-        Self { deps }
-    }
-
-    pub async fn handle(
-        &self,
-        cmd: AcceptInvitationCommand,
-    ) -> Result<LoginOutcome, IdentityError> {
-        let deps = &self.deps;
-        let now = deps.clock.now();
-        check_public_throttle(deps, cmd.meta.ip, now).await?;
-        let invitation = pending_invitation(deps, &cmd.token).await?;
-        let time_zone =
-            TimeZoneName::parse(&cmd.time_zone).map_err(|_| IdentityError::InvalidRequest {
-                pointer: "/time_zone",
-            })?;
-        let email = EmailAddress::from_stored(invitation.email.clone(), invitation.email.clone());
-        let password = validate_new_password(deps, &cmd.password, &email, "/password")?;
-        let password_hash = deps
-            .passwords
-            .hash(password.as_secret())
-            .await
-            .map_err(IdentityError::Internal)?;
-
-        let user = User {
-            id: UserId::new_v7(),
-            email,
-            password_hash,
-            locale: cmd.locale,
-            time_zone,
-            is_platform_admin: false,
-            status: UserStatus::Active,
-            created_at: now,
-        };
-        let token = deps.issue_token();
-        let session = Session::start(
-            NewSession {
-                id: SessionId::new_v7(),
-                user_id: user.id,
-                token_hash: token.hash,
-                persistent: false,
-                client: ClientInfo {
-                    ip: Some(cmd.meta.ip),
-                    user_agent: cmd.meta.user_agent.clone(),
-                },
-            },
-            false,
-            now,
-        );
-        let changes = ChangeSet::new(user.id)
-            .write(Write::InsertUser(user.clone()))
-            .write(Write::AcceptInvitation {
-                invitation_id: invitation.id,
-                user_id: user.id,
-                at: now,
-            })
-            .write(Write::InsertSession(session.clone()))
-            .audit(user_audit(
-                user.id,
-                Actor::TokenHolder,
-                AuditAction::AccountCreated {
-                    invitation_id: invitation.id,
-                },
-                now,
-                Some(cmd.meta.ip),
-            ));
-        match deps.store.commit(changes).await {
-            Ok(()) => Ok(LoginOutcome::Authenticated {
-                cookie: cookie(&token, session.persistent, session.absolute_expires_at),
-                user,
-                recovery_codes_remaining: None,
-            }),
-            Err(StoreError::Conflict(
-                StoreConflict::InvitationGone | StoreConflict::EmailTaken,
-            )) => Err(IdentityError::InvitationInvalid),
-            Err(err) => Err(err.into()),
-        }
     }
 }

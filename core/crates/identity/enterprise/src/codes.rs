@@ -1,6 +1,5 @@
 //! Human-typed codes in Crockford Base32 (ADR-0004 §8, auth policy §2):
-//! pairing code (8 characters, 40 bits, shown `XXXX-XXXX`) and recovery code
-//! (10 characters, 50 bits, shown `XXXXX-XXXXX`). Input ignores case, spaces and hyphens and maps
+//! pairing code (8 characters, 40 bits, shown `XXXX-XXXX`). Input ignores case, spaces and hyphens and maps
 //! O→0 and I/L→1. Codes are stored as HMAC of the normalized form, never in clear.
 
 use std::fmt;
@@ -12,22 +11,19 @@ const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CodeKind {
     Pairing,
-    Recovery,
 }
 
 impl CodeKind {
     pub fn chars(self) -> usize {
         match self {
             Self::Pairing => 8,
-            Self::Recovery => 10,
         }
     }
 
-    /// Random bytes needed to generate one code (40 or 50 bits, rounded up).
+    /// Random bytes needed to generate one code (40 bits).
     pub fn random_bytes(self) -> usize {
         match self {
             Self::Pairing => 5,
-            Self::Recovery => 7,
         }
     }
 
@@ -115,9 +111,7 @@ mod tests {
         let shown = p.display();
         assert_eq!(shown.expose().len(), 9);
         assert!(is_contract_form(shown.expose(), 4));
-        let r = NormalizedCode::generate(CodeKind::Recovery, &[1, 2, 3, 4, 5, 6, 7]).unwrap();
-        assert!(is_contract_form(r.display().expose(), 5));
-        assert!(NormalizedCode::generate(CodeKind::Recovery, &[1, 2, 3]).is_none());
+        assert!(NormalizedCode::generate(CodeKind::Pairing, &[1, 2, 3]).is_none());
     }
 
     #[test]
@@ -126,8 +120,6 @@ mod tests {
         assert_eq!(zero.display().expose(), "0000-0000");
         let ones = NormalizedCode::generate(CodeKind::Pairing, &[0xFF; 5]).unwrap();
         assert_eq!(ones.display().expose(), "ZZZZ-ZZZZ");
-        let ones = NormalizedCode::generate(CodeKind::Recovery, &[0xFF; 7]).unwrap();
-        assert_eq!(ones.display().expose(), "ZZZZZ-ZZZZZ");
     }
 
     #[test]
@@ -155,7 +147,6 @@ mod tests {
                 "{raw:?}"
             );
         }
-        assert!(NormalizedCode::parse(CodeKind::Recovery, "abcde-fghjk").is_some());
     }
 
     #[test]

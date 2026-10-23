@@ -21,17 +21,13 @@ use identity_enterprise::connection::{
     AdapterBuild, AdapterInfo, Connection, ConnectionStatus, PairedInstance, PairingCode,
 };
 use identity_enterprise::email::EmailAddress;
-use identity_enterprise::ids::{
-    ConnectionId, InvitationId, PairingCodeId, PasswordResetId, SessionId, SourceId,
-};
+use identity_enterprise::ids::{ConnectionId, InvitationId, PairingCodeId, SessionId, SourceId};
 use identity_enterprise::invitation::Invitation;
-use identity_enterprise::password_reset::PasswordReset;
 use identity_enterprise::profile::{Locale, TimeZoneName};
 use identity_enterprise::session::{ClientInfo, EndReason, MfaState, Session};
 use identity_enterprise::source::{DisplayName, Source, SourceType};
 use identity_enterprise::tokens::{CodeHmac, KeyId, TokenHash};
-use identity_enterprise::totp::TotpCredential;
-use identity_enterprise::user::{PasswordHash, User, UserStatus};
+use identity_enterprise::user::{User, UserStatus};
 use shared_kernel::UserId;
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
@@ -113,7 +109,6 @@ fn user_row(
     id: Uuid,
     email: String,
     email_normalized: String,
-    password_hash: String,
     locale: String,
     time_zone: String,
     is_platform_admin: bool,
@@ -123,7 +118,6 @@ fn user_row(
     Ok(User {
         id: UserId::from_uuid(id),
         email: EmailAddress::from_stored(email, email_normalized),
-        password_hash: PasswordHash::new(password_hash),
         locale: Locale::parse(&locale).ok_or_else(|| corrupt("locale"))?,
         time_zone: TimeZoneName::from_stored(time_zone),
         is_platform_admin,
@@ -283,7 +277,6 @@ impl IdentityStore for PgIdentityStore {
                 r.id,
                 r.email,
                 r.email_normalized,
-                r.password_hash,
                 r.locale,
                 r.time_zone,
                 r.is_platform_admin,
@@ -310,7 +303,6 @@ impl IdentityStore for PgIdentityStore {
                 r.id,
                 r.email,
                 r.email_normalized,
-                r.password_hash,
                 r.locale,
                 r.time_zone,
                 r.is_platform_admin,
@@ -341,14 +333,12 @@ impl IdentityStore for PgIdentityStore {
                         r.id,
                         r.email,
                         normalized,
-                        String::new(),
                         "en".into(),
                         "UTC".into(),
                         r.is_platform_admin,
                         r.status,
                         r.created_at,
                     )?,
-                    totp_enabled: r.totp_enabled,
                     last_sign_in_at: r.last_sign_in_at,
                 })
             })
@@ -547,62 +537,6 @@ impl IdentityStore for PgIdentityStore {
                 )
             })
             .collect()
-    }
-
-    async fn password_reset_by_token(
-        &self,
-        token_hash: &TokenHash,
-    ) -> Result<Option<PasswordReset>, StoreError> {
-        let r = sqlx::query!(
-            r#"SELECT id AS "id!", user_id AS "user_id!", created_at AS "created_at!", expires_at AS "expires_at!",
-                      used_at, invalidated_at
-                 FROM identity.resolve_password_reset($1)"#,
-            &token_hash.as_bytes()[..]
-        )
-        .fetch_optional(&self.app)
-        .await
-        .map_err(db)?;
-        Ok(r.map(|r| PasswordReset {
-            id: PasswordResetId::from_uuid(r.id),
-            user_id: UserId::from_uuid(r.user_id),
-            token_hash: *token_hash,
-            created_at: r.created_at,
-            expires_at: r.expires_at,
-            used_at: r.used_at,
-            invalidated_at: r.invalidated_at,
-        }))
-    }
-
-    async fn totp(&self, user_id: UserId) -> Result<Option<TotpCredential>, StoreError> {
-        let mut tx = self.scoped(user_id).await?;
-        let r = sqlx::query!(
-            "SELECT secret_encrypted, key_version, created_at, enabled_at, last_used_step FROM identity.totp_credential WHERE user_id = $1",
-            user_id.as_uuid()
-        )
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(db)?;
-        tx.commit().await.map_err(db)?;
-        Ok(r.map(|r| TotpCredential {
-            secret_encrypted: r.secret_encrypted,
-            key_version: r.key_version,
-            created_at: r.created_at,
-            enabled_at: r.enabled_at,
-            last_used_step: r.last_used_step,
-        }))
-    }
-
-    async fn recovery_codes_remaining(&self, user_id: UserId) -> Result<u8, StoreError> {
-        let mut tx = self.scoped(user_id).await?;
-        let n = sqlx::query_scalar!(
-            r#"SELECT count(*) AS "n!" FROM identity.recovery_code WHERE user_id = $1 AND used_at IS NULL"#,
-            user_id.as_uuid()
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(db)?;
-        tx.commit().await.map_err(db)?;
-        u8::try_from(n).map_err(|_| corrupt("recovery code count"))
     }
 
     async fn sources(
@@ -852,25 +786,6 @@ async fn insert_source_key(
 
 async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<(), StoreError> {
     match write {
-        Write::InsertUser(u) => {
-            sqlx::query!(
-                r#"INSERT INTO identity.app_user
-                     (id, email, email_normalized, password_hash, locale, time_zone, is_platform_admin, status, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)"#,
-                u.id.as_uuid(),
-                u.email.as_entered(),
-                u.email.normalized(),
-                u.password_hash.as_str(),
-                u.locale.as_str(),
-                u.time_zone.as_str(),
-                u.is_platform_admin,
-                u.status.as_str(),
-                u.created_at
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-        }
         Write::UpdateProfile {
             user_id,
             locale,
@@ -883,19 +798,6 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
                 user_id.as_uuid(),
                 locale.map(Locale::as_str),
                 time_zone.as_ref().map(TimeZoneName::as_str)
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-        }
-        Write::SetPasswordHash {
-            user_id,
-            password_hash,
-        } => {
-            sqlx::query!(
-                "UPDATE identity.app_user SET password_hash = $2, updated_at = now() WHERE id = $1",
-                user_id.as_uuid(),
-                password_hash.as_str()
             )
             .execute(&mut **tx)
             .await
@@ -1031,156 +933,6 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
             .execute(&mut **tx)
             .await
             .map_err(db)?;
-        }
-        Write::InsertPasswordReset(r) => {
-            sqlx::query!(
-                r#"UPDATE identity.password_reset SET invalidated_at = $2
-                    WHERE user_id = $1 AND used_at IS NULL AND invalidated_at IS NULL"#,
-                r.user_id.as_uuid(),
-                r.created_at
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-            sqlx::query!(
-                "INSERT INTO identity.password_reset (id, user_id, token_hash, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)",
-                r.id.as_uuid(),
-                r.user_id.as_uuid(),
-                &r.token_hash.as_bytes()[..],
-                r.created_at,
-                r.expires_at
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-        }
-        Write::UsePasswordReset { reset_id, at } => {
-            let done = sqlx::query!(
-                r#"UPDATE identity.password_reset SET used_at = $2
-                    WHERE id = $1 AND used_at IS NULL AND invalidated_at IS NULL AND expires_at > $2"#,
-                reset_id.as_uuid(),
-                at
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-            ensure(done.rows_affected(), StoreConflict::ResetGone)?;
-        }
-        Write::UpsertTotpSetup {
-            user_id,
-            credential: c,
-        } => {
-            sqlx::query!(
-                r#"INSERT INTO identity.totp_credential (user_id, secret_encrypted, key_version, created_at)
-                   VALUES ($1, $2, $3, $4)
-                   ON CONFLICT (user_id) DO UPDATE
-                     SET secret_encrypted = EXCLUDED.secret_encrypted, key_version = EXCLUDED.key_version,
-                         created_at = EXCLUDED.created_at, enabled_at = NULL, last_used_step = NULL
-                   WHERE identity.totp_credential.enabled_at IS NULL"#,
-                user_id.as_uuid(),
-                c.secret_encrypted,
-                c.key_version,
-                c.created_at
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-        }
-        Write::EnableTotp {
-            user_id,
-            at,
-            used_step,
-        } => {
-            let done = sqlx::query!(
-                "UPDATE identity.totp_credential SET enabled_at = $2, last_used_step = $3 WHERE user_id = $1 AND enabled_at IS NULL",
-                user_id.as_uuid(),
-                at,
-                used_step
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-            ensure(done.rows_affected(), StoreConflict::TotpNotPending)?;
-        }
-        Write::ConsumeTotpStep { user_id, step } => {
-            let done = sqlx::query!(
-                r#"UPDATE identity.totp_credential SET last_used_step = $2
-                    WHERE user_id = $1 AND enabled_at IS NOT NULL AND (last_used_step IS NULL OR last_used_step < $2)"#,
-                user_id.as_uuid(),
-                step
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-            ensure(done.rows_affected(), StoreConflict::TotpStepReplayed)?;
-        }
-        Write::DeleteTotp { user_id } => {
-            sqlx::query!(
-                "DELETE FROM identity.recovery_code WHERE user_id = $1",
-                user_id.as_uuid()
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-            sqlx::query!(
-                "DELETE FROM identity.totp_credential WHERE user_id = $1",
-                user_id.as_uuid()
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-        }
-        Write::ReplaceRecoveryCodes {
-            user_id,
-            batch_id,
-            codes,
-            at,
-        } => {
-            sqlx::query!(
-                "DELETE FROM identity.recovery_code WHERE user_id = $1",
-                user_id.as_uuid()
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-            let ids: Vec<Uuid> = codes.iter().map(|_| Uuid::now_v7()).collect();
-            let hmacs: Vec<Vec<u8>> = codes.iter().map(|c| c.bytes.to_vec()).collect();
-            let versions: Vec<i16> = codes.iter().map(|c| c.pepper_version).collect();
-            sqlx::query!(
-                r#"INSERT INTO identity.recovery_code (id, user_id, batch_id, code_hmac, pepper_version, created_at)
-                   SELECT id, $2, $3, code_hmac, pepper_version, $4
-                     FROM UNNEST($1::uuid[], $5::bytea[], $6::smallint[]) AS t(id, code_hmac, pepper_version)"#,
-                &ids[..],
-                user_id.as_uuid(),
-                batch_id.as_uuid(),
-                at,
-                &hmacs[..],
-                &versions[..]
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-        }
-        Write::ConsumeRecoveryCode {
-            user_id,
-            candidates,
-            at,
-        } => {
-            let hmacs: Vec<Vec<u8>> = candidates.iter().map(|c| c.bytes.to_vec()).collect();
-            let done = sqlx::query!(
-                r#"UPDATE identity.recovery_code SET used_at = $3
-                    WHERE id = (SELECT id FROM identity.recovery_code
-                                 WHERE user_id = $1 AND used_at IS NULL AND code_hmac = ANY($2)
-                                 LIMIT 1 FOR UPDATE)
-                      AND used_at IS NULL"#,
-                user_id.as_uuid(),
-                &hmacs[..],
-                at
-            )
-            .execute(&mut **tx)
-            .await
-            .map_err(db)?;
-            ensure(done.rows_affected(), StoreConflict::RecoveryCodeInvalid)?;
         }
         Write::InsertSource { source: s, key } => {
             sqlx::query!(

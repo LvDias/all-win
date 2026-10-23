@@ -1,7 +1,5 @@
 //! In-memory throttles (single Core instance, data model §4.1; a restart resets them).
 //!
-//! - [`PolicyLoginThrottle`]: the accepted password login policy (auth policy §2); paused while
-//!   the login method is redefined.
 //! - [`PairingThrottlePolicy`] / [`PrefixPairingThrottle`]: U11 — attempts per IP and per /24
 //!   (IPv4) or /64 (IPv6) prefix; the global failure threshold raises an alert and never
 //!   blocks pairing.
@@ -15,10 +13,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use identity_application::throttle::{
-    LoginAttempt, LoginThrottle, PairingDecision, PairingThrottle, PublicEndpointThrottle,
-    ThrottleDecision,
+    PairingDecision, PairingThrottle, PublicEndpointThrottle, ThrottleDecision,
 };
-use shared_kernel::UserId;
 
 /// Sliding-window counter per key.
 struct Window<K> {
@@ -65,122 +61,6 @@ impl<K: std::hash::Hash + Eq + Clone> Window<K> {
 
 fn secs(s: i64) -> Duration {
     Duration::from_secs(u64::try_from(s.max(1)).unwrap_or(1))
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct LoginPolicy {
-    pub per_ip_per_minute: usize,
-    /// Consecutive failures per (account, IP) before the progressive delay starts.
-    pub delay_after_failures: u32,
-    pub max_delay: chrono::Duration,
-    pub account_failures_per_hour: usize,
-    pub account_lock: chrono::Duration,
-}
-
-impl Default for LoginPolicy {
-    /// Auth policy §2: 10/min per IP; 5 consecutive failures per (account, IP) then 1 s, 2 s, 4 s…
-    /// up to 60 s; 20 failures per hour per account lock it for unknown IPs for 15 minutes.
-    fn default() -> Self {
-        Self {
-            per_ip_per_minute: 10,
-            delay_after_failures: 5,
-            max_delay: chrono::Duration::seconds(60),
-            account_failures_per_hour: 20,
-            account_lock: chrono::Duration::minutes(15),
-        }
-    }
-}
-
-#[derive(Default)]
-struct LoginState {
-    per_ip: Window<IpAddr>,
-    /// (account, IP) → (consecutive failures, last failure).
-    consecutive: HashMap<(UserId, IpAddr), (u32, DateTime<Utc>)>,
-    account_failures: Window<UserId>,
-    locked_until: HashMap<UserId, DateTime<Utc>>,
-}
-
-pub struct PolicyLoginThrottle {
-    policy: LoginPolicy,
-    state: Mutex<LoginState>,
-}
-
-impl PolicyLoginThrottle {
-    pub fn new(policy: LoginPolicy) -> Self {
-        Self {
-            policy,
-            state: Mutex::new(LoginState::default()),
-        }
-    }
-
-    fn lock(&self) -> std::sync::MutexGuard<'_, LoginState> {
-        self.state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn delay(&self, failures: u32) -> chrono::Duration {
-        let over = failures.saturating_sub(self.policy.delay_after_failures);
-        if failures < self.policy.delay_after_failures {
-            return chrono::Duration::zero();
-        }
-        let secs = 1i64.checked_shl(over).unwrap_or(i64::MAX);
-        chrono::Duration::seconds(secs).min(self.policy.max_delay)
-    }
-}
-
-#[async_trait]
-impl LoginThrottle for PolicyLoginThrottle {
-    async fn check(&self, a: &LoginAttempt, now: DateTime<Utc>) -> ThrottleDecision {
-        let minute = chrono::Duration::minutes(1);
-        let mut st = self.lock();
-        if st.per_ip.prune(&a.ip, now, minute) >= self.policy.per_ip_per_minute {
-            return ThrottleDecision::Limited {
-                retry_after: st.per_ip.retry_after(&a.ip, now, minute),
-            };
-        }
-        st.per_ip.push(a.ip, now);
-        let Some(user) = a.user else {
-            return ThrottleDecision::Allow;
-        };
-        if !a.ip_is_usual
-            && let Some(until) = st.locked_until.get(&user).copied()
-        {
-            if now < until {
-                return ThrottleDecision::Limited {
-                    retry_after: secs((until - now).num_seconds()),
-                };
-            }
-            st.locked_until.remove(&user);
-        }
-        if let Some((failures, last)) = st.consecutive.get(&(user, a.ip)).copied() {
-            let wait_until = last + self.delay(failures);
-            if now < wait_until {
-                return ThrottleDecision::Limited {
-                    retry_after: secs((wait_until - now).num_seconds()),
-                };
-            }
-        }
-        ThrottleDecision::Allow
-    }
-
-    async fn record_failure(&self, a: &LoginAttempt, now: DateTime<Utc>) {
-        let Some(user) = a.user else { return };
-        let hour = chrono::Duration::hours(1);
-        let mut st = self.lock();
-        let entry = st.consecutive.entry((user, a.ip)).or_insert((0, now));
-        *entry = (entry.0.saturating_add(1), now);
-        st.account_failures.push(user, now);
-        if st.account_failures.prune(&user, now, hour) >= self.policy.account_failures_per_hour {
-            st.locked_until.insert(user, now + self.policy.account_lock);
-        }
-    }
-
-    async fn record_success(&self, a: &LoginAttempt, _now: DateTime<Utc>) {
-        if let Some(user) = a.user {
-            self.lock().consecutive.remove(&(user, a.ip));
-        }
-    }
 }
 
 /// U11 (decisions 2026-10-23); ADR-0004 §8 without its global lock.
@@ -348,104 +228,6 @@ mod tests {
 
     fn t0() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 10, 23, 9, 0, 0).unwrap()
-    }
-
-    fn attempt(user: Option<UserId>, ip: u8, usual: bool) -> LoginAttempt {
-        LoginAttempt {
-            email_normalized: "a@b.c".into(),
-            ip: IpAddr::V4(Ipv4Addr::new(198, 51, 100, ip)),
-            user,
-            ip_is_usual: usual,
-        }
-    }
-
-    fn limited(d: ThrottleDecision) -> bool {
-        matches!(d, ThrottleDecision::Limited { .. })
-    }
-
-    #[tokio::test]
-    async fn ten_attempts_per_minute_per_ip() {
-        let t = PolicyLoginThrottle::new(LoginPolicy::default());
-        let a = attempt(None, 1, false);
-        for _ in 0..10 {
-            assert!(!limited(t.check(&a, t0()).await));
-        }
-        assert!(
-            matches!(t.check(&a, t0()).await, ThrottleDecision::Limited { retry_after } if retry_after == Duration::from_secs(60))
-        );
-        assert!(
-            !limited(t.check(&attempt(None, 2, false), t0()).await),
-            "other IP unaffected"
-        );
-        assert!(!limited(
-            t.check(&a, t0() + chrono::Duration::seconds(61)).await
-        ));
-    }
-
-    #[tokio::test]
-    async fn progressive_delay_after_five_consecutive_failures() {
-        let t = PolicyLoginThrottle::new(LoginPolicy {
-            per_ip_per_minute: 1000,
-            ..LoginPolicy::default()
-        });
-        let u = UserId::new_v7();
-        let a = attempt(Some(u), 1, true);
-        let mut now = t0();
-        for _ in 0..4 {
-            assert!(!limited(t.check(&a, now).await));
-            t.record_failure(&a, now).await;
-        }
-        assert!(!limited(t.check(&a, now).await), "4 failures: no delay yet");
-        t.record_failure(&a, now).await; // 5th
-        assert!(
-            matches!(t.check(&a, now).await, ThrottleDecision::Limited { retry_after } if retry_after == Duration::from_secs(1))
-        );
-        now += chrono::Duration::seconds(1);
-        assert!(!limited(t.check(&a, now).await));
-        t.record_failure(&a, now).await; // 6th → 2 s
-        assert!(
-            matches!(t.check(&a, now).await, ThrottleDecision::Limited { retry_after } if retry_after == Duration::from_secs(2))
-        );
-        for _ in 0..10 {
-            t.record_failure(&a, now).await;
-        }
-        assert!(
-            matches!(t.check(&a, now).await, ThrottleDecision::Limited { retry_after } if retry_after == Duration::from_secs(60)),
-            "capped"
-        );
-        t.record_success(&a, now).await;
-        assert!(
-            !limited(t.check(&a, now).await),
-            "success resets the (account, IP) streak"
-        );
-    }
-
-    #[tokio::test]
-    async fn account_soft_lock_spares_usual_ips() {
-        let t = PolicyLoginThrottle::new(LoginPolicy {
-            per_ip_per_minute: 1000,
-            delay_after_failures: 1000,
-            ..LoginPolicy::default()
-        });
-        let u = UserId::new_v7();
-        for i in 0..20u8 {
-            t.record_failure(&attempt(Some(u), i, false), t0()).await;
-        }
-        assert!(
-            limited(t.check(&attempt(Some(u), 99, false), t0()).await),
-            "unknown IP locked"
-        );
-        assert!(
-            !limited(t.check(&attempt(Some(u), 99, true), t0()).await),
-            "usual IP still allowed"
-        );
-        assert!(!limited(
-            t.check(
-                &attempt(Some(u), 99, false),
-                t0() + chrono::Duration::minutes(15)
-            )
-            .await
-        ));
     }
 
     #[derive(Default)]

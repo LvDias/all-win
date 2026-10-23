@@ -19,10 +19,8 @@ chrono = { workspace = true, features = ["clock", "std"] }
 uuid = { workspace = true, features = ["v7"] }
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 tracing.workspace = true
-argon2.workspace = true
 sha2.workspace = true
 hmac.workspace = true
-aes-gcm.workspace = true
 rand.workspace = true
 subtle.workspace = true
 serde_json.workspace = true

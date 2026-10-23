@@ -38,14 +38,6 @@ pub fn audit(record: &AuditRecord) -> Envelope {
         AuditAction::AccountCreated { invitation_id } => {
             json!({ "invitation_id": invitation_id.as_uuid() })
         }
-        AuditAction::PasswordChanged => json!({}),
-        AuditAction::PasswordResetCompleted => json!({}),
-        AuditAction::PasswordResetLinkIssued { target } => json!({ "target_user_id": target }),
-        AuditAction::TotpEnabled => json!({}),
-        AuditAction::TotpDisabled => json!({}),
-        AuditAction::TotpResetByAdmin { target } => json!({ "target_user_id": target }),
-        AuditAction::RecoveryCodesRegenerated => json!({}),
-        AuditAction::RecoveryCodeUsed { remaining } => json!({ "remaining": remaining }),
         AuditAction::InvitationIssued { invitation_id } => {
             json!({ "invitation_id": invitation_id.as_uuid() })
         }

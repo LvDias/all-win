@@ -8,7 +8,7 @@ use std::sync::Arc;
 use axum::extract::{ConnectInfo, FromRequestParts};
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
-use identity_application::auth::{Activity, AuthContext, AuthenticateSession, Requirement};
+use identity_application::auth::{Activity, AuthContext, AuthenticateSession};
 use identity_application::deps::RequestMeta;
 use identity_application::error::IdentityError;
 
@@ -75,12 +75,11 @@ impl FromRequestParts<Arc<IdentityHttpState>> for PublicOrigin {
 async fn authenticate(
     parts: &Parts,
     s: &Arc<IdentityHttpState>,
-    requirement: Requirement,
     activity: Activity,
 ) -> Result<AuthContext, Response> {
     let cookie = super::cookie::read(&parts.headers);
     let ctx = AuthenticateSession::new(s.deps.clone())
-        .handle(cookie.as_deref(), requirement, activity)
+        .handle(cookie.as_deref(), activity)
         .await
         .map_err(|e| ApiError(e).into_response())?;
     check_origin(&parts.method, &parts.headers, &s.public_origin)
@@ -98,23 +97,7 @@ impl FromRequestParts<Arc<IdentityHttpState>> for Session {
         parts: &mut Parts,
         s: &Arc<IdentityHttpState>,
     ) -> Result<Self, Self::Rejection> {
-        authenticate(parts, s, Requirement::Full, Activity::UserInitiated)
-            .await
-            .map(Self)
-    }
-}
-
-/// Session in `pending_2fa` state (`verifyLoginTotp`, `verifyLoginRecoveryCode`).
-pub struct PendingSession(pub AuthContext);
-
-impl FromRequestParts<Arc<IdentityHttpState>> for PendingSession {
-    type Rejection = Response;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        s: &Arc<IdentityHttpState>,
-    ) -> Result<Self, Self::Rejection> {
-        authenticate(parts, s, Requirement::Pending, Activity::UserInitiated)
+        authenticate(parts, s, Activity::UserInitiated)
             .await
             .map(Self)
     }
@@ -130,7 +113,7 @@ impl FromRequestParts<Arc<IdentityHttpState>> for AdminSession {
         parts: &mut Parts,
         s: &Arc<IdentityHttpState>,
     ) -> Result<Self, Self::Rejection> {
-        let ctx = authenticate(parts, s, Requirement::Full, Activity::UserInitiated).await?;
+        let ctx = authenticate(parts, s, Activity::UserInitiated).await?;
         ctx.require_admin()
             .map_err(|e| ApiError(e).into_response())?;
         Ok(Self(ctx))
@@ -149,7 +132,7 @@ impl FromRequestParts<Arc<IdentityHttpState>> for StreamSession {
     ) -> Result<Self, Self::Rejection> {
         let cookie = super::cookie::read(&parts.headers)
             .ok_or_else(|| ApiError(IdentityError::Unauthenticated).into_response())?;
-        let ctx = authenticate(parts, s, Requirement::Full, Activity::Background).await?;
+        let ctx = authenticate(parts, s, Activity::Background).await?;
         Ok(Self(ctx, cookie))
     }
 }

@@ -26,11 +26,6 @@ macro_rules! uuid_id {
 
 uuid_id!(SessionId);
 uuid_id!(InvitationId);
-uuid_id!(PasswordResetId);
 uuid_id!(SourceId);
 uuid_id!(ConnectionId);
 uuid_id!(PairingCodeId);
-uuid_id!(
-    /// Batch of recovery codes; regeneration replaces the batch.
-    RecoveryBatchId
-);

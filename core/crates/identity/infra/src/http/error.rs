@@ -18,20 +18,13 @@ impl From<IdentityError> for ApiError {
 pub fn status_of(e: &IdentityError) -> StatusCode {
     use IdentityError as E;
     match e {
-        E::Unauthenticated
-        | E::InvalidCredentials
-        | E::InvalidCode
-        | E::PendingExpired
-        | E::ReauthFailed => StatusCode::UNAUTHORIZED,
+        E::Unauthenticated | E::InvalidCode => StatusCode::UNAUTHORIZED,
         E::Forbidden | E::StepUpRequired => StatusCode::FORBIDDEN,
         E::RateLimited { .. } | E::PairingRateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
-        E::InvitationInvalid | E::ResetTokenInvalid | E::NotFound => StatusCode::NOT_FOUND,
-        E::PasswordRejected { .. } | E::TotpSetupExpired | E::InvalidTimeZone => {
-            StatusCode::UNPROCESSABLE_ENTITY
-        }
+        E::InvitationInvalid | E::NotFound => StatusCode::NOT_FOUND,
+        E::InvalidTimeZone => StatusCode::UNPROCESSABLE_ENTITY,
         E::InvalidRequest { .. } | E::PairingInvalidCode => StatusCode::BAD_REQUEST,
-        E::TotpAlreadyEnabled
-        | E::InvitationEmailTaken
+        E::InvitationEmailTaken
         | E::SourceNameTaken
         | E::SourceRevoked
         | E::ConnectionNameTaken

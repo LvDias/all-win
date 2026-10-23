@@ -43,19 +43,6 @@ impl Reply {
     fn pointer(&self) -> &str {
         self.body["error"]["pointer"].as_str().unwrap_or_default()
     }
-    fn cookie(&self) -> String {
-        let set = self
-            .headers
-            .get(header::SET_COOKIE)
-            .unwrap()
-            .to_str()
-            .unwrap();
-        set.split(';')
-            .next()
-            .unwrap()
-            .trim_start_matches("__Host-aw_session=")
-            .to_owned()
-    }
 }
 
 impl Api {
@@ -108,16 +95,8 @@ impl Api {
         self.call(Method::GET, path, cookie, None, None).await
     }
 
-    async fn login(&self, email: &str) -> String {
-        let r = self
-            .post(
-                "/api/v1/auth/login",
-                None,
-                json!({"email": email, "password": PASSWORD, "remember_me": false}),
-            )
-            .await;
-        assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
-        r.cookie()
+    async fn login(&self, deps: &identity_application::deps::IdentityDeps, email: &str) -> String {
+        sign_in(deps, email).await.0
     }
 }
 
@@ -132,58 +111,11 @@ async fn http_contract_behaviour() {
         events: Arc::new(SseHub::new()),
     });
     let api = Api { app: router(state) };
-    seed_user(&deps, "admin@example.com", true).await;
-    seed_user(&deps, "ana@example.com", false).await;
-    seed_user(&deps, "bob@example.com", false).await;
+    seed_user(&db, "admin@example.com", true).await;
+    seed_user(&db, "ana@example.com", false).await;
+    seed_user(&db, "bob@example.com", false).await;
 
-    // Login: cookie attributes, LoginResult shape, identical failure.
-    let r = api
-        .post(
-            "/api/v1/auth/login",
-            None,
-            json!({"email": "ana@example.com", "password": PASSWORD, "remember_me": true}),
-        )
-        .await;
-    assert_eq!(r.status, StatusCode::OK);
-    let set = r
-        .headers
-        .get(header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_owned();
-    assert!(
-        set.starts_with("__Host-aw_session=")
-            && set.contains("HttpOnly; Secure; SameSite=Lax; Path=/")
-            && set.contains("Max-Age="),
-        "{set}"
-    );
-    assert_eq!(r.body["state"], "authenticated");
-    assert_eq!(r.body["user"]["email"], "ana@example.com");
-    let ana = r.cookie();
-    let bad = api
-        .post(
-            "/api/v1/auth/login",
-            None,
-            json!({"email": "ana@example.com", "password": "nope", "remember_me": false}),
-        )
-        .await;
-    let unknown = api
-        .post(
-            "/api/v1/auth/login",
-            None,
-            json!({"email": "zz@example.com", "password": "nope", "remember_me": false}),
-        )
-        .await;
-    assert_eq!(
-        (bad.status, bad.code()),
-        (StatusCode::UNAUTHORIZED, "auth.invalid_credentials")
-    );
-    assert_eq!(
-        (unknown.status, unknown.body.clone()),
-        (bad.status, bad.body.clone()),
-        "same response for unknown e-mail"
-    );
+    let ana = api.login(&deps, "ana@example.com").await;
 
     // Precedence: 401 before Origin; Origin before 400; admin 403 before 400.
     let r = api
@@ -219,7 +151,7 @@ async fn http_contract_behaviour() {
     let r = api
         .call(
             Method::POST,
-            "/api/v1/auth/login",
+            "/api/v1/auth/invitations/lookup",
             None,
             None,
             Some(json!({})),
@@ -238,15 +170,6 @@ async fn http_contract_behaviour() {
         (StatusCode::FORBIDDEN, "auth.forbidden"),
         "non-admin never sees 400 on admin ops"
     );
-    let r = api
-        .post(
-            "/api/v1/admin/users/not-a-uuid/totp-reset",
-            Some(&ana),
-            json!({}),
-        )
-        .await;
-    assert_eq!(r.code(), "auth.forbidden");
-
     // 400 with pointers (body, path, query); framework bodies never leak.
     let r = api
         .post(
@@ -291,20 +214,18 @@ async fn http_contract_behaviour() {
         .await;
     assert_eq!(r.pointer(), "/query/include_revoked");
     let raw = api
-        .call(Method::POST, "/api/v1/auth/login", None, Some(ORIGIN), None)
+        .call(
+            Method::POST,
+            "/api/v1/auth/invitations/lookup",
+            None,
+            Some(ORIGIN),
+            None,
+        )
         .await;
     assert_eq!(
         (raw.status, raw.code()),
         (StatusCode::BAD_REQUEST, "common.invalid_request")
     );
-    let r = api
-        .post(
-            "/api/v1/me/totp/confirm",
-            Some(&ana),
-            json!({"code": "12345"}),
-        )
-        .await;
-    assert_eq!(r.pointer(), "/code");
 
     // Source lifecycle: one-time URL with no-store; another user's source is 404.
     let r = api
@@ -325,7 +246,7 @@ async fn http_contract_behaviour() {
         !list.body.to_string().contains(&url[url.len() - 43..]),
         "list never shows the secret"
     );
-    let bob = api.login("bob@example.com").await;
+    let bob = api.login(&deps, "bob@example.com").await;
     for (m, path, body) in [
         (
             Method::PATCH,
@@ -415,24 +336,6 @@ async fn http_contract_behaviour() {
     assert_eq!(listed.body[0]["status"], "disconnected");
     assert!(listed.body[0]["instance_id"].is_string());
 
-    // TOTP: wrong enrolment code is 422 on confirm.
-    let r = api
-        .post("/api/v1/me/totp/setup", Some(&ana), json!({}))
-        .await;
-    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
-    assert_eq!(r.headers.get(header::CACHE_CONTROL).unwrap(), "no-store");
-    let r = api
-        .post(
-            "/api/v1/me/totp/confirm",
-            Some(&ana),
-            json!({"code": "000000"}),
-        )
-        .await;
-    assert_eq!(
-        (r.status, r.code()),
-        (StatusCode::UNPROCESSABLE_ENTITY, "auth.invalid_code")
-    );
-
     // Me, security, logout.
     let me = api.get("/api/v1/me", Some(&ana)).await;
     assert_eq!(
@@ -441,8 +344,8 @@ async fn http_contract_behaviour() {
     );
     let sec = api.get("/api/v1/me/security", Some(&ana)).await;
     assert_eq!(
-        sec.body["session"]["idle_timeout_s"], 604_800,
-        "remember_me session"
+        sec.body["session"]["idle_timeout_s"], 43_200,
+        "non-persistent session"
     );
     let r = api
         .call(
@@ -488,8 +391,8 @@ async fn http_contract_behaviour() {
         StatusCode::UNAUTHORIZED
     );
 
-    // Admin: invitation link uses the fragment and is no-store; reset request is always 202.
-    let admin = api.login("admin@example.com").await;
+    // Admin: invitation link uses the fragment and is no-store.
+    let admin = api.login(&deps, "admin@example.com").await;
     let r = api
         .post(
             "/api/v1/admin/invitations",
@@ -523,16 +426,6 @@ async fn http_contract_behaviour() {
         (r.status, r.body["email"].as_str()),
         (StatusCode::OK, Some("new@example.com"))
     );
-    for email in ["ana@example.com", "nobody@example.com"] {
-        let r = api
-            .post(
-                "/api/v1/auth/password-reset/request",
-                None,
-                json!({"email": email}),
-            )
-            .await;
-        assert_eq!(r.status, StatusCode::ACCEPTED);
-    }
     let users = api.get("/api/v1/admin/users", Some(&admin)).await;
     assert_eq!(users.body.as_array().unwrap().len(), 3);
 

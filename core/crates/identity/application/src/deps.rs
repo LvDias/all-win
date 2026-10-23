@@ -8,15 +8,15 @@ use identity_enterprise::tokens::{KeyId, SecretBytes, TokenHash};
 use shared_kernel::Clock;
 
 use crate::ports::{
-    AdapterCompatibility, BreachedPasswords, ConnectionPresence, IdentityStore, Mailer,
-    PasswordHasher, RandomSource, SecretCipher, SecretHasher, SourceActivity, SourceKeyListener,
+    AdapterCompatibility, ConnectionPresence, IdentityStore, Mailer, RandomSource, SecretHasher,
+    SourceActivity, SourceKeyListener,
 };
-use crate::throttle::{LoginThrottle, PairingThrottle, PublicEndpointThrottle};
+use crate::throttle::{PairingThrottle, PublicEndpointThrottle};
 
 #[derive(Clone, Debug)]
 pub struct IdentitySettings {
     /// Public origin of the app, e.g. `https://app.example.com` (no trailing slash). Used to build
-    /// invitation, reset and webhook URLs.
+    /// invitation and webhook URLs.
     pub public_origin: String,
 }
 
@@ -24,17 +24,13 @@ pub struct IdentitySettings {
 pub struct IdentityDeps {
     pub store: Arc<dyn IdentityStore>,
     pub clock: Arc<dyn Clock>,
-    pub passwords: Arc<dyn PasswordHasher>,
     pub hasher: Arc<dyn SecretHasher>,
-    pub cipher: Arc<dyn SecretCipher>,
     pub random: Arc<dyn RandomSource>,
-    pub breached: Arc<dyn BreachedPasswords>,
     pub mailer: Arc<dyn Mailer>,
     pub presence: Arc<dyn ConnectionPresence>,
     pub source_activity: Arc<dyn SourceActivity>,
     pub source_keys: Arc<dyn SourceKeyListener>,
     pub adapters: Arc<dyn AdapterCompatibility>,
-    pub login_throttle: Arc<dyn LoginThrottle>,
     pub pairing_throttle: Arc<dyn PairingThrottle>,
     pub public_throttle: Arc<dyn PublicEndpointThrottle>,
     pub settings: IdentitySettings,

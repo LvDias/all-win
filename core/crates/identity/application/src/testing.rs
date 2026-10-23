@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration as StdDuration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -12,14 +11,12 @@ use identity_enterprise::codes::NormalizedCode;
 use identity_enterprise::connection::{AdapterInfo, ConnectionStatus, PairingCode};
 use identity_enterprise::ids::{ConnectionId, InvitationId, SessionId, SourceId};
 use identity_enterprise::invitation::Invitation;
-use identity_enterprise::password_reset::PasswordReset;
 use identity_enterprise::profile::Locale;
 use identity_enterprise::secret::SecretString;
 use identity_enterprise::session::Session;
 use identity_enterprise::source::Source;
 use identity_enterprise::tokens::{CodeHmac, TokenHash};
-use identity_enterprise::totp::TotpCredential;
-use identity_enterprise::user::{PasswordHash, User};
+use identity_enterprise::user::User;
 use shared_kernel::{Clock, UserId};
 
 use crate::changes::{ChangeSet, StoredKey, Write};
@@ -66,9 +63,6 @@ pub struct State {
     pub users: HashMap<UserId, User>,
     pub sessions: HashMap<SessionId, Session>,
     pub invitations: Vec<(Invitation, TokenHash)>,
-    pub resets: Vec<PasswordReset>,
-    pub totp: HashMap<UserId, TotpCredential>,
-    pub recovery: Vec<(UserId, CodeHmac, bool)>,
     pub sources: HashMap<SourceId, (Source, Vec<KeyRow>)>,
     pub connections: HashMap<ConnectionId, identity_enterprise::connection::Connection>,
     pub codes: Vec<PairingCode>,
@@ -96,6 +90,15 @@ fn rls(scope: UserId, owner: UserId) -> Result<(), StoreError> {
 }
 
 impl FakeStore {
+    pub fn user_by_email(&self, email: &str) -> Option<User> {
+        let email = email.to_lowercase();
+        let st = self.state.lock().unwrap();
+        st.users
+            .values()
+            .find(|u| u.email.normalized() == email)
+            .cloned()
+    }
+
     pub fn insert_user(&self, user: User) {
         self.state.lock().unwrap().users.insert(user.id, user);
     }
@@ -119,17 +122,6 @@ impl FakeStore {
 
     fn apply(st: &mut State, scope: UserId, w: Write) -> Result<(), StoreError> {
         match w {
-            Write::InsertUser(u) => {
-                rls(scope, u.id)?;
-                if st
-                    .users
-                    .values()
-                    .any(|x| x.email.normalized() == u.email.normalized())
-                {
-                    return Err(conflict(StoreConflict::EmailTaken));
-                }
-                st.users.insert(u.id, u);
-            }
             Write::UpdateProfile {
                 user_id,
                 locale,
@@ -143,13 +135,6 @@ impl FakeStore {
                 if let Some(tz) = time_zone {
                     u.time_zone = tz;
                 }
-            }
-            Write::SetPasswordHash {
-                user_id,
-                password_hash,
-            } => {
-                rls(scope, user_id)?;
-                st.users.get_mut(&user_id).unwrap().password_hash = password_hash;
             }
             Write::InsertSession(s) => {
                 rls(scope, s.user_id)?;
@@ -243,78 +228,6 @@ impl FakeStore {
                 if i.is_open() {
                     i.revoked_at = Some(at);
                 }
-            }
-            Write::InsertPasswordReset(r) => {
-                rls(scope, r.user_id)?;
-                for old in st
-                    .resets
-                    .iter_mut()
-                    .filter(|o| o.user_id == r.user_id && o.used_at.is_none())
-                {
-                    old.invalidated_at.get_or_insert(r.created_at);
-                }
-                st.resets.push(r);
-            }
-            Write::UsePasswordReset { reset_id, at } => {
-                let r = st.resets.iter_mut().find(|r| r.id == reset_id).unwrap();
-                rls(scope, r.user_id)?;
-                if !r.is_usable(at) {
-                    return Err(conflict(StoreConflict::ResetGone));
-                }
-                r.used_at = Some(at);
-            }
-            Write::UpsertTotpSetup {
-                user_id,
-                credential,
-            } => {
-                rls(scope, user_id)?;
-                st.totp.insert(user_id, credential);
-            }
-            Write::EnableTotp {
-                user_id,
-                at,
-                used_step,
-            } => {
-                rls(scope, user_id)?;
-                match st.totp.get_mut(&user_id) {
-                    Some(c) if !c.is_enabled() => {
-                        c.enabled_at = Some(at);
-                        c.last_used_step = Some(used_step);
-                    }
-                    _ => return Err(conflict(StoreConflict::TotpNotPending)),
-                }
-            }
-            Write::ConsumeTotpStep { user_id, step } => {
-                rls(scope, user_id)?;
-                let c = st.totp.get_mut(&user_id).unwrap();
-                if c.last_used_step.is_some_and(|used| used >= step) {
-                    return Err(conflict(StoreConflict::TotpStepReplayed));
-                }
-                c.last_used_step = Some(step);
-            }
-            Write::DeleteTotp { user_id } => {
-                rls(scope, user_id)?;
-                st.totp.remove(&user_id);
-                st.recovery.retain(|(u, _, _)| *u != user_id);
-            }
-            Write::ReplaceRecoveryCodes { user_id, codes, .. } => {
-                rls(scope, user_id)?;
-                st.recovery.retain(|(u, _, _)| *u != user_id);
-                st.recovery
-                    .extend(codes.into_iter().map(|c| (user_id, c, false)));
-            }
-            Write::ConsumeRecoveryCode {
-                user_id,
-                candidates,
-                ..
-            } => {
-                rls(scope, user_id)?;
-                let row = st
-                    .recovery
-                    .iter_mut()
-                    .find(|(u, c, used)| *u == user_id && !used && candidates.contains(c))
-                    .ok_or(conflict(StoreConflict::RecoveryCodeInvalid))?;
-                row.2 = true;
             }
             Write::InsertSource { source, key } => {
                 rls(scope, source.user_id)?;
@@ -618,7 +531,6 @@ impl IdentityStore for FakeStore {
             .values()
             .map(|u| UserSummary {
                 user: u.clone(),
-                totp_enabled: st.totp.get(&u.id).is_some_and(|c| c.is_enabled()),
                 last_sign_in_at: None,
             })
             .collect())
@@ -697,33 +609,6 @@ impl IdentityStore for FakeStore {
             .iter()
             .map(|(i, _)| i.clone())
             .collect())
-    }
-    async fn password_reset_by_token(
-        &self,
-        hash: &TokenHash,
-    ) -> Result<Option<PasswordReset>, StoreError> {
-        Ok(self
-            .state
-            .lock()
-            .unwrap()
-            .resets
-            .iter()
-            .find(|r| r.token_hash == *hash)
-            .cloned())
-    }
-    async fn totp(&self, user: UserId) -> Result<Option<TotpCredential>, StoreError> {
-        Ok(self.state.lock().unwrap().totp.get(&user).cloned())
-    }
-    async fn recovery_codes_remaining(&self, user: UserId) -> Result<u8, StoreError> {
-        let n = self
-            .state
-            .lock()
-            .unwrap()
-            .recovery
-            .iter()
-            .filter(|(u, _, used)| *u == user && !used)
-            .count();
-        Ok(u8::try_from(n).unwrap())
     }
     async fn sources(
         &self,
@@ -813,33 +698,6 @@ impl IdentityStore for FakeStore {
     }
 }
 
-/// `h:<password>`; `verify_dummy` is counted so tests can assert equal work on unknown e-mails.
-#[derive(Default)]
-pub struct FakePasswords {
-    pub dummy_verifications: Mutex<u32>,
-    pub verifications: Mutex<u32>,
-}
-
-#[async_trait]
-impl PasswordHasher for FakePasswords {
-    async fn hash(&self, p: &SecretString) -> Result<PasswordHash, String> {
-        Ok(PasswordHash::new(format!("h:{}", p.expose())))
-    }
-    async fn verify(&self, h: &PasswordHash, p: &SecretString) -> Result<PasswordCheck, String> {
-        *self.verifications.lock().unwrap() += 1;
-        Ok(if h.as_str() == format!("h:{}", p.expose()) {
-            PasswordCheck::Valid {
-                needs_rehash: false,
-            }
-        } else {
-            PasswordCheck::Invalid
-        })
-    }
-    async fn verify_dummy(&self, _p: &SecretString) {
-        *self.dummy_verifications.lock().unwrap() += 1;
-    }
-}
-
 /// Not cryptographic: reversible stand-ins with the right shapes.
 pub struct FakeHasher;
 
@@ -864,17 +722,6 @@ impl SecretHasher for FakeHasher {
     }
 }
 
-pub struct FakeCipher;
-
-impl SecretCipher for FakeCipher {
-    fn encrypt(&self, p: &[u8]) -> Result<(Vec<u8>, i16), String> {
-        Ok((p.iter().map(|b| b ^ 0x5A).collect(), 1))
-    }
-    fn decrypt(&self, c: &[u8], _v: i16) -> Result<Vec<u8>, String> {
-        Ok(c.iter().map(|b| b ^ 0x5A).collect())
-    }
-}
-
 /// Counter bytes: every fill differs, so tokens and codes are unique.
 #[derive(Default)]
 pub struct FakeRandom(Mutex<u64>);
@@ -889,14 +736,6 @@ impl RandomSource for FakeRandom {
             let bytes = n.to_be_bytes();
             chunk.copy_from_slice(&bytes[..chunk.len()]);
         }
-    }
-}
-
-pub struct FakeBreached;
-
-impl BreachedPasswords for FakeBreached {
-    fn contains(&self, p: &str) -> bool {
-        p == "password1234"
     }
 }
 
@@ -917,18 +756,6 @@ impl Mailer for FakeMailer {
         if *self.fail.lock().unwrap() {
             return Err(MailError);
         }
-        self.sent
-            .lock()
-            .unwrap()
-            .push((to.to_owned(), url.expose().to_owned()));
-        Ok(())
-    }
-    async fn send_password_reset(
-        &self,
-        to: &str,
-        _l: Locale,
-        url: &SecretString,
-    ) -> Result<(), MailError> {
         self.sent
             .lock()
             .unwrap()
@@ -986,32 +813,6 @@ impl AdapterCompatibility for FakeAdapters {
 }
 
 #[derive(Default)]
-pub struct FakeLoginThrottle {
-    pub limited: Mutex<bool>,
-    pub failures: Mutex<Vec<LoginAttempt>>,
-    pub successes: Mutex<u32>,
-}
-
-#[async_trait]
-impl LoginThrottle for FakeLoginThrottle {
-    async fn check(&self, _a: &LoginAttempt, _n: DateTime<Utc>) -> ThrottleDecision {
-        if *self.limited.lock().unwrap() {
-            ThrottleDecision::Limited {
-                retry_after: StdDuration::from_secs(30),
-            }
-        } else {
-            ThrottleDecision::Allow
-        }
-    }
-    async fn record_failure(&self, a: &LoginAttempt, _n: DateTime<Utc>) {
-        self.failures.lock().unwrap().push(a.clone());
-    }
-    async fn record_success(&self, _a: &LoginAttempt, _n: DateTime<Utc>) {
-        *self.successes.lock().unwrap() += 1;
-    }
-}
-
-#[derive(Default)]
 pub struct FakePairingThrottle {
     pub decision: Mutex<Option<PairingDecision>>,
     pub failures: Mutex<u32>,
@@ -1044,10 +845,8 @@ pub struct World {
     pub deps: IdentityDeps,
     pub store: Arc<FakeStore>,
     pub clock: Arc<TestClock>,
-    pub passwords: Arc<FakePasswords>,
     pub mailer: Arc<FakeMailer>,
     pub presence: Arc<FakePresence>,
-    pub login_throttle: Arc<FakeLoginThrottle>,
     pub pairing_throttle: Arc<FakePairingThrottle>,
     pub activated_keys: Arc<RecordingKeyListener>,
 }
@@ -1056,26 +855,20 @@ impl World {
     pub fn new() -> Self {
         let store = Arc::new(FakeStore::default());
         let clock = Arc::new(TestClock(Mutex::new(t0())));
-        let passwords = Arc::new(FakePasswords::default());
         let mailer = Arc::new(FakeMailer::default());
         let presence = Arc::new(FakePresence::default());
-        let login_throttle = Arc::new(FakeLoginThrottle::default());
         let pairing_throttle = Arc::new(FakePairingThrottle::default());
         let activated_keys = Arc::new(RecordingKeyListener::default());
         let deps = IdentityDeps {
             store: store.clone(),
             clock: clock.clone(),
-            passwords: passwords.clone(),
             hasher: Arc::new(FakeHasher),
-            cipher: Arc::new(FakeCipher),
             random: Arc::new(FakeRandom::default()),
-            breached: Arc::new(FakeBreached),
             mailer: mailer.clone(),
             presence: presence.clone(),
             source_activity: Arc::new(NoActivity),
             source_keys: activated_keys.clone(),
             adapters: Arc::new(FakeAdapters),
-            login_throttle: login_throttle.clone(),
             pairing_throttle: pairing_throttle.clone(),
             public_throttle: Arc::new(AllowPublic),
             settings: IdentitySettings {
@@ -1086,10 +879,8 @@ impl World {
             deps,
             store,
             clock,
-            passwords,
             mailer,
             presence,
-            login_throttle,
             pairing_throttle,
             activated_keys,
         }

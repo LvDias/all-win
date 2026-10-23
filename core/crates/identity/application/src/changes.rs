@@ -7,18 +7,12 @@ use std::net::IpAddr;
 
 use chrono::{DateTime, Utc};
 use identity_enterprise::connection::{Connection, ConnectionStatus, PairedInstance, PairingCode};
-use identity_enterprise::ids::{
-    ConnectionId, InvitationId, PairingCodeId, PasswordResetId, RecoveryBatchId, SessionId,
-    SourceId,
-};
+use identity_enterprise::ids::{ConnectionId, InvitationId, PairingCodeId, SessionId, SourceId};
 use identity_enterprise::invitation::Invitation;
-use identity_enterprise::password_reset::PasswordReset;
 use identity_enterprise::profile::{Locale, TimeZoneName};
 use identity_enterprise::session::{EndReason, Session};
 use identity_enterprise::source::{DisplayName, Source};
-use identity_enterprise::tokens::{CodeHmac, KeyId, TokenHash};
-use identity_enterprise::totp::TotpCredential;
-use identity_enterprise::user::{PasswordHash, User};
+use identity_enterprise::tokens::{KeyId, TokenHash};
 use shared_kernel::UserId;
 use uuid::Uuid;
 
@@ -31,16 +25,10 @@ pub struct StoredKey {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Write {
-    /// Conflict `EmailTaken` when the normalized e-mail already belongs to a user.
-    InsertUser(User),
     UpdateProfile {
         user_id: UserId,
         locale: Option<Locale>,
         time_zone: Option<TimeZoneName>,
-    },
-    SetPasswordHash {
-        user_id: UserId,
-        password_hash: PasswordHash,
     },
     InsertSession(Session),
     /// Sliding idle refresh and step-up time.
@@ -82,46 +70,6 @@ pub enum Write {
     /// Idempotent; no effect on an accepted invitation.
     RevokeInvitation {
         invitation_id: InvitationId,
-        at: DateTime<Utc>,
-    },
-    /// Invalidates the user's earlier unused resets ("newest wins").
-    InsertPasswordReset(PasswordReset),
-    /// Conflict `ResetGone` unless the reset is still usable at `at`.
-    UsePasswordReset {
-        reset_id: PasswordResetId,
-        at: DateTime<Utc>,
-    },
-    /// Replaces any unconfirmed enrolment.
-    UpsertTotpSetup {
-        user_id: UserId,
-        credential: TotpCredential,
-    },
-    /// Conflict `TotpNotPending` unless an unconfirmed enrolment exists.
-    EnableTotp {
-        user_id: UserId,
-        at: DateTime<Utc>,
-        used_step: i64,
-    },
-    /// Conflict `TotpStepReplayed` when `step` is not newer than the stored last used step.
-    ConsumeTotpStep {
-        user_id: UserId,
-        step: i64,
-    },
-    /// Deletes the TOTP credential and every recovery code.
-    DeleteTotp {
-        user_id: UserId,
-    },
-    ReplaceRecoveryCodes {
-        user_id: UserId,
-        batch_id: RecoveryBatchId,
-        codes: Vec<CodeHmac>,
-        at: DateTime<Utc>,
-    },
-    /// Marks one unused code matching any candidate HMAC as used; conflict
-    /// `RecoveryCodeInvalid` when none matches.
-    ConsumeRecoveryCode {
-        user_id: UserId,
-        candidates: Vec<CodeHmac>,
         at: DateTime<Utc>,
     },
     /// Conflicts `NameTaken`, `KeyIdTaken`.
@@ -205,7 +153,7 @@ pub enum Actor {
     System,
     /// The paired plugin of a connection.
     Adapter(ConnectionId),
-    /// Anonymous request carrying a valid one-time token (invitation, reset link).
+    /// Anonymous request carrying a valid one-time token (invitation).
     TokenHolder,
 }
 
@@ -224,20 +172,6 @@ pub enum Trail {
 pub enum AuditAction {
     AccountCreated {
         invitation_id: InvitationId,
-    },
-    PasswordChanged,
-    PasswordResetCompleted,
-    PasswordResetLinkIssued {
-        target: UserId,
-    },
-    TotpEnabled,
-    TotpDisabled,
-    TotpResetByAdmin {
-        target: UserId,
-    },
-    RecoveryCodesRegenerated,
-    RecoveryCodeUsed {
-        remaining: u8,
     },
     InvitationIssued {
         invitation_id: InvitationId,
@@ -291,14 +225,6 @@ pub enum AuditAction {
 /// in the affected user's log; `app` registers the audit consumer for each type, one by one.
 pub const AUDIT_EVENT_TYPES: &[&str] = &[
     "security.account_created",
-    "security.password_changed",
-    "security.password_reset_completed",
-    "security.password_reset_link_issued",
-    "security.totp_enabled",
-    "security.totp_disabled",
-    "security.totp_reset_by_admin",
-    "security.recovery_codes_regenerated",
-    "security.recovery_code_used",
     "security.invitation_issued",
     "security.invitation_revoked",
     "config.source_created",
@@ -331,14 +257,6 @@ impl AuditAction {
     pub fn event_type(&self) -> &'static str {
         match self {
             Self::AccountCreated { .. } => "security.account_created",
-            Self::PasswordChanged => "security.password_changed",
-            Self::PasswordResetCompleted => "security.password_reset_completed",
-            Self::PasswordResetLinkIssued { .. } => "security.password_reset_link_issued",
-            Self::TotpEnabled => "security.totp_enabled",
-            Self::TotpDisabled => "security.totp_disabled",
-            Self::TotpResetByAdmin { .. } => "security.totp_reset_by_admin",
-            Self::RecoveryCodesRegenerated => "security.recovery_codes_regenerated",
-            Self::RecoveryCodeUsed { .. } => "security.recovery_code_used",
             Self::InvitationIssued { .. } => "security.invitation_issued",
             Self::InvitationRevoked { .. } => "security.invitation_revoked",
             Self::SourceCreated { .. } => "config.source_created",
@@ -472,14 +390,6 @@ mod tests {
         );
         let actions = [
             AuditAction::AccountCreated { invitation_id: i },
-            AuditAction::PasswordChanged,
-            AuditAction::PasswordResetCompleted,
-            AuditAction::PasswordResetLinkIssued { target: u },
-            AuditAction::TotpEnabled,
-            AuditAction::TotpDisabled,
-            AuditAction::TotpResetByAdmin { target: u },
-            AuditAction::RecoveryCodesRegenerated,
-            AuditAction::RecoveryCodeUsed { remaining: 1 },
             AuditAction::InvitationIssued { invitation_id: i },
             AuditAction::InvitationRevoked { invitation_id: i },
             AuditAction::SourceCreated {

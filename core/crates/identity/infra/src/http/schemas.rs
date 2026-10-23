@@ -46,12 +46,6 @@ macro_rules! plain_integer {
 }
 
 plain_integer!(
-    /// 0–10 recovery codes.
-    RecoveryCodeCount,
-    Some(0),
-    Some(10)
-);
-plain_integer!(
     /// A duration in whole seconds.
     Seconds,
     None::<i64>,
@@ -62,89 +56,9 @@ plain_integer!(
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct LoginRequest {
-    #[schema(format = Email, max_length = 254)]
-    pub email: String,
-    #[schema(min_length = 1, max_length = 1024)]
-    pub password: String,
-    pub remember_me: bool,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct TotpCodeRequest {
-    #[schema(pattern = "^[0-9]{6}$")]
-    pub code: String,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RecoveryCodeRequest {
-    /// 10 Crockford Base32 characters; case, spaces and hyphens ignored.
-    #[schema(max_length = 20)]
-    pub code: String,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct StepUpRequest {
-    #[schema(min_length = 1, max_length = 1024)]
-    pub password: String,
-    /// Required when TOTP is enabled; omitting it then gives 401 `auth.invalid_code`, not
-    /// 400 `common.invalid_request`. Ignored when TOTP is disabled.
-    #[schema(pattern = "^[0-9]{6}$", nullable = false)]
-    pub code: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
 pub struct TokenBody {
     #[schema(max_length = 128)]
     pub token: String,
-}
-
-/// 12–128 characters after NFKC normalization; breached/common list rejected (auth policy §2).
-/// Length limits are enforced by the Core after normalization.
-pub struct NewPassword;
-
-impl utoipa::PartialSchema for NewPassword {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::schema::ObjectBuilder::new()
-            .schema_type(utoipa::openapi::schema::Type::String)
-            .min_length(Some(1))
-            .max_length(Some(1024))
-            .into()
-    }
-}
-
-impl ToSchema for NewPassword {}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct AcceptInvitationRequest {
-    #[schema(max_length = 128)]
-    pub token: String,
-    #[schema(value_type = NewPassword)]
-    pub password: String,
-    pub locale: Locale,
-    #[schema(value_type = TimeZone)]
-    pub time_zone: String,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct EmailRequest {
-    #[schema(format = Email, max_length = 254)]
-    pub email: String,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ConfirmPasswordResetRequest {
-    #[schema(max_length = 128)]
-    pub token: String,
-    #[schema(value_type = NewPassword)]
-    pub new_password: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -155,24 +69,6 @@ pub struct UpdateMeRequest {
     pub locale: Option<Locale>,
     #[schema(value_type = Option<TimeZone>, nullable = false)]
     pub time_zone: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PasswordAndCode {
-    #[schema(min_length = 1, max_length = 1024)]
-    pub password: String,
-    #[schema(pattern = "^[0-9]{6}$")]
-    pub code: String,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ChangePasswordRequest {
-    #[schema(min_length = 1, max_length = 1024)]
-    pub current_password: String,
-    #[schema(value_type = NewPassword)]
-    pub new_password: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -271,29 +167,6 @@ impl From<&identity_enterprise::user::User> for Me {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum LoginState {
-    Authenticated,
-    #[serde(rename = "pending_2fa")]
-    Pending2fa,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct LoginResult {
-    pub state: LoginState,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(nullable = false)]
-    pub user: Option<Me>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<Timestamp>, nullable = false)]
-    pub pending_expires_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<RecoveryCodeCount>, nullable = false)]
-    pub recovery_codes_remaining: Option<u8>,
-}
-
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SessionInfo {
@@ -315,42 +188,7 @@ pub struct SessionInfo {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SecurityState {
-    pub totp_enabled: bool,
-    #[schema(value_type = RecoveryCodeCount)]
-    pub recovery_codes_remaining: u8,
     pub session: SessionInfo,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct TotpSetup {
-    /// otpauth://totp/All%20Win:<email>?secret=…&issuer=All%20Win
-    pub otpauth_uri: String,
-    /// Base32, for manual entry.
-    pub secret: String,
-    #[schema(value_type = Timestamp)]
-    pub expires_at: String,
-}
-
-/// `XXXXX-XXXXX` (Crockford Base32).
-pub struct RecoveryCodeString;
-
-impl utoipa::PartialSchema for RecoveryCodeString {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::schema::ObjectBuilder::new()
-            .schema_type(utoipa::openapi::schema::Type::String)
-            .pattern(Some("^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$"))
-            .into()
-    }
-}
-
-impl ToSchema for RecoveryCodeString {}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RecoveryCodes {
-    #[schema(value_type = Vec<RecoveryCodeString>, min_items = 10, max_items = 10)]
-    pub recovery_codes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]
@@ -419,7 +257,6 @@ pub struct AdminUser {
     #[schema(format = Email)]
     pub email: String,
     pub status: UserStatusDto,
-    pub totp_enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
     pub is_platform_admin: Option<bool>,
@@ -428,15 +265,6 @@ pub struct AdminUser {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<Timestamp>, nullable = false)]
     pub last_sign_in_at: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ResetLink {
-    /// https://<host>/<locale>/reset-password#t=<token>
-    pub reset_url: String,
-    #[schema(value_type = Timestamp)]
-    pub expires_at: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]

@@ -11,7 +11,7 @@ use crate::error::IdentityError;
 /// Activity refreshes are written at most once per this interval per session.
 const ACTIVITY_WRITE_INTERVAL: Duration = Duration::seconds(60);
 
-/// Authenticated caller of a full-session or pending-session operation.
+/// Authenticated caller of a session operation.
 #[derive(Clone, Debug)]
 pub struct AuthContext {
     pub session: Session,
@@ -39,14 +39,6 @@ impl AuthContext {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Requirement {
-    /// Every operation except the login verify endpoints.
-    Full,
-    /// `verifyLoginTotp`, `verifyLoginRecoveryCode`.
-    Pending,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Activity {
     /// Extends the idle timeout.
     UserInitiated,
@@ -68,26 +60,17 @@ impl AuthenticateSession {
     pub async fn handle(
         &self,
         cookie: Option<&str>,
-        requirement: Requirement,
         activity: Activity,
     ) -> Result<AuthContext, IdentityError> {
         let now = self.deps.clock.now();
         let Some(mut session) = self.find(cookie).await? else {
             return Err(IdentityError::Unauthenticated);
         };
-        match (session.status(now), requirement) {
-            (SessionStatus::Active, Requirement::Full)
-            | (SessionStatus::Pending2fa, Requirement::Pending) => {}
-            (SessionStatus::Expired, _) => {
+        match session.status(now) {
+            SessionStatus::Active => {}
+            SessionStatus::Expired | SessionStatus::PendingExpired => {
                 self.end_expired(&session, now).await?;
                 return Err(IdentityError::Unauthenticated);
-            }
-            (SessionStatus::PendingExpired, _) => {
-                self.end_expired(&session, now).await?;
-                return Err(match requirement {
-                    Requirement::Pending => IdentityError::PendingExpired,
-                    Requirement::Full => IdentityError::Unauthenticated,
-                });
             }
             _ => return Err(IdentityError::Unauthenticated),
         }
@@ -96,7 +79,6 @@ impl AuthenticateSession {
             _ => return Err(IdentityError::Unauthenticated),
         };
         if activity == Activity::UserInitiated
-            && requirement == Requirement::Full
             && now - session.last_activity_at >= ACTIVITY_WRITE_INTERVAL
         {
             session.touch(now);
