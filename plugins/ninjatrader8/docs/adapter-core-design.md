@@ -68,10 +68,11 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
   - entry expiry with the skew-corrected clock (`command.expired`; exits never expire);
   - `risk.account_blocked`, for entries only, comparing `blocked_until` on the Core clock.
 - **Guard on every write.** `Submit`, `Change` and `Cancel` all go through `EnsureWritable`. Automatic actions are covered too: orphan cancels, bracket resizes and flatten steps.
-- **`reduce`.**
-  - A reduce never opens or flips a position.
-  - When the account is flat or on the same side: `cancelled`/`command.nothing_to_reduce` (answer 11).
-  - When the quantity is larger than the position: it is capped, with `order.quantity_capped` on the working report.
+- **`reduce`** (protocol 1.2, ADR-0004 §5 "Position-identity guard", U13). Steps in order, after the account checks:
+  0. Crash-window lookup by `aw:<command_id>:x`: any match is adopted and reported; 2+ → `order.ambiguous_reference`; a failed lookup never submits.
+  1. Flat → `cancelled`/`command.nothing_to_reduce` (answer 11).
+  2. `refs.position_ref` ≠ the identity of the current position, an `unknown`/`external` identity, a pre-1.2 envelope (no `refs`), or an order that does not oppose the position → `rejected`/`command.position_changed`, nothing submitted. A same-side position is therefore `position_changed` from 1.2.
+  3. Submit, capped to the position (`order.quantity_capped`). A reduce never opens or flips a position.
 - **`modify`/`cancel`.**
   - Each target gets one outcome report under the modify/cancel `command_id`, without `fill` or `position_after` (answer 9a).
   - The outcome is decided from the platform's confirmed state, not from the API call.
@@ -117,6 +118,23 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
   Local reasons are hints and persist across restarts until the next `welcome`. The Core's `sync_state`/`sync_reasons` are authoritative. `sync.bracket_integrity_unknown` is derived live: protective orders are working, OCO is not `server`, and the Core session or the broker connection is down.
 - **Account view.** `ApplyCoreAccountState` already takes protocol 1.1 `account_state`, with the `changed_at` ordering: older updates are ignored and equal ones are applied.
 
+## 5a. Position identity (U13)
+
+- **Record** (`PositionIdentityRecord`, collection `pid`, key `account|symbol|month`): identity (`command_id`, `external` or `unknown`), signed quantity, last fill id, opening fill id. It is written in the same journal batch as the fill that changes it and removed when the position goes flat.
+- **Rules.** A fill from flat, or a flip, sets the identity: the fill's own command when it is an All Win entry (`e`), `external` for a non-All Win fill, `unknown` for any other All Win role. Adds and partial closes (All Win or external) keep it. It is separate from the shared-bracket owner.
+- **Unknown (fail closed)** when the record cannot explain the position: a fill that does not take the recorded quantity to the platform's `position_after`; a correction (`amend`/`remove`) of the opening fill; `SimulationAccountReset`; at startup after catch-up and when an account connection comes back, a quantity or latest execution that differs from the record (`VerifyIdentities`); at the guard, a live position that differs from the record (an execution still queued). A missing record with an open position is `unknown` (journal lost, or a position opened before 1.2).
+- **Catch-up.** Executions replayed after a restart update the record like live ones, so an opening fill the platform still lists is observed. Retention and ordering of NT8 executions across a restart are E4/E9 (untested); a gap makes the identity unknown through the consistency check.
+
+## 5b. Live accounts (ADR-0005 N11, U15; U19/U19.1 proposed)
+
+- **Gates.** Release builds only. State B = kind `live` + confirmed in the local opt-in (`ILiveAccountConsent`, key connection/provider/platform account) + opt-in enabled + `welcome.simulation_only = false` + the command received after the opt-in was turned on. Development builds never write to a non-simulation account. `kind: unknown` and unconfirmed accounts are state A; a kind change invalidates the confirmation until the user confirms again.
+- **Table.** `LiveAccountTable.Allows(row, state, U19, U19.1)`. States C0/C1/C2 come from the position and its identity per contract. U19 (b) makes C behave as A; U19.1 (a) makes row 11 Y in C1 and C2. Defaults are the recommended options (U19 a, U19.1 b).
+- **Where it applies.** Commands at intake and dispatch (`CommandAllowedOnAccount`: consent first, then the table, then the command's own checks, so a reduce on A/C2 is `command.account_not_simulation`, never `position_changed`); modify/cancel per target (rows 1, 2, 3, 4, 5, 7, 8, 11, from the platform's own state); every platform write through `EnsureWritable(account, instrument, rows)`; bracket upkeep (row 6 = only the consented entry's own fills, capped to what it filled; row 7/8 refused → no upsize/re-price, `sync.bracket_incomplete` hint).
+- **On its own** (`EnforceLiveTable`: at startup, on the opt-in change, on an account change, on welcome, on reconnection): outside state B, working All Win entries are cancelled (row 2, `order.live_consent_cancelled`); in effective state A working All Win exits too; orphan legs are cancelled (row 3) and legs only shrink (rows 4–5). Only `aw:` orders are touched.
+- **Alerts.** On A every action raises `live.unconsented_actions` in the account view and a log line. A flatten whose close fails on a non-simulation account raises `live.unprotected_position` (the one known I2 gap).
+- **Not in the protocol.** The Core learns about the opt-in only from rejections (ADR-0005 N11).
+- **Rows not named by the table** (Architect 2026-10-23): undoing a working All Win exit is row 2; a modify of a non-protective order is row 1. `order_targets` (contract v1) cannot name an exit, so the exit case exists only as the plugin's own action.
+
 ## 6. Architect decisions applied (Esquadro, 2026-10-23)
 
 | # | Decision |
@@ -140,12 +158,15 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
 | E | A known `command_id` gets `duplicate` even when stale. `stale` only applies to unknown commands |
 | F | Protocol 1.1: `account_state`, negotiated envelope version, outbox bytes unchanged |
 | G | Adopt an order with the exact reference before submitting (any state for place/legs, live only for flatten closes). Several matches → `order.ambiguous_reference` |
+| U13 | Protocol 1.2 position-identity guard on `reduce` (§4, §5a). `flatten` unchanged |
+| N11 | Live-account opt-in and decision table (§5b). U19/U19.1 behind `EngineOptions`, recommended defaults |
+| N11+ | `order.live_consent_cancelled` (cancelled, entry/exit) for the plugin's own row-2 cancels; emitted now, registry entry in the 1.3 delta |
 
 ## 7. Limits of this step
 
 - Local risk enforcement (S15) is limited to storing `limits` by monotonic version and refusing entries while `blocked_until` is in the future. P&L monitoring, warnings, flatten-and-block and trading-day resets are not built yet.
 - Master-account input (`instruction`, S19) is not built. The validator already covers the embedded instruction schema.
-- The NT8 AddOn host (`net48`) and its UI are not built (no NT8 DLLs on Linux).
+- The NT8 AddOn host (`net48`) and its UI are not built (no NT8 DLLs on Linux). That includes the "Allow live accounts" dialog, its DPAPI-protected file (`LiveConsentState.Serialize`/`Parse` is the format) and the window state line.
 
 ## 8. Open items for the NT8 spike (Windows)
 
@@ -158,5 +179,7 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
 | OCO partial-fill behavior of local simulated OCO (the engine resizes the other leg itself) | E4, E11 |
 | Durable store on NTFS: rename semantics, the lock, fsync cost per commit | E12 |
 | `Dispatcher.InvokeAsync` for the window. WebSocket under load next to order traffic | E9 |
+| NT8 execution retention and order across a restart (position identity, `VerifyIdentities`) | E4, E9 |
+| `Connection.Options.Provider` names for live connections (the consent key) | E4 |
 | Event order and timestamps at a broker reconnect; tuning `MaxBracketDelay`; the platform clock for `GetPlatformTime` (`Connection.Now` vs `PlaybackConnection.Now`) | E4, E5 |
 | Does `Account.Orders` keep terminal orders after a restart? Answer G's adoption of terminal matches depends on it | E4 |

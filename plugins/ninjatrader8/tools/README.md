@@ -48,7 +48,7 @@ This is not yet possible: the plugin host (`AllWin.NinjaTrader8`) is the next st
 |---|---|---|
 | `wait_ready` | `timeout_ms` | Waits for the adapter's reconnect snapshot |
 | `expect_session` | `count` | Waits for session #n to be ready, after a reconnect |
-| `command` | `id`, `kind`, `place`/`modify`/`cancel`/`flatten`, `depends_on` (alias), `ttl_ms`, `sent_at_offset_ms`, `msg` (alias of the msg_id) | Sends a command. Ids are generated. Entries get `expires_at = now + ttl_ms` (default 5000). `targets[].command` takes an alias |
+| `command` | `id`, `kind`, `place`/`modify`/`cancel`/`flatten`, `depends_on` (alias), `position_ref` (alias), `ttl_ms`, `sent_at_offset_ms`, `msg` (alias of the msg_id) | Sends a command in the negotiated protocol version. Ids are generated. Entries get `expires_at = now + ttl_ms` (default 5000). `targets[].command` takes an alias. A reduce needs `position_ref`: the alias of the command that opened the position (protocol 1.2, U13) |
 | `repeat_command` | `id` | Same `command_id`, new `msg_id` (business duplicate) |
 | `resend` | `msg` | The same frame, byte-identical (transport duplicate) |
 | `expect_report` | `command` or `external: true`, `match` (subset of the payload), `count`, `exact`, `timeout_ms` | Waits for matching execution reports. Duplicates by `msg_id` are ignored |

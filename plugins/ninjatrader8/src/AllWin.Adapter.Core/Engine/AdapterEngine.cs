@@ -35,6 +35,7 @@ namespace AllWin.Adapter.Core.Engine
         private readonly IDurableStore _store;
         private readonly IClock _clock;
         private readonly IAdapterLog _log;
+        private readonly ILiveAccountConsent _consent;
 
         private readonly List<StoreOp> _pending = new List<StoreOp>();
         private readonly List<Action> _afterCommit = new List<Action>();
@@ -75,8 +76,13 @@ namespace AllWin.Adapter.Core.Engine
         /// <summary>True while executions that happened during a restart are being caught up (answer A).</summary>
         private bool _catchUp;
 
-        public AdapterEngine(EngineOptions options, ITradingPlatform platform, IDurableStore store, IClock? clock = null, IAdapterLog? log = null)
+        /// <param name="liveConsent">
+        /// The local "Allow live accounts" opt-in (ADR-0005 N11); null means off with nothing confirmed. Release builds only.
+        /// </param>
+        public AdapterEngine(EngineOptions options, ITradingPlatform platform, IDurableStore store, IClock? clock = null, IAdapterLog? log = null,
+            ILiveAccountConsent? liveConsent = null)
         {
+            _consent = liveConsent ?? LiveConsentState.Off();
             _options = options;
             _platform = platform;
             _store = store;
@@ -124,6 +130,7 @@ namespace AllWin.Adapter.Core.Engine
                 LoadState();
                 _started = true;
                 Recover();
+                EnforceLiveTable();
                 Prune();
             });
         }
@@ -297,6 +304,7 @@ namespace AllWin.Adapter.Core.Engine
             _stickyLocalReasons.Clear();
             SaveStickyReasons();
             RefreshTrackedOrders();
+            EnforceLiveTable(); // simulation_only may have changed (ADR-0005 §N11: the same table applies)
             Flush();
 
             Session = SessionState.Ready;
@@ -367,7 +375,7 @@ namespace AllWin.Adapter.Core.Engine
             switch (envelope.Type)
             {
                 case MessageTypes.Command:
-                    pumpAccount = IntakeCommand(envelope.PayloadAs<CommandPayload>(), envelope.SentAt);
+                    pumpAccount = IntakeCommand(envelope.PayloadAs<CommandPayload>(), envelope.SentAt, envelope.ProtocolVersion);
                     break;
                 case MessageTypes.Limits:
                     ApplyLimits(envelope.PayloadAs<LimitsPayload>());
@@ -606,6 +614,7 @@ namespace AllWin.Adapter.Core.Engine
             foreach (var pair in _store.Collection(Collections.Fills)) _fills[pair.Key] = StoreJson.Read<FillRecord>(pair.Value);
             foreach (var pair in _store.Collection(Collections.Limits)) _limits[pair.Key] = StoreJson.Read<AccountLimits>(pair.Value);
             foreach (var pair in _store.Collection(Collections.Owners)) _owners[pair.Key] = StoreJson.Read<string>(pair.Value);
+            foreach (var pair in _store.Collection(Collections.Identities)) _identities[pair.Key] = StoreJson.Read<PositionIdentityRecord>(pair.Value);
             if (_welcome != null)
                 foreach (var account in _welcome.Accounts)
                     ApplyCoreAccountState(account.PlatformAccount, account.SyncState, account.SyncReasons ?? new List<string>());

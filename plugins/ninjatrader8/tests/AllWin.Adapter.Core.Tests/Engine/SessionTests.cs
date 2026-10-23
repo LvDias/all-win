@@ -17,7 +17,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             var first = h.Sink.Frames.First();
             Assert.Equal(MessageTypes.Hello, first.Type);
             var hello = first.PayloadAs<HelloPayload>();
-            Assert.Equal(new[] { "1.0", "1.1" }, hello.SupportedProtocolVersions);
+            Assert.Equal(new[] { "1.0", "1.1", "1.2" }, hello.SupportedProtocolVersions);
             Assert.Equal("1.0", first.ProtocolVersion); // nothing negotiated yet
             Assert.Equal(AdapterBuild.Development, hello.Adapter.Build);
             Assert.Contains(hello.Accounts, a => a.PlatformAccount == Sim101 && a.Kind == AccountKind.Simulation && a.OcoLocation == OcoLocation.Local);
@@ -194,7 +194,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
         {
             using var h = new EngineHarness();
             h.Connect();
-            h.DeliverRaw("{\"protocol_version\":\"1.2\",\"msg_id\":\"" + Ids.New() + "\",\"type\":\"account_limits_v2\",\"sent_at\":\"2026-10-22T14:31:00Z\",\"payload\":{}}");
+            h.DeliverRaw("{\"protocol_version\":\"1.3\",\"msg_id\":\"" + Ids.New() + "\",\"type\":\"account_limits_v2\",\"sent_at\":\"2026-10-22T14:31:00Z\",\"payload\":{}}");
             Assert.Equal(ReasonCodes.ProtocolUnsupportedValue, Assert.Single(h.Sent(MessageTypes.Error)).PayloadAs<ErrorPayload>().Code);
         }
 

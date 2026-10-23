@@ -10,7 +10,7 @@
       "place": { "side": "buy", "quantity": 2, "order": { "type": "market" }, "position_effect": "open",
                  "protection": { "mode": "individual", "stop_ticks": 40, "target_ticks": 80 } } },
     { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "stop", "quantity": 2 } },
-    { "do": "command", "id": "R1", "kind": "place", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "reduce" } },
+    { "do": "command", "id": "R1", "kind": "place", "position_ref": "E1", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "reduce" } },
     { "do": "expect_report", "command": "R1", "match": { "status": "filled", "child_role": "exit", "position_after": { "quantity": 1 } } },
     { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "stop", "quantity": 1 } },
     { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "target", "quantity": 1 } },
