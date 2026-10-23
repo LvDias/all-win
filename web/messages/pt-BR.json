@@ -40,6 +40,11 @@
     },
     "status": {
       "never": "Nunca"
+    },
+    "combobox": {
+      "choose": "Escolher",
+      "search": "Buscar: {label}",
+      "noResults": "Nenhum resultado."
     }
   },
   "language": {
@@ -864,5 +869,33 @@
       "stay": "Continuar editando",
       "confirm": "Descartar"
     }
+  },
+  "status": {
+    "blocked": "Bloqueada até {time}",
+    "blockedByTarget": "Bloqueada até {time} · meta atingida",
+    "paused": "Pausada",
+    "disabled": "Desativada",
+    "outOfSync": "Fora de sincronia",
+    "connected": "Conectada",
+    "disconnected": "Desconectada",
+    "awaitingPairing": "Aguardando pareamento",
+    "outdated": "Desatualizada",
+    "unpaired": "Despareada",
+    "revoked": "Revogada",
+    "active": "Ativa",
+    "stale": "Sem dados recentes",
+    "acceptsAutomation": "Aceita automação",
+    "noAutomation": "Sem automação",
+    "choicePending": "Escolha pendente",
+    "riskWarning": "Alerta (80 %)",
+    "riskReached": "Limite atingido"
+  },
+  "firmRule": {
+    "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",
+    "showFull": "Mostrar texto completo",
+    "showLess": "Mostrar menos",
+    "caption": "{firm} · {page} · acessado em {date}",
+    "viewPage": "Ver página oficial",
+    "newTab": "(abre em nova aba)"
   }
 }

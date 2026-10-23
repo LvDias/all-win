@@ -40,6 +40,11 @@
     },
     "status": {
       "never": "Never"
+    },
+    "combobox": {
+      "choose": "Choose",
+      "search": "Search: {label}",
+      "noResults": "No results."
     }
   },
   "language": {
@@ -864,5 +869,33 @@
       "stay": "Keep editing",
       "confirm": "Discard"
     }
+  },
+  "status": {
+    "blocked": "Blocked until {time}",
+    "blockedByTarget": "Blocked until {time} · target reached",
+    "paused": "Paused",
+    "disabled": "Disabled",
+    "outOfSync": "Out of sync",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "awaitingPairing": "Awaiting pairing",
+    "outdated": "Outdated",
+    "unpaired": "Unpaired",
+    "revoked": "Revoked",
+    "active": "Active",
+    "stale": "No recent data",
+    "acceptsAutomation": "Accepts automation",
+    "noAutomation": "No automation",
+    "choicePending": "Choice pending",
+    "riskWarning": "Warning (80%)",
+    "riskReached": "Limit reached"
+  },
+  "firmRule": {
+    "summaryLabel": "All Win summary (not legal advice):",
+    "showFull": "Show full text",
+    "showLess": "Show less",
+    "caption": "{firm} · {page} · accessed on {date}",
+    "viewPage": "View official page",
+    "newTab": "(opens in a new tab)"
   }
 }
