@@ -35,7 +35,11 @@
         "instruction",
         "risk_event",
         "risk_state",
-        "account_state"
+        "account_state",
+        "notifications",
+        "notification",
+        "notification_read",
+        "trade_completed"
       ]
     },
     "sent_at": {
@@ -349,6 +353,261 @@
             "required": [
               "refs"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "notifications"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "protocol_version": {
+            "not": {
+              "pattern": "^1\\.[0-2]$"
+            }
+          },
+          "payload": {
+            "$ref": "#/$defs/notifications"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "notification"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "protocol_version": {
+            "not": {
+              "pattern": "^1\\.[0-2]$"
+            }
+          },
+          "payload": {
+            "$ref": "#/$defs/notification"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "notification_read"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "protocol_version": {
+            "not": {
+              "pattern": "^1\\.[0-2]$"
+            }
+          },
+          "payload": {
+            "$ref": "#/$defs/notification_read"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "trade_completed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "protocol_version": {
+            "not": {
+              "pattern": "^1\\.[0-2]$"
+            }
+          },
+          "payload": {
+            "$ref": "#/$defs/trade_completed"
+          }
+        }
+      }
+    },
+    {
+      "description": "welcome 1.3 fields only on 1.3+ envelopes.",
+      "if": {
+        "properties": {
+          "protocol_version": {
+            "pattern": "^1\\.[0-2]$"
+          },
+          "type": {
+            "const": "welcome"
+          }
+        },
+        "required": [
+          "protocol_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "connection_name"
+                  ]
+                },
+                {
+                  "required": [
+                    "time_zone"
+                  ]
+                },
+                {
+                  "required": [
+                    "app_url"
+                  ]
+                },
+                {
+                  "properties": {
+                    "accounts": {
+                      "contains": {
+                        "required": [
+                          "display_name"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "risk_state 1.3 fields only on 1.3+ envelopes.",
+      "if": {
+        "properties": {
+          "protocol_version": {
+            "pattern": "^1\\.[0-2]$"
+          },
+          "type": {
+            "const": "risk_state"
+          }
+        },
+        "required": [
+          "protocol_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "commissions_today"
+                  ]
+                },
+                {
+                  "required": [
+                    "commission_source"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "From 1.3, risk_state carries commissions_today and commission_source.",
+      "if": {
+        "properties": {
+          "type": {
+            "const": "risk_state"
+          },
+          "protocol_version": {
+            "not": {
+              "pattern": "^1\\.[0-2]$"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "protocol_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": [
+              "commissions_today",
+              "commission_source"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "limits 1.3 fields only on 1.3+ envelopes.",
+      "if": {
+        "properties": {
+          "protocol_version": {
+            "pattern": "^1\\.[0-2]$"
+          },
+          "type": {
+            "const": "limits"
+          }
+        },
+        "required": [
+          "protocol_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "accounts": {
+                "items": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "commission_per_contract_side"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "evaluation"
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "drawdown": {
+                            "required": [
+                              "balance_adjustment"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "drawdown"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -713,9 +972,33 @@
                 "items": {
                   "$ref": "#/$defs/code"
                 }
+              },
+              "display_name": {
+                "description": "1.3+. The All Win account name (G3). A rename takes effect at the next welcome.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
               }
             }
           }
+        },
+        "connection_name": {
+          "description": "1.3+. The connection name the user gave in the web app (G2). A rename takes effect at the next welcome.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "time_zone": {
+          "description": "1.3+. The user's display time zone (IANA, profile; G4). Absent before 1.3: the plugin uses the Windows zone, labelled.",
+          "type": "string",
+          "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+          "maxLength": 64
+        },
+        "app_url": {
+          "description": "1.3+. Absolute https origin of the web app (G6), no path, no secret. Deep links are built on it. The plugin opens deep links only on this host, and only when it shares the registrable domain of the Core endpoint the plugin paired with (Vigia I1); params are shown as plain text.",
+          "type": "string",
+          "pattern": "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$",
+          "maxLength": 255
         }
       }
     },
@@ -1344,6 +1627,10 @@
                   },
                   "lock_at_balance": {
                     "$ref": "#/$defs/money"
+                  },
+                  "balance_adjustment": {
+                    "description": "1.3+. Σ(effective − platform-reported commission) cumulative since the account's tracking start up to the previous trading-day close, computed by the Core (≥ 0). Plugin adjusted equity = platform balance − balance_adjustment − the day's Σ(effective − reported) − expected closing commission + unrealized; compared with floor_balance / high_water_balance (Pêndulo M9).",
+                    "$ref": "#/$defs/non_negative_money"
                   }
                 }
               },
@@ -1372,6 +1659,40 @@
               },
               "blocked_until": {
                 "$ref": "#/$defs/utc_timestamp"
+              },
+              "commission_per_contract_side": {
+                "description": "1.3+. Configured commission floor per contract and side (U20 a; prefilled by the preset, editable). Effective commission of a fill = max(platform-reported, floor × quantity), fixed when the fill is recorded with the floor in force at that time (a later change affects only new fills). Absent = no floor. The plugin uses the floor of the last applied limits version at fill time; a difference with the Core's snapshot (a higher floor not yet received) is reconciled by the Core and affects only display (risk_state) and trades.reconcile_mismatch.",
+                "$ref": "#/$defs/non_negative_money"
+              },
+              "evaluation": {
+                "description": "1.3+. Evaluation profit target (Q46). progress = baseline_net_pnl + today's net P&L (realized + unrealized); remaining = profit_target − progress. Reaching it only notifies (no flatten, no block). The day's net used for progress deducts the expected closing commission, as live usage does, so 'target reached' is never notified early.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "profit_target",
+                  "baseline_net_pnl",
+                  "start_date",
+                  "as_of_trading_day"
+                ],
+                "properties": {
+                  "profit_target": {
+                    "$ref": "#/$defs/non_negative_money"
+                  },
+                  "baseline_net_pnl": {
+                    "description": "Net P&L earned in the evaluation up to the end of the previous trading day, computed by the Core; it ALREADY includes evaluation_earned_before (user-entered profit before tracking): earned_before + (adjusted net balance at the previous trading-day close − baseline balance), where baseline balance = the adjusted balance at the start of start_date's trading day, else the account size. The plugin's progress = baseline_net_pnl + the day's net.",
+                    "$ref": "#/$defs/money"
+                  },
+                  "start_date": {
+                    "description": "Evaluation start date (user-entered; default = account registration).",
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "as_of_trading_day": {
+                    "description": "Trading day the baseline is valid for; the plugin adds only that day's net.",
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  }
+                }
               }
             }
           }
@@ -1523,6 +1844,7 @@
               "$ref": "#/$defs/price"
             },
             "commission": {
+              "description": "Charges the platform reported for this execution (commission and fees), ≥ 0. ABSENT = the platform reported nothing; present 0 = the platform reported zero. Effective commission = max(reported or 0, floor × quantity), fixed at recording (U20 a). Per-fill commission_source: platform when the reported value is ≥ floor × quantity (it won); configured when the floor won (reported lower, zero, or absent with a floor); none when absent and no floor.",
               "$ref": "#/$defs/non_negative_money"
             },
             "operation": {
@@ -1856,6 +2178,7 @@
           "$ref": "#/$defs/utc_timestamp"
         },
         "realized_pnl": {
+          "description": "From 1.3: NET realized P&L of the trading day (gross minus effective commissions; U20). Before 1.3 the basis is not specified.",
           "$ref": "#/$defs/money"
         },
         "unrealized_pnl": {
@@ -1869,6 +2192,19 @@
         },
         "balance": {
           "$ref": "#/$defs/money"
+        },
+        "commissions_today": {
+          "description": "1.3+. Effective commissions of the trading day, ≥ 0 (max of platform-reported and the configured floor per fill). Gross = realized_pnl + commissions_today.",
+          "$ref": "#/$defs/non_negative_money"
+        },
+        "commission_source": {
+          "description": "1.3+. Where today's effective commissions came from. none = no platform commission and no configured floor: net equals gross and the plugin shows a warning.",
+          "enum": [
+            "platform",
+            "configured",
+            "mixed",
+            "none"
+          ]
         }
       }
     },
@@ -1880,6 +2216,321 @@
     "non_negative_money": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]{0,13})(\\.[0-9]{1,4})?$"
+    },
+    "notification_item": {
+      "description": "1.3+. One notification (S18), the same object as the HTTP Notification. Codes, categories and params schemas: contracts/notifications/v1/registry.json (params validated against it by the receiver).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "notification_id",
+        "revision",
+        "code",
+        "category",
+        "severity",
+        "params",
+        "count",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "notification_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "revision": {
+          "description": "Monotonic per notification_id; apply only if greater than the one held. A reopen (registry reopen_on_occurrence) is a higher revision without read_at.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "code": {
+          "$ref": "#/$defs/code"
+        },
+        "category": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 32
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "danger",
+            "critical"
+          ]
+        },
+        "account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "params": {
+          "type": "object"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_event_ids": {
+          "description": "event_ids of this plugin's A→C messages aggregated in it (at most the 50 most recent); the plugin replaces a local not-yet-synced copy with the same event_id.",
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "read_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "account",
+                "connection",
+                "instruction",
+                "route",
+                "activity_entry"
+              ]
+            },
+            "id": {
+              "$ref": "#/$defs/uuid"
+            }
+          }
+        }
+      }
+    },
+    "notifications": {
+      "description": "1.3+, C→A, latest wins, not acked. Snapshot after welcome: the most recent items (≤ 200, read and unread) and the authoritative unread count of all notifications.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "unread_count"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/notification_item"
+          }
+        },
+        "unread_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "worst_unread_severity": {
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "danger",
+            "critical"
+          ]
+        }
+      }
+    },
+    "notification": {
+      "description": "1.3+, C→A, reliable (acked). Upsert of one notification.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "item",
+        "unread_count"
+      ],
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/notification_item"
+        },
+        "unread_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "worst_unread_severity": {
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "danger",
+            "critical"
+          ]
+        }
+      }
+    },
+    "notification_read": {
+      "description": "1.3+, A→C, reliable (acked). The user marked notifications as read in the plugin. The Core applies it only to notifications of the session's user and ignores unknown or foreign ids without a distinct error (as HTTP markNotificationsRead).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "notification_ids",
+        "read_at"
+      ],
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "notification_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        "read_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        }
+      }
+    },
+    "trade_completed": {
+      "description": "1.3+, A→C, reliable (acked). A completed trade computed by the plugin (S21 AC-2; definition Q57: one trade per entry with FIFO exits in individual mode, flat-to-flat in shared mode). The Core reconciles it with the fills (opening_fill / closing_fills with quantities); a difference keeps the plugin's numbers and is audited (trades.reconcile_mismatch). It never feeds risk or enforcement: risk uses the fills and their effective commissions (Vigia I3). Trade boundaries (Q57): a FLIP fill splits — its closing part ends the trade (it is in closing_fills with the closing quantity) and its remainder opens the next trade with the same fill as opening_fill (with the remaining quantity). In individual mode a partial close, All Win or external, consumes entries FIFO (oldest first, the same rule as the brackets).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "trade_id",
+        "account_id",
+        "platform_account",
+        "instrument",
+        "direction",
+        "quantity",
+        "entry_time",
+        "entry_price",
+        "exit_time",
+        "exit_price",
+        "duration_seconds",
+        "net_pnl",
+        "gross_pnl",
+        "commission",
+        "opening_fill",
+        "closing_fills"
+      ],
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "trade_id": {
+          "description": "Generated by the plugin; idempotent (stored once).",
+          "$ref": "#/$defs/uuid"
+        },
+        "account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "platform_account": {
+          "$ref": "#/$defs/platform_account"
+        },
+        "instrument": {
+          "$ref": "#/$defs/instrument"
+        },
+        "direction": {
+          "enum": [
+            "long",
+            "short"
+          ]
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "entry_time": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "entry_price": {
+          "$ref": "#/$defs/price"
+        },
+        "exit_time": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "exit_price": {
+          "$ref": "#/$defs/price"
+        },
+        "duration_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "net_pnl": {
+          "description": "Main value (U20): gross_pnl − commission.",
+          "$ref": "#/$defs/money"
+        },
+        "gross_pnl": {
+          "$ref": "#/$defs/money"
+        },
+        "commission": {
+          "description": "Effective commission allocated to this trade (floor applied). A fill shared by several trades (a flip, or a FIFO partial close in individual mode) is allocated pro rata by the quantity each trade takes from it: share = round(fill effective commission × quantity / fill quantity, 4 decimals, half away from zero), and the trade allocated LAST from that fill gets the remainder, so the shares always sum to the fill's effective commission. gross_pnl and net_pnl use the same quantities.",
+          "$ref": "#/$defs/non_negative_money"
+        },
+        "mae": {
+          "description": "Maximum adverse excursion in USD, ≥ 0. ABSENT when the plugin did not observe the whole interval (never partial).",
+          "$ref": "#/$defs/non_negative_money"
+        },
+        "mfe": {
+          "description": "As mae, favourable.",
+          "$ref": "#/$defs/non_negative_money"
+        },
+        "command_id": {
+          "description": "The entry's All Win command, when routed; absent for external trades.",
+          "$ref": "#/$defs/uuid"
+        },
+        "opening_fill": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fill_id",
+            "quantity"
+          ],
+          "properties": {
+            "fill_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "quantity": {
+              "description": "Contracts of this fill that belong to this trade.",
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "description": "The fill (and the quantity of it) that opened the trade."
+        },
+        "closing_fills": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fill_id",
+              "quantity"
+            ],
+            "properties": {
+              "fill_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "quantity": {
+                "description": "Contracts of this fill that belong to this trade.",
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
