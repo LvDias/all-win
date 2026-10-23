@@ -12,12 +12,13 @@ workspace = true
 [dependencies]
 async-trait.workspace = true
 catalog-application.workspace = true
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "macros", "uuid", "chrono", "json"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "macros", "uuid", "chrono", "json", "rust_decimal"] }
 # S5 (rule versions): HTTP handlers.
 access = { workspace = true, features = ["axum"] }
 axum.workspace = true
 chrono = { workspace = true, features = ["std", "serde"] }
 contracts.workspace = true
+rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
@@ -25,6 +26,7 @@ utoipa.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+jsonschema.workspace = true
 async-trait.workspace = true
 http-body-util.workspace = true
 shared-kernel.workspace = true

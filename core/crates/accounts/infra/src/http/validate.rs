@@ -25,28 +25,42 @@ pub enum Invalid {
     Unavailable,
 }
 
-fn validator(name: &'static str) -> Result<std::sync::Arc<jsonschema::Validator>, Invalid> {
+/// The cached validator of `schema` under `key` (keys are unique per schema across callers).
+fn validator_with(
+    key: &'static str,
+    schema: &Value,
+) -> Result<std::sync::Arc<jsonschema::Validator>, Invalid> {
     let mut cache = VALIDATORS.lock().map_err(|_| Invalid::Unavailable)?;
-    if let Some(v) = cache.get(name) {
+    if let Some(v) = cache.get(key) {
         return Ok(v.clone());
     }
-    let schema = component(name).ok_or(Invalid::Unavailable)?;
     let v =
         std::sync::Arc::new(jsonschema::validator_for(schema).map_err(|_| Invalid::Unavailable)?);
-    cache.insert(name, v.clone());
+    cache.insert(key, v.clone());
     Ok(v)
 }
 
 /// Parses `bytes` as JSON and validates it against the component `name`.
 pub fn body(bytes: &[u8], name: &'static str) -> Result<Value, Invalid> {
-    let value: Value = serde_json::from_slice(bytes).map_err(|_| Invalid::Malformed)?;
-    value_against(&value, name)?;
-    Ok(value)
+    let schema = component(name).ok_or(Invalid::Unavailable)?;
+    body_with(bytes, name, schema)
 }
 
 pub fn value_against(value: &Value, name: &'static str) -> Result<(), Invalid> {
-    let v = validator(name)?;
     let schema = component(name).ok_or(Invalid::Unavailable)?;
+    value_with(value, name, schema)
+}
+
+/// [`body`] against a schema the caller holds (another file's components), cached under `key`.
+pub fn body_with(bytes: &[u8], key: &'static str, schema: &Value) -> Result<Value, Invalid> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|_| Invalid::Malformed)?;
+    value_with(&value, key, schema)?;
+    Ok(value)
+}
+
+/// [`value_against`] against a schema the caller holds, cached under `key`.
+pub fn value_with(value: &Value, key: &'static str, schema: &Value) -> Result<(), Invalid> {
+    let v = validator_with(key, schema)?;
     match v.iter_errors(value).next() {
         None => Ok(()),
         Some(e) => Err(Invalid::At(truncate(pointer_of(&e, schema, value)))),

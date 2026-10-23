@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT size_amount FROM catalog.standard_account_size ORDER BY size_amount",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "size_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "catalog.standard_account_size",
+            "name": "size_amount"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "22e97e81f13ab335488bce2b5d0ca4bbae91fa4b677c2ec4da68012fca46ded3"
+}

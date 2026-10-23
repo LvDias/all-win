@@ -413,6 +413,7 @@ dependencies = [
  "async-trait",
  "catalog-enterprise",
  "chrono",
+ "rust_decimal",
  "serde_json",
  "thiserror",
  "tokio",
@@ -423,7 +424,9 @@ dependencies = [
 name = "catalog-enterprise"
 version = "0.1.0"
 dependencies = [
+ "rust_decimal",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -437,6 +440,8 @@ dependencies = [
  "chrono",
  "contracts",
  "http-body-util",
+ "jsonschema",
+ "rust_decimal",
  "serde",
  "serde_json",
  "shared-kernel",

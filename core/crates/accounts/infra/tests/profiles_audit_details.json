@@ -1,0 +1,368 @@
+{
+ "profiles.account_changed": {
+  "additionalProperties": false,
+  "description": "`profiles.default_changed` (with `size_amount`) and `profiles.account_changed` (with `action`).",
+  "properties": {
+   "action": {
+    "enum": [
+     "initial_copy",
+     "edited",
+     "restored"
+    ],
+    "type": "string"
+   },
+   "copied_from_size": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "instrument_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "new": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "ticks"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          }
+         }
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "usd"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          }
+         }
+        }
+       }
+      ],
+      "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+     }
+    ],
+    "description": "`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most\n10 decimals. Each distance must be at least one tick after conversion (422 otherwise).\n",
+    "properties": {
+     "distance_unit": {
+      "enum": [
+       "points",
+       "ticks",
+       "usd"
+      ],
+      "type": "string"
+     },
+     "stop_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "target_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "distance_unit",
+     "stop_distance",
+     "target_distance"
+    ],
+    "type": "object"
+   },
+   "previous": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "ticks"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          }
+         }
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "usd"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          }
+         }
+        }
+       }
+      ],
+      "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+     }
+    ],
+    "description": "`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most\n10 decimals. Each distance must be at least one tick after conversion (422 otherwise).\n",
+    "properties": {
+     "distance_unit": {
+      "enum": [
+       "points",
+       "ticks",
+       "usd"
+      ],
+      "type": "string"
+     },
+     "stop_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "target_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "distance_unit",
+     "stop_distance",
+     "target_distance"
+    ],
+    "type": "object"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "instrument_id",
+   "new"
+  ],
+  "type": "object"
+ },
+ "profiles.default_changed": {
+  "additionalProperties": false,
+  "description": "`profiles.default_changed` (with `size_amount`) and `profiles.account_changed` (with `action`).",
+  "properties": {
+   "action": {
+    "enum": [
+     "initial_copy",
+     "edited",
+     "restored"
+    ],
+    "type": "string"
+   },
+   "copied_from_size": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "instrument_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "new": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "ticks"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          }
+         }
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "usd"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          }
+         }
+        }
+       }
+      ],
+      "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+     }
+    ],
+    "description": "`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most\n10 decimals. Each distance must be at least one tick after conversion (422 otherwise).\n",
+    "properties": {
+     "distance_unit": {
+      "enum": [
+       "points",
+       "ticks",
+       "usd"
+      ],
+      "type": "string"
+     },
+     "stop_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "target_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "distance_unit",
+     "stop_distance",
+     "target_distance"
+    ],
+    "type": "object"
+   },
+   "previous": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "ticks"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,5}$"
+          }
+         }
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "distance_unit": {
+           "const": "usd"
+          }
+         }
+        },
+        "then": {
+         "properties": {
+          "stop_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          },
+          "target_distance": {
+           "pattern": "^[0-9]{1,8}(\\.[0-9]{1,2})?$"
+          }
+         }
+        }
+       }
+      ],
+      "description": "The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields."
+     }
+    ],
+    "description": "`ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most\n10 decimals. Each distance must be at least one tick after conversion (422 otherwise).\n",
+    "properties": {
+     "distance_unit": {
+      "enum": [
+       "points",
+       "ticks",
+       "usd"
+      ],
+      "type": "string"
+     },
+     "stop_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     },
+     "target_distance": {
+      "description": "Decimal string; its allowed shape depends on the unit (see `DistanceProfile`).",
+      "pattern": "^[0-9]{1,8}(\\.[0-9]{1,10})?$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "distance_unit",
+     "stop_distance",
+     "target_distance"
+    ],
+    "type": "object"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "instrument_id",
+   "new"
+  ],
+  "type": "object"
+ }
+}

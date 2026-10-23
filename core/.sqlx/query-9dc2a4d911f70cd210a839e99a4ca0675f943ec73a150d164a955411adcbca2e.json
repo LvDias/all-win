@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT kind, size_amount, display_name FROM accounts.account\n               WHERE user_id = $1 AND id = $2 AND archived_at IS NULL FOR SHARE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "size_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "size_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "display_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9dc2a4d911f70cd210a839e99a4ca0675f943ec73a150d164a955411adcbca2e"
+}
