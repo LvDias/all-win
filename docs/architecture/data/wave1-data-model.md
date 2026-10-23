@@ -1,18 +1,19 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Proposed (2026-10-23). Draft for Architect alignment and for Backend Rust; no migration written yet.
+- **Status:** Accepted (2026-10-23), rev. 2. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. No migration written yet.
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
   - [slice-plan.md](../../product/release-1/slice-plan.md) rev. 3
   - ADRs (Accepted): [0001](../adr/0001-technology-stack.md) §4–§8, [0002](../adr/0002-repository-structure.md)
-  - ADRs (Proposed drafts of 2026-10-23): [0003](../adr/0003-instruction-contract-v1.md), [0004](../adr/0004-adapter-protocol-v1.md)
+  - ADRs (Accepted 2026-10-23): [0003](../adr/0003-instruction-contract-v1.md), [0004](../adr/0004-adapter-protocol-v1.md); `contracts/adapter-protocol/CHANGELOG.md` (1.0 acceptance deltas)
+  - [v1-s5-automation-opt-in.md](../../design/specs/v1-s5-automation-opt-in.md) (design spec, proposed) for the automation opt-in fields
   - [auth-and-session-policy.md](../security/auth-and-session-policy.md) (Proposed)
   - [q13-audit-retention.md](q13-audit-retention.md)
 - **Engine:** PostgreSQL ≥ 16 through sqlx. All SQL below is PostgreSQL 16 syntax. It is illustrative DDL that Backend Rust turns into migrations, and the DBA reviews those migrations.
 - **Markers:**
-  - **[ALIGN]** — needs the Architect's agreement or a contract change (§10).
-  - **[Q]** — business question for the PO/user (§11).
+  - **[ALIGN-n]** — item agreed with the Architect (§10); all eight are accepted.
+  - **[Q-…]** — business question for the PO/user (§11); Q-A3 and Q-O1 are still open.
   - **Preview** — a table shown so keys and retention are consistent, finalized by its own slice.
 
 ## 1. Principles
@@ -35,7 +36,7 @@
 | Value kind | PostgreSQL | Rust newtype | Wire (contract) | Notes |
 |---|---|---|---|---|
 | **Price**: fill, average, limit/stop price, `reference_price`, tick size, distance in points, `price_delta` | `NUMERIC(22,10)` | `Price` / `Points` (`rust_decimal`) | string, ≤ 12 integer + ≤ 10 fraction digits (`$defs/price`) | Matches the contract exactly. Covers every CME tick (0.25; 1/128 = 0.0078125; 0.0000005). 22 digits fits `rust_decimal` and C# `decimal` (28) |
-| **Money** (USD): P&L, commission, account size, limits, point/tick value, distance in dollars | `NUMERIC(18,4)` | `Money` | string; **[ALIGN-1]** proposed `$defs/money`, ≤ 14 integer + ≤ 4 fraction digits | 4 decimals hold exact tick values (ZN US$ 15.625, ZT US$ 7.8125). P&L = ticks × tick value, so it stays exact at 4 decimals. Display rounds to cents and never changes the stored value |
+| **Money** (USD): P&L, commission, account size, limits, point/tick value, distance in dollars | `NUMERIC(18,4)` | `Money` | string, `$defs/money` / `non_negative_money`: ≤ 14 integer + ≤ 4 fraction digits (ALIGN-1). `NUMERIC(18,4)` holds exactly that range | 4 decimals hold exact tick values (ZN US$ 15.625, ZT US$ 7.8125). P&L = ticks × tick value, so it stays exact at 4 decimals. Display rounds to cents and never changes the stored value |
 | **Contracts**: quantity, multiplier, max position, fill quantity | `integer` with `CHECK` (≥ 1, or ≥ 0 for "filled so far") | `Quantity`, `Multiplier` | integer | Whole numbers only (vision §8). Signed position is a signed `integer` |
 | **Distance in ticks** | stored in the profile's `NUMERIC(22,10)` value column with a whole-number `CHECK`; `integer` where the column is only ticks | `Ticks` | integer (`stop_ticks`, `target_ticks`) | — |
 | **Warning threshold** | `smallint` 1–99 | — | integer (`warning_threshold_pct`) | — |
@@ -45,8 +46,8 @@ Rules for the Core:
 
 - **PostgreSQL silently rounds input to the column scale.** The Core must reject any value whose scale exceeds the column's, in the newtype constructors, and must never rely on the database to round.
 - Every rounding is an explicit domain rule:
-  - the plugin rounds `double` to tick at its boundary (ADR-0001 §7);
-  - the Core normalizes profile distances to whole ticks (ADR-0004 §5) using the rule in **[Q-N1]**.
+  - the plugin converts NinjaTrader `double` values at its boundary (ADR-0001 §7, ADR-0005); the Core never rounds silently;
+  - the Core normalizes profile distances to whole ticks (ADR-0004 §5). A dollar distance that is not a whole number of ticks is rounded **toward the entry**, and the adjustment is audited (Q-N1, decided).
 - Price-on-tick validation is a domain rule. A `CHECK` cannot read the instrument row.
 
 ## 3. Per-user isolation: application scoping + RLS
@@ -166,7 +167,8 @@ CREATE TABLE identity.recovery_code (
   id         uuid PRIMARY KEY,
   user_id    uuid NOT NULL REFERENCES identity.app_user(id),
   batch_id   uuid NOT NULL,                              -- regeneration replaces the batch
-  code_hmac  bytea NOT NULL,                             -- HMAC-SHA-256(pepper, normalized code)  [ALIGN-4]
+  code_hmac  bytea NOT NULL CHECK (octet_length(code_hmac) = 32),  -- HMAC-SHA-256(pepper, normalized code) (ALIGN-4)
+  pepper_version smallint NOT NULL,                      -- codes live for months; survives a pepper rotation
   created_at timestamptz NOT NULL DEFAULT now(),
   used_at    timestamptz,
   UNIQUE (user_id, code_hmac)
@@ -198,8 +200,8 @@ CREATE TABLE identity.source_key (                       -- token awk_<key_id>_<
   id          uuid PRIMARY KEY,
   user_id     uuid NOT NULL,
   source_id   uuid NOT NULL,
-  key_id      text NOT NULL UNIQUE,                      -- public part; may appear in audit/logs
-  secret_hash bytea NOT NULL,                            -- SHA-256 of the 256-bit secret
+  key_id      text NOT NULL UNIQUE CHECK (key_id ~ '^[A-Za-z0-9]{12}$'),  -- public part; may appear in audit/logs (ALIGN-3)
+  secret_hash bytea NOT NULL CHECK (octet_length(secret_hash) = 32),    -- SHA-256 of the 32-byte secret; never the token
   created_at  timestamptz NOT NULL DEFAULT now(),
   revoked_at  timestamptz,
   FOREIGN KEY (user_id, source_id) REFERENCES identity.source (user_id, id)
@@ -227,11 +229,12 @@ CREATE TABLE identity.pairing_code (
   id            uuid PRIMARY KEY,
   user_id       uuid NOT NULL,
   connection_id uuid NOT NULL,
-  code_hmac     bytea NOT NULL UNIQUE,                   -- 40-bit code → HMAC with pepper  [ALIGN-4]
+  code_hmac     bytea NOT NULL UNIQUE CHECK (octet_length(code_hmac) = 32),  -- 40-bit code → HMAC-SHA-256 with pepper (ALIGN-4)
+  pepper_version smallint NOT NULL,
   created_at    timestamptz NOT NULL DEFAULT now(),
   expires_at    timestamptz NOT NULL,                    -- +10 min
   used_at       timestamptz,
-  invalidated_at timestamptz,                            -- superseded or too many failures
+  invalidated_at timestamptz,                            -- superseded by a new code, or connection unpaired
   FOREIGN KEY (user_id, connection_id) REFERENCES identity.adapter_connection (user_id, id)
 );
 CREATE UNIQUE INDEX pairing_code_one_active ON identity.pairing_code (connection_id)
@@ -241,8 +244,8 @@ CREATE TABLE identity.device_token (                     -- token awd_<key_id>_<
   id            uuid PRIMARY KEY,
   user_id       uuid NOT NULL,
   connection_id uuid NOT NULL,
-  key_id        text NOT NULL UNIQUE,
-  token_hash    bytea NOT NULL,                          -- SHA-256 of the 256-bit secret
+  key_id        text NOT NULL UNIQUE CHECK (key_id ~ '^[A-Za-z0-9]{12}$'),  -- ALIGN-3
+  token_hash    bytea NOT NULL CHECK (octet_length(token_hash) = 32),    -- SHA-256 of the 32-byte secret
   created_at    timestamptz NOT NULL DEFAULT now(),
   revoked_at    timestamptz,
   FOREIGN KEY (user_id, connection_id) REFERENCES identity.adapter_connection (user_id, id)
@@ -251,7 +254,13 @@ CREATE UNIQUE INDEX device_token_one_active ON identity.device_token (connection
 -- re-pairing revokes the previous token in the same transaction (ADR-0004 §8)
 ```
 
-Login throttling (security policy §2) keeps its counters **in memory**, which is enough for a single Core instance (ADR-0001 §4). The "usual IPs" of a user come from `identity.session.ip_address` over the last 30 days, so no extra table is needed.
+- Token format (ALIGN-3): `awk_<key_id>_<secret>` (webhook) and `awd_<key_id>_<secret>` (device); `key_id` = 12 characters `[A-Za-z0-9]`, `secret` = 43 characters base64url (32 bytes). Only `key_id` and the SHA-256 of the secret are stored. The Core generates `key_id` at random and retries on a unique violation.
+- **Throttling counters live in memory**, which is enough for a single Core instance (ADR-0001 §4):
+  - login (security policy §2);
+  - pairing (ADR-0004 §8): 10 attempts per minute per IP, plus a global limit of 100 failures per 10 minutes that locks the endpoint for 10 minutes and raises an alert.
+
+  The pairing request carries only the code, so there is no per-connection counter and no table. A Core restart resets the counters. That is acceptable: the brute-force margin rests on the 40-bit space and the 10-minute code lifetime.
+- The "usual IPs" of a user come from `identity.session.ip_address` over the last 30 days, so no extra table is needed.
 
 ### 4.2 Secret storage
 
@@ -259,7 +268,7 @@ Login throttling (security policy §2) keeps its counters **in memory**, which i
 |---|---|---|
 | Password | low | argon2id PHC string |
 | Webhook secret, device token, session cookie, invitation/reset token | 256 bits | SHA-256, `bytea(32)`, looked up by `key_id` or hash, compared in constant time |
-| Pairing code (40 bits), recovery codes (50 bits) | low, human-typed | **HMAC-SHA-256 with a server pepper** (environment secret, versioned), plus expiry and attempt limits. A plain SHA-256 of 40–50 bits can be brute-forced offline from a database dump, and recovery codes live for months **[ALIGN-4]** |
+| Pairing code (40 bits), recovery codes (50 bits) | low, human-typed | **HMAC-SHA-256 with a server pepper** (environment secret; `pepper_version` stored per row), plus expiry and attempt limits (ALIGN-4, accepted). A plain SHA-256 of 40–50 bits can be brute-forced offline from a database dump, and recovery codes live for months |
 | TOTP seed | must be recoverable | AES-256-GCM, key from the environment, `key_version` for rotation |
 
 ## 5. Accounts core (S5–S7)
@@ -286,7 +295,7 @@ CREATE TABLE catalog.instrument_contract (               -- active contract mont
   active_from    timestamptz NOT NULL,                   -- rollover instant
   PRIMARY KEY (instrument_id, contract_month),
   UNIQUE (instrument_id, active_from)
-);  -- [Q-A5] global (admin) or per user?
+);  -- global, maintained by the admin, with an advance warning to users (Q-A5 decided)
 
 CREATE TABLE catalog.standard_account_size (             -- 25k, 50k, 100k, 150k, 200k, 300k (vision §8)
   size_amount NUMERIC(18,4) PRIMARY KEY CHECK (size_amount > 0)
@@ -305,21 +314,28 @@ CREATE TABLE accounts.account (
   kind              text NOT NULL CHECK (kind IN ('prop','real')),
   firm_id           uuid,                                -- prop only; catalog (S16)
   plan_name         text,
-  phase             text,                                -- [Q-A3] list from preset research
+  phase             text,                                -- [Q-A3] open: list from preset research
   preset_version_id uuid,                                -- S16
   size_amount       NUMERIC(18,4) NOT NULL CHECK (size_amount > 0),   -- real: any size (Q12)
   currency          char(3) NOT NULL DEFAULT 'USD',
   multiplier        integer NOT NULL DEFAULT 1 CHECK (multiplier BETWEEN 1 AND 1000),
-  max_position_qty  integer NOT NULL CHECK (max_position_qty BETWEEN 1 AND 10000),  -- mandatory; [Q-A1]
+  max_position_qty  integer NOT NULL CHECK (max_position_qty BETWEEN 1 AND 10000),  -- one per account in V1 (Q-A1)
   lifecycle_state   text NOT NULL DEFAULT 'active' CHECK (lifecycle_state IN ('active','paused','disabled')),
   bracket_mode      text NOT NULL DEFAULT 'individual' CHECK (bracket_mode IN ('individual','shared')),
   command_ttl_ms    integer NOT NULL DEFAULT 5000 CHECK (command_ttl_ms BETWEEN 1000 AND 60000),  -- Q16/T2
+  automation_state  text NOT NULL DEFAULT 'not_required'
+                    CHECK (automation_state IN ('not_required','chosen','pending_review')),  -- opt-in (decision 2026-10-23, A)
+  automation_choice text CHECK (automation_choice IN ('accepted','declined')),  -- no default: NULL until the user chooses
+  automation_rule_version_id uuid,                       -- preset version whose rule text the user saw (S16)
+  automation_chosen_at timestamptz,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
   archived_at       timestamptz,                         -- "deleted" (S5 AC-6); history keeps the id
   row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
   UNIQUE (user_id, id),
-  CHECK (kind = 'prop' OR (firm_id IS NULL AND plan_name IS NULL AND phase IS NULL AND preset_version_id IS NULL))
+  CHECK (kind = 'prop' OR (firm_id IS NULL AND plan_name IS NULL AND phase IS NULL AND preset_version_id IS NULL)),
+  CHECK (kind = 'prop' OR automation_state = 'not_required'),
+  CHECK (automation_state <> 'chosen' OR (automation_choice IS NOT NULL AND automation_chosen_at IS NOT NULL))
 );
 CREATE UNIQUE INDEX account_user_name_key ON accounts.account (user_id, lower(display_name)) WHERE archived_at IS NULL;
 CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_at IS NULL;
@@ -328,6 +344,12 @@ CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_
 - The bounds `multiplier ≤ 1000` and `max_position_qty ≤ 10000` mirror the structural caps in the contracts (instruction `quantity` ≤ 1000, command `quantity` ≤ 10000). The business limit is the user's value.
 - `firm_id` / `phase` become mandatory for `prop` once S16 exists. Until then a prop account can be saved without a preset, so no `CHECK` yet.
 - "Max position cannot exceed the preset's" (S5 AC-3) is a domain rule checked against the preset version.
+- **Automation opt-in** (decision 2026-10-23, option A; ADR-0003 §4.1 gate `routing.automation_not_accepted`):
+  - Routing reads it through the `accounts` query port. An account accepts automated sources only when `automation_state = 'not_required'`, or when `automation_state = 'chosen'` and `automation_choice = 'accepted'`. A `declined` or `pending_review` account is skipped and audited.
+  - The row holds only the **current** choice. Each change is written to the audit log **in the same transaction** through `app.outbox`: user, time, choice, preset version, and the source URL and access date of the rule text (spec O6). That gives the "date and user" record the decision requires, and it cannot be lost on a crash.
+  - Real accounts are always `not_required` (enforced by a `CHECK`). Prop accounts stay `not_required` until S16 brings presets. The S16 migration then moves prop accounts whose stance requires a choice to `pending_review` (spec §2, PO to confirm).
+  - Open user questions in the S5 spec (Q24 copy opt-in, Q25 which stances, Q26 rule change) fit these columns without a schema change, except Q24 = yes, which adds a parallel `copy_*` set of columns.
+  - The firm platform (spec O9) is a nullable prop-only column reserved for S16, like `firm_id`.
 - **Single writer per flag:**
   - out-of-sync state belongs to `gateway` (§6.3);
   - risk limits, enforcement toggle and blocks belong to `risk` (§5.6).
@@ -346,6 +368,7 @@ CREATE TABLE gateway.venue_account (
   platform_account text NOT NULL CHECK (length(platform_account) BETWEEN 1 AND 128),
   connection_name  text,                                 -- hello.accounts[].connection_name
   kind             text NOT NULL CHECK (kind IN ('simulation','playback','live','unknown')),
+  oco_location     text NOT NULL CHECK (oco_location IN ('local','server','unknown')),  -- hello.accounts[], refreshed on each hello
   first_seen_at    timestamptz NOT NULL DEFAULT now(),
   last_seen_at     timestamptz NOT NULL DEFAULT now(),
   account_id       uuid,                                 -- bound accounts.account id
@@ -359,13 +382,19 @@ CREATE UNIQUE INDEX venue_account_bound_key ON gateway.venue_account (account_id
 -- to bind kind IN ('live','unknown') (ADR-0004 §8 environment guard).
 ```
 
+- `oco_location` is stored on `venue_account`, not on `accounts.account`, for two reasons:
+  - `hello` reports it per platform account;
+  - it is a platform fact that `gateway` owns, and the `accounts` module never sees platform data (X-1).
+
+  The Core treats `unknown` like `local` (ADR-0004 §6.1). The web warning reads it through a gateway query port.
+
 ### 5.4 Stop/target profiles (S6)
 
 ```sql
 CREATE TABLE accounts.default_bracket_profile (          -- per user × standard size × instrument
   user_id         uuid NOT NULL REFERENCES identity.app_user(id),
   size_amount     NUMERIC(18,4) NOT NULL,                -- one of catalog.standard_account_size (domain-validated)
-  instrument_id   uuid NOT NULL,                         -- [Q-A2]
+  instrument_id   uuid NOT NULL,                         -- profiles keyed by instrument (Q-A2 decided)
   distance_unit   text NOT NULL CHECK (distance_unit IN ('points','ticks','usd')),
   stop_distance   NUMERIC(22,10) NOT NULL CHECK (stop_distance > 0),
   target_distance NUMERIC(22,10) NOT NULL CHECK (target_distance > 0),
@@ -410,7 +439,7 @@ CREATE TABLE routing.subscription (                      -- source → account, 
 CREATE INDEX subscription_source_idx ON routing.subscription (user_id, source_id) WHERE is_enabled;
 ```
 
-- **[ALIGN-5 / Q-A4]** ADR-0001 §4 puts the signal-type selection in `accounts`, and the vision says it is per account. With several sources per user (Q17), the filter per (source, account) is a superset of that, and it fits naturally on the subscription. Per-account behavior is the special case where the user sets the same filter on every source.
+- **Signal filter per (source, account)** (Q-A4 decided, ALIGN-5 accepted; ADR-0003 §4.1 gate `routing.signal_type_not_selected`). Per-account behavior is the special case where the user sets the same filter on every source.
 - Multiplier and max position are read from `accounts` at routing time. Every routing decision **snapshots** the values it used (§6), so the audit trail stays explainable after an edit.
 
 ### 5.6 Risk core (preview for S13–S15; only `max_position_qty` is needed by S5–S7)
@@ -476,7 +505,7 @@ CREATE TABLE routing.instruction (                       -- accepted instruction
   status           text NOT NULL DEFAULT 'accepted' CHECK (status IN ('accepted','routing','routed','failed')),
   UNIQUE (user_id, id),
   CHECK (expiry_base <= received_at),
-  CONSTRAINT instruction_no_token CHECK (payload::text !~ 'aw[kd]_[A-Za-z0-9]+_[A-Za-z0-9_-]{32,}')  -- [ALIGN-3]
+  CONSTRAINT instruction_no_token CHECK (payload::text !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')  -- ALIGN-3 format
 );
 CREATE INDEX instruction_user_received_idx ON routing.instruction (user_id, received_at DESC);
 CREATE INDEX instruction_pending_idx ON routing.instruction (received_at) WHERE status IN ('accepted','routing');
@@ -541,20 +570,27 @@ CREATE TABLE gateway.command (                           -- also the delivery ou
   instruction_id uuid NOT NULL,
   account_id     uuid NOT NULL,
   connection_id  uuid NOT NULL,
-  step           text NOT NULL,                          -- e.g. 'flatten','place'  [ALIGN-6]
+  step           text NOT NULL CHECK (step ~ '^(place|flatten|(modify|cancel):(0|[1-9][0-9]{0,3})|orphan_flatten:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'),  -- ALIGN-6, ALIGN-8
   kind           text NOT NULL CHECK (kind IN ('place','modify','cancel','flatten')),
   depends_on     uuid REFERENCES gateway.command(id) ON DELETE SET NULL,
   expires_at     timestamptz,                            -- required for position-increasing (ADR-0004 §5)
-  state          text NOT NULL CHECK (state IN ('pending','sent','acked','completed','rejected','expired','failed')),
+  state          text NOT NULL CHECK (state IN ('pending','sent','acked','completed','rejected','expired','failed','unknown')),
   payload        jsonb NOT NULL,                         -- protocol `command` body
   created_at     timestamptz NOT NULL,
   sent_at        timestamptz,
   acked_at       timestamptz,
   finished_at    timestamptz,
-  UNIQUE (instruction_id, account_id, step)
+  UNIQUE (instruction_id, account_id, step),
+  CHECK (CASE split_part(step, ':', 1) WHEN 'orphan_flatten' THEN 'flatten' ELSE split_part(step, ':', 1) END = kind)
 );
 CREATE INDEX command_open_idx ON gateway.command (connection_id, created_at) WHERE state IN ('pending','sent');
 CREATE INDEX command_user_instruction_idx ON gateway.command (user_id, instruction_id);
+-- step codes (ADR-0003 §5): <n> = zero-based ordinal of that kind in the routing plan of the
+-- (instruction, account) pair; reverse = 'flatten' + 'place'; reduce = 'place'.
+-- 'unknown': the order's state could not be determined after a recovery (execution_report status 'unknown').
+-- 'orphan_flatten:<event_id>' (ALIGN-8, used only if Q-O1 = b): kind 'flatten', reason 'orphan_fill'; keeps the
+-- instruction_id that created the bracket; <event_id> = execution_report of the orphan leg's fill, in canonical
+-- lower-case UUID text (the UUIDv5 input must be byte-identical across Core retries).
 
 CREATE TABLE gateway.execution_report (
   event_id          uuid PRIMARY KEY,                    -- adapter-generated; UNIQUE (ADR-0004 §4)
@@ -564,12 +600,13 @@ CREATE TABLE gateway.execution_report (
   command_id        uuid,                                -- NULL for origin = external
   origin            text NOT NULL CHECK (origin IN ('all_win','local_enforcement','external')),
   child_role        text CHECK (child_role IN ('entry','stop','target')),
-  status            text NOT NULL CHECK (status IN ('received','working','partially_filled','filled','cancelled','rejected','expired','duplicate')),
+  status            text NOT NULL CHECK (status IN ('received','working','partially_filled','filled','cancelled','rejected','expired','duplicate','unknown')),
   platform_order_id text,
   fill_id           text,
   fill_qty          integer CHECK (fill_qty >= 1),
   fill_price        NUMERIC(22,10),
-  commission        NUMERIC(18,4),                       -- [ALIGN-1]
+  fill_operation    text CHECK (fill_operation IN ('add','amend','remove')),  -- wire default 'add', stored explicitly
+  commission        NUMERIC(18,4) CHECK (commission >= 0),   -- non_negative_money (ALIGN-1)
   position_after    integer,                             -- signed
   avg_price_after   NUMERIC(22,10),
   reason_code       text,
@@ -577,9 +614,12 @@ CREATE TABLE gateway.execution_report (
   platform_time     timestamptz,
   received_at       timestamptz NOT NULL DEFAULT now(),
   payload           jsonb NOT NULL,
-  CHECK ((fill_id IS NULL) = (fill_qty IS NULL) AND (fill_id IS NULL) = (fill_price IS NULL))
+  CHECK ((fill_id IS NULL) = (fill_qty IS NULL) AND (fill_id IS NULL) = (fill_price IS NULL)
+         AND (fill_id IS NULL) = (fill_operation IS NULL))
 );
-CREATE UNIQUE INDEX execution_report_fill_key ON gateway.execution_report (account_id, fill_id) WHERE fill_id IS NOT NULL;
+CREATE UNIQUE INDEX execution_report_fill_key ON gateway.execution_report (account_id, fill_id) WHERE fill_operation = 'add';
+CREATE INDEX execution_report_fill_history_idx ON gateway.execution_report (account_id, fill_id, occurred_at)
+  WHERE fill_id IS NOT NULL;
 CREATE INDEX execution_report_command_idx ON gateway.execution_report (command_id) WHERE command_id IS NOT NULL;
 CREATE INDEX execution_report_user_account_idx ON gateway.execution_report (user_id, account_id, occurred_at DESC);
 
@@ -587,10 +627,19 @@ CREATE TABLE gateway.account_sync (                      -- Q14 sticky flag, sin
   user_id     uuid NOT NULL,
   account_id  uuid PRIMARY KEY,
   sync_state  text NOT NULL CHECK (sync_state IN ('in_sync','out_of_sync')),
-  reason_code text,
   flagged_at  timestamptz,
   cleared_at  timestamptz,
-  cleared_by  uuid                                       -- user who cleared (S11 AC-3, audited)
+  cleared_by  uuid,                                      -- user who cleared (S11 AC-3, audited)
+  UNIQUE (user_id, account_id)
+);
+
+CREATE TABLE gateway.account_sync_reason (               -- current reasons → welcome.accounts[].sync_reasons
+  user_id     uuid NOT NULL,
+  account_id  uuid NOT NULL,
+  reason_code text NOT NULL CHECK (reason_code ~ '^sync\.[a-z][a-z0-9_]*$'),
+  raised_at   timestamptz NOT NULL,
+  PRIMARY KEY (account_id, reason_code),
+  FOREIGN KEY (user_id, account_id) REFERENCES gateway.account_sync (user_id, account_id) ON DELETE CASCADE
 );
 
 CREATE TABLE gateway.outbound_message (                  -- reliable C→A messages other than commands (limits, instruction_result)
@@ -612,10 +661,25 @@ CREATE TABLE gateway.inbound_receipt (                   -- msg_id dedupe ≥ 24
 );
 ```
 
+- **Fill dedupe with `fill.operation`** (adapter-protocol 1.0 delta):
+  - Every report is first deduped by `event_id` (primary key), so a redelivered report is a no-op.
+  - `add` is unique per `(account_id, fill_id)`, so the same execution is never counted twice.
+  - `amend` and `remove` are new events with their own `event_id` for an existing `fill_id`. They are inserted as new rows, never as updates: the report history stays immutable, and the audit can show the correction.
+  - The effective fill is the latest row by `occurred_at` for that `(account_id, fill_id)`, read through `execution_report_fill_history_idx`. The Core recomputes position and P&L from it, audits the correction, and flags `out_of_sync` when the expected state no longer matches (ADR-0004 §5).
+  - An `amend`/`remove` whose `add` is unknown is stored, audited and flags the account. It is never dropped.
+- **Sync reasons are a set**, one row per code. The adapter's window shows them, and so does the web app.
+  - Known codes, from ADR-0004 §5–§6.1 and the contract examples: `sync.bracket_integrity_unknown`, `sync.bracket_orphan_leg`, `sync.bracket_double_fill`, `sync.bracket_incomplete`, `sync.simulation_reset`, `sync.disconnected_in_trade`.
+  - The `CHECK` validates only the format, so a new code from the contract needs no migration. The Core rejects codes that are not in its own list.
+  - A reason is removed when its condition resolves. `sync_state` stays `out_of_sync` until the user clears it (Q14; "alert and wait"). Reason history lives in the audit log, not here.
+- **Position snapshots are not stored.** The gateway compares each `position_snapshot` with the expected state, raises sync reasons and writes audit entries.
+  - `trigger: account_reset` raises `sync.simulation_reset`; the discontinuity is never read as fills.
+  - Working orders in state `unknown` feed `sync.bracket_incomplete`.
+  - If S11 (reconciliation view) needs the last snapshot per account, it adds a table then.
+
 ### 6.4 Audit and event outbox
 
 ```sql
-CREATE TABLE app.outbox (                                -- domain events, written in the producer's transaction [ALIGN-2]
+CREATE TABLE app.outbox (                                -- domain events, written in the producer's transaction (ALIGN-2)
   id           uuid PRIMARY KEY,                         -- event id
   user_id      uuid NOT NULL,
   event_type   text NOT NULL,                            -- 'routing.decision_made', …
@@ -644,7 +708,7 @@ CREATE TABLE audit.audit_entry (
   details         jsonb NOT NULL DEFAULT '{}'::jsonb,
   PRIMARY KEY (occurred_at, id),
   UNIQUE (occurred_at, source_event_id),
-  CONSTRAINT audit_entry_no_token CHECK (details::text !~ 'aw[kd]_[A-Za-z0-9]+_[A-Za-z0-9_-]{32,}')
+  CONSTRAINT audit_entry_no_token CHECK (details::text !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
 ) PARTITION BY RANGE (occurred_at);
 CREATE INDEX audit_entry_user_time_idx        ON audit.audit_entry (user_id, occurred_at DESC);
 CREATE INDEX audit_entry_user_instruction_idx ON audit.audit_entry (user_id, instruction_id) WHERE instruction_id IS NOT NULL;
@@ -654,7 +718,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 ```
 
 - **Filters (S10 AC-2):** date, account, source, signal type and outcome are served by the user/time and user/account indexes, with the rest filtered inside the user's time range. No further index is added until measured (no speculative indexes).
-- **Durability of audit:** ADR-0001 §4 publishes events "in-process, after commit". A crash between commit and handler would lose the audit entry, which breaks X-5. The outbox above closes that gap **[ALIGN-2]**.
+- **Durability of audit:** ADR-0001 §4 publishes events "in-process, after commit". A crash between commit and handler would lose the audit entry, which breaks X-5. The outbox above closes that gap (ALIGN-2, accepted: at-least-once dispatcher, consumers dedupe; audit on `source_event_id`).
 
 ### 6.5 Activity record, retention and volume
 
@@ -721,7 +785,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction`, `routing_decision`, `subscription` | S1 / M1 |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `redeem_pairing_code` | S2 / S3 |
-| 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `outbound_message`, `inbound_receipt` | S2 / M1 |
+| 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
 | 10 | `risk_create_account_limits` | S13 (Wave 3) |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
 
@@ -740,30 +804,45 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - cross-user reads and writes return nothing or fail, **with and without** application filters, to prove RLS on its own;
    - a missing `app.user_id` returns zero rows;
    - `UPDATE`/`DELETE` on `audit_entry` fails;
-   - the token-pattern `CHECK` rejects a planted token;
+   - the token-pattern `CHECK` rejects a planted `awk_`/`awd_` token, and the `key_id` / hash-length `CHECK`s reject malformed rows;
+   - fills: a redelivered `event_id` is a no-op; a second `add` for the same `(account_id, fill_id)` fails; an `amend` and a `remove` with new `event_id`s are accepted, and the effective fill is the latest one;
+   - `command.step`: `modify:0` with kind `modify` and `orphan_flatten:<uuid>` with kind `flatten` pass; `modify:0` with kind `cancel`, `orphan_flatten:<uuid>` with kind `cancel`, `place:1`, `modify:01` and an upper-case UUID fail;
+   - an account with `automation_state = 'chosen'` and no choice fails; a real account with `pending_review` fails;
    - decimal round-trip at maximum scale (`NUMERIC(22,10)`, `NUMERIC(18,4)`) through sqlx `rust_decimal`.
 3. The RLS lint test (§3) runs in CI.
 4. The Q13 §9 size measurement on 1 M synthetic audit rows.
 
-## 10. Alignment items for the Architect (Prumo)
+## 10. Alignment with the Architect (Prumo)
 
-| # | Item | Proposal |
-|---|---|---|
-| ALIGN-1 | Money on the wire uses `decimal` (≤ 10 fraction digits) while the DB stores money at scale 4 | Add `$defs/money` (≤ 14 integer, ≤ 4 fraction digits) for commission, limits and P&L. Keep `decimal`/`price` (≤ 10) for prices and `price_delta`. If you prefer not to, the DB uses `NUMERIC(24,10)` for money instead. The Core must not round silently either way |
-| ALIGN-2 | Durable domain events | Transactional `app.outbox` plus an at-least-once dispatcher; consumers dedupe (audit on `source_event_id`). Needed so audit (X-5) survives a crash between commit and handler |
-| ALIGN-3 | Token pattern for the database `CHECK` | `aw[kd]_[A-Za-z0-9]+_[A-Za-z0-9_-]{32,}`. Confirm the `key_id` charset/length and the 43-character base64url secret |
-| ALIGN-4 | Low-entropy codes (pairing 40 bits, recovery 50 bits) | HMAC-SHA-256 with a server pepper instead of plain SHA-256. A plain SHA-256 over 40–50 bits can be brute-forced offline after a dump, and recovery codes live for months. Also: "5 wrong attempts against a connection's active code" needs the pairing request to identify the connection, or the limit becomes per IP/global |
-| ALIGN-5 | Where the signal-type filter lives | `routing.subscription` per (source, account) instead of an `accounts` column |
-| ALIGN-6 | `command.step` codes for the UUIDv5 input | A fixed list, e.g. `place`, `flatten`, `modify:<n>`, `cancel:<n>`, so ids stay deterministic |
-| ALIGN-7 | "`message_id` unique per user, forever" vs. retention | Kept: `routing.message_receipt` is never purged; it is erased only with the user |
+ALIGN-1…8 were accepted on 2026-10-23 and are reflected in ADR-0003/0004 and the contracts.
+
+| # | Item | Decision | Where in this model |
+|---|---|---|---|
+| ALIGN-1 | Money on the wire | `$defs/money` / `non_negative_money`, ≤ 14 integer + ≤ 4 fraction digits, for commission, limits, `risk_event` value/limit and `risk_state`. Prices and `price_delta` keep ≤ 10 fraction digits | §2: `NUMERIC(18,4)` |
+| ALIGN-2 | Durable domain events | Transactional `app.outbox` + at-least-once dispatcher; consumers dedupe (audit on `source_event_id`) | §6.4 |
+| ALIGN-3 | Token format | `key_id` = 12 `[A-Za-z0-9]`; secret = 43 base64url (32 bytes); `^aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$`. Store `key_id` + SHA-256 of the secret only | §4.1 `CHECK`s; §6.1/§6.4 no-token `CHECK`s (unanchored) |
+| ALIGN-4 | Low-entropy codes | HMAC-SHA-256 with a server pepper for pairing and recovery codes. Pairing limits: 10 attempts/min per IP; 100 failures per 10 min globally → endpoint locked 10 min + alert. No per-connection counter | §4.1, §4.2 |
+| ALIGN-5 | Signal-type filter | `routing.subscription` per (source, account) | §5.5 |
+| ALIGN-6 | `command.step` codes | `place`, `flatten`, `modify:<n>`, `cancel:<n>`; `<n>` = zero-based ordinal of that kind in the routing plan of the (instruction, account) pair; reverse = `flatten` + `place`; reduce = `place` | §6.3 `CHECK`s |
+| ALIGN-7 | `message_id` unique forever vs. retention | `routing.message_receipt` is never purged; erased only with the user | §6.1 |
+| ALIGN-8 | `command_id` for a Core-initiated `flatten` with reason `orphan_fill` (only if Q-O1 = b) | Accepted 2026-10-23 (ADR-0003 §5, ADR-0004 §6.1). Step `orphan_flatten:<event_id>`, where `<event_id>` belongs to the execution report of the orphan leg's fill. Kind stays `flatten`, and the command keeps the `instruction_id` that created the bracket. The id is deterministic across Core retries and unique per orphan fill. It does not collide with the `flatten` step of that instruction's own `close`/`reverse`, which a plain `flatten` step would, making the adapter answer `duplicate` | §6.3 `step` `CHECK` and `kind` mapping |
+
+Adapter-protocol 1.0 acceptance deltas applied in rev. 2:
+- `oco_location` → `gateway.venue_account` (§5.3);
+- `sync_reasons` → `gateway.account_sync_reason` (§6.3);
+- `unknown` status → `gateway.execution_report.status` and `gateway.command.state`;
+- `fill.operation` → `fill_operation` and the dedupe rules (§6.3);
+- `account_reset` → `sync.simulation_reset`, with snapshots not stored (§6.3);
+- the `routing.automation_not_accepted` gate → automation columns on `accounts.account` (§5.2).
 
 ## 11. Business questions (PO/user, through the Maestro)
 
-| # | Question | Proposal |
+| # | Question | Decision (user, 2026-10-23) |
 |---|---|---|
-| Q-A1 | Maximum position: one number per account, or per instrument / mini-vs-micro (many firms state "N minis or 10×N micros")? | One number per account in V1 (MNQ only); revisit with R1 research |
-| Q-A2 | Stop/target profiles per instrument (a 25k profile for MNQ vs. a future ES)? | Keyed by instrument from day one (only MNQ in V1), so adding futures needs no rework (vision §4) |
-| Q-A3 | List of account phases (evaluation, funded, others)? | From R1–R3 research |
+| Q-A1 | Maximum position: one number per account, or per instrument / mini-vs-micro? | One number per account in V1 (MNQ); revisit with R1 research |
+| Q-A2 | Stop/target profiles per instrument? | Keyed by instrument from day one |
+| Q-A3 | List of account phases (evaluation, funded, others)? | **Open**: from R1–R3 research. `phase` stays free `text` until then; S16 adds the `CHECK` or catalog |
 | Q-A4 | Signal-type filter per account, or per (source, account)? | Per (source, account) |
-| Q-A5 | Contract rollover (ADR-0003 P5): global (admin) or per user? | Global catalog maintained by the admin, with an advance warning to users |
-| Q-N1 | A dollar distance that is not a whole number of ticks: round which way? | Stop rounds toward the entry (never more risk than configured); target rounds toward the entry; the result is shown in the audit (S6 AC-4) |
+| Q-A5 | Contract rollover: global (admin) or per user? | Global catalog maintained by the admin, with an advance warning |
+| Q-N1 | A dollar distance that is not a whole number of ticks: round which way? | Toward the entry (the tighter distance); the adjustment is shown in the audit |
+| Q-O1 | (ADR-0004, open) Double fill of a local bracket while NT8 was down: (a) alert and wait, (b) flatten the orphan position | **Open**, user. The schema already supports (b) (ALIGN-8); nothing changes if the user picks (a) |

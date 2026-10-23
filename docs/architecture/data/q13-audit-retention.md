@@ -1,6 +1,6 @@
 # Q13 — Audit log retention and secret masking
 
-- **Status:** Proposed (2026-10-23) — recommendation for the user; decision pending (slice plan Q13, V1-S10 AC-3)
+- **Status:** Accepted (2026-10-23). The user accepted option (b) for Q13 and the 30-day erasure for Q13-b ([decisions.md](../../delivery/decisions.md), "Consolidated open questions answered"). Rev. 2 also applies the final token format (ADR-0003 §7, ADR-0004 §2, ALIGN-3)
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:** [product-vision.md](../../product/product-vision.md) rev. 4 §8, §11; [slice-plan.md](../../product/release-1/slice-plan.md) rev. 3 (V1-S1 AC-6, V1-S10, X-4, X-5); [ADR-0001](../adr/0001-technology-stack.md) §4, §5, §8, §11
 - **Evidence level:** all sizes below are **calculated estimates**, not measurements. PostgreSQL is not yet provisioned on the dev host; §7 lists the measurement to run once it is.
@@ -123,7 +123,7 @@ This applies the A3 user condition and ADR-0001 §5 to storage.
 - **Rejected** (malformed, unknown version, bad or revoked secret): **do not store the raw body**. Store the error code, the JSON pointer of the failing field, the body size and the content type. The user still sees *why* (V1-S1 AC-3) without the risk of persisting a secret the user pasted into the message by mistake.
 
 **Defense in depth in the database:**
-- a `CHECK` constraint on `audit_entry.details` and `instruction.payload` rejecting text that matches the token pattern. The exact regex follows the final token format from ADR-0003/0004, e.g. `aw[kd]_[A-Za-z0-9]+_[A-Za-z0-9_-]{32,}` (webhook `awk_` and device `awd_` tokens);
+- a `CHECK` constraint on `audit_entry.details` and `instruction.payload` rejecting text that matches the token pattern. The regex is the final token format (ALIGN-3: `key_id` = 12 characters `[A-Za-z0-9]`, secret = 43 characters base64url), unanchored so it finds a token anywhere in the text: `aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}` (webhook `awk_` and device `awd_` tokens);
 - the V1-S1 redaction test also asserts that the secret is absent from `audit_entry` and `instruction`.
 
 **Security events** (sign-in, TOTP on/off, key create/rotate/revoke, pairing/unpairing) are audited with ids only. IP address and user agent, if stored for security, follow the same retention and are shown only to the owning user.
@@ -138,9 +138,9 @@ On the dev database only, with synthetic data:
 
 Then update §3–§5 with measured bytes per row and restore throughput.
 
-## 10. Decision needed from the user
+## 10. Decisions (user, 2026-10-23)
 
-| # | Question | Options | Recommendation |
+| # | Question | Options | Recommendation → **Decision** |
 |---|---|---|---|
-| Q13 | How long is the activity record (audit log, instructions, executions) kept? Trades and configuration are kept for the life of the account in all options. | (a) Life of the user account; (b) 24 months rolling, configurable; (c) 24 months online + cold archive for life of account | **(b)**, reversible until the first purge (≥ 24 months after launch) |
-| Q13-b | After the user deletes their All Win account, how long until their data is erased? | e.g. 30 days grace, or immediate | 30 days, stated in the privacy policy (to confirm with the privacy-policy professionals) |
+| Q13 | How long is the activity record (audit log, instructions, executions) kept? Trades and configuration are kept for the life of the account in all options. | (a) Life of the user account; (b) 24 months rolling, configurable; (c) 24 months online + cold archive for life of account | **(b)**, reversible until the first purge (≥ 24 months after launch) → **Decided: (b), 24 months rolling, configurable** |
+| Q13-b | After the user deletes their All Win account, how long until their data is erased? | e.g. 30 days grace, or immediate | 30 days, stated in the privacy policy (to confirm with the privacy-policy professionals) → **Decided: 30 days** |
