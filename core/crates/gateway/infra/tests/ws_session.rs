@@ -10,27 +10,18 @@
 
 mod common;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
 use gateway_application::consume::{CommandsRequested, ConsumeCommandsRequested};
-use gateway_application::deliver::DeliverCommands;
-use gateway_application::disconnect::HandleDisconnect;
-use gateway_application::frames::{FrameValidator, HandleFrame};
-use gateway_application::hello::HandleHello;
-use gateway_application::intake::HandleExecutionReport;
-use gateway_application::ports::*;
-use gateway_application::session::{SessionSettings, Sessions};
-use gateway_application::snapshot::HandlePositionSnapshot;
-use gateway_enterprise::ids::{AccountId, ConnectionId, VenueAccountId};
+use gateway_application::frames::FrameValidator;
+use gateway_enterprise::ids::{AccountId, ConnectionId};
 use gateway_infra::ws::Control;
-use gateway_infra::{GatewayRuntime, PgGatewayStore, ProtocolSchema, router};
+use gateway_infra::{GatewayRuntime, ProtocolSchema};
 use serde_json::{Value, json};
-use shared_kernel::{Money, SystemClock, UserId};
+use shared_kernel::UserId;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -39,78 +30,7 @@ use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
-const TOKEN: &str = "awd_AbCdEf123456_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHI";
-
-struct Tokens(AdapterPrincipal);
-
-#[async_trait]
-impl DeviceTokens for Tokens {
-    async fn authenticate(
-        &self,
-        presented: &PresentedToken,
-    ) -> Result<Option<AdapterPrincipal>, PortError> {
-        Ok((presented.expose() == TOKEN).then(|| self.0.clone()))
-    }
-    async fn still_valid(&self, _key_id: &str) -> Result<bool, PortError> {
-        Ok(true)
-    }
-}
-
-/// Binds the first venue it is asked about to the test account.
-struct Bindings {
-    account: AccountId,
-    venue: Mutex<Option<VenueAccountId>>,
-}
-
-#[async_trait]
-impl AccountBindings for Bindings {
-    async fn accounts_for_venues(
-        &self,
-        _u: UserId,
-        venues: &[VenueAccountId],
-    ) -> Result<HashMap<VenueAccountId, BoundAccount>, PortError> {
-        let mut v = self.venue.lock().unwrap();
-        let bound = *v.get_or_insert(venues[0]);
-        Ok(venues
-            .iter()
-            .filter(|x| **x == bound)
-            .map(|x| {
-                (
-                    *x,
-                    BoundAccount {
-                        account_id: self.account,
-                        display_name: "Conta A".into(),
-                    },
-                )
-            })
-            .collect())
-    }
-    async fn binding_of(
-        &self,
-        _u: UserId,
-        account: AccountId,
-    ) -> Result<Option<VenueAccountId>, PortError> {
-        Ok((account == self.account)
-            .then(|| *self.venue.lock().unwrap())
-            .flatten())
-    }
-}
-
-struct NoRisk;
-
-#[async_trait]
-impl RiskLimits for NoRisk {
-    async fn current_limits(
-        &self,
-        _u: UserId,
-        _a: &[AccountId],
-    ) -> Result<HashMap<AccountId, DerivedLimits>, PortError> {
-        Ok(HashMap::new())
-    }
-    async fn commission_rate(&self, _u: UserId, _a: AccountId) -> Result<Option<Money>, PortError> {
-        Ok(None)
-    }
-}
+use common::server::{self, TOKEN};
 
 type Client = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -217,55 +137,13 @@ async fn adapter_session_end_to_end() {
     let Some(db) = common::setup().await else {
         return;
     };
-    let user = db.user().await;
-    let connection = ConnectionId::from_uuid(Uuid::now_v7());
-    let account = AccountId::from_uuid(Uuid::now_v7());
-    let store: Arc<dyn GatewayStore> = Arc::new(PgGatewayStore::new(db.app.clone()));
-    let bindings = Arc::new(Bindings {
-        account,
-        venue: Mutex::new(None),
-    });
-    let risk = Arc::new(NoRisk);
-    let schema = Arc::new(ProtocolSchema::load().unwrap());
-    let sessions = Sessions::default();
-    let settings = SessionSettings::default();
-    let principal = AdapterPrincipal {
-        user_id: user,
-        connection_id: connection,
-        key_id: "AbCdEf123456".into(),
-        locale: "en".into(),
-    };
-    let intake = HandleExecutionReport::new(store.clone(), bindings.clone(), risk.clone());
-    let snapshot = HandlePositionSnapshot::new(store.clone(), bindings.clone(), sessions.clone());
-    let runtime = Arc::new(GatewayRuntime::new(
-        sessions.clone(),
-        Arc::new(Tokens(principal)),
-        schema.clone(),
-        HandleHello::new(
-            store.clone(),
-            bindings.clone(),
-            risk.clone(),
-            settings.clone(),
-        ),
-        HandleFrame::new(schema.clone(), store.clone(), intake, snapshot),
-        DeliverCommands::new(
-            store.clone(),
-            settings.clone(),
-            chrono::Duration::seconds(30),
-        ),
-        HandleDisconnect::new(store.clone(), sessions.clone()),
-        settings,
-        Arc::new(SystemClock),
-    ));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let app = router(runtime.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let srv = server::start(&db).await;
+    let (user, account, connection) = (srv.user, srv.account, srv.connection);
     let h = Harness {
-        url: format!("ws://{addr}/adapter/v1"),
-        runtime,
-        schema,
-        consume: ConsumeCommandsRequested::new(store.clone(), bindings.clone()),
+        url: srv.url.clone(),
+        runtime: srv.runtime.clone(),
+        schema: srv.schema.clone(),
+        consume: srv.consume.clone(),
         user,
         account,
         connection,

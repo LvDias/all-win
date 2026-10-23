@@ -25,6 +25,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 tracing.workspace = true
 
 [dev-dependencies]
+adapter-sim.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
 tokio-tungstenite.workspace = true

@@ -7,6 +7,8 @@
     clippy::print_stderr
 )]
 
+pub mod server;
+
 use std::path::PathBuf;
 
 use shared_kernel::UserId;
