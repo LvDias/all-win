@@ -30,7 +30,28 @@ pub struct Unconsumed {
 }
 
 /// The allowlist. Remove an entry in the same change that registers its consumer.
-pub const UNCONSUMED: &[Unconsumed] = &[];
+pub const UNCONSUMED: &[Unconsumed] = &[
+    Unconsumed {
+        event_type: "account.limits_changed",
+        consumer_slice: "S13 risk",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "account.binding_changed",
+        consumer_slice: "S2 gateway",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "account.changed",
+        consumer_slice: "SSE (accounts)",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "account.archived",
+        consumer_slice: "SSE (accounts)",
+        start: StartPolicy::FromNow,
+    },
+];
 
 /// The listed event types.
 pub fn types(list: &[Unconsumed]) -> Vec<String> {
@@ -63,6 +84,8 @@ pub fn check(consumers: &Consumers, list: &[Unconsumed]) -> Result<(), ConsumedB
 pub fn emitted_event_types() -> Vec<&'static str> {
     let mut all: Vec<&'static str> = routing_application::enterprise::IngressEvent::TYPES.to_vec();
     all.extend(identity_application::changes::emitted_event_types());
+    all.extend(accounts_application::EMITTED_EVENT_TYPES);
+    all.extend(accounts_application::profiles::PROFILE_EVENT_TYPES);
     all
 }
 

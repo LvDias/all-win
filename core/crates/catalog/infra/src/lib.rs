@@ -1,5 +1,10 @@
 //! `catalog` module — infra layer: `catalog.instrument` (global, no RLS).
 
+pub mod instrument;
+pub mod instrument_http;
+pub mod rule_version;
+pub mod rule_version_http;
+
 use async_trait::async_trait;
 use catalog_application::enterprise::Symbol;
 use catalog_application::{CatalogError, InstrumentRepository};

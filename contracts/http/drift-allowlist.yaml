@@ -5,14 +5,10 @@
 # merge gate removes its own operations.
 not_implemented:
   - applyPresetVersion
-  - archiveAccount
-  - createAccount
   - createManualTrade
   - createRoute
   - deleteManualTrade
   - deleteRoute
-  - getAccount
-  - getAccountArchiveImpact
   - getAccountPreset
   - getAccountPresetDiff
   - getAccountRisk
@@ -21,21 +17,14 @@ not_implemented:
   - getActivityFilterOptions
   - getFirm
   - getInstructionTimeline
-  - getNearestProfileSize
-  - getOptInRules
   - getPerformance
   - getPresetVersion
-  - getRuleVersion
   - getTrade
   - getTradesSummary
   - getUnreadCount
-  - listAccountProfiles
-  - listAccounts
   - listActivity
-  - listDefaultProfiles
   - listFirmReleases
   - listFirms
-  - listInstruments
   - listNotifications
   - listRiskSummaries
   - listRouteCandidates
@@ -45,16 +34,8 @@ not_implemented:
   - markNotificationsRead
   - previewAccountRiskRules
   - previewManualTrade
-  - previewProfile
-  - putAccountProfile
   - putAccountRiskRules
-  - putDefaultProfile
-  - restartEvaluation
-  - restoreAccountProfile
   - restorePresetValue
-  - setAccountLifecycle
-  - setAccountOptIn
-  - updateAccount
   - updateManualTrade
   - updateRoute
 

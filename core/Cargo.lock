@@ -17,6 +17,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "accounts-application"
+version = "0.1.0"
+dependencies = [
+ "access",
+ "accounts-enterprise",
+ "async-trait",
+ "chrono",
+ "chrono-tz",
+ "rust_decimal",
+ "serde_json",
+ "sha2 0.11.1",
+ "shared-kernel",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "accounts-enterprise"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rust_decimal",
+ "serde",
+ "shared-kernel",
+ "thiserror",
+ "unicode-normalization",
+ "uuid",
+]
+
+[[package]]
+name = "accounts-infra"
+version = "0.1.0"
+dependencies = [
+ "access",
+ "accounts-application",
+ "async-trait",
+ "axum",
+ "chrono",
+ "chrono-tz",
+ "contracts",
+ "http-body-util",
+ "jsonschema",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "shared-kernel",
+ "sqlx",
+ "tokio",
+ "tower",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "adapter-sim"
 version = "0.1.0"
 dependencies = [
@@ -103,6 +160,8 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "access",
+ "accounts-application",
+ "accounts-infra",
  "adapter-tradingview",
  "anyhow",
  "async-trait",
@@ -113,6 +172,7 @@ dependencies = [
  "catalog-application",
  "catalog-infra",
  "chrono",
+ "chrono-tz",
  "contracts",
  "http-body-util",
  "identity-application",
@@ -373,23 +433,45 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "catalog-enterprise",
+ "chrono",
+ "rust_decimal",
+ "serde_json",
  "thiserror",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
 name = "catalog-enterprise"
 version = "0.1.0"
 dependencies = [
+ "rust_decimal",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
 name = "catalog-infra"
 version = "0.1.0"
 dependencies = [
+ "access",
  "async-trait",
+ "axum",
  "catalog-application",
+ "chrono",
+ "contracts",
+ "http-body-util",
+ "jsonschema",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "shared-kernel",
  "sqlx",
+ "tokio",
+ "tower",
+ "tracing",
+ "utoipa",
+ "uuid",
 ]
 
 [[package]]

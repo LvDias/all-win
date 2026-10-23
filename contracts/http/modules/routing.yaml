@@ -231,13 +231,24 @@ components:
         - routing.limits_pending
         - routing.route_disabled
       description: |
-        Why a route does not (fully) receive now. The gate codes of ADR-0003 §4.1 (`account_inactive`,
-        `automation_not_accepted`, `copy_not_accepted`, `out_of_sync`, `risk_blocked`) are also the audit
-        codes of each skipped instruction; `no_bracket_profile` (S6, Q43) and
-        `limits_pending` (ADR-0006: the account's limits are not yet derived) are skip codes added by this
-        contract (ADR-0003 delta pending, Esquadro). `source_revoked`, `platform_unbound`,
-        `connection_disconnected` (every connection status other than `connected`: disconnected, outdated,
-        awaiting pairing, unpaired) and `route_disabled` describe configuration or connection state.
+        Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,
+        in this order (F§7.2 extended with the route-level states): `source_revoked`, `route_disabled`,
+        `platform_unbound`, `out_of_sync`, `connection_disconnected`, `risk_blocked`, `limits_pending`,
+        `no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.
+        This is a display order only. The instruction gates and their order are ADR-0003 §4.1 (Esquadro's
+        S7 delta, with ADR-0008): `account_inactive` → `platform_unbound` → `automation_not_accepted` →
+        `copy_not_accepted` → `signal_type_not_selected` → `out_of_sync` → `risk_blocked` →
+        `limits_pending` → `no_bracket_profile` → action rules → `expired` (entries only). The audit code of a skipped
+        instruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and
+        `no_bracket_profile` block entries only. For a `reverse` the §4.2 position check runs before the
+        entry gates (Q74): position opposite → the close leg runs and the open is skipped with the gate
+        code; flat → skipped with the gate code; already on the reverse side → `routing.position_conflict`
+        (rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction
+        reaches the gates); `connection_disconnected` (every connection status other than `connected`:
+        disconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an
+        entry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a
+        protective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as
+        late (ADR-0003 §4.1, ADR-0004 T1).
         New codes may be added in a minor version; clients show a generic text for an unknown code.
     RouteReason:
       type: object

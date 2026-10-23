@@ -51,6 +51,8 @@ pub struct IdentityWiring {
     /// For other modules' handlers (ADR-0007).
     pub authenticator: Arc<dyn SessionAuthenticator>,
     pub step_up: Arc<dyn StepUpGate>,
+    /// `APP_PUBLIC_ORIGIN`, for the other modules' Origin check.
+    pub public_origin: String,
     delivery: DeliveryWorker,
     sender: Arc<dyn CodeSender>,
 }
@@ -114,17 +116,6 @@ impl SourceActivity for NoSourceActivity {
         _: &[SourceId],
     ) -> Result<std::collections::HashMap<SourceId, chrono::DateTime<chrono::Utc>>, String> {
         Ok(std::collections::HashMap::new())
-    }
-}
-
-/// Accounts (S5) answers "is this account the user's?"; until its query port is wired every
-/// account target is 404 (fail closed).
-struct NoAccountTargets;
-
-#[async_trait]
-impl AccountTargets for NoAccountTargets {
-    async fn owned_by(&self, _: UserId, _: uuid::Uuid) -> Result<bool, String> {
-        Ok(false)
     }
 }
 
@@ -195,6 +186,7 @@ pub fn wire(
     worker: &PgPool,
     clock: Arc<dyn Clock>,
     ingress: Arc<IngressState>,
+    account_targets: Arc<dyn AccountTargets>,
     audit: Arc<dyn EventConsumer>,
     consumers: &mut Consumers,
 ) -> anyhow::Result<IdentityWiring> {
@@ -244,7 +236,7 @@ pub fn wire(
         )),
         delivery: Arc::new(queue),
         alerts,
-        account_targets: Arc::new(NoAccountTargets),
+        account_targets,
         settings: IdentitySettings {
             public_origin: public_origin.clone(),
             step_up_q35_persistence_actions: cfg.step_up_q35_persistence_actions,
@@ -276,7 +268,7 @@ pub fn wire(
     consumers.require(&emitted, crate::unconsumed::UNCONSUMED)?;
     let router = identity_infra::http::router(Arc::new(IdentityHttpState {
         deps: deps.clone(),
-        public_origin,
+        public_origin: public_origin.clone(),
         trust_forwarded_for: config.trust_forwarded_for,
         events,
     }));
@@ -286,6 +278,7 @@ pub fn wire(
         router,
         authenticator: access.clone(),
         step_up: access,
+        public_origin,
         delivery,
         sender,
     })

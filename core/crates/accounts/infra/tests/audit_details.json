@@ -1,0 +1,386 @@
+{
+ "accounts.archived": {
+  "additionalProperties": false,
+  "description": "`accounts.created` / `.updated` / `.archived`. `archived` also lists what was removed.",
+  "properties": {
+   "changes": {
+    "items": {
+     "additionalProperties": false,
+     "description": "One changed field; values are strings, absent when empty. Scalars as their string form (money as\ndecimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string\namounts, e.g. `{\"amount\":\"2000.00\",\"type\":\"static\"}`.\n",
+     "properties": {
+      "field": {
+       "maxLength": 64,
+       "pattern": "^[a-z][a-z0-9_.]*$",
+       "type": "string"
+      },
+      "new": {
+       "maxLength": 1000,
+       "type": "string"
+      },
+      "old": {
+       "maxLength": 1000,
+       "type": "string"
+      }
+     },
+     "required": [
+      "field"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "removed_follower_links": {
+    "items": {
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "removed_routes": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "source_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "source_name": {
+       "maxLength": 60,
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "source_id",
+      "source_name"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "changes"
+  ],
+  "type": "object"
+ },
+ "accounts.created": {
+  "additionalProperties": false,
+  "description": "`accounts.created` / `.updated` / `.archived`. `archived` also lists what was removed.",
+  "properties": {
+   "changes": {
+    "items": {
+     "additionalProperties": false,
+     "description": "One changed field; values are strings, absent when empty. Scalars as their string form (money as\ndecimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string\namounts, e.g. `{\"amount\":\"2000.00\",\"type\":\"static\"}`.\n",
+     "properties": {
+      "field": {
+       "maxLength": 64,
+       "pattern": "^[a-z][a-z0-9_.]*$",
+       "type": "string"
+      },
+      "new": {
+       "maxLength": 1000,
+       "type": "string"
+      },
+      "old": {
+       "maxLength": 1000,
+       "type": "string"
+      }
+     },
+     "required": [
+      "field"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "removed_follower_links": {
+    "items": {
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "removed_routes": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "source_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "source_name": {
+       "maxLength": 60,
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "source_id",
+      "source_name"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "changes"
+  ],
+  "type": "object"
+ },
+ "accounts.evaluation_restarted": {
+  "additionalProperties": false,
+  "description": "`accounts.evaluation_restarted`: old and new start and earned-before, and the target in force. No progress figure (that is risk data, S13b).",
+  "properties": {
+   "earned_before": {
+    "description": "Money as a decimal string (NUMERIC(18,4)).",
+    "pattern": "^-?[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "previous_earned_before": {
+    "description": "Money as a decimal string (NUMERIC(18,4)).",
+    "pattern": "^-?[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "previous_start": {
+    "format": "date",
+    "type": "string"
+   },
+   "profit_target": {
+    "description": "Money as a decimal string (NUMERIC(18,4)).",
+    "pattern": "^-?[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "start": {
+    "format": "date",
+    "type": "string"
+   }
+  },
+  "required": [
+   "start",
+   "previous_start",
+   "profit_target"
+  ],
+  "type": "object"
+ },
+ "accounts.lifecycle_changed": {
+  "additionalProperties": false,
+  "properties": {
+   "had_open_position": {
+    "type": "boolean"
+   },
+   "new_state": {
+    "enum": [
+     "active",
+     "paused",
+     "disabled"
+    ],
+    "type": "string"
+   },
+   "previous_state": {
+    "enum": [
+     "active",
+     "paused",
+     "disabled"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "previous_state",
+   "new_state",
+   "had_open_position"
+  ],
+  "type": "object"
+ },
+ "accounts.opt_in_chosen": {
+  "additionalProperties": false,
+  "description": "S5 AC-8: the choice and the exact rule text version the user saw.",
+  "properties": {
+   "choice": {
+    "enum": [
+     "accepted",
+     "declined"
+    ],
+    "type": "string"
+   },
+   "firm_name": {
+    "maxLength": 120,
+    "type": "string"
+   },
+   "firm_stance": {
+    "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+    "enum": [
+     "allowed",
+     "forbidden",
+     "conditional",
+     "unknown",
+     "not_confirmed"
+    ],
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "automation",
+     "copy"
+    ],
+    "type": "string"
+   },
+   "previous_choice": {
+    "enum": [
+     "accepted",
+     "declined"
+    ],
+    "type": "string"
+   },
+   "rule_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "rule_version_number": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "sources": {
+    "description": "URL and access date of each quote shown (empty for the generic rule).",
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "accessed_at": {
+       "format": "date",
+       "type": "string"
+      },
+      "url": {
+       "format": "uri",
+       "maxLength": 2048,
+       "pattern": "^https://",
+       "type": "string"
+      }
+     },
+     "required": [
+      "url",
+      "accessed_at"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "kind",
+   "choice",
+   "rule_version_id",
+   "firm_stance",
+   "sources"
+  ],
+  "type": "object"
+ },
+ "accounts.opt_in_suspended": {
+  "additionalProperties": false,
+  "properties": {
+   "cause": {
+    "enum": [
+     "stance_changed",
+     "text_changed",
+     "preset_attached"
+    ],
+    "type": "string"
+   },
+   "firm_name": {
+    "maxLength": 120,
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "automation",
+     "copy"
+    ],
+    "type": "string"
+   },
+   "previous_rule_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "rule_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "rule_version_number": {
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "kind",
+   "cause",
+   "rule_version_id"
+  ],
+  "type": "object"
+ },
+ "accounts.updated": {
+  "additionalProperties": false,
+  "description": "`accounts.created` / `.updated` / `.archived`. `archived` also lists what was removed.",
+  "properties": {
+   "changes": {
+    "items": {
+     "additionalProperties": false,
+     "description": "One changed field; values are strings, absent when empty. Scalars as their string form (money as\ndecimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string\namounts, e.g. `{\"amount\":\"2000.00\",\"type\":\"static\"}`.\n",
+     "properties": {
+      "field": {
+       "maxLength": 64,
+       "pattern": "^[a-z][a-z0-9_.]*$",
+       "type": "string"
+      },
+      "new": {
+       "maxLength": 1000,
+       "type": "string"
+      },
+      "old": {
+       "maxLength": 1000,
+       "type": "string"
+      }
+     },
+     "required": [
+      "field"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "removed_follower_links": {
+    "items": {
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "removed_routes": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "source_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "source_name": {
+       "maxLength": 60,
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "source_id",
+      "source_name"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "changes"
+  ],
+  "type": "object"
+ }
+}

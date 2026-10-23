@@ -1,0 +1,2356 @@
+{
+ "Account": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "else": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "firm_name"
+        ]
+       },
+       {
+        "required": [
+         "plan_name"
+        ]
+       },
+       {
+        "required": [
+         "phase"
+        ]
+       },
+       {
+        "required": [
+         "firm_id"
+        ]
+       },
+       {
+        "required": [
+         "preset_version_id"
+        ]
+       },
+       {
+        "required": [
+         "firm_platform"
+        ]
+       }
+      ]
+     }
+    },
+    "if": {
+     "properties": {
+      "kind": {
+       "const": "prop"
+      }
+     }
+    },
+    "then": {
+     "required": [
+      "firm_name",
+      "plan_name",
+      "phase"
+     ]
+    }
+   }
+  ],
+  "properties": {
+   "archived_at": {
+    "description": "Only in the idempotent replay of a create whose account was archived since; every other read of an archived account is 404.",
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   },
+   "binding": {
+    "additionalProperties": false,
+    "description": "Absent when the account is not bound; an unbound account is never routed (Q37).",
+    "properties": {
+     "bound_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "type": "string"
+     },
+     "connection_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "connection_name": {
+      "maxLength": 60,
+      "minLength": 1,
+      "type": "string"
+     },
+     "connection_status": {
+      "enum": [
+       "awaiting_pairing",
+       "connected",
+       "disconnected",
+       "outdated",
+       "unpaired"
+      ],
+      "type": "string"
+     },
+     "kind": {
+      "enum": [
+       "simulation",
+       "playback",
+       "live",
+       "unknown"
+      ],
+      "type": "string"
+     },
+     "oco_location": {
+      "enum": [
+       "local",
+       "server",
+       "unknown"
+      ],
+      "type": "string"
+     },
+     "platform_account": {
+      "maxLength": 128,
+      "type": "string"
+     }
+    },
+    "required": [
+     "connection_id",
+     "connection_name",
+     "connection_status",
+     "platform_account",
+     "kind",
+     "oco_location"
+    ],
+    "type": "object"
+   },
+   "commission_per_contract_side": {
+    "description": "The account's commission floor per contract and side (absent = none).",
+    "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "created_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   },
+   "currency": {
+    "description": "ISO 4217; 'USD' in V1.",
+    "pattern": "^[A-Z]{3}$",
+    "type": "string"
+   },
+   "display_name": {
+    "description": "Trimmed by the Core (NFC); must not be blank. Unique per user among live accounts, case-insensitive.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "evaluation_earned_before": {
+    "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+    "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "evaluation_start": {
+    "description": "Prop accounts in an evaluation phase (S13b).",
+    "format": "date",
+    "type": "string"
+   },
+   "firm_id": {
+    "description": "Prop with a preset only (S16 catalog).",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "firm_name": {
+    "description": "Prop only. From the preset when `preset_version_id` is set, else the manual text.",
+    "maxLength": 120,
+    "type": "string"
+   },
+   "firm_platform": {
+    "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+    "type": "string"
+   },
+   "has_open_position": {
+    "description": "Last known from the platform (gateway); false when unbound. Used for the lifecycle and delete messages.",
+    "type": "boolean"
+   },
+   "id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "prop",
+     "real"
+    ],
+    "type": "string"
+   },
+   "lifecycle_state": {
+    "enum": [
+     "active",
+     "paused",
+     "disabled"
+    ],
+    "type": "string"
+   },
+   "max_position_qty": {
+    "description": "Maximum position in contracts, one number per account in V1 (Q-A1). Mandatory (S5 AC-3).",
+    "maximum": 10000,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "multiplier": {
+    "description": "Whole number \u2265 1 (S5 AC-5); a fraction or zero gets 400 `common.invalid_request` with the pointer.",
+    "maximum": 1000,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "opt_ins": {
+    "additionalProperties": false,
+    "properties": {
+     "automation": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "state": {
+           "const": "chosen"
+          }
+         }
+        },
+        "then": {
+         "required": [
+          "firm_stance",
+          "choice",
+          "chosen_at",
+          "rule_version_id",
+          "current_rule_version_id"
+         ]
+        }
+       },
+       {
+        "else": {
+         "not": {
+          "required": [
+           "pending_reason"
+          ]
+         }
+        },
+        "if": {
+         "properties": {
+          "state": {
+           "const": "pending_review"
+          }
+         }
+        },
+        "then": {
+         "dependentRequired": {
+          "choice": [
+           "chosen_at",
+           "rule_version_id"
+          ]
+         },
+         "required": [
+          "firm_stance",
+          "pending_reason",
+          "current_rule_version_id"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "state": {
+           "const": "not_required"
+          }
+         }
+        },
+        "then": {
+         "not": {
+          "anyOf": [
+           {
+            "required": [
+             "choice"
+            ]
+           },
+           {
+            "required": [
+             "chosen_at"
+            ]
+           },
+           {
+            "required": [
+             "rule_version_id"
+            ]
+           }
+          ]
+         }
+        }
+       }
+      ],
+      "properties": {
+       "choice": {
+        "description": "With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in\nforce), present only if one was ever made, so the review dialog can show it; it is never\npreselected. Absent with `not_required`.\n",
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "chosen_at": {
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+        "type": "string"
+       },
+       "current_rule_version_id": {
+        "description": "The rule version in force for this account and kind (fetch its text with `getRuleVersion`). Absent only for real accounts.",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       "firm_stance": {
+        "description": "Absent only for real accounts.",
+        "enum": [
+         "allowed",
+         "forbidden",
+         "conditional",
+         "unknown",
+         "not_confirmed"
+        ],
+        "type": "string"
+       },
+       "kind": {
+        "enum": [
+         "automation",
+         "copy"
+        ],
+        "type": "string"
+       },
+       "pending_reason": {
+        "description": "With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is\nflagged as a material text change (Q42; `RuleVersion.change` has the reason\ntext); `preset_attached` = reserved for Q41: only a data migration that attaches a\npreset to an account without a user request would produce it. No operation of this contract\ndoes (a user who selects a preset sends the new choice inline, D16).\n",
+        "enum": [
+         "stance_changed",
+         "text_changed",
+         "preset_attached"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version the `choice` was made against.",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       "state": {
+        "description": "not_required = no choice is asked now: real account, the stance is `allowed`, or (`copy`) the\naccount is not a follower (Q-S5-8; no card in the UI); chosen = an explicit choice exists for\nthe current rule version; pending_review = see `pending_reason`; that kind is suspended until\nthe user chooses again (Q26). Routing treats `pending_review` and `declined` as not accepted\n(`routing.automation_not_accepted` / `routing.copy_not_accepted`). There is no \"saved without\na choice\" state: first choices are atomic with creation.\n",
+        "enum": [
+         "not_required",
+         "chosen",
+         "pending_review"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "kind",
+       "state"
+      ],
+      "type": "object"
+     },
+     "copy": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "state": {
+           "const": "chosen"
+          }
+         }
+        },
+        "then": {
+         "required": [
+          "firm_stance",
+          "choice",
+          "chosen_at",
+          "rule_version_id",
+          "current_rule_version_id"
+         ]
+        }
+       },
+       {
+        "else": {
+         "not": {
+          "required": [
+           "pending_reason"
+          ]
+         }
+        },
+        "if": {
+         "properties": {
+          "state": {
+           "const": "pending_review"
+          }
+         }
+        },
+        "then": {
+         "dependentRequired": {
+          "choice": [
+           "chosen_at",
+           "rule_version_id"
+          ]
+         },
+         "required": [
+          "firm_stance",
+          "pending_reason",
+          "current_rule_version_id"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "state": {
+           "const": "not_required"
+          }
+         }
+        },
+        "then": {
+         "not": {
+          "anyOf": [
+           {
+            "required": [
+             "choice"
+            ]
+           },
+           {
+            "required": [
+             "chosen_at"
+            ]
+           },
+           {
+            "required": [
+             "rule_version_id"
+            ]
+           }
+          ]
+         }
+        }
+       }
+      ],
+      "properties": {
+       "choice": {
+        "description": "With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in\nforce), present only if one was ever made, so the review dialog can show it; it is never\npreselected. Absent with `not_required`.\n",
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "chosen_at": {
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+        "type": "string"
+       },
+       "current_rule_version_id": {
+        "description": "The rule version in force for this account and kind (fetch its text with `getRuleVersion`). Absent only for real accounts.",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       "firm_stance": {
+        "description": "Absent only for real accounts.",
+        "enum": [
+         "allowed",
+         "forbidden",
+         "conditional",
+         "unknown",
+         "not_confirmed"
+        ],
+        "type": "string"
+       },
+       "kind": {
+        "enum": [
+         "automation",
+         "copy"
+        ],
+        "type": "string"
+       },
+       "pending_reason": {
+        "description": "With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is\nflagged as a material text change (Q42; `RuleVersion.change` has the reason\ntext); `preset_attached` = reserved for Q41: only a data migration that attaches a\npreset to an account without a user request would produce it. No operation of this contract\ndoes (a user who selects a preset sends the new choice inline, D16).\n",
+        "enum": [
+         "stance_changed",
+         "text_changed",
+         "preset_attached"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version the `choice` was made against.",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       "state": {
+        "description": "not_required = no choice is asked now: real account, the stance is `allowed`, or (`copy`) the\naccount is not a follower (Q-S5-8; no card in the UI); chosen = an explicit choice exists for\nthe current rule version; pending_review = see `pending_reason`; that kind is suspended until\nthe user chooses again (Q26). Routing treats `pending_review` and `declined` as not accepted\n(`routing.automation_not_accepted` / `routing.copy_not_accepted`). There is no \"saved without\na choice\" state: first choices are atomic with creation.\n",
+        "enum": [
+         "not_required",
+         "chosen",
+         "pending_review"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "kind",
+       "state"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "automation",
+     "copy"
+    ],
+    "type": "object"
+   },
+   "phase": {
+    "description": "Prop only: the preset phase code (`evaluation`, `funded`, `live`) or the manual text.",
+    "maxLength": 80,
+    "type": "string"
+   },
+   "plan_name": {
+    "description": "Prop only (as `firm_name`).",
+    "maxLength": 120,
+    "type": "string"
+   },
+   "preset_update_available": {
+    "description": "Prop with a preset only \u2014 a newer version of the account's preset exists (list link \"Preset novo\"; details in `getAccountPreset`).",
+    "type": "boolean"
+   },
+   "preset_version_id": {
+    "description": "Prop with a preset only. The version applied to this account; a newer one is applied only by the user (S16 AC-3).",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "updated_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "kind",
+   "display_name",
+   "size_amount",
+   "currency",
+   "multiplier",
+   "max_position_qty",
+   "lifecycle_state",
+   "opt_ins",
+   "has_open_position",
+   "row_version",
+   "created_at",
+   "updated_at"
+  ],
+  "type": "object"
+ },
+ "AccountCreateRequest": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "if": {
+     "properties": {
+      "kind": {
+       "const": "real"
+      }
+     }
+    },
+    "then": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "preset_version_id"
+        ]
+       },
+       {
+        "required": [
+         "firm_platform"
+        ]
+       },
+       {
+        "required": [
+         "firm_name"
+        ]
+       },
+       {
+        "required": [
+         "plan_name"
+        ]
+       },
+       {
+        "required": [
+         "phase"
+        ]
+       },
+       {
+        "required": [
+         "opt_ins"
+        ]
+       },
+       {
+        "required": [
+         "rule_values"
+        ]
+       }
+      ]
+     },
+     "required": [
+      "size_amount"
+     ]
+    }
+   },
+   {
+    "if": {
+     "properties": {
+      "kind": {
+       "const": "prop"
+      }
+     },
+     "required": [
+      "preset_version_id"
+     ]
+    },
+    "then": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "firm_name"
+        ]
+       },
+       {
+        "required": [
+         "plan_name"
+        ]
+       },
+       {
+        "required": [
+         "phase"
+        ]
+       },
+       {
+        "required": [
+         "size_amount"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "if": {
+     "not": {
+      "required": [
+       "preset_version_id"
+      ]
+     },
+     "properties": {
+      "kind": {
+       "const": "prop"
+      }
+     }
+    },
+    "then": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "firm_platform"
+        ]
+       },
+       {
+        "required": [
+         "rule_values"
+        ]
+       }
+      ]
+     },
+     "required": [
+      "firm_name",
+      "plan_name",
+      "phase",
+      "size_amount"
+     ]
+    }
+   }
+  ],
+  "description": "`kind: real` \u2192 `size_amount` required; no prop fields; no `opt_ins`.\n`kind: prop` \u2192 either `preset_version_id` (+ `firm_platform` when the preset requires it; firm,\nplan, phase and size then come from the preset and must be absent) or all of `firm_name`,\n`plan_name`, `phase`, `size_amount` (manual).\n",
+  "properties": {
+   "binding": {
+    "additionalProperties": false,
+    "description": "A platform account reported by one of the caller's connections (`Connection.visible_accounts`).",
+    "properties": {
+     "connection_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "platform_account": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "connection_id",
+     "platform_account"
+    ],
+    "type": "object"
+   },
+   "commission_per_contract_side": {
+    "description": "USD per contract and side, \u2265 0 (U20 a): the floor of each fill's commission (effective = max(platform,\nthis \u00d7 quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);\nabsent = no floor. Any change bumps the account's limits version (net P&L feeds risk). A higher floor applies at once; a lower one (or removing it) applies from the next trading day and is shown in `AccountRisk.pending_commission_change` (ADR-0006 \u00a73.7).\n",
+    "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "display_name": {
+    "description": "Trimmed by the Core (NFC); must not be blank. Unique per user among live accounts, case-insensitive.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "evaluation_earned_before": {
+    "description": "Net profit already made in this evaluation before `evaluation_start` (optional; counts toward the target). Accounts with an evaluation target only (else 422 `accounts.evaluation_not_applicable`).",
+    "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "evaluation_start": {
+    "description": "Accounts with an evaluation target only (Q46, S13b; Q69 a) \u2014 the day the evaluation count starts; default the registration date in the user's time zone. Invariant \u2014 an account with an evaluation target always has an `evaluation_start`; when an existing account gains a target (selection or preset change, `applyPresetVersion`, a rule edit), the Core sets a missing start to the same default in that transaction; that is a rule-input change, so it bumps `account.limits_version` and emits `account.limits_changed` (ADR-0006 \u00a73.1). Sent for an account without an evaluation target \u2192 422 `accounts.evaluation_not_applicable`. Later changes only through `restartEvaluation`.",
+    "format": "date",
+    "type": "string"
+   },
+   "firm_name": {
+    "description": "Free text (trimmed by the Core) for prop accounts without a preset.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "firm_platform": {
+    "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "prop",
+     "real"
+    ],
+    "type": "string"
+   },
+   "max_position_qty": {
+    "description": "Maximum position in contracts, one number per account in V1 (Q-A1). Mandatory (S5 AC-3).",
+    "maximum": 10000,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "multiplier": {
+    "description": "Defaults to 1.",
+    "maximum": 1000,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "opt_ins": {
+    "additionalProperties": false,
+    "description": "The `opt_ins` property of `createAccount` / `updateAccount` / `applyPresetVersion` (atomic with the\nsave). Required kinds: on create, `automation` when its rule version needs a choice; on update and\napply, only `automation`, and only when that request changes the automation rule version and the\nnew version needs a choice. Otherwise 422 `accounts.opt_in_required` with `pointer`\n`/opt_ins/automation`, and nothing is saved. `copy` is never required by these operations (it is\nchosen in the follower flow, S7/S19); it may be sent when the UI shows it. A stale `rule_version_id` gives 409\n`accounts.rule_version_changed`. The step-up (when a choice is `accepted` and changes the stored\nstate) happens before the single save, so cancelling it saves nothing.\n",
+    "minProperties": 1,
+    "properties": {
+     "automation": {
+      "additionalProperties": false,
+      "properties": {
+       "choice": {
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version whose text was displayed (`RuleVersion.id`).",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "choice",
+       "rule_version_id"
+      ],
+      "type": "object"
+     },
+     "copy": {
+      "additionalProperties": false,
+      "properties": {
+       "choice": {
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version whose text was displayed (`RuleVersion.id`).",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "choice",
+       "rule_version_id"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "object"
+   },
+   "phase": {
+    "description": "Free text (trimmed by the Core) for prop accounts without a preset.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "plan_name": {
+    "description": "Free text (trimmed by the Core) for prop accounts without a preset.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "profile_size": {
+    "description": "The standard size whose default profile is copied, when the account's size (real, or prop outside the standard list, Q73 b) is a tie (`getNearestProfileSize` returns two candidates). Ignored otherwise.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "rule_values": {
+    "additionalProperties": false,
+    "description": "Prop with a preset only. The account's own rule values where they differ from the preset or resolve a not-confirmed field (S16 AC-2, AC-6).",
+    "minProperties": 1,
+    "properties": {
+     "consistency_rule": {
+      "additionalProperties": false,
+      "properties": {
+       "text": {
+        "description": "The firm's wording (not translated).",
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+       },
+       "threshold_pct": {
+        "pattern": "^[0-9]{1,3}(\\.[0-9]{1,2})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "text"
+      ],
+      "type": "object"
+     },
+     "daily_loss_limit": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "else": {
+         "required": [
+          "amount"
+         ]
+        },
+        "if": {
+         "properties": {
+          "kind": {
+           "const": "none"
+          }
+         }
+        },
+        "then": {
+         "not": {
+          "required": [
+           "amount"
+          ]
+         }
+        }
+       }
+      ],
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       },
+       "kind": {
+        "enum": [
+         "hard",
+         "soft_pause",
+         "none"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "type": "object"
+     },
+     "daily_profit_target": {
+      "additionalProperties": false,
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "amount"
+      ],
+      "type": "object"
+     },
+     "drawdown": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "type": {
+           "const": "other"
+          }
+         }
+        },
+        "then": {
+         "required": [
+          "description"
+         ]
+        }
+       }
+      ],
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       },
+       "description": {
+        "description": "Required for `other`.",
+        "maxLength": 500,
+        "type": "string"
+       },
+       "stops_trailing_at": {
+        "description": "When it stops trailing, as published.",
+        "maxLength": 300,
+        "type": "string"
+       },
+       "type": {
+        "enum": [
+         "trailing_intraday",
+         "trailing_eod",
+         "static",
+         "other"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "type",
+       "amount"
+      ],
+      "type": "object"
+     },
+     "evaluation_profit_target": {
+      "additionalProperties": false,
+      "properties": {
+       "amount": {
+        "description": "Net profit to reach since the evaluation start, > 0.",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "amount"
+      ],
+      "type": "object"
+     },
+     "trading_day_reset": {
+      "additionalProperties": false,
+      "properties": {
+       "local_time": {
+        "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+        "type": "string"
+       },
+       "published_text": {
+        "description": "As published, e.g. \"5:00 PM ET\".",
+        "maxLength": 100,
+        "type": "string"
+       },
+       "time_zone": {
+        "description": "IANA time zone name, validated by the Core against its tz database.",
+        "maxLength": 64,
+        "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "local_time",
+       "time_zone"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "object"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "step_up": {
+    "additionalProperties": false,
+    "description": "Required when an `opt_ins` choice is `accepted` (action `account_create_opt_in_accept`, no target).",
+    "properties": {
+     "challenge_id": {
+      "description": "Sealed challenge token (auth policy \u00a73); opaque to clients. Never logged.",
+      "pattern": "^[A-Za-z0-9_-]{16,256}$",
+      "type": "string"
+     },
+     "code": {
+      "description": "The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,\nuppercase, O\u21920, I/L\u21921, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or\nmalformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400\n`common.invalid_request`, which counts no attempt and reveals nothing. Never logged.\n",
+      "maxLength": 32,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "challenge_id",
+     "code"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "kind",
+   "display_name",
+   "max_position_qty"
+  ],
+  "type": "object"
+ },
+ "AccountList": {
+  "additionalProperties": false,
+  "properties": {
+   "accounts": {
+    "items": {
+     "additionalProperties": false,
+     "allOf": [
+      {
+       "else": {
+        "not": {
+         "anyOf": [
+          {
+           "required": [
+            "firm_name"
+           ]
+          },
+          {
+           "required": [
+            "plan_name"
+           ]
+          },
+          {
+           "required": [
+            "phase"
+           ]
+          },
+          {
+           "required": [
+            "firm_id"
+           ]
+          },
+          {
+           "required": [
+            "preset_version_id"
+           ]
+          },
+          {
+           "required": [
+            "firm_platform"
+           ]
+          }
+         ]
+        }
+       },
+       "if": {
+        "properties": {
+         "kind": {
+          "const": "prop"
+         }
+        }
+       },
+       "then": {
+        "required": [
+         "firm_name",
+         "plan_name",
+         "phase"
+        ]
+       }
+      }
+     ],
+     "properties": {
+      "archived_at": {
+       "description": "Only in the idempotent replay of a create whose account was archived since; every other read of an archived account is 404.",
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      },
+      "binding": {
+       "additionalProperties": false,
+       "description": "Absent when the account is not bound; an unbound account is never routed (Q37).",
+       "properties": {
+        "bound_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        },
+        "connection_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "type": "string"
+        },
+        "connection_name": {
+         "maxLength": 60,
+         "minLength": 1,
+         "type": "string"
+        },
+        "connection_status": {
+         "enum": [
+          "awaiting_pairing",
+          "connected",
+          "disconnected",
+          "outdated",
+          "unpaired"
+         ],
+         "type": "string"
+        },
+        "kind": {
+         "enum": [
+          "simulation",
+          "playback",
+          "live",
+          "unknown"
+         ],
+         "type": "string"
+        },
+        "oco_location": {
+         "enum": [
+          "local",
+          "server",
+          "unknown"
+         ],
+         "type": "string"
+        },
+        "platform_account": {
+         "maxLength": 128,
+         "type": "string"
+        }
+       },
+       "required": [
+        "connection_id",
+        "connection_name",
+        "connection_status",
+        "platform_account",
+        "kind",
+        "oco_location"
+       ],
+       "type": "object"
+      },
+      "commission_per_contract_side": {
+       "description": "The account's commission floor per contract and side (absent = none).",
+       "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+       "type": "string"
+      },
+      "created_at": {
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      },
+      "currency": {
+       "description": "ISO 4217; 'USD' in V1.",
+       "pattern": "^[A-Z]{3}$",
+       "type": "string"
+      },
+      "display_name": {
+       "description": "Trimmed by the Core (NFC); must not be blank. Unique per user among live accounts, case-insensitive.",
+       "maxLength": 80,
+       "minLength": 1,
+       "type": "string"
+      },
+      "evaluation_earned_before": {
+       "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+       "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+       "type": "string"
+      },
+      "evaluation_start": {
+       "description": "Prop accounts in an evaluation phase (S13b).",
+       "format": "date",
+       "type": "string"
+      },
+      "firm_id": {
+       "description": "Prop with a preset only (S16 catalog).",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "firm_name": {
+       "description": "Prop only. From the preset when `preset_version_id` is set, else the manual text.",
+       "maxLength": 120,
+       "type": "string"
+      },
+      "firm_platform": {
+       "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+       "pattern": "^[a-z][a-z0-9_]{0,31}$",
+       "type": "string"
+      },
+      "has_open_position": {
+       "description": "Last known from the platform (gateway); false when unbound. Used for the lifecycle and delete messages.",
+       "type": "boolean"
+      },
+      "id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "kind": {
+       "enum": [
+        "prop",
+        "real"
+       ],
+       "type": "string"
+      },
+      "lifecycle_state": {
+       "enum": [
+        "active",
+        "paused",
+        "disabled"
+       ],
+       "type": "string"
+      },
+      "max_position_qty": {
+       "description": "Maximum position in contracts, one number per account in V1 (Q-A1). Mandatory (S5 AC-3).",
+       "maximum": 10000,
+       "minimum": 1,
+       "type": "integer"
+      },
+      "multiplier": {
+       "description": "Whole number \u2265 1 (S5 AC-5); a fraction or zero gets 400 `common.invalid_request` with the pointer.",
+       "maximum": 1000,
+       "minimum": 1,
+       "type": "integer"
+      },
+      "opt_ins": {
+       "additionalProperties": false,
+       "properties": {
+        "automation": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "if": {
+            "properties": {
+             "state": {
+              "const": "chosen"
+             }
+            }
+           },
+           "then": {
+            "required": [
+             "firm_stance",
+             "choice",
+             "chosen_at",
+             "rule_version_id",
+             "current_rule_version_id"
+            ]
+           }
+          },
+          {
+           "else": {
+            "not": {
+             "required": [
+              "pending_reason"
+             ]
+            }
+           },
+           "if": {
+            "properties": {
+             "state": {
+              "const": "pending_review"
+             }
+            }
+           },
+           "then": {
+            "dependentRequired": {
+             "choice": [
+              "chosen_at",
+              "rule_version_id"
+             ]
+            },
+            "required": [
+             "firm_stance",
+             "pending_reason",
+             "current_rule_version_id"
+            ]
+           }
+          },
+          {
+           "if": {
+            "properties": {
+             "state": {
+              "const": "not_required"
+             }
+            }
+           },
+           "then": {
+            "not": {
+             "anyOf": [
+              {
+               "required": [
+                "choice"
+               ]
+              },
+              {
+               "required": [
+                "chosen_at"
+               ]
+              },
+              {
+               "required": [
+                "rule_version_id"
+               ]
+              }
+             ]
+            }
+           }
+          }
+         ],
+         "properties": {
+          "choice": {
+           "description": "With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in\nforce), present only if one was ever made, so the review dialog can show it; it is never\npreselected. Absent with `not_required`.\n",
+           "enum": [
+            "accepted",
+            "declined"
+           ],
+           "type": "string"
+          },
+          "chosen_at": {
+           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+           "type": "string"
+          },
+          "current_rule_version_id": {
+           "description": "The rule version in force for this account and kind (fetch its text with `getRuleVersion`). Absent only for real accounts.",
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "firm_stance": {
+           "description": "Absent only for real accounts.",
+           "enum": [
+            "allowed",
+            "forbidden",
+            "conditional",
+            "unknown",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "kind": {
+           "enum": [
+            "automation",
+            "copy"
+           ],
+           "type": "string"
+          },
+          "pending_reason": {
+           "description": "With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is\nflagged as a material text change (Q42; `RuleVersion.change` has the reason\ntext); `preset_attached` = reserved for Q41: only a data migration that attaches a\npreset to an account without a user request would produce it. No operation of this contract\ndoes (a user who selects a preset sends the new choice inline, D16).\n",
+           "enum": [
+            "stance_changed",
+            "text_changed",
+            "preset_attached"
+           ],
+           "type": "string"
+          },
+          "rule_version_id": {
+           "description": "Rule version the `choice` was made against.",
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "state": {
+           "description": "not_required = no choice is asked now: real account, the stance is `allowed`, or (`copy`) the\naccount is not a follower (Q-S5-8; no card in the UI); chosen = an explicit choice exists for\nthe current rule version; pending_review = see `pending_reason`; that kind is suspended until\nthe user chooses again (Q26). Routing treats `pending_review` and `declined` as not accepted\n(`routing.automation_not_accepted` / `routing.copy_not_accepted`). There is no \"saved without\na choice\" state: first choices are atomic with creation.\n",
+           "enum": [
+            "not_required",
+            "chosen",
+            "pending_review"
+           ],
+           "type": "string"
+          }
+         },
+         "required": [
+          "kind",
+          "state"
+         ],
+         "type": "object"
+        },
+        "copy": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "if": {
+            "properties": {
+             "state": {
+              "const": "chosen"
+             }
+            }
+           },
+           "then": {
+            "required": [
+             "firm_stance",
+             "choice",
+             "chosen_at",
+             "rule_version_id",
+             "current_rule_version_id"
+            ]
+           }
+          },
+          {
+           "else": {
+            "not": {
+             "required": [
+              "pending_reason"
+             ]
+            }
+           },
+           "if": {
+            "properties": {
+             "state": {
+              "const": "pending_review"
+             }
+            }
+           },
+           "then": {
+            "dependentRequired": {
+             "choice": [
+              "chosen_at",
+              "rule_version_id"
+             ]
+            },
+            "required": [
+             "firm_stance",
+             "pending_reason",
+             "current_rule_version_id"
+            ]
+           }
+          },
+          {
+           "if": {
+            "properties": {
+             "state": {
+              "const": "not_required"
+             }
+            }
+           },
+           "then": {
+            "not": {
+             "anyOf": [
+              {
+               "required": [
+                "choice"
+               ]
+              },
+              {
+               "required": [
+                "chosen_at"
+               ]
+              },
+              {
+               "required": [
+                "rule_version_id"
+               ]
+              }
+             ]
+            }
+           }
+          }
+         ],
+         "properties": {
+          "choice": {
+           "description": "With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in\nforce), present only if one was ever made, so the review dialog can show it; it is never\npreselected. Absent with `not_required`.\n",
+           "enum": [
+            "accepted",
+            "declined"
+           ],
+           "type": "string"
+          },
+          "chosen_at": {
+           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+           "type": "string"
+          },
+          "current_rule_version_id": {
+           "description": "The rule version in force for this account and kind (fetch its text with `getRuleVersion`). Absent only for real accounts.",
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "firm_stance": {
+           "description": "Absent only for real accounts.",
+           "enum": [
+            "allowed",
+            "forbidden",
+            "conditional",
+            "unknown",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "kind": {
+           "enum": [
+            "automation",
+            "copy"
+           ],
+           "type": "string"
+          },
+          "pending_reason": {
+           "description": "With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is\nflagged as a material text change (Q42; `RuleVersion.change` has the reason\ntext); `preset_attached` = reserved for Q41: only a data migration that attaches a\npreset to an account without a user request would produce it. No operation of this contract\ndoes (a user who selects a preset sends the new choice inline, D16).\n",
+           "enum": [
+            "stance_changed",
+            "text_changed",
+            "preset_attached"
+           ],
+           "type": "string"
+          },
+          "rule_version_id": {
+           "description": "Rule version the `choice` was made against.",
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "state": {
+           "description": "not_required = no choice is asked now: real account, the stance is `allowed`, or (`copy`) the\naccount is not a follower (Q-S5-8; no card in the UI); chosen = an explicit choice exists for\nthe current rule version; pending_review = see `pending_reason`; that kind is suspended until\nthe user chooses again (Q26). Routing treats `pending_review` and `declined` as not accepted\n(`routing.automation_not_accepted` / `routing.copy_not_accepted`). There is no \"saved without\na choice\" state: first choices are atomic with creation.\n",
+           "enum": [
+            "not_required",
+            "chosen",
+            "pending_review"
+           ],
+           "type": "string"
+          }
+         },
+         "required": [
+          "kind",
+          "state"
+         ],
+         "type": "object"
+        }
+       },
+       "required": [
+        "automation",
+        "copy"
+       ],
+       "type": "object"
+      },
+      "phase": {
+       "description": "Prop only: the preset phase code (`evaluation`, `funded`, `live`) or the manual text.",
+       "maxLength": 80,
+       "type": "string"
+      },
+      "plan_name": {
+       "description": "Prop only (as `firm_name`).",
+       "maxLength": 120,
+       "type": "string"
+      },
+      "preset_update_available": {
+       "description": "Prop with a preset only \u2014 a newer version of the account's preset exists (list link \"Preset novo\"; details in `getAccountPreset`).",
+       "type": "boolean"
+      },
+      "preset_version_id": {
+       "description": "Prop with a preset only. The version applied to this account; a newer one is applied only by the user (S16 AC-3).",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "row_version": {
+       "minimum": 1,
+       "type": "integer"
+      },
+      "size_amount": {
+       "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+       "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+       "type": "string"
+      },
+      "updated_at": {
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "kind",
+      "display_name",
+      "size_amount",
+      "currency",
+      "multiplier",
+      "max_position_qty",
+      "lifecycle_state",
+      "opt_ins",
+      "has_open_position",
+      "row_version",
+      "created_at",
+      "updated_at"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "accounts"
+  ],
+  "type": "object"
+ },
+ "AccountUpdateRequest": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "else": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "firm_platform"
+        ]
+       },
+       {
+        "required": [
+         "rule_values"
+        ]
+       }
+      ]
+     },
+     "required": [
+      "size_amount"
+     ]
+    },
+    "if": {
+     "required": [
+      "preset_version_id"
+     ]
+    },
+    "then": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "firm_name"
+        ]
+       },
+       {
+        "required": [
+         "plan_name"
+        ]
+       },
+       {
+        "required": [
+         "phase"
+        ]
+       },
+       {
+        "required": [
+         "size_amount"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "if": {
+     "anyOf": [
+      {
+       "required": [
+        "firm_name"
+       ]
+      },
+      {
+       "required": [
+        "plan_name"
+       ]
+      },
+      {
+       "required": [
+        "phase"
+       ]
+      }
+     ]
+    },
+    "then": {
+     "required": [
+      "firm_name",
+      "plan_name",
+      "phase",
+      "size_amount"
+     ]
+    }
+   }
+  ],
+  "description": "Full replacement of the editable fields (`kind` is fixed at creation). The same prop/real rules as\n`AccountCreateRequest`, keyed on the stored `kind`: real \u2192 `size_amount`, no prop fields, no\n`opt_ins`; prop \u2192 `preset_version_id` (+ `firm_platform`) or the four manual fields. A body that\ndoes not fit the stored kind gets 400 `common.invalid_request` with the pointer of the first\noffending field. Switching a prop account from a preset to manual fields (or back) is allowed.\n",
+  "properties": {
+   "binding": {
+    "additionalProperties": false,
+    "description": "The platform account to bind; absent means unbound.",
+    "properties": {
+     "connection_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "platform_account": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "connection_id",
+     "platform_account"
+    ],
+    "type": "object"
+   },
+   "commission_per_contract_side": {
+    "description": "USD per contract and side, \u2265 0 (U20 a): the floor of each fill's commission. Exception to the\nfull replacement (QA Security): **absent = unchanged**, so a client that forgets the field never\nremoves the floor; `null` removes it explicitly. A higher floor applies at once; a lower one, or\n`null`, applies from the next trading day (`AccountRisk.pending_commission_change`; ADR-0006\n\u00a73.7) and is audited (`accounts.updated`). Any change bumps the account's limits version.\n",
+    "oneOf": [
+     {
+      "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+      "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+      "type": "string"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "display_name": {
+    "description": "Trimmed by the Core (NFC); must not be blank. Unique per user among live accounts, case-insensitive.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "firm_name": {
+    "description": "Free text (trimmed by the Core) for prop accounts without a preset.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "firm_platform": {
+    "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+    "type": "string"
+   },
+   "max_position_qty": {
+    "description": "Maximum position in contracts, one number per account in V1 (Q-A1). Mandatory (S5 AC-3).",
+    "maximum": 10000,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "multiplier": {
+    "description": "Absent means 1.",
+    "maximum": 1000,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "opt_ins": {
+    "additionalProperties": false,
+    "description": "The `opt_ins` property of `createAccount` / `updateAccount` / `applyPresetVersion` (atomic with the\nsave). Required kinds: on create, `automation` when its rule version needs a choice; on update and\napply, only `automation`, and only when that request changes the automation rule version and the\nnew version needs a choice. Otherwise 422 `accounts.opt_in_required` with `pointer`\n`/opt_ins/automation`, and nothing is saved. `copy` is never required by these operations (it is\nchosen in the follower flow, S7/S19); it may be sent when the UI shows it. A stale `rule_version_id` gives 409\n`accounts.rule_version_changed`. The step-up (when a choice is `accepted` and changes the stored\nstate) happens before the single save, so cancelling it saves nothing.\n",
+    "minProperties": 1,
+    "properties": {
+     "automation": {
+      "additionalProperties": false,
+      "properties": {
+       "choice": {
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version whose text was displayed (`RuleVersion.id`).",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "choice",
+       "rule_version_id"
+      ],
+      "type": "object"
+     },
+     "copy": {
+      "additionalProperties": false,
+      "properties": {
+       "choice": {
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version whose text was displayed (`RuleVersion.id`).",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "choice",
+       "rule_version_id"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "object"
+   },
+   "phase": {
+    "description": "Free text (trimmed by the Core) for prop accounts without a preset.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "plan_name": {
+    "description": "Free text (trimmed by the Core) for prop accounts without a preset.",
+    "maxLength": 80,
+    "minLength": 1,
+    "type": "string"
+   },
+   "preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "rule_values": {
+    "additionalProperties": false,
+    "description": "Only when the preset selection changes (another `preset_version_id` or `firm_platform`): the\naccount's own values for the new preset (edited or resolving not-confirmed fields; absent fields\ntake the new preset's value). With an unchanged selection it must be absent (422\n`accounts.rule_values_without_selection_change`) and the stored rule values are kept; they are\nedited with `putAccountRiskRules` (S13) and restored with `restorePresetValue`.\n",
+    "minProperties": 1,
+    "properties": {
+     "consistency_rule": {
+      "additionalProperties": false,
+      "properties": {
+       "text": {
+        "description": "The firm's wording (not translated).",
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+       },
+       "threshold_pct": {
+        "pattern": "^[0-9]{1,3}(\\.[0-9]{1,2})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "text"
+      ],
+      "type": "object"
+     },
+     "daily_loss_limit": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "else": {
+         "required": [
+          "amount"
+         ]
+        },
+        "if": {
+         "properties": {
+          "kind": {
+           "const": "none"
+          }
+         }
+        },
+        "then": {
+         "not": {
+          "required": [
+           "amount"
+          ]
+         }
+        }
+       }
+      ],
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       },
+       "kind": {
+        "enum": [
+         "hard",
+         "soft_pause",
+         "none"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "type": "object"
+     },
+     "daily_profit_target": {
+      "additionalProperties": false,
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "amount"
+      ],
+      "type": "object"
+     },
+     "drawdown": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "type": {
+           "const": "other"
+          }
+         }
+        },
+        "then": {
+         "required": [
+          "description"
+         ]
+        }
+       }
+      ],
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       },
+       "description": {
+        "description": "Required for `other`.",
+        "maxLength": 500,
+        "type": "string"
+       },
+       "stops_trailing_at": {
+        "description": "When it stops trailing, as published.",
+        "maxLength": 300,
+        "type": "string"
+       },
+       "type": {
+        "enum": [
+         "trailing_intraday",
+         "trailing_eod",
+         "static",
+         "other"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "type",
+       "amount"
+      ],
+      "type": "object"
+     },
+     "evaluation_profit_target": {
+      "additionalProperties": false,
+      "properties": {
+       "amount": {
+        "description": "Net profit to reach since the evaluation start, > 0.",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "amount"
+      ],
+      "type": "object"
+     },
+     "trading_day_reset": {
+      "additionalProperties": false,
+      "properties": {
+       "local_time": {
+        "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+        "type": "string"
+       },
+       "published_text": {
+        "description": "As published, e.g. \"5:00 PM ET\".",
+        "maxLength": 100,
+        "type": "string"
+       },
+       "time_zone": {
+        "description": "IANA time zone name, validated by the Core against its tz database.",
+        "maxLength": 64,
+        "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "local_time",
+       "time_zone"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "object"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "step_up": {
+    "additionalProperties": false,
+    "description": "Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`), or when the binding of an account that receives automation changes (action `account_binding_change`); target = this account.",
+    "properties": {
+     "challenge_id": {
+      "description": "Sealed challenge token (auth policy \u00a73); opaque to clients. Never logged.",
+      "pattern": "^[A-Za-z0-9_-]{16,256}$",
+      "type": "string"
+     },
+     "code": {
+      "description": "The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,\nuppercase, O\u21920, I/L\u21921, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or\nmalformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400\n`common.invalid_request`, which counts no attempt and reveals nothing. Never logged.\n",
+      "maxLength": 32,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "challenge_id",
+     "code"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "row_version",
+   "display_name",
+   "max_position_qty"
+  ],
+  "type": "object"
+ },
+ "ArchiveImpact": {
+  "additionalProperties": false,
+  "properties": {
+   "follower_links": {
+    "description": "Master/follower relations (S19, V1.1; always empty before it) that archiving removes.",
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "account_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "display_name": {
+       "description": "Trimmed by the Core (NFC); must not be blank. Unique per user among live accounts, case-insensitive.",
+       "maxLength": 80,
+       "minLength": 1,
+       "type": "string"
+      },
+      "role": {
+       "description": "The role of the OTHER account in the relation.",
+       "enum": [
+        "master",
+        "follower"
+       ],
+       "type": "string"
+      }
+     },
+     "required": [
+      "account_id",
+      "display_name",
+      "role"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "has_open_position": {
+    "description": "When true `archiveAccount` is refused (the dialog shows the explanation instead of a confirmation).",
+    "type": "boolean"
+   },
+   "routes": {
+    "description": "Routing subscriptions of this account (S7) that archiving removes.",
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "source_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "source_name": {
+       "maxLength": 60,
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "source_id",
+      "source_name"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "has_open_position",
+   "routes",
+   "follower_links"
+  ],
+  "type": "object"
+ },
+ "EvaluationRestartRequest": {
+  "additionalProperties": false,
+  "properties": {
+   "evaluation_earned_before": {
+    "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+    "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+    "type": "string"
+   },
+   "evaluation_start": {
+    "format": "date",
+    "type": "string"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "evaluation_start",
+   "row_version"
+  ],
+  "type": "object"
+ },
+ "LifecycleRequest": {
+  "additionalProperties": false,
+  "properties": {
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "state": {
+    "enum": [
+     "active",
+     "paused",
+     "disabled"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "state",
+   "row_version"
+  ],
+  "type": "object"
+ },
+ "OptInChoiceBody": {
+  "additionalProperties": false,
+  "properties": {
+   "choice": {
+    "enum": [
+     "accepted",
+     "declined"
+    ],
+    "type": "string"
+   },
+   "rule_version_id": {
+    "description": "Rule version whose text was displayed (`RuleVersion.id`).",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "step_up": {
+    "additionalProperties": false,
+    "description": "Required when `choice` is `accepted` (step-up action `account_opt_in_accept`, target = this account).",
+    "properties": {
+     "challenge_id": {
+      "description": "Sealed challenge token (auth policy \u00a73); opaque to clients. Never logged.",
+      "pattern": "^[A-Za-z0-9_-]{16,256}$",
+      "type": "string"
+     },
+     "code": {
+      "description": "The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,\nuppercase, O\u21920, I/L\u21921, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or\nmalformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400\n`common.invalid_request`, which counts no attempt and reveals nothing. Never logged.\n",
+      "maxLength": 32,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "challenge_id",
+     "code"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "choice",
+   "rule_version_id"
+  ],
+  "type": "object"
+ },
+ "OptInKind": {
+  "enum": [
+   "automation",
+   "copy"
+  ],
+  "type": "string"
+ },
+ "OptInState": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "if": {
+     "properties": {
+      "state": {
+       "const": "chosen"
+      }
+     }
+    },
+    "then": {
+     "required": [
+      "firm_stance",
+      "choice",
+      "chosen_at",
+      "rule_version_id",
+      "current_rule_version_id"
+     ]
+    }
+   },
+   {
+    "else": {
+     "not": {
+      "required": [
+       "pending_reason"
+      ]
+     }
+    },
+    "if": {
+     "properties": {
+      "state": {
+       "const": "pending_review"
+      }
+     }
+    },
+    "then": {
+     "dependentRequired": {
+      "choice": [
+       "chosen_at",
+       "rule_version_id"
+      ]
+     },
+     "required": [
+      "firm_stance",
+      "pending_reason",
+      "current_rule_version_id"
+     ]
+    }
+   },
+   {
+    "if": {
+     "properties": {
+      "state": {
+       "const": "not_required"
+      }
+     }
+    },
+    "then": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "choice"
+        ]
+       },
+       {
+        "required": [
+         "chosen_at"
+        ]
+       },
+       {
+        "required": [
+         "rule_version_id"
+        ]
+       }
+      ]
+     }
+    }
+   }
+  ],
+  "properties": {
+   "choice": {
+    "description": "With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in\nforce), present only if one was ever made, so the review dialog can show it; it is never\npreselected. Absent with `not_required`.\n",
+    "enum": [
+     "accepted",
+     "declined"
+    ],
+    "type": "string"
+   },
+   "chosen_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   },
+   "current_rule_version_id": {
+    "description": "The rule version in force for this account and kind (fetch its text with `getRuleVersion`). Absent only for real accounts.",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "firm_stance": {
+    "description": "Absent only for real accounts.",
+    "enum": [
+     "allowed",
+     "forbidden",
+     "conditional",
+     "unknown",
+     "not_confirmed"
+    ],
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "automation",
+     "copy"
+    ],
+    "type": "string"
+   },
+   "pending_reason": {
+    "description": "With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is\nflagged as a material text change (Q42; `RuleVersion.change` has the reason\ntext); `preset_attached` = reserved for Q41: only a data migration that attaches a\npreset to an account without a user request would produce it. No operation of this contract\ndoes (a user who selects a preset sends the new choice inline, D16).\n",
+    "enum": [
+     "stance_changed",
+     "text_changed",
+     "preset_attached"
+    ],
+    "type": "string"
+   },
+   "rule_version_id": {
+    "description": "Rule version the `choice` was made against.",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "state": {
+    "description": "not_required = no choice is asked now: real account, the stance is `allowed`, or (`copy`) the\naccount is not a follower (Q-S5-8; no card in the UI); chosen = an explicit choice exists for\nthe current rule version; pending_review = see `pending_reason`; that kind is suspended until\nthe user chooses again (Q26). Routing treats `pending_review` and `declined` as not accepted\n(`routing.automation_not_accepted` / `routing.copy_not_accepted`). There is no \"saved without\na choice\" state: first choices are atomic with creation.\n",
+    "enum": [
+     "not_required",
+     "chosen",
+     "pending_review"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "kind",
+   "state"
+  ],
+  "type": "object"
+ }
+}

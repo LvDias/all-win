@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 4.3.0
+  version: 5.1.1
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
@@ -28,9 +28,10 @@ info:
     - Decimals are strings; timestamps are RFC 3339 UTC with `Z`; ids are lowercase UUIDs.
     - Errors: `{"error": {"code": "<stable.code>", ...}}`. Clients translate codes; never rely on text.
       - Any `/api/v1` or `/adapter/v1` request that does not match its schema (malformed JSON, unknown or
-        missing property, pattern/length/enum violation, malformed path or query parameter) gets
-        400 `common.invalid_request` with `error.pointer` (JSON pointer to the first offending field;
-        `/path/<name>` or `/query/<name>` for parameters). Framework default error bodies are never sent.
+        missing property, pattern/length/enum violation, malformed or missing path, query or header
+        parameter) gets 400 `common.invalid_request` with `error.pointer` (JSON pointer to the first
+        offending field; `/path/<name>`, `/query/<name>` or `/header/<name>` for parameters, e.g.
+        `/header/Idempotency-Key`). Framework default error bodies are never sent.
       - Unexpected failures get 500 `common.internal` with no detail (no path, query, stack or SQL).
       - The ingress is the exception: its token and path-parameter violations are always the empty 404
         (S1 AC-2), and its body errors use the `ingress.*` codes.
