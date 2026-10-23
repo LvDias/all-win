@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 15.2; **rev. 16 proposed**:
+- **Status:** Accepted (2026-10-23), rev. 16 (c509981); **rev. 16.1 proposed** (Crivo N1–N3 and ADR-0008 round 2): binding, change, release and archive write both `account.limits_changed` and `account.binding_changed`; the open-position residual and the gateway mitigation are mirrored in §5.3; §9 gains the rev. 16 constraint and grant tests.
+- Rev. 16 (9dcc772, c509981):
   - **Binding (Esquadro, ADR-0008, approved by the user):** `accounts` owns the account ↔ platform-account binding. `accounts.account` gains `venue_account_id` and `bound_at`, and `gateway.venue_account` loses `account_id`, `bound_at` and `venue_account_bound_key` (§5.2, §5.3).
   - **Wave 1 versions assigned (§8):** old #5 split into a catalog file and an accounts file; `account_rule_value` (old #12) moves to S5; bracket profiles get their own file (S6).
   - **From the S5 migration review (Malha):** `display_name` 1..80 and `row_version ≥ 1` `CHECK`s on `account`; `DELETE` on `account` revoked from `allwin_app`; `opt_in_rule_version` is `SELECT`-only until S16; the Q13-b erasure order is stated (§5.2).
@@ -725,8 +726,13 @@ CREATE TABLE gateway.venue_account (
     - The index is not scoped by RLS, so it also sees another user's rows. They cannot collide, because `resolve` returns only the user's own venue accounts.
     - Two concurrent binds of the same platform account serialize on the index: one wins and the other gets 409.
   - Changing or removing a binding first checks `Positions::has_open_position(venue_account_id)` → 409 `accounts.binding_open_position`.
-  - The same transaction writes `account.binding_changed {account_id, venue_account_id|null, limits_version}` to `app.outbox`. It bumps `limits_version` (the binding is a limits input, ADR-0006 §3.1).
-- **Archiving releases the binding** (`CHECK`; ADR-0008): the archive transaction sets `venue_account_id` and `bound_at` to `NULL`, writes `account.binding_changed` and bumps `limits_version`. Otherwise an archived account would keep the platform account taken forever.
+    - A position that opens between this read and the commit, or a working order that fills after an unbind, is an accepted window (ADR-0008 §3.2).
+    - **Residual:** the platform account then holds a position with no binding, and routing skips every action for it, exits included (`routing.platform_unbound`).
+    - **Mitigation:** `gateway` audits and alerts the user on a fill or a non-flat `position_snapshot` for a venue account that `account_for_venue` reports as unbound. The code comes from the S11 sync contract, and no schema change is needed here.
+  - The same transaction bumps `limits_version` (the binding is a limits input, ADR-0006 §3.1) and writes **two** events to `app.outbox` (rev. 16.1, ADR-0008 §3.2 step 5):
+    - `account.limits_changed {account_id, limits_version}`, the ADR-0006 producer event that `risk` consumes;
+    - `account.binding_changed {account_id, venue_account_id|null, limits_version}`, which `gateway` consumes for side effects (`welcome` / `limits` again).
+- **Archiving releases the binding** (`CHECK`; ADR-0008): the archive transaction sets `venue_account_id` and `bound_at` to `NULL`, bumps `limits_version` and writes both events above. Otherwise an archived account would keep the platform account taken forever.
   - An open position already refuses `archiveAccount` with 409 `accounts.delete_open_position` (S5 AC-6), so there is no new code.
 - **No FK across schemas** (§1): `gateway` must keep a `venue_account` row as long as an account may name it.
   - Rows are never deleted at runtime. A revoked connection keeps its rows.
@@ -1766,13 +1772,14 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
      - a second account of the same user with the same `venue_account_id` fails (`account_venue_account_key` → 409 `accounts.platform_account_taken`); two concurrent binds of one platform account leave exactly one bound;
      - `venue_account_id` without `bound_at` fails, and an archived account that is still bound fails;
      - archiving releases the binding, and the same platform account can then be bound to another account;
-     - a bind, rebind or release bumps `limits_version` and writes `account.binding_changed` in the same transaction;
+     - a bind, rebind, release or archive bumps `limits_version` and writes both `account.limits_changed` and `account.binding_changed` in the same transaction (rev. 16.1);
+   - rev. 16, `account` constraints and grants: a `display_name` of `''` or of 81 characters fails; `row_version = 0` fails; `allwin_app` `DELETE` on `account` is denied;
      - `resolve` with another user's `connection_id` returns `None` (422), so no cross-user binding is possible;
    - rev. 8, `opt_in_rule_version`:
      - a generic row with quotes, a firm or a non-`unknown` stance fails;
      - a second generic version 1 of the same kind fails;
      - `text_changed` without `change_reason` fails;
-     - `allwin_app` cannot `UPDATE` or `DELETE`;
+     - `allwin_app` cannot `UPDATE` or `DELETE`, and (rev. 16) cannot `INSERT` until the S16 migration grants it;
      - an account's `automation_rule_version_id` pointing to a `copy` row, or to an unknown id, is rejected by the Core (no FK, §1);
    - rev. 8, `account_bracket_profile`:
      - `set_by_user` with `copied_from_size` fails, and so does `set_by_user` with `customized = true`;
