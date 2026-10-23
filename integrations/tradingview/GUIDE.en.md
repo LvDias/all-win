@@ -10,6 +10,8 @@
 4. Under *Notifications*, tick **Webhook URL** and paste your All Win source address. **Do not edit the message**: the indicator builds the JSON.
 5. Recreate the alert whenever levels, inputs or the indicator version change.
 
+**Do not change the indicator's "Source name" during the trading session.** It is part of every signal's identifier: under a new name, a signal already sent gets a new identifier and **would execute again**. The real risk is two alerts alive at once under different names. If you must change it: outside trading hours, **delete the old alert first**, change the name, and only then create the new alert, with no alert from the old name still active.
+
 **Secret:** the secret token lives **only in the webhook URL**. Never put it in the message, screenshots or chats. If the body contains anything shaped like a token, All Win rejects the alert.
 
 According to [TradingView's official page](https://www.tradingview.com/support/solutions/43000529348-how-to-configure-webhook-alerts/), webhooks may occasionally fail to reach the URL (see the *Webhook status* column in TradingView's alert log). Check All Win's **audit log** to see whether each alert was received or rejected, and why.
@@ -26,7 +28,7 @@ Each account chooses which types it takes (routing screen).
 
 ## 3. Fields per action
 
-Always: `schema_version` = `"1.0"`, `message_id` (unique, built by the indicator), `sent_at` (UTC, ends with `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (the **traded future** in V1; `QQQ`/`SPY` are references only).
+Always: `schema_version` = `"1.0"`, `message_id` (built by the indicator: `tv-<Source name>-MNQ-<kind>-<setup>-<action>-<chart ticker>-<timeframe>-<bar time ms>`), `sent_at` (UTC, ends with `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (the **traded future** in V1; `QQQ`/`SPY` are references only).
 
 **Do not send `contract_month`:** All Win uses the catalog's active contract and rolls it on the date the admin configures. A month typed in the Pine goes stale at the roll and would trade the wrong contract.
 

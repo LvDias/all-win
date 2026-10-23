@@ -53,3 +53,12 @@ Behaviour:
 - Text values are JSON-escaped (backslash, double quote, newline).
 - Every message is written to Pine Logs (`log.info`). Invalid arguments (kind, action, side, setup, more than 32 details), an id over 128 characters, any other control character in the body, or a token-shaped string in the body are logged with `log.error` and **nothing is sent** (fail safe).
 - Invalid inputs stop the indicator at load with a visible error.
+
+### Pine Editor checklist (not verified outside TradingView)
+
+The block has not been compiled here. On the first paste, confirm in the Pine Editor, with "Send alerts" off:
+
+1. It compiles in v6 with no error, including: the global `varip array<string>` changed inside `aw_send`; `alert()` and `log.info()` called inside a user function.
+2. `str.match(j, "[\\x00-\\x1F]")` is accepted as written. If Pine rejects the `\x` escape, replace it with explicit checks for a tab and a carriage return.
+3. A forced test signal writes one line to Pine Logs whose `message_id` ends with a plain bar time (digits only, no thousands separator) and whose `sent_at` looks like `2026-10-22T14:31:05.123Z`.
+4. That JSON, pasted into the conversation with the team (never the URL), is accepted by the development stack.

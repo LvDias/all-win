@@ -10,6 +10,8 @@
 4. Em *Notificações*, marque **Webhook URL** e cole o endereço da sua fonte no All Win. **Não altere a mensagem**: o indicador monta o JSON.
 5. Recrie o alerta sempre que mudar níveis, entradas ou a versão do indicador.
 
+**Não mude o "Source name" do indicador durante o pregão.** Ele faz parte do identificador de cada sinal: com outro nome, um sinal que já foi enviado ganha um identificador novo e **seria executado de novo**. O risco real são dois alertas ativos ao mesmo tempo com nomes diferentes. Se precisar mudar: fora do horário de operação, **apague antes o alerta antigo**, mude o nome e só então crie o novo alerta, sem nenhum alerta do nome antigo ativo.
+
 **Segredo:** o token secreto fica **somente na URL do webhook**. Nunca o coloque na mensagem, em prints ou em conversas. Se o corpo contiver algo parecido com um token, o All Win rejeita o alerta.
 
 Segundo a [página oficial do TradingView](https://www.tradingview.com/support/solutions/43000529348-how-to-configure-webhook-alerts/), webhooks podem ocasionalmente não chegar ao destino (veja a coluna *Webhook status* no log de alertas do TradingView). Confira no **log de auditoria** do All Win se cada alerta foi recebido ou recusado, e com qual motivo.
@@ -26,7 +28,7 @@ Cada conta escolhe quais tipos aceita (tela de roteamento).
 
 ## 3. Campos por ação
 
-Sempre: `schema_version` = `"1.0"`, `message_id` (único, gerado pelo indicador), `sent_at` (UTC, termina em `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (o **futuro operado** na V1; `QQQ`/`SPY` são só referência).
+Sempre: `schema_version` = `"1.0"`, `message_id` (gerado pelo indicador: `tv-<Source name>-MNQ-<tipo>-<setup>-<ação>-<ticker do gráfico>-<timeframe>-<hora da barra em ms>`), `sent_at` (UTC, termina em `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (o **futuro operado** na V1; `QQQ`/`SPY` são só referência).
 
 **Não envie `contract_month`:** o All Win usa o contrato ativo do catálogo e faz a rolagem na data configurada pelo administrador. Um mês digitado no Pine fica velho na rolagem e operaria o contrato errado.
 
