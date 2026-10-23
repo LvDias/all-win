@@ -27,7 +27,9 @@ A second issue is the step-up target. For `account_opt_in_accept`, `route_enable
    - `Caller { user_id, session_id, device_id, is_platform_admin }`. This is the minimum other modules need; identity-only fields stay in identity.
    - `trait SessionAuthenticator`. It resolves the session cookie, and the idle/absolute expiry and activity touch of policy §5.1, into a `Caller`.
    - `StepUpAction` (mirrors the contract enum) and `StepUpProof { challenge_id, code }`.
-   - `trait StepUpVerifier`, implemented by `identity`: `is_required(action)` (the Q35 setting) and `verify_and_consume(caller, action, target, proof) -> Result<(), AccessError>`. The second one also writes the audit.
+   - `trait StepUpVerifier`, implemented by `identity`, with two methods:
+     - `is_required(action)` follows policy §6.2. Only an action in the setting's conditional set (`step_up.q35_persistence_actions`) can be switched off. Every other action, and an unknown, missing or invalid setting, means required (fail closed).
+     - `verify_and_consume(caller, action, target, proof) -> Result<(), AccessError>` also writes the audit.
    - A concrete `struct StepUpGate` that wraps a `StepUpVerifier` and offers `authorize(caller, action, target, proof) -> Result<StepUpGrant, AccessError>`. It is the only code that can create a `StepUpGrant` (§3.3).
    - `AccessError` = `Unauthenticated` | `StepUpRequired` | `CodeInvalid` | `Unavailable`.
    - A generic HTTP extractor behind the cargo feature `axum`. It applies the session check and the strict `Origin` check with the contract precedence (401 → 403 `common.forbidden_origin`).
@@ -42,8 +44,9 @@ A second issue is the step-up target. For `account_opt_in_accept`, `route_enable
 3. **`StepUpGrant`** is minted only by `StepUpGate::authorize`.
    - Its fields are private, and its constructor is private to the `access` crate. The verifier only answers `Ok`/`Err`, so `identity`, like any other module, cannot create a grant.
    - It carries the `action` and `target` it was issued for. It is neither `Clone` nor serializable, it is never stored, and it lives only for that request.
-   - The action's use case takes it **by value** and calls `grant.redeem(expected_action, expected_target)`. When either value differs, the call fails, and the use case answers 500 `common.internal` without acting (a handler bug, fail closed). A grant for `route_enable` on account A can therefore never authorize a binding change on account B.
+   - The action's use case takes it **by value** and calls `grant.redeem(self, expected_action, expected_target)`, which consumes it, so one grant cannot be redeemed twice in the same request. When either value differs, the call fails, and the use case answers 500 `common.internal` without acting (a handler bug, fail closed). A grant for `route_enable` on account A can therefore never authorize a binding change on account B.
    - A missing step-up is a compile error, and a wrong one is a runtime refusal.
+   - **This holds only if `crates/app` is the only place that builds a `StepUpGate`, and only around identity's verifier.** Permissive or fake verifiers live behind `cfg(test)` or a `test-util` feature that is off in the app build. A CI check (a test or a grep in `make check`) fails if a `StepUpGate` is constructed outside `crates/app` and tests.
    - When the action is switched off by Q35, `authorize` still mints a grant, with no proof needed, for the same action and target.
 4. **Precedence in the handler:**
    - before `authorize`: 401 → 403 origin → 403 `auth.forbidden` (admin) → 400 → 404. The 404 includes the target ownership, so another user's target never reaches a code check.

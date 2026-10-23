@@ -62,6 +62,7 @@ If `gateway` wrote the binding, `accounts` would need a cross-module command por
    - A reader that finds a bound id with no row treats the account as unbound. Routing skips every action for an unbound account with `routing.platform_unbound`. It applies to all actions, because nothing can be delivered. The code is added to the ADR-0003 §4.1 gates and the instruction reason-code registry in the next ADR-0003 delta.
    - **Re-pairing keeps `connection_id`** (`newPairingCode` on the same connection, ADR-0004 §8). The rows keyed by `(connection_id, platform_account)` survive, so the binding follows the connection by platform account name, as ADR-0004 §8 already states.
    - Only a new connection after an unpair produces new ids. The user rebinds then, which is intended: the old connection is history.
+   - Because the binding follows the name, and names such as `Sim101` exist on every install, `gateway` writes an audit entry when the `kind` of a **bound** venue account changes on a `hello` (QA Security I1). Outside production, a `live` account is still protected by the delivery guard (§3.6), and in the plugin by the N11 consent (ADR-0005).
 6. **The environment guard stays at delivery:** `kind` is refreshed on each `hello`. `gateway` still refuses delivery to a `live`/`unknown` account outside production (ADR-0004 §8). The check at bind time is a UX check, not the guard.
 
 ## 4. Consequences
@@ -86,4 +87,4 @@ If `gateway` wrote the binding, `accounts` would need a cross-module command por
   - Database Architect: data model rev. 16 §5.2–§5.3;
   - Backend S5 (Malha): write path. Its provisional `VenueAccounts` fake is query-only (`resolve`, `has_open_position`); there is no `bind`;
   - Backend gateway (S2/M1): `venue_account`, the query ports, the consumer;
-  - Software Architect: this ADR, and the ADR-0003 delta for `routing.platform_unbound`.
+  - Software Architect: this ADR, the ADR-0003 delta for `routing.platform_unbound`, and the S11 sync contract code for the unbound-fill alert and the bound-kind-change audit (§3.2 step 4, §3.5).
