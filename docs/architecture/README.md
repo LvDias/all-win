@@ -14,8 +14,8 @@ Owner: Software Architect. Status vocabulary for ADRs: **Proposed** → **Accept
 
 ## Other architecture documents
 
-- [Auth, session and credential policy](security/auth-and-session-policy.md): Q21, D10 (Accepted 2026-10-23)
-- [NinjaTrader 8 spike plan and Windows build/test access](spikes/nt8-spike-plan.md): W1–W4: Contabo VPS, Tailscale access T1 and setup checklist (rev. 3; T1 awaiting user approval)
+- [Auth, session and credential policy](security/auth-and-session-policy.md): passwordless sign-in by one-time code, sessions, devices, step-up (rev. 2 Proposed 2026-10-23; rev. 1 password + TOTP superseded)
+- [NinjaTrader 8 spike plan and Windows build/test access](spikes/nt8-spike-plan.md): W1–W4: Contabo VPS, Tailscale access T1 and setup checklist (rev. 4: T1 with Tailnet Lock approved, U1; final VPS configuration, U2)
 - NinjaTrader 8 platform profile: [platforms/ninjatrader8-profile.md](platforms/ninjatrader8-profile.md) (owner: Plugin Researcher)
 - Data model: `data/` (owner: Database Architect)
 
