@@ -190,6 +190,7 @@ Texts use `{placeholders}` filled from `details`. Codes marked *(proposal)* are 
 | execution | `execution.bracket_calculated` *(proposal)* | Stop e alvo calculados em {account} | Stop and target calculated on {account} | unit, requested distance, whole ticks used, **rounding adjustment**, resulting prices (S6 AC-4) |
 | risk | `risk.warning` / `risk.limit_reached` *(S13/S14)* | {account}: alerta de 80 % de {limit} / limite {limit} atingido | … | limit, value, percent |
 | risk | `risk.flatten` / `risk.blocked` *(S15)* | {account}: posições fechadas e conta bloqueada até {time} | … | limit, value, reset time |
+| risk | `risk.unblocked` *(S15, PO)* | {account} liberada no reset | {account} released at the reset | reset time, clock (real or simulated) |
 | connection | `connection.status_changed` | Conexão {name}: {status} | Connection {name}: {status} | previous status |
 | connection | `sync.*` (`sync.bracket_incomplete`, `sync.disconnected_in_trade`, …) | per S11 spec | | |
 | security | sign-in, failed or rate-limited attempt, new-device notice, step-up result, channel change (S3 AC-16) | per S3 spec | | never a code or address beyond what S3 allows |

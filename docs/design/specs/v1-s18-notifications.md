@@ -114,6 +114,7 @@ Texts are examples (pt-BR / en); the Core sends `code` + `details`, and the web 
 | Risco | `risk.target_reached` (AC-5) | success | "Meta diária atingida em {account}" (once) | Risk tab |
 | Risco | `risk.consistency_warning` | warning | "Regra de consistência em {percent} % do limite" | Risk tab |
 | Risco | `risk.blocked` / `risk.flatten` (S15) | danger | "{account}: posições fechadas e conta bloqueada até {time}" / "Motivo: {reason}. Não há desbloqueio antecipado." | S15 account screen |
+| Risco | `risk.unblocked` (S15, Q62 provisional) | info | "{account} liberada no reset" / "O bloqueio terminou. A conta volta a receber ordens." | Risk tab |
 | Risco | `risk.reactive_block_action` (S15 AC-6) | danger | "Ordem manual cancelada em {account}: conta bloqueada" | S10 entry |
 | Sincronia | `sync.*` flag set (S11 AC-1): `sync.command_undelivered`, `sync.bracket_incomplete`, `sync.simulation_reset`, … | danger | "{account} fora de sincronia" / reason text per code | account detail (S11) |
 | Sincronia | `sync.disconnected_in_trade` (S11 AC-2) | **critical** | "{account} desconectou com posição aberta" / "O All Win não reabre nem ressincroniza sozinho. Decida o que fazer." | account detail |

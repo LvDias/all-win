@@ -50,7 +50,6 @@
 | On, plugin has current limits | `Ligada · ativa no NinjaTrader` (success, `ShieldCheck`) | "Limites versão {n} confirmados pelo plugin às {time}." |
 | On, waiting for the plugin | `Ligada · aguardando o NinjaTrader` (warning, `Unplug`) | "O NinjaTrader está desconectado. Última versão de limites confirmada: {n} às {time}. O plugin continua aplicando essa versão." |
 | On, plugin limits out of date | `Ligada · limites desatualizados no plugin` (warning, `CircleArrowUp`) | "O plugin ainda aplica a versão {m}; a mais recente é {n}." |
-| On, no enforceable rule | `Ligada · sem limites` (warning) | "Defina limite de perda diária ou drawdown; sem eles não há o que aplicar." |
 | Unavailable | switch disabled with reason, see below | |
 
 3. **"O que acontece" list** (always visible, short, fixed text): the four facts of §2 in plain words — what is closed and blocked, that the block lasts until the reset ({time, zone}), that the block is reactive, that it works without the Core, and that there is no early unlock.
@@ -60,9 +59,10 @@
 
 | Case | Reason text | Note |
 |---|---|---|
-| Account not bound to a NinjaTrader account | "Vincule a conta do NinjaTrader para ligar a aplicação automática." + link | the plugin enforces, so a binding is required **[provisional, Q-S15-4]** |
-| Manual-only firm (S16 AC-7) | "Esta firma é só de acompanhamento manual: o All Win não envia nem fecha ordens nesta conta." | **[Q-S15-4: PO to confirm]** |
-| Account currently **blocked** (turn-off only) | "Conta bloqueada até {time}: só dá para desligar depois do reset." | consequence of AC-3; **[provisional, Q-S15-1]** |
+| Account not bound to a NinjaTrader account | "Vincule a conta do NinjaTrader para ligar a aplicação automática." + link | S15 AC-2: the plugin enforces, so a binding is required **[provisional until Q37]** |
+| Manual-only firm (S16 AC-7) | "Esta firma é só de acompanhamento manual: o All Win não envia nem fecha ordens nesta conta." | PO decided |
+| No applicable limit (no daily loss limit and no drawdown set) | "Defina um limite de perda diária ou de drawdown para ligar a aplicação automática." + link `Definir regras` (S13) | **[Provisional, Q64 rec. (a)]**; turning on requires at least one applicable limit |
+| Account currently **blocked** (turn-off only) | "Conta bloqueada até {time}: só dá para desligar depois do reset. O All Win continua recusando novas entradas." | PO decided (S15 AC-3, S14 AC-1) |
 | Data stale / error | switch disabled, `Sem dados recentes` | never toggle blind |
 
 **States:** loading → skeleton of the card; error → `ErrorState` compact + retry; the switch applies only after the Core answers (no optimistic flip): while saving it shows spinner + "Salvando…" and `aria-busy`.
@@ -78,7 +78,7 @@ Body (fixed text, pt-BR / en):
 - "O bloqueio é reativo: o NinjaTrader não consegue travar a conta. Enquanto ela estiver bloqueada, toda ordem manual que você enviar será cancelada e a posição resultante será fechada logo depois do envio."
 - "Funciona mesmo se o All Win estiver fora do ar, usando os últimos limites recebidos pelo plugin."
 - "Não há desbloqueio antecipado, nem pela web nem pelo plugin."
-- If the Core says the account is **already at or beyond a limit today** (`would_be_reached`): `Alert` (danger): "Esta conta já passou do limite hoje. Ao ligar, as posições serão fechadas e a conta ficará bloqueada agora, até o reset." **[Provisional, Q-S15-2]**
+- If the Core says the account is **already at or beyond a limit today** (`would_be_reached_now`): `Alert` (danger) that **names the open position(s)**: "Esta conta já passou do limite hoje e tem posição aberta: {instrument} {direction} {quantity}. Ao ligar, o plugin fecha a posição, cancela as ordens e bloqueia a conta agora, até o reset ({time} {zone})." The confirm button becomes `Ligar e aplicar agora`. **[Provisional, Q61 rec. (a)]** With no open position the text says "não há posição aberta; a conta ficará bloqueada agora".
 - Step-up, if the Core requires it (the Architect's wider list, Q35 open): the `StepUpDialog` mechanics of S5 §12 (challenge + original request once, cancel runs nothing). No layout change.
 
 Actions: `Ligar aplicação automática` (primary), `Cancelar` (focused). Submit: spinner + "Salvando…", duplicate submits ignored (F§10). Success: toast "Aplicação automática ligada." and the status line updates; the status may first show `aguardando o NinjaTrader` until the plugin confirms. Failure: destructive `Alert` in the dialog with the translated code; state unchanged.
@@ -86,7 +86,7 @@ Actions: `Ligar aplicação automática` (primary), `Cancelar` (focused). Submit
 ### 4.2 Turn off — `AlertDialog` (reduces protection) "Desligar a aplicação automática em {account}?"
 
 - Body: "O plugin deixa de fechar posições e bloquear esta conta. O All Win continua recusando novas entradas ao atingir um limite. Posições abertas não são alteradas."
-- If the account has a **flatten-and-block profit target** saved (S13 §4.2): "A meta de lucro diária passa a só avisar." **[Q-S13-8 / Q-S15-3: confirm the effect; text provisional]**
+- If the account has a **flatten-and-block profit target** saved (S13 §4.2): "A meta de lucro diária volta para “só avisar”." The change is audited with the entry (`risk.enforcement_changed` records the profit-target fallback). **[Provisional, Q63 rec. (a); closes Q-S13-8]**
 - Confirm button repeats the verb: `Desligar aplicação automática` (destructive variant), cancel focused (F§10).
 - Not available while the account is blocked (§3): the dialog cannot be opened; the reason is shown on the switch.
 
@@ -113,7 +113,7 @@ The Core sends the block (`blocked_until`, reason, trigger). Everything below is
 - **There is no button, link or shortcut that unblocks** (AC-3). The only exit is the reset; the card says when.
 - A flatten or cancel that failed shows `Alert` (danger): "Não foi possível fechar tudo em {account}. A conta foi marcada fora de sincronia." + link `Ver conta` (S11 flag; waits for the user, never auto-resync).
 
-**At the reset:** the state returns to normal live (SSE). The card disappears, the account badge clears, and a polite announcement says "{account} liberada." An info notification for the release is **[Q-S15-3: proposal, not in the S18 catalog yet]**.
+**At the reset:** the state returns to normal live (SSE). The card disappears, the account badge clears, and a polite announcement says "{account} liberada." The release creates an **informational notification** and an **audit entry** `risk.unblocked` **[Provisional, Q62 rec. (a); the audit entry is confirmed by the PO]**.
 
 **Aggregate:** if several accounts are blocked, the shell banner lists up to three and `+N` (C§5).
 
@@ -148,12 +148,12 @@ For an account whose kind is `playback` (data from the connection), the trading-
 
 | Event (code, proposed) | Entry text | Details |
 |---|---|---|
-| `risk.enforcement_changed` (`config`) | "Aplicação automática ligada / desligada na conta {account}" | previous and new value, user, limits version |
+| `risk.enforcement_changed` (`config`) | "Aplicação automática ligada / desligada na conta {account}" | previous and new value, user, limits version, profit-target fallback (Q63), positions named in the confirmation when applied at once (Q61) |
 | `risk.flatten` | "{account}: posições fechadas — {limit} atingido" | limit, limit value, triggering value, positions and contracts, `origin` = local enforcement, limits version, `applied_offline` flag |
 | `risk.orders_cancelled` | "{account}: {n} ordens canceladas" | order references, reason |
 | `risk.blocked` | "{account} bloqueada até {time}" | reason, `blocked_until`, limit, value |
 | `risk.reactive_block_action` | "Ordem manual cancelada em {account}: conta bloqueada" / "Posição resultante fechada" | order or position, time, delay to cancel |
-| `risk.unblocked` *(Q-S15-3)* | "{account} liberada no reset" | reset time, clock (real or simulated) |
+| `risk.unblocked` *(PO: enters the audit; Q62)* | "{account} liberada no reset" | reset time, clock (real or simulated) |
 | `sync.*` | per S11 | when a flatten/cancel fails |
 
 Events produced while the Core was unreachable arrive later and are shown with their true times and the "Aplicado offline" mark; they are never re-dated.
@@ -166,7 +166,7 @@ Events produced while the Core was unreachable arrive later and are shown with t
 
 | Need | Notes |
 |---|---|
-| `getAccountEnforcement(account_id)`: `enabled`, `status` (`off`, `active`, `waiting_plugin`, `limits_outdated`, `no_enforceable_rule`), `core_limits_version`, `plugin_limits_version`, `plugin_acked_at`, `can_enable` + `can_enable_reason`, `can_disable` + `can_disable_reason`, `would_be_reached_now` | The reasons are codes the UI translates |
+| `getAccountEnforcement(account_id)`: `enabled`, `status` (`off`, `active`, `waiting_plugin`, `limits_outdated`, `no_enforceable_rule`), `core_limits_version`, `plugin_limits_version`, `plugin_acked_at`, `can_enable` + `can_enable_reason`, `can_disable` + `can_disable_reason`, `would_be_reached_now`, open positions to name (account, instrument, direction, quantity), `can_enable_reason` includes `no_applicable_limit` | The reasons are codes the UI translates |
 | Block: `blocked` (bool), `blocked_since`, `blocked_until`, `clock` (`real` / `simulated`) + simulated now, `reason_code` (loss, drawdown, profit_target), `limit`, `limit_value`, `trigger_value`, `applied_offline`, `limits_version_used` | All decimals as strings; the UI computes nothing |
 | Actions taken: counts and list of flatten/cancel/reactive entries since the block | from the audit (S10) |
 | Account facts: binding, connection state, firm manual-only flag, account kind (sim/playback/live) | already in S5 |
@@ -188,17 +188,22 @@ Events produced while the Core was unreachable arrive later and are shown with t
 - Contrast and touch targets per F§3 and F§9; 320 px reflow (the block card stacks).
 - Reduced motion: no animated state changes.
 
-## 11. Open questions
+## 11. Decisions and open questions
 
-| ID | Question | Owner | Spec default (provisional) |
-|---|---|---|---|
-| Q-S15-1 | May enforcement be turned off while the account is blocked? (AC-3 says no early unlock) | PO / Architect | No: switch unavailable until the reset |
-| Q-S15-2 | Turning enforcement on while a limit is already exceeded today: enforce at once? | PO | Yes, with a warning in the dialog (consistent with Q48 for tightening) |
-| Q-S15-3 | Notification when the block ends; effect on a saved "flatten and block" profit target when enforcement is turned off (Q-S13-8) | PO | Info notification proposed; the profit target falls back to notify-only, stated in the dialog |
-| Q-S15-4 | Can enforcement be on for an unbound account or a manual-only firm account? | PO | No, with the reason |
-| Q-S15-5 | Can it be on with no enforceable rule? | PO | Allowed, status `sem limites`, with the explanation |
-| Q-S15-6 | Is turning enforcement on/off a step-up action (Q35 wider list)? | User via PO | Not required today; mechanics ready |
-| Q-S15-7 | Release notification and `risk.unblocked` audit entry | Architect | Proposed |
+**Closed by the PO (Rumo, 2026-10-23):**
+- Q-S15-1 enforcement **cannot be turned off while the account is blocked** (S15 AC-3: no early unlock); the switch is unavailable until the reset with the reason, and the Core keeps refusing entries (S14 AC-1).
+- Q-S15-4 an account of a manual-only firm cannot turn it on (S16 AC-7); an unbound account cannot (S15 AC-2) — **provisional until Q37**.
+- Q-S15-6 step-up follows Q35 (still open; mechanics of S5 §12 ready).
+- Q-S15-7 the release at the reset enters the audit (`risk.unblocked`).
+
+**User questions drawn as recommendation (a), provisional:**
+
+| ID | Question | Spec default (provisional) |
+|---|---|---|
+| Q61 | Turning on with a limit already exceeded | Applies at once (flatten, cancel, block until the reset) after a confirmation that **names the open position** |
+| Q62 | End of the block at the reset | Informational notification + audit entry |
+| Q63 | Turning off with a "flatten and block" profit target | The target falls back to "só avisar", stated in the confirmation and audited |
+| Q64 | Turning on needs at least one applicable limit | Yes (daily loss limit or drawdown); otherwise the switch is unavailable with the reason |
 
 ## 12. AC traceability
 
