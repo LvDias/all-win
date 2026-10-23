@@ -10,7 +10,14 @@ ALLWIN_CORE_URL=http://localhost:8080 pnpm dev   # forwards /api to the Core; om
 ```
 
 Open `http://localhost:3000`: it redirects to `/pt-BR` or `/en` from `Accept-Language`.
-Without a Core, `/api/v1/me` fails and pages behave as signed out.
+Without a Core, `/api/v1/me` fails and pages behave as signed out. `ALLWIN_CORE_URL` is for development only: a production build fails if it is set.
+
+## Screens (V1-S3)
+
+Public: `/login`, `/login/verify`, `/invite#t=…`, `/forgot-password`, `/reset-password#t=…`.
+App (session required): `/connections/sources`, `/connections/ninjatrader`, `/settings/security`, `/settings/preferences`; platform admin only: `/admin/invites`, `/admin/users`.
+Invite and reset tokens travel in the URL fragment, are removed at once with `history.replaceState`, and are sent only in the request body. One-time values (webhook URL, pairing code, TOTP key, recovery codes, invite and reset links) live only in component state.
+The TOTP QR code is drawn locally from the `otpauth_uri` with `uqr` (no network).
 
 ## Checks
 
@@ -20,6 +27,7 @@ Without a Core, `/api/v1/me` fails and pages behave as signed out.
 | `pnpm i18n:check` | key parity `messages/pt-BR.json` = `messages/en.json`; empty strings count as missing |
 | `pnpm test` | Vitest (unit + component tests with MSW) |
 | `pnpm test:e2e` | Playwright against a production build with `NEXT_PUBLIC_I18N_MISSING=marker` (fails on `⟦missing:` markers) |
+| `pnpm gen:api:check` | fails when `schema.gen.ts` differs from what the contract generates |
 | `pnpm gen:api` | regenerates `src/shared/api/schema.gen.ts` from `contracts/http/openapi.yaml` (`ALLWIN_OPENAPI=<path>` to override) |
 
 First run of e2e: `pnpm exec playwright install chromium` (the host also needs Chromium's system libraries).

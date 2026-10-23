@@ -26,6 +26,8 @@ export const test = base.extend<{ api: { signedOut: () => Promise<void>; signedI
 });
 
 async function mockMe(page: Page, status: number, body?: unknown) {
+  // The event stream is opened once signed in; an empty stream keeps the page quiet.
+  await page.route("**/api/v1/events", (route) => route.fulfill({ status: 200, contentType: "text/event-stream", body: ": ok\n\n" }));
   await page.route("**/api/v1/me", (route) => {
     if (status === 401) return route.fulfill({ status, json: { error: { code: "auth.unauthenticated" } } });
     if (route.request().method() === "PATCH") {

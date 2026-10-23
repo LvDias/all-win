@@ -5,7 +5,17 @@
     "actions": {
       "cancel": "Cancelar",
       "retry": "Tentar novamente",
-      "use": "Usar"
+      "use": "Usar",
+      "close": "Fechar",
+      "back": "Voltar",
+      "done": "Concluir",
+      "copy": "Copiar",
+      "confirm": "Confirmar",
+      "save": "Salvar",
+      "refresh": "Atualizar lista",
+      "rename": "Renomear",
+      "revoke": "Revogar",
+      "create": "Criar"
     },
     "states": {
       "loading": "Carregando…",
@@ -16,6 +26,23 @@
       "network": "Sem conexão com o servidor. Tente de novo.",
       "failed": "Não foi possível concluir a ação.",
       "code": "Código: {code}"
+    },
+    "secret": {
+      "reveal": "Revelar",
+      "hide": "Ocultar",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "copyFailed": "Não foi possível copiar. O valor foi revelado e selecionado: copie manualmente.",
+      "hiddenSuffix": "oculto"
+    },
+    "password": {
+      "toggle": "Mostrar senha"
+    },
+    "otp": {
+      "label": "Código de 6 dígitos"
+    },
+    "status": {
+      "never": "Nunca"
     }
   },
   "language": {
@@ -141,6 +168,420 @@
     },
     "sync": {
       "account_not_found_after_repair": "Não encontrada na nova instância."
+    }
+  },
+  "stepUp": {
+    "title": "Confirme que é você",
+    "description": "Por segurança, digite sua senha para continuar.",
+    "password": "Senha",
+    "code": "Código do app autenticador",
+    "confirm": "Confirmar",
+    "wrong": "Senha ou código incorretos."
+  },
+  "auth": {
+    "login": {
+      "title": "Entrar",
+      "email": "E-mail",
+      "password": "Senha",
+      "remember": "Manter conectado",
+      "rememberHelp": "Por até 30 dias neste dispositivo. Não use em computador compartilhado.",
+      "submit": "Entrar",
+      "submitting": "Entrando…",
+      "forgot": "Esqueci minha senha",
+      "inviteOnly": "Acesso somente por convite.",
+      "reason": {
+        "session_expired": "Sua sessão expirou. Entre de novo.",
+        "signed_out": "Você saiu da sua conta.",
+        "sessions_ended": "Sua sessão foi encerrada por uma mudança de segurança na conta. Entre de novo.",
+        "pending_expired": "A verificação expirou. Entre de novo."
+      },
+      "errors": {
+        "emailRequired": "Digite seu e-mail.",
+        "emailInvalid": "Digite um e-mail válido.",
+        "passwordRequired": "Digite sua senha."
+      },
+      "rateLimited": "Muitas tentativas. Aguarde {time} e tente de novo.",
+      "failed": "Não foi possível conectar. Tente de novo."
+    },
+    "verify": {
+      "title": "Verificação em duas etapas",
+      "intro": "Digite o código de 6 dígitos do seu app autenticador.",
+      "introRecovery": "Digite um dos seus códigos de recuperação.",
+      "code": "Código",
+      "recoveryCode": "Código de recuperação",
+      "recoveryPlaceholder": "XXXXX-XXXXX",
+      "submit": "Verificar",
+      "useRecovery": "Usar um código de recuperação",
+      "useApp": "Usar o app autenticador",
+      "back": "Voltar",
+      "invalid": "Código inválido. Tente de novo.",
+      "lost": "Perdeu o acesso ao app e aos códigos? Fale com o administrador, que vai confirmar sua identidade e desativar a verificação.",
+      "recoveryUsed": "Você entrou com um código de recuperação. Restam {n}.",
+      "regenerate": "Gerar novos códigos"
+    },
+    "invite": {
+      "title": "Criar conta",
+      "validating": "Validando o convite…",
+      "invalid": "Este convite não é válido. Ele pode ter expirado ou já ter sido usado. Peça um novo convite.",
+      "signedInAs": "Você está conectado como {email}. Saia para aceitar este convite.",
+      "signOut": "Sair",
+      "email": "E-mail",
+      "password": "Senha",
+      "passwordHelp": "De 12 a 128 caracteres. Uma frase longa é mais fácil de lembrar.",
+      "passwordCount": "{count} de 128 caracteres",
+      "language": "Idioma",
+      "timeZone": "Fuso horário: {zone} ({offset})",
+      "timeZoneChange": "Alterar",
+      "submit": "Criar conta",
+      "submitting": "Criando conta…",
+      "tooShort": "Use pelo menos 12 caracteres."
+    },
+    "forgot": {
+      "title": "Esqueci minha senha",
+      "intro": "Digite o e-mail da sua conta para receber um link de redefinição.",
+      "email": "E-mail",
+      "submit": "Enviar link",
+      "submitting": "Enviando…",
+      "sent": "Se houver uma conta com este e-mail, você receberá um link em alguns minutos. O link vale por 30 minutos. Não chegou? Confira o spam ou peça um link ao administrador.",
+      "backToLogin": "Voltar para entrar"
+    },
+    "reset": {
+      "title": "Redefinir senha",
+      "password": "Nova senha",
+      "submit": "Redefinir senha",
+      "submitting": "Redefinindo…",
+      "invalid": "Este link de redefinição não é válido. Ele pode ter expirado (vale 30 minutos) ou já ter sido usado. Peça um novo link.",
+      "requestNew": "Pedir novo link",
+      "doneTitle": "Senha redefinida",
+      "done": "Senha redefinida. Por segurança, todas as suas sessões foram encerradas, inclusive neste navegador.",
+      "signIn": "Entrar",
+      "review": "Suspeita de acesso indevido? Depois de entrar, revise suas Fontes de sinal e Conexões NinjaTrader e revogue ou despareie o que não reconhecer. A redefinição de senha não desconecta o NinjaTrader nem invalida as URLs dos alertas.",
+      "reviewSources": "Fontes de sinal",
+      "reviewConnections": "Conexões NinjaTrader"
+    }
+  },
+  "nav": {
+    "home": "Início",
+    "connections": "Conexões",
+    "sources": "Fontes de sinal",
+    "ninjatrader": "NinjaTrader",
+    "settings": "Configurações",
+    "security": "Segurança",
+    "preferences": "Preferências",
+    "admin": "Administração",
+    "invites": "Convites",
+    "users": "Usuários",
+    "menu": "Abrir menu",
+    "userMenu": "Menu do usuário",
+    "signOut": "Sair",
+    "main": "Navegação principal",
+    "notFound": "Não encontrado."
+  },
+  "security": {
+    "title": "Segurança",
+    "totp": {
+      "title": "Verificação em duas etapas",
+      "recommended": "Recomendado: protege suas contas de trading mesmo que sua senha vaze.",
+      "on": "Ativada",
+      "off": "Desativada",
+      "remaining": "Códigos de recuperação restantes: {n} de 10",
+      "enable": "Ativar",
+      "disable": "Desativar",
+      "note": "Ativar ou desativar encerra suas sessões em outros dispositivos.",
+      "enableTitle": "Ativar a verificação em duas etapas",
+      "step": "Etapa {current} de {total}",
+      "qrAlt": "QR code para o app autenticador",
+      "cannotScan": "Não consegue escanear? Digite a chave:",
+      "setupKey": "Chave de configuração",
+      "next": "Continuar",
+      "codeLabel": "Código de 6 dígitos do app",
+      "verify": "Verificar",
+      "wrongCode": "Código inválido. Confira se o relógio do celular está certo e tente de novo.",
+      "restart": "Recomeçar",
+      "enabledToast": "Verificação em duas etapas ativada.",
+      "alreadyEnabled": "A verificação já está ativada.",
+      "disableTitle": "Desativar a verificação em duas etapas?",
+      "disableBody": "Sua conta ficará protegida só pela senha, e suas sessões em outros dispositivos serão encerradas.",
+      "disableConfirm": "Desativar",
+      "disabledToast": "Verificação em duas etapas desativada."
+    },
+    "recovery": {
+      "listLabel": "Códigos de recuperação",
+      "copyAll": "Copiar todos",
+      "copied": "Copiado",
+      "download": "Baixar .txt",
+      "warning": "Guarde estes códigos em um lugar seguro. Cada um funciona uma vez. Eles não serão mostrados de novo.",
+      "replacedWarning": "Guarde estes códigos em um lugar seguro. Cada um funciona uma vez. Os códigos anteriores deixaram de funcionar.",
+      "saved": "Guardei meus códigos",
+      "done": "Concluir",
+      "guardTitle": "Fechar sem confirmar?",
+      "guard": "Você ainda não confirmou que guardou os códigos. Fechar mesmo assim?",
+      "guardBack": "Voltar",
+      "guardClose": "Fechar",
+      "regenerate": "Gerar novos códigos",
+      "regenerateTitle": "Gerar novos códigos de recuperação",
+      "regenerateBody": "Os códigos anteriores deixam de funcionar. Confirme com sua senha e o código atual.",
+      "regenerateConfirm": "Gerar códigos"
+    },
+    "session": {
+      "title": "Sessão",
+      "signOut": "Sair",
+      "limits": "Sua sessão termina após {idle} sem uso ou {absolute} depois de entrar.",
+      "keepAlive": "Apenas deixar a tela aberta não mantém a sessão ativa."
+    },
+    "password": {
+      "cardTitle": "Senha",
+      "change": "Alterar senha",
+      "title": "Alterar senha",
+      "description": "Suas sessões em outros dispositivos serão encerradas.",
+      "current": "Senha atual",
+      "new": "Nova senha",
+      "submit": "Alterar senha",
+      "changedToast": "Senha alterada. Suas sessões em outros dispositivos foram encerradas."
+    },
+    "banner": {
+      "text": "Proteja sua conta com a verificação em duas etapas.",
+      "enable": "Ativar agora",
+      "dismiss": "Dispensar aviso"
+    }
+  },
+  "admin": {
+    "notFound": "Não encontrado.",
+    "link": {
+      "masked": "https://••••••••••••",
+      "done": "Concluir",
+      "guardTitle": "Fechar sem copiar o link?",
+      "guardBody": "Você ainda não copiou o link e ele não será mostrado de novo. Fechar mesmo assim?",
+      "guardBack": "Voltar e copiar",
+      "guardClose": "Fechar"
+    },
+    "invites": {
+      "title": "Convites",
+      "list": "Lista de convites",
+      "invite": "Convidar",
+      "emptyTitle": "Nenhum convite ainda",
+      "emptyBody": "Convide alguém para usar o All Win.",
+      "email": "E-mail",
+      "statusLabel": "Status",
+      "createdAt": "Criado em",
+      "expiresLabel": "Expira em",
+      "actions": "Ações",
+      "status": {
+        "pending": "Pendente",
+        "accepted": "Usado",
+        "expired": "Expirado",
+        "revoked": "Revogado"
+      },
+      "revokeFor": "Revogar o convite de {email}",
+      "revokeTitle": "Revogar o convite para {email}?",
+      "revokeBody": "O link deixará de funcionar.",
+      "revokedToast": "Convite revogado.",
+      "createTitle": "Novo convite",
+      "createBody": "O convite vale por 7 dias, serve para um único e-mail e só pode ser usado uma vez.",
+      "language": "Idioma do convite",
+      "createSubmit": "Criar convite",
+      "resultTitle": "Convite criado",
+      "sent": "Enviamos o convite para {email}.",
+      "manualDelivery": "O e-mail não foi enviado. Copie o link e envie você mesmo.",
+      "emailFailed": "Não foi possível enviar o e-mail. Copie o link e envie você mesmo. O convite continua válido.",
+      "linkLabel": "Link do convite",
+      "expiresAt": "Expira em {date}"
+    },
+    "users": {
+      "title": "Usuários",
+      "search": "Buscar por e-mail",
+      "noResults": "Nenhum usuário encontrado.",
+      "email": "E-mail",
+      "createdAt": "Criado em",
+      "totp": "Verificação em duas etapas",
+      "totpOn": "Ativada",
+      "totpOff": "Desativada",
+      "actions": "Ações",
+      "actionsFor": "Ações para {email}",
+      "resetLink": "Gerar link de redefinição de senha",
+      "resetLinkTitle": "Gerar um link de redefinição para {email}?",
+      "resetLinkBody": "Links anteriores deixam de funcionar.",
+      "resetLinkConfirm": "Gerar link",
+      "linkTitle": "Link de redefinição",
+      "linkBody": "Vale por 30 minutos e funciona uma vez. Envie por um canal em que você confirmou a identidade da pessoa.",
+      "linkLabel": "Link de redefinição de senha",
+      "linkExpires": "Expira em {date}",
+      "resetTotp": "Desativar verificação em duas etapas",
+      "resetTotpTitle": "Desativar a verificação em duas etapas de {email}?",
+      "resetTotpBody": "Use isto só depois de confirmar a identidade da pessoa por um canal independente (por exemplo, uma chamada de vídeo). A conta ficará protegida só pela senha, e as sessões dela serão encerradas.",
+      "identityConfirmed": "Confirmei a identidade de {email}",
+      "resetTotpConfirm": "Desativar verificação",
+      "totpResetToast": "Verificação em duas etapas de {email} desativada."
+    }
+  },
+  "sources": {
+    "title": "Fontes de sinal",
+    "description": "Cada fonte tem uma URL secreta. Cole-a no campo Webhook URL do alerta no TradingView.",
+    "new": "Nova fonte",
+    "showRevoked": "Mostrar revogadas",
+    "columns": {
+      "name": "Nome",
+      "type": "Tipo",
+      "url": "URL",
+      "status": "Status",
+      "created": "Criada em",
+      "lastSignal": "Último sinal",
+      "actions": "Ações"
+    },
+    "type": {
+      "tradingview": "TradingView"
+    },
+    "automated": "Automatizada",
+    "status": {
+      "active": "Ativa",
+      "revoked": "Revogada"
+    },
+    "urlAria": "URL secreta, oculta, identificador {keyId}",
+    "actions": {
+      "for": "Ações para {name}",
+      "rename": "Renomear",
+      "rotate": "Gerar nova URL",
+      "revoke": "Revogar"
+    },
+    "empty": {
+      "title": "Nenhuma fonte de sinal",
+      "text": "Crie uma fonte para receber os alertas do TradingView com segurança."
+    },
+    "name": {
+      "label": "Nome da fonte",
+      "placeholder": "Ex.: Strikes MNQ"
+    },
+    "create": {
+      "title": "Nova fonte",
+      "description": "Dê um nome para reconhecer esta fonte depois."
+    },
+    "rename": {
+      "title": "Renomear fonte",
+      "description": "O nome não muda a URL."
+    },
+    "unknownOutcome": "Não sabemos se a fonte foi criada. Atualize a lista antes de tentar de novo.",
+    "created": "Fonte criada.",
+    "rotated": "URL da fonte “{name}” trocada.",
+    "reveal": {
+      "titleCreated": "Copie a URL da fonte",
+      "titleRotated": "Copie a nova URL",
+      "description": "A URL é mostrada uma única vez.",
+      "warning": "Copie a URL agora. Por segurança, ela não será mostrada de novo. Se perdê-la, gere uma nova.",
+      "urlLabel": "URL secreta do webhook",
+      "step1": "No TradingView, abra o alerta → Notificações → Webhook URL.",
+      "step2": "Cole a URL.",
+      "step3": "Salve o alerta.",
+      "automation": "Ordens desta fonte são automatizadas. Contas de firmas que proíbem automação só as recebem se você aceitar isso na conta.",
+      "automationLink": "Ver contas",
+      "done": "Concluir",
+      "guardTitle": "Fechar sem copiar?",
+      "guard": "Você ainda não copiou a URL. Se fechar agora, precisará gerar uma nova. Fechar mesmo assim?",
+      "guardBack": "Voltar e copiar",
+      "guardClose": "Fechar"
+    },
+    "rotate": {
+      "title": "Gerar nova URL para “{name}”?",
+      "body": "A URL atual para de funcionar imediatamente. Alertas que chegarem com ela serão rejeitados e registrados na auditoria. Depois, cole a nova URL no alerta do TradingView.",
+      "confirm": "Gerar nova URL"
+    },
+    "revoke": {
+      "title": "Revogar a fonte “{name}”?",
+      "body": "Alertas com esta URL serão rejeitados. A fonte continua no histórico como revogada. Isso não pode ser desfeito; para voltar a receber sinais, crie uma nova fonte.",
+      "confirm": "Revogar fonte",
+      "toast": "Fonte “{name}” revogada."
+    }
+  },
+  "connections": {
+    "title": "Conexões NinjaTrader",
+    "new": "Nova conexão",
+    "showUnpaired": "Mostrar despareadas",
+    "columns": {
+      "name": "Nome",
+      "status": "Status",
+      "accounts": "Contas",
+      "plugin": "Plugin",
+      "lastSeen": "Última conexão",
+      "actions": "Ações"
+    },
+    "status": {
+      "awaiting_pairing": "Aguardando pareamento",
+      "connected": "Conectada",
+      "disconnected": "Desconectada",
+      "outdated": "Desatualizada",
+      "unpaired": "Despareada"
+    },
+    "notice": {
+      "disconnected": "O plugin não está conectado. Ordens para as contas desta instância não serão executadas.",
+      "outdated": "Atualize o plugin para voltar a conectar."
+    },
+    "accountCount": "{count, plural, =0 {Nenhuma conta} one {# conta} other {# contas}}",
+    "accounts": {
+      "title": "Contas do NinjaTrader",
+      "none": "Nenhuma conta informada ainda.",
+      "bound": "Vinculada",
+      "unbound": "Não vinculada"
+    },
+    "details": {
+      "instance": "ID da instância:"
+    },
+    "actions": {
+      "for": "Ações para {name}",
+      "rename": "Renomear",
+      "newCode": "Gerar código de pareamento",
+      "move": "Mover para outra máquina",
+      "unpair": "Desparear"
+    },
+    "empty": {
+      "title": "Nenhum NinjaTrader conectado",
+      "step1": "Instale o plugin All Win no NinjaTrader 8.",
+      "step2": "Crie uma conexão aqui.",
+      "step3": "Digite o código de pareamento no plugin."
+    },
+    "name": {
+      "label": "Nome da conexão",
+      "placeholder": "Ex.: PC de casa, VPS Chicago"
+    },
+    "create": {
+      "title": "Nova conexão",
+      "description": "Dê um nome para reconhecer esta máquina depois."
+    },
+    "rename": {
+      "title": "Renomear conexão",
+      "description": "O nome não muda o pareamento."
+    },
+    "unknownOutcome": "Não sabemos se a conexão foi criada. Atualize a lista antes de tentar de novo.",
+    "pairing": {
+      "title": "Parear “{name}”",
+      "moveTitle": "Mover para outra máquina",
+      "share": "Digite este código no plugin do NinjaTrader.",
+      "codeLabel": "Código de pareamento",
+      "dontShare": "Não compartilhe este código.",
+      "expiresIn": "Expira em {time}",
+      "instructions": "No NinjaTrader: abra a janela All Win, clique em Parear e digite o código. Letras maiúsculas ou minúsculas, com ou sem hífen.",
+      "waiting": "Aguardando o plugin…",
+      "expired": "O código expirou.",
+      "oneMinute": "O código expira em 1 minuto.",
+      "newCode": "Gerar novo código",
+      "superseded": "Um código mais novo foi gerado para esta conexão. Este não vale mais.",
+      "locked": "O pareamento está temporariamente bloqueado por excesso de tentativas erradas. Aguarde alguns minutos e gere um novo código.",
+      "pairedTitle": "Conexão pareada",
+      "pairedDescription": "O plugin já está conectado.",
+      "paired": "“{name}” conectada. {count, plural, =0 {Nenhuma conta encontrada.} one {# conta encontrada:} other {# contas encontradas:}}",
+      "moved": "“{name}” agora está em outra máquina."
+    },
+    "move": {
+      "title": "Mover “{name}” para outra máquina?",
+      "body": "Você vai receber um novo código. Quando ele for usado, a instância atual será desconectada e não receberá mais ordens.",
+      "confirm": "Gerar código"
+    },
+    "unpair": {
+      "title": "Desparear “{name}”?",
+      "body": "O plugin desta instância será desconectado imediatamente e não receberá mais ordens. Para reconectar, crie uma nova conexão.",
+      "bound": "Estas contas ficarão fora de sincronia e deixarão de receber ordens: {accounts}.",
+      "openPositions": "Há posição aberta em: {accounts}. A posição continua aberta no NinjaTrader, sem monitoramento nem proteção de risco do All Win. Nada será fechado automaticamente.",
+      "acknowledge": "Entendo que a posição continuará aberta",
+      "confirm": "Desparear",
+      "toast": "“{name}” despareada."
     }
   }
 }

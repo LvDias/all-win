@@ -5,7 +5,17 @@
     "actions": {
       "cancel": "Cancel",
       "retry": "Try again",
-      "use": "Use"
+      "use": "Use",
+      "close": "Close",
+      "back": "Back",
+      "done": "Done",
+      "copy": "Copy",
+      "confirm": "Confirm",
+      "save": "Save",
+      "refresh": "Refresh list",
+      "rename": "Rename",
+      "revoke": "Revoke",
+      "create": "Create"
     },
     "states": {
       "loading": "Loading…",
@@ -16,6 +26,23 @@
       "network": "No connection to the server. Try again.",
       "failed": "The action could not be completed.",
       "code": "Code: {code}"
+    },
+    "secret": {
+      "reveal": "Reveal",
+      "hide": "Hide",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "Could not copy. The value was revealed and selected: copy it by hand.",
+      "hiddenSuffix": "hidden"
+    },
+    "password": {
+      "toggle": "Show password"
+    },
+    "otp": {
+      "label": "6-digit code"
+    },
+    "status": {
+      "never": "Never"
     }
   },
   "language": {
@@ -141,6 +168,420 @@
     },
     "sync": {
       "account_not_found_after_repair": "Not found in the new instance."
+    }
+  },
+  "stepUp": {
+    "title": "Confirm it's you",
+    "description": "For your security, enter your password to continue.",
+    "password": "Password",
+    "code": "Authenticator app code",
+    "confirm": "Confirm",
+    "wrong": "Incorrect password or code."
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "email": "Email",
+      "password": "Password",
+      "remember": "Keep me signed in",
+      "rememberHelp": "For up to 30 days on this device. Don't use on a shared computer.",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "forgot": "Forgot password",
+      "inviteOnly": "Access by invitation only.",
+      "reason": {
+        "session_expired": "Your session expired. Sign in again.",
+        "signed_out": "You signed out.",
+        "sessions_ended": "Your session was ended by a security change on the account. Sign in again.",
+        "pending_expired": "The verification expired. Sign in again."
+      },
+      "errors": {
+        "emailRequired": "Enter your email.",
+        "emailInvalid": "Enter a valid email.",
+        "passwordRequired": "Enter your password."
+      },
+      "rateLimited": "Too many attempts. Wait {time} and try again.",
+      "failed": "Could not connect. Try again."
+    },
+    "verify": {
+      "title": "Two-step verification",
+      "intro": "Enter the 6-digit code from your authenticator app.",
+      "introRecovery": "Enter one of your recovery codes.",
+      "code": "Code",
+      "recoveryCode": "Recovery code",
+      "recoveryPlaceholder": "XXXXX-XXXXX",
+      "submit": "Verify",
+      "useRecovery": "Use a recovery code",
+      "useApp": "Use the authenticator app",
+      "back": "Back",
+      "invalid": "Invalid code. Try again.",
+      "lost": "Lost your app and codes? Contact the administrator, who will confirm your identity and turn verification off.",
+      "recoveryUsed": "You signed in with a recovery code. {n} left.",
+      "regenerate": "Generate new codes"
+    },
+    "invite": {
+      "title": "Create account",
+      "validating": "Checking the invitation…",
+      "invalid": "This invitation isn't valid. It may have expired or already been used. Ask for a new one.",
+      "signedInAs": "You are signed in as {email}. Sign out to accept this invitation.",
+      "signOut": "Sign out",
+      "email": "Email",
+      "password": "Password",
+      "passwordHelp": "12 to 128 characters. A long phrase is easier to remember.",
+      "passwordCount": "{count} of 128 characters",
+      "language": "Language",
+      "timeZone": "Time zone: {zone} ({offset})",
+      "timeZoneChange": "Change",
+      "submit": "Create account",
+      "submitting": "Creating account…",
+      "tooShort": "Use at least 12 characters."
+    },
+    "forgot": {
+      "title": "Forgot password",
+      "intro": "Enter your account email to get a reset link.",
+      "email": "Email",
+      "submit": "Send link",
+      "submitting": "Sending…",
+      "sent": "If an account exists for this email, you'll receive a link in a few minutes. The link is valid for 30 minutes. Didn't get it? Check spam or ask the administrator for a link.",
+      "backToLogin": "Back to sign in"
+    },
+    "reset": {
+      "title": "Reset password",
+      "password": "New password",
+      "submit": "Reset password",
+      "submitting": "Resetting…",
+      "invalid": "This reset link isn't valid. It may have expired (it lasts 30 minutes) or already been used. Ask for a new link.",
+      "requestNew": "Request a new link",
+      "doneTitle": "Password reset",
+      "done": "Password reset. For security, all your sessions were ended, including this browser.",
+      "signIn": "Sign in",
+      "review": "Suspect unauthorized access? After signing in, review your Signal sources and NinjaTrader connections and revoke or unpair anything you don't recognize. Resetting the password does not disconnect NinjaTrader or invalidate alert URLs.",
+      "reviewSources": "Signal sources",
+      "reviewConnections": "NinjaTrader connections"
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "connections": "Connections",
+    "sources": "Signal sources",
+    "ninjatrader": "NinjaTrader",
+    "settings": "Settings",
+    "security": "Security",
+    "preferences": "Preferences",
+    "admin": "Administration",
+    "invites": "Invitations",
+    "users": "Users",
+    "menu": "Open menu",
+    "userMenu": "User menu",
+    "signOut": "Sign out",
+    "main": "Main navigation",
+    "notFound": "Not found."
+  },
+  "security": {
+    "title": "Security",
+    "totp": {
+      "title": "Two-step verification",
+      "recommended": "Recommended: protects your trading accounts even if your password leaks.",
+      "on": "On",
+      "off": "Off",
+      "remaining": "Recovery codes left: {n} of 10",
+      "enable": "Enable",
+      "disable": "Disable",
+      "note": "Turning this on or off signs you out on other devices.",
+      "enableTitle": "Turn on two-step verification",
+      "step": "Step {current} of {total}",
+      "qrAlt": "QR code for the authenticator app",
+      "cannotScan": "Can't scan it? Enter the key:",
+      "setupKey": "Setup key",
+      "next": "Continue",
+      "codeLabel": "6-digit code from the app",
+      "verify": "Verify",
+      "wrongCode": "Invalid code. Check that your phone's clock is correct and try again.",
+      "restart": "Start over",
+      "enabledToast": "Two-step verification is on.",
+      "alreadyEnabled": "Verification is already on.",
+      "disableTitle": "Turn off two-step verification?",
+      "disableBody": "Your account will be protected by the password only, and your sessions on other devices will be ended.",
+      "disableConfirm": "Turn off",
+      "disabledToast": "Two-step verification is off."
+    },
+    "recovery": {
+      "listLabel": "Recovery codes",
+      "copyAll": "Copy all",
+      "copied": "Copied",
+      "download": "Download .txt",
+      "warning": "Keep these codes somewhere safe. Each works once. They won't be shown again.",
+      "replacedWarning": "Keep these codes somewhere safe. Each works once. The previous codes no longer work.",
+      "saved": "I saved my codes",
+      "done": "Done",
+      "guardTitle": "Close without confirming?",
+      "guard": "You haven't confirmed that you saved the codes. Close anyway?",
+      "guardBack": "Go back",
+      "guardClose": "Close",
+      "regenerate": "Generate new codes",
+      "regenerateTitle": "Generate new recovery codes",
+      "regenerateBody": "The previous codes stop working. Confirm with your password and current code.",
+      "regenerateConfirm": "Generate codes"
+    },
+    "session": {
+      "title": "Session",
+      "signOut": "Sign out",
+      "limits": "Your session ends after {idle} of inactivity or {absolute} after signing in.",
+      "keepAlive": "Just leaving the page open doesn't keep the session active."
+    },
+    "password": {
+      "cardTitle": "Password",
+      "change": "Change password",
+      "title": "Change password",
+      "description": "Your sessions on other devices will be ended.",
+      "current": "Current password",
+      "new": "New password",
+      "submit": "Change password",
+      "changedToast": "Password changed. Your sessions on other devices were ended."
+    },
+    "banner": {
+      "text": "Protect your account with two-step verification.",
+      "enable": "Enable now",
+      "dismiss": "Dismiss notice"
+    }
+  },
+  "admin": {
+    "notFound": "Not found.",
+    "link": {
+      "masked": "https://••••••••••••",
+      "done": "Done",
+      "guardTitle": "Close without copying the link?",
+      "guardBody": "You haven't copied the link and it won't be shown again. Close anyway?",
+      "guardBack": "Go back and copy",
+      "guardClose": "Close"
+    },
+    "invites": {
+      "title": "Invitations",
+      "list": "Invitation list",
+      "invite": "Invite",
+      "emptyTitle": "No invitations yet",
+      "emptyBody": "Invite someone to use All Win.",
+      "email": "Email",
+      "statusLabel": "Status",
+      "createdAt": "Created",
+      "expiresLabel": "Expires",
+      "actions": "Actions",
+      "status": {
+        "pending": "Pending",
+        "accepted": "Used",
+        "expired": "Expired",
+        "revoked": "Revoked"
+      },
+      "revokeFor": "Revoke the invitation for {email}",
+      "revokeTitle": "Revoke the invitation for {email}?",
+      "revokeBody": "The link will stop working.",
+      "revokedToast": "Invitation revoked.",
+      "createTitle": "New invitation",
+      "createBody": "The invitation is valid for 7 days, is tied to one email and can be used once.",
+      "language": "Invitation language",
+      "createSubmit": "Create invitation",
+      "resultTitle": "Invitation created",
+      "sent": "We sent the invitation to {email}.",
+      "manualDelivery": "The email was not sent. Copy the link and send it yourself.",
+      "emailFailed": "Could not send the email. Copy the link and send it yourself. The invitation is still valid.",
+      "linkLabel": "Invitation link",
+      "expiresAt": "Expires {date}"
+    },
+    "users": {
+      "title": "Users",
+      "search": "Search by email",
+      "noResults": "No users found.",
+      "email": "Email",
+      "createdAt": "Created",
+      "totp": "Two-step verification",
+      "totpOn": "On",
+      "totpOff": "Off",
+      "actions": "Actions",
+      "actionsFor": "Actions for {email}",
+      "resetLink": "Generate password reset link",
+      "resetLinkTitle": "Generate a reset link for {email}?",
+      "resetLinkBody": "Earlier links stop working.",
+      "resetLinkConfirm": "Generate link",
+      "linkTitle": "Reset link",
+      "linkBody": "Valid for 30 minutes and works once. Send it over a channel where you confirmed the person's identity.",
+      "linkLabel": "Password reset link",
+      "linkExpires": "Expires {date}",
+      "resetTotp": "Turn off two-step verification",
+      "resetTotpTitle": "Turn off two-step verification for {email}?",
+      "resetTotpBody": "Use this only after confirming the person's identity over an independent channel (for example, a video call). The account will be protected by the password only, and their sessions will be ended.",
+      "identityConfirmed": "I confirmed the identity of {email}",
+      "resetTotpConfirm": "Turn off verification",
+      "totpResetToast": "Two-step verification turned off for {email}."
+    }
+  },
+  "sources": {
+    "title": "Signal sources",
+    "description": "Each source has a secret URL. Paste it into the alert's Webhook URL field in TradingView.",
+    "new": "New source",
+    "showRevoked": "Show revoked",
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "url": "URL",
+      "status": "Status",
+      "created": "Created",
+      "lastSignal": "Last signal",
+      "actions": "Actions"
+    },
+    "type": {
+      "tradingview": "TradingView"
+    },
+    "automated": "Automated",
+    "status": {
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "urlAria": "Secret URL, hidden, identifier {keyId}",
+    "actions": {
+      "for": "Actions for {name}",
+      "rename": "Rename",
+      "rotate": "Generate new URL",
+      "revoke": "Revoke"
+    },
+    "empty": {
+      "title": "No signal sources",
+      "text": "Create a source to receive TradingView alerts securely."
+    },
+    "name": {
+      "label": "Source name",
+      "placeholder": "E.g. Strikes MNQ"
+    },
+    "create": {
+      "title": "New source",
+      "description": "Give it a name so you can recognize this source later."
+    },
+    "rename": {
+      "title": "Rename source",
+      "description": "The name does not change the URL."
+    },
+    "unknownOutcome": "We don't know whether the source was created. Refresh the list before trying again.",
+    "created": "Source created.",
+    "rotated": "URL of source “{name}” replaced.",
+    "reveal": {
+      "titleCreated": "Copy the source URL",
+      "titleRotated": "Copy the new URL",
+      "description": "The URL is shown only once.",
+      "warning": "Copy the URL now. For security, it won't be shown again. If you lose it, rotate to get a new one.",
+      "urlLabel": "Secret webhook URL",
+      "step1": "In TradingView, open the alert → Notifications → Webhook URL.",
+      "step2": "Paste the URL.",
+      "step3": "Save the alert.",
+      "automation": "Orders from this source are automated. Accounts at firms that forbid automation only receive them if you accept that on the account.",
+      "automationLink": "View accounts",
+      "done": "Done",
+      "guardTitle": "Close without copying?",
+      "guard": "You haven't copied the URL yet. If you close now, you'll need to generate a new one. Close anyway?",
+      "guardBack": "Go back and copy",
+      "guardClose": "Close"
+    },
+    "rotate": {
+      "title": "Generate a new URL for “{name}”?",
+      "body": "The current URL stops working immediately. Alerts that arrive with it are rejected and logged in the audit. Then paste the new URL into the TradingView alert.",
+      "confirm": "Generate new URL"
+    },
+    "revoke": {
+      "title": "Revoke source “{name}”?",
+      "body": "Alerts using this URL will be rejected. The source stays in the history as revoked. This can't be undone; to receive signals again, create a new source.",
+      "confirm": "Revoke source",
+      "toast": "Source “{name}” revoked."
+    }
+  },
+  "connections": {
+    "title": "NinjaTrader connections",
+    "new": "New connection",
+    "showUnpaired": "Show unpaired",
+    "columns": {
+      "name": "Name",
+      "status": "Status",
+      "accounts": "Accounts",
+      "plugin": "Plugin",
+      "lastSeen": "Last seen",
+      "actions": "Actions"
+    },
+    "status": {
+      "awaiting_pairing": "Awaiting pairing",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "outdated": "Outdated",
+      "unpaired": "Unpaired"
+    },
+    "notice": {
+      "disconnected": "The plugin is not connected. Orders for this instance's accounts will not be executed.",
+      "outdated": "Update the plugin to connect again."
+    },
+    "accountCount": "{count, plural, =0 {No accounts} one {# account} other {# accounts}}",
+    "accounts": {
+      "title": "NinjaTrader accounts",
+      "none": "No accounts reported yet.",
+      "bound": "Bound",
+      "unbound": "Not bound"
+    },
+    "details": {
+      "instance": "Instance ID:"
+    },
+    "actions": {
+      "for": "Actions for {name}",
+      "rename": "Rename",
+      "newCode": "Generate pairing code",
+      "move": "Move to another machine",
+      "unpair": "Unpair"
+    },
+    "empty": {
+      "title": "No NinjaTrader connected",
+      "step1": "Install the All Win plugin in NinjaTrader 8.",
+      "step2": "Create a connection here.",
+      "step3": "Enter the pairing code in the plugin."
+    },
+    "name": {
+      "label": "Connection name",
+      "placeholder": "E.g. Home PC, Chicago VPS"
+    },
+    "create": {
+      "title": "New connection",
+      "description": "Give it a name so you can recognize this machine later."
+    },
+    "rename": {
+      "title": "Rename connection",
+      "description": "The name does not change the pairing."
+    },
+    "unknownOutcome": "We don't know whether the connection was created. Refresh the list before trying again.",
+    "pairing": {
+      "title": "Pair “{name}”",
+      "moveTitle": "Move to another machine",
+      "share": "Enter this code in the NinjaTrader plugin.",
+      "codeLabel": "Pairing code",
+      "dontShare": "Don't share this code.",
+      "expiresIn": "Expires in {time}",
+      "instructions": "In NinjaTrader: open the All Win window, click Pair and enter the code. Upper or lower case, with or without the hyphen.",
+      "waiting": "Waiting for the plugin…",
+      "expired": "The code expired.",
+      "oneMinute": "The code expires in 1 minute.",
+      "newCode": "Generate new code",
+      "superseded": "A newer code was generated for this connection. This one is no longer valid.",
+      "locked": "Pairing is temporarily locked after too many wrong attempts. Wait a few minutes and generate a new code.",
+      "pairedTitle": "Connection paired",
+      "pairedDescription": "The plugin is now connected.",
+      "paired": "“{name}” connected. {count, plural, =0 {No accounts found.} one {# account found:} other {# accounts found:}}",
+      "moved": "“{name}” is now on another machine."
+    },
+    "move": {
+      "title": "Move “{name}” to another machine?",
+      "body": "You'll get a new code. When it's used, the current instance is disconnected and stops receiving orders.",
+      "confirm": "Generate code"
+    },
+    "unpair": {
+      "title": "Unpair “{name}”?",
+      "body": "This instance's plugin will be disconnected immediately and will stop receiving orders. To reconnect, create a new connection.",
+      "bound": "These accounts will go out of sync and stop receiving orders: {accounts}.",
+      "openPositions": "There is an open position in: {accounts}. The position stays open in NinjaTrader, with no All Win monitoring or risk protection. Nothing will be closed automatically.",
+      "acknowledge": "I understand the position will stay open",
+      "confirm": "Unpair",
+      "toast": "“{name}” unpaired."
     }
   }
 }

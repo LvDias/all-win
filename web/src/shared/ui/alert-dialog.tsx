@@ -36,8 +36,8 @@ export function AlertDialogDescription({ className, ...props }: ComponentProps<t
   return <DialogPrimitive.Description className={cn("text-sm text-muted-foreground", className)} {...props} />;
 }
 
-export function AlertDialogAction({ className, ...props }: ComponentProps<typeof DialogPrimitive.Action>) {
-  return <DialogPrimitive.Action className={cn(buttonVariants(), className)} {...props} />;
+export function AlertDialogAction({ className, variant, ...props }: ComponentProps<typeof DialogPrimitive.Action> & { variant?: "default" | "destructive" }) {
+  return <DialogPrimitive.Action className={cn(buttonVariants({ variant }), className)} {...props} />;
 }
 
 export function AlertDialogCancel({ className, ...props }: ComponentProps<typeof DialogPrimitive.Cancel>) {

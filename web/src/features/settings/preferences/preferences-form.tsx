@@ -13,7 +13,7 @@ import { ErrorState } from "@/shared/ui/error-state";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { TimeZoneCombobox } from "./time-zone-combobox";
+import { TimeZoneCombobox } from "@/shared/time-zone/time-zone-combobox";
 
 const subscribeNever = () => () => {};
 const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;

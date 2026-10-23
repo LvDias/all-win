@@ -8,7 +8,6 @@ import type { ReactNode } from "react";
 import { Providers } from "@/app/providers";
 import { locales } from "@/shared/i18n/config";
 import { IntlProvider } from "@/shared/i18n/intl-provider";
-import { LanguageSwitcher } from "@/shared/i18n/language-switcher";
 import { cn } from "@/shared/lib/utils";
 import "../globals.css";
 
@@ -43,13 +42,7 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
             <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-background focus:p-3">
               {t("skipToContent")}
             </a>
-            <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
-              <span className="font-semibold">{t("appName")}</span>
-              <LanguageSwitcher />
-            </header>
-            <main id="main" className="mx-auto w-full max-w-5xl px-4 py-8">
-              {children}
-            </main>
+            {children}
           </Providers>
         </IntlProvider>
       </body>

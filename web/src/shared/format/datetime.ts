@@ -41,3 +41,14 @@ export function formatDateTime(value: Instant, locale: Locale, timeZone: string,
   const time = formatTime(value, locale, timeZone, options);
   return locale === "en" ? `${date}, ${time}` : `${date} ${time}`;
 }
+
+/** "3 min ago" / "há 3 min": coarse relative time for status ages. Use `formatDateTime` for the exact value. */
+export function formatRelative(value: Instant, locale: Locale, now: Date = new Date()): string {
+  const seconds = Math.round((toDate(value).getTime() - now.getTime()) / 1000);
+  const formatter = new Intl.RelativeTimeFormat(intlLocales[locale], { numeric: "auto", style: "short" });
+  const abs = Math.abs(seconds);
+  if (abs < 60) return formatter.format(seconds, "second");
+  if (abs < 3600) return formatter.format(Math.round(seconds / 60), "minute");
+  if (abs < 86400) return formatter.format(Math.round(seconds / 3600), "hour");
+  return formatter.format(Math.round(seconds / 86400), "day");
+}
