@@ -14,9 +14,10 @@
 //! | `INGRESS_IP_TOKEN_FAILURES_PER_MIN` | `30` | step 2: token failures per IP before the identical 429 |
 //! | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | step 3: per authenticated key |
 //! | `INGRESS_UNKNOWN_KEY_CACHE_TTL_S` | `60` | step 2: negative cache of unknown `key_id`s (0 disables) |
+//! | `APP_PUBLIC_ORIGIN` | unset | exact origin of the web app (`https://host[:port]`) for the `/api/v1` CSRF `Origin` check; required once `/api/v1` routes are wired |
+//! | `RUST_LOG` | `info` | tracing filter |
 //!
 //! Limits burst up to their per-minute value (s1-webhook-ingest §2, HTTP 1.1.2).
-//! | `RUST_LOG` | `info` | tracing filter |
 
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -65,6 +66,8 @@ pub struct Config {
     pub ip_token_failures_per_min: u32,
     pub rate_per_key_per_min: u32,
     pub unknown_key_cache_ttl_s: u64,
+    /// Origin allowed on state-changing `/api/v1` requests (`scheme://host[:port]`).
+    pub public_origin: Option<String>,
 }
 
 impl Config {
@@ -115,8 +118,27 @@ impl Config {
             )?,
             rate_per_key_per_min: parse_or(&get, "INGRESS_RATE_PER_KEY_PER_MIN", Some(60))?,
             unknown_key_cache_ttl_s: parse_or(&get, "INGRESS_UNKNOWN_KEY_CACHE_TTL_S", Some(60))?,
+            public_origin: match non_empty("APP_PUBLIC_ORIGIN") {
+                Some(origin) if is_origin(&origin) => Some(origin),
+                Some(_) => return Err(ConfigError::Invalid("APP_PUBLIC_ORIGIN")),
+                None => None,
+            },
         })
     }
+}
+
+/// `http(s)://host[:port]`: no path, query, fragment, credentials or trailing slash.
+fn is_origin(value: &str) -> bool {
+    let Some(rest) = value
+        .strip_prefix("https://")
+        .or_else(|| value.strip_prefix("http://"))
+    else {
+        return false;
+    };
+    !rest.is_empty()
+        && rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':' | b'[' | b']'))
 }
 
 fn parse_or<T: FromStr>(
@@ -159,6 +181,34 @@ mod tests {
         );
         assert!(c.tradingview_source_ranges.is_empty());
         assert!(!format!("{c:?}").contains("pw-secret"));
+        assert!(c.public_origin.is_none());
+    }
+
+    #[test]
+    fn public_origin_must_be_a_bare_origin() {
+        let with = |origin: &'static str| {
+            Config::from_lookup(move |k| match k {
+                "DATABASE_URL" => Some("postgres://x".into()),
+                "APP_PUBLIC_ORIGIN" => Some(origin.into()),
+                _ => None,
+            })
+        };
+        assert_eq!(
+            with("https://localhost:8443")
+                .unwrap()
+                .public_origin
+                .as_deref(),
+            Some("https://localhost:8443")
+        );
+        for bad in [
+            "https://x/",
+            "https://x/path",
+            "ftp://x",
+            "https://u@x",
+            "https://",
+        ] {
+            assert!(with(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

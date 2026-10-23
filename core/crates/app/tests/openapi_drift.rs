@@ -10,7 +10,9 @@
 //!   responses by status (content schemas and declared headers).
 //! - Ignored everywhere: `description`, `title`, `summary`, `example(s)`, `x-*`
 //!   (plus `$schema`/`$id`/`$defs`/`$comment` once references are resolved).
-//!   Normalized: order of `required`/`enum`/`type`, and numbers (`1 == 1.0`).
+//!   Normalized: order of `required`/`enum`/`type`, numbers (`1 == 1.0`), and
+//!   `const: X`, rewritten to the equivalent `enum: [X]` on both sides (when the same
+//!   schema has no `enum`), so spelling differences need no allowlist entry.
 //! - Differences `utoipa` cannot express are listed in `contracts/http/drift-allowlist.yaml`
 //!   as `{operationId, pointer, reason}`; an entry matching no difference fails.
 //! - The embedded instruction schema equals `contracts/instruction/v1/instruction.schema.json`.
@@ -163,6 +165,18 @@ fn canonical(value: &Value, in_name_map: bool) -> Value {
     match value {
         Value::Object(map) => {
             let mut out = Map::new();
+            // `const: X` ≡ `enum: [X]` (JSON Schema 2020-12 §6.1.2–6.1.3).
+            let rewritten;
+            let map = match (in_name_map, map.get("const"), map.contains_key("enum")) {
+                (false, Some(value), false) => {
+                    let mut m = map.clone();
+                    m.remove("const");
+                    m.insert("enum".into(), Value::Array(vec![value.clone()]));
+                    rewritten = m;
+                    &rewritten
+                }
+                _ => map,
+            };
             for (k, v) in map {
                 if !in_name_map && ignored(k) {
                     continue;
@@ -398,6 +412,17 @@ fn diff_and_normalization_rules() {
         &mut out,
     );
     assert!(out.is_empty(), "{out:?}");
+    // const is the single-value enum; a property named `const` is not rewritten.
+    let a = serde_json::json!({"properties": {"status": {"const": "rejected"}, "const": {"type": "string"}}});
+    let b = serde_json::json!({"properties": {"status": {"enum": ["rejected"]}, "const": {"type": "string"}}});
+    let mut out = BTreeSet::new();
+    diff(
+        &canonical(&a, false),
+        &canonical(&b, false),
+        String::new(),
+        &mut out,
+    );
+    assert!(out.is_empty(), "{out:?}");
     // A property named like an ignored keyword is still compared.
     let a = serde_json::json!({"properties": {"description": {"type": "string"}}});
     let b = serde_json::json!({"properties": {}});
@@ -411,5 +436,70 @@ fn diff_and_normalization_rules() {
     assert_eq!(
         out.into_iter().collect::<Vec<_>>(),
         ["/properties/description"]
+    );
+}
+
+/// Shared schemas in `contracts::http`, checked against the contract components of the
+/// same name before any operation uses them (same resolution and normalization rules).
+#[derive(utoipa::OpenApi)]
+#[openapi(components(schemas(
+    contracts::http::Uuid,
+    contracts::http::ErrorCode,
+    contracts::http::Timestamp,
+    contracts::http::TimeZone,
+    contracts::http::DisplayName,
+    contracts::http::Locale,
+    contracts::http::Error,
+    contracts::http::IngressAccepted,
+    contracts::http::IngressRejected,
+)))]
+struct SharedSchemas;
+
+#[test]
+fn shared_schemas_match_the_contract_components() {
+    use utoipa::OpenApi;
+    let dir = contract_dir();
+    let contract = load_file(&dir.join("openapi.yaml"));
+    let contract_ctx = Ctx {
+        doc: contract.clone(),
+        dir: dir.clone(),
+    };
+    let generated = serde_json::to_value(SharedSchemas::openapi()).unwrap();
+    let generated_ctx = Ctx {
+        doc: generated.clone(),
+        dir,
+    };
+    let mut failures = Vec::new();
+    let names = [
+        "Uuid",
+        "ErrorCode",
+        "Timestamp",
+        "TimeZone",
+        "DisplayName",
+        "Locale",
+        "Error",
+        "IngressAccepted",
+        "IngressRejected",
+    ];
+    for name in names {
+        let g = generated["components"]["schemas"]
+            .get(name)
+            .unwrap_or_else(|| panic!("{name} not generated"));
+        let c = contract["components"]["schemas"]
+            .get(name)
+            .unwrap_or_else(|| panic!("{name} not in contract"));
+        let mut out = BTreeSet::new();
+        diff(
+            &canonical(&resolve(g, &generated_ctx, 0), false),
+            &canonical(&resolve(c, &contract_ctx, 0), false),
+            String::new(),
+            &mut out,
+        );
+        failures.extend(out.into_iter().map(|p| format!("{name} {p}")));
+    }
+    assert!(
+        failures.is_empty(),
+        "shared schema drift:\n{}",
+        failures.join("\n")
     );
 }
