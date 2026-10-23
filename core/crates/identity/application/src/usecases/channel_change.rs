@@ -170,7 +170,7 @@ impl StartChannelChange {
         if let Some(other) = other {
             targets.push((CodeRole::OtherChannel, other));
         }
-        let sends = i64::try_from(targets.len()).unwrap_or(i64::MAX);
+        let sends = i32::try_from(targets.len()).unwrap_or(i32::MAX);
         let limits = async {
             codes::admit_user_sends(deps, user.id, sends, now).await?;
             for (_, d) in &targets {
@@ -437,6 +437,7 @@ fn complete_now(
     let user = &ctx.user;
     let old = user.destination(change.channel());
     let (rotated, cookie) = rotate_session(deps, &ctx.session, now);
+    let rotated_id = rotated.id;
     let mut set = ChangeSet::new(user.id)
         .write(Write::CompleteChannelChange {
             change_id: change.id,
@@ -478,7 +479,9 @@ fn complete_now(
         ))
         .event(IdentityEvent::SessionsEnded {
             user_id: user.id,
-            sessions: EndedSessions::AllExcept(vec![ctx.session.id]),
+            // Both ids of the caller's tab: a stream still open on the old one, and one the tab
+            // reopens with the new cookie before this event is dispatched (QA M1).
+            sessions: EndedSessions::AllExcept(vec![ctx.session.id, rotated_id]),
             reason: EndReason::ChannelChanged,
             at: now,
         });

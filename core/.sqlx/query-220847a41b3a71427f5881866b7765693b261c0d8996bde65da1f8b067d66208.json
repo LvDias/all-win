@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.code_send_counter\n                     (identifier_hmac, pepper_version, device_class, window_seconds, window_start, sends)\n                   VALUES ($1, $2, $3, $4, $5, $6)\n                   ON CONFLICT (identifier_hmac, pepper_version, device_class, window_seconds, window_start)\n                   DO UPDATE SET sends = identity.code_send_counter.sends + EXCLUDED.sends\n                   RETURNING sends",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sends",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "identity.code_send_counter",
+            "name": "sends"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int2",
+        "Text",
+        "Int4",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "220847a41b3a71427f5881866b7765693b261c0d8996bde65da1f8b067d66208"
+}

@@ -170,13 +170,6 @@ pub trait IdentityStore: Send + Sync {
         user_id: UserId,
         change_id: ChannelChangeId,
     ) -> Result<Vec<OneTimeCode>, StoreError>;
-    /// Step-up and channel-change codes the user requested since `since` (per-user send limit).
-    async fn signed_in_sends_since(
-        &self,
-        user_id: UserId,
-        since: DateTime<Utc>,
-    ) -> Result<i64, StoreError>;
-
     async fn channel_change(
         &self,
         user_id: UserId,
@@ -198,23 +191,19 @@ pub trait IdentityStore: Send + Sync {
         now: DateTime<Utc>,
     ) -> Result<Vec<(UserId, ChannelChangeId)>, StoreError>;
 
-    /// Counts one send in every window of the durable per-identifier limits (upsert per window)
-    /// and returns the counts after it. Runs for registered and unknown identifiers alike.
-    async fn count_send(
+    /// Counts `sends` in every window of a durable limit, unless that would take one of them past
+    /// its limit (`(window_seconds, limit)` pairs). Increment and decision happen in one
+    /// transaction, rolled back when a window is over, so concurrent requests never pass the
+    /// limit together (Crivo M2). Returns the first window over its limit, `None` when counted.
+    /// Runs for registered and unknown identifiers alike.
+    async fn count_sends_within(
         &self,
         identifier: &CodeHmac,
         device_class: DeviceClass,
-        windows: &[i32],
+        limits: &[(i32, i32)],
+        sends: i32,
         now: DateTime<Utc>,
-    ) -> Result<Vec<WindowCount>, StoreError>;
-    /// Current counts without counting (cooldown check before a send).
-    async fn send_counts(
-        &self,
-        identifier: &CodeHmac,
-        device_class: DeviceClass,
-        windows: &[i32],
-        now: DateTime<Utc>,
-    ) -> Result<Vec<WindowCount>, StoreError>;
+    ) -> Result<Option<WindowCount>, StoreError>;
     /// Runs the statements a login code insert runs, writing nothing (unknown identifiers, so
     /// statements and timing match up to the commit; policy §3).
     async fn login_code_placeholder(&self) -> Result<(), StoreError>;

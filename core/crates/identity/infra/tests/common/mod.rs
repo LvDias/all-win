@@ -115,8 +115,21 @@ async fn ensure_roles(admin: &PgPool) {
         .unwrap();
 }
 
+/// `TEST_DATABASE_ADMIN_URL` from the environment, else from the git-ignored `core/.env.test`
+/// (as the app tests do).
+fn admin_url() -> Option<String> {
+    if let Ok(url) = std::env::var("TEST_DATABASE_ADMIN_URL") {
+        return Some(url);
+    }
+    let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../.env.test");
+    let text = std::fs::read_to_string(file).ok()?;
+    text.lines()
+        .find_map(|l| l.strip_prefix("TEST_DATABASE_ADMIN_URL="))
+        .map(|v| v.trim().trim_matches('"').to_owned())
+}
+
 pub async fn setup() -> Option<Db> {
-    let Ok(admin_url) = std::env::var("TEST_DATABASE_ADMIN_URL") else {
+    let Some(admin_url) = admin_url() else {
         assert!(
             std::env::var("ALLWIN_REQUIRE_DB_TESTS").as_deref() != Ok("1"),
             "TEST_DATABASE_ADMIN_URL is required"

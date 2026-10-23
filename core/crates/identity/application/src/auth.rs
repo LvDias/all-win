@@ -37,6 +37,17 @@ pub enum Activity {
     Background,
 }
 
+/// What the event stream does after its periodic session check (Crivo M1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamCheck {
+    Live,
+    /// Send `session.ended` with this reason, then close.
+    Ended(EndReason),
+    /// Close without a frame: a rotated session (the tab reconnects with the new cookie), an
+    /// unknown cookie or user, or a failed check. Never reported as an ended session.
+    Close,
+}
+
 pub struct AuthenticateSession {
     deps: IdentityDeps,
 }
@@ -77,6 +88,33 @@ impl AuthenticateSession {
             self.deps.store.commit(changes).await?;
         }
         Ok(AuthContext { session, user })
+    }
+
+    /// The event stream's heartbeat check (background activity: never extends the idle timeout).
+    /// `session.ended` is reported only for a session that really ended, with its own reason.
+    pub async fn stream_check(&self, cookie: &str) -> StreamCheck {
+        let now = self.deps.clock.now();
+        let Some(hash) = self.deps.hash_presented_token(cookie) else {
+            return StreamCheck::Close;
+        };
+        let session = match self.deps.store.session_by_token(&hash).await {
+            Ok(Some(session)) => session,
+            Ok(None) | Err(_) => return StreamCheck::Close,
+        };
+        match session.status(now) {
+            SessionStatus::Ended => match session.end_reason {
+                Some(EndReason::Rotated) | None => StreamCheck::Close,
+                Some(reason) => StreamCheck::Ended(reason),
+            },
+            SessionStatus::Expired => match self.end_expired(&session, now).await {
+                Ok(()) => StreamCheck::Ended(EndReason::Expired),
+                Err(_) => StreamCheck::Close,
+            },
+            SessionStatus::Active => match self.deps.store.user(session.user_id).await {
+                Ok(Some(user)) if user.is_active() => StreamCheck::Live,
+                _ => StreamCheck::Close,
+            },
+        }
     }
 
     /// Any non-ended session regardless of state (logout).

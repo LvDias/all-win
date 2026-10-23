@@ -1055,25 +1055,6 @@ impl IdentityStore for FakeStore {
             .cloned()
             .collect())
     }
-    async fn signed_in_sends_since(
-        &self,
-        user: UserId,
-        since: DateTime<Utc>,
-    ) -> Result<i64, StoreError> {
-        let n = self
-            .state
-            .lock()
-            .unwrap()
-            .one_time
-            .iter()
-            .filter(|c| {
-                c.user_id == user
-                    && matches!(c.purpose, Purpose::StepUp | Purpose::ChannelChange)
-                    && c.state.created_at >= since
-            })
-            .count();
-        Ok(i64::try_from(n).unwrap())
-    }
     async fn channel_change(
         &self,
         user: UserId,
@@ -1126,54 +1107,33 @@ impl IdentityStore for FakeStore {
             .map(|c| (c.user_id, c.id))
             .collect())
     }
-    async fn count_send(
+    async fn count_sends_within(
         &self,
         identifier: &CodeHmac,
         class: DeviceClass,
-        windows: &[i32],
+        limits: &[(i32, i32)],
+        sends: i32,
         now: DateTime<Utc>,
-    ) -> Result<Vec<WindowCount>, StoreError> {
+    ) -> Result<Option<WindowCount>, StoreError> {
         let mut st = self.state.lock().unwrap();
-        Ok(windows
+        let keys: Vec<_> = limits
             .iter()
-            .map(|w| {
-                let start = window_start(now, *w);
-                let n = st
-                    .counters
-                    .entry((identifier.bytes, class, *w, start))
-                    .or_insert(0);
-                *n += 1;
-                WindowCount {
+            .map(|(w, l)| ((identifier.bytes, class, *w, window_start(now, *w)), *l))
+            .collect();
+        for ((key, limit), (w, _)) in keys.iter().zip(limits) {
+            let after = st.counters.get(key).copied().unwrap_or(0) + sends;
+            if after > *limit {
+                return Ok(Some(WindowCount {
                     window_seconds: *w,
-                    window_start: start,
-                    sends: *n,
-                }
-            })
-            .collect())
-    }
-    async fn send_counts(
-        &self,
-        identifier: &CodeHmac,
-        class: DeviceClass,
-        windows: &[i32],
-        now: DateTime<Utc>,
-    ) -> Result<Vec<WindowCount>, StoreError> {
-        let st = self.state.lock().unwrap();
-        Ok(windows
-            .iter()
-            .map(|w| {
-                let start = window_start(now, *w);
-                WindowCount {
-                    window_seconds: *w,
-                    window_start: start,
-                    sends: st
-                        .counters
-                        .get(&(identifier.bytes, class, *w, start))
-                        .copied()
-                        .unwrap_or(0),
-                }
-            })
-            .collect())
+                    window_start: key.3,
+                    sends: after,
+                }));
+            }
+        }
+        for (key, _) in keys {
+            *st.counters.entry(key).or_insert(0) += sends;
+        }
+        Ok(None)
     }
     async fn login_code_placeholder(&self) -> Result<(), StoreError> {
         *self.placeholders.lock().unwrap() += 1;
