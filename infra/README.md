@@ -23,7 +23,7 @@ Log capture for QA: `scripts/dev-stack.sh logs caddy core` (container stdout; no
 
 - Core: `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features -D warnings`, `ALLWIN_REQUIRE_DB_TESTS=1 cargo test --workspace` (includes the OpenAPI drift test, no database needed for it).
 - sqlx offline data: against a freshly migrated PostgreSQL 16, `.sqlx` must match the queries. With sqlx-cli 0.9.0 `cargo sqlx prepare --workspace --check` fails under `SQLX_OFFLINE=true` (set in `core/.cargo/config.toml`), so run `cargo sqlx prepare --workspace -- --all-targets` and then `git diff --exit-code core/.sqlx`.
-- Plugin: `dotnet test plugins/ninjatrader8 --nologo -v q`.
+- Plugin: with `CI=true`, `dotnet restore plugins/ninjatrader8 --locked-mode` before build and test (the `packages.lock.json` files are committed; NU1900 is not suppressed when `CI=true`), then `dotnet test plugins/ninjatrader8 --nologo -v q`.
 - Web: `pnpm check` (lint, typecheck, i18n parity, API drift, Vitest).
 
 ## Migrations and local databases
