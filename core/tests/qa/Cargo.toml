@@ -13,13 +13,27 @@ workspace = true
 # slice not yet on main is gated by that slice's feature: verification merges this branch at the
 # slice SHA and runs `cargo test -p qa-backend --features <slice>`.
 [features]
+s3 = []
 s5 = []
 s6 = []
 s7 = []
+
+[[test]]
+name = "s5_accounts"
+required-features = ["s5"]
 
 [[test]]
 name = "s7_routing"
 required-features = ["s7"]
 
 [dev-dependencies]
+app = { path = "../../crates/app" }
+axum.workspace = true
+http-body-util.workspace = true
 routing-enterprise.workspace = true
+serde_json.workspace = true
+shared-kernel.workspace = true
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
+tokio = { workspace = true, features = ["full"] }
+tower = { workspace = true, features = ["util"] }
+uuid = { workspace = true, features = ["v7"] }
