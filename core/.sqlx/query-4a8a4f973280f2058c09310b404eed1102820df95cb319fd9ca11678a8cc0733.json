@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT publish_seq, id, firm_id, version_number FROM catalog.firm_release\n               WHERE publish_seq > $1 ORDER BY publish_seq LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "publish_seq",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "publish_seq"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "firm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "firm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "version_number",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "version_number"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4a8a4f973280f2058c09310b404eed1102820df95cb319fd9ca11678a8cc0733"
+}

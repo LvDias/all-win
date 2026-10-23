@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT s.release_id, s.kind, s.value, s.quotes, s.research FROM catalog.firm_stance s\n               JOIN catalog.firm_release r ON r.id = s.release_id WHERE r.firm_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "release_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "release_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "value",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "value"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "quotes",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "quotes"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "research",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "research"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "776d3762ce42041a3acccb112195d9cdf3b80a57cc80cf004acaaf10622512d1"
+}

@@ -1,0 +1,3386 @@
+{
+ "FirmDetail": {
+  "additionalProperties": false,
+  "properties": {
+   "excluded_plans": {
+    "description": "Plans not offered as presets (S16 AC-9); registered manually.",
+    "items": {
+     "maxLength": 120,
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "plans": {
+    "description": "Plans and their phases in the release file's order; sizes inside a phase ascending by `size_amount` (5.4.0, Torno).",
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "maxLength": 120,
+       "type": "string"
+      },
+      "phases": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "phase": {
+          "description": "Research format phases; the UI translates them.",
+          "enum": [
+           "evaluation",
+           "funded",
+           "live"
+          ],
+          "type": "string"
+         },
+         "sizes": {
+          "items": {
+           "additionalProperties": false,
+           "description": "One size of a plan/phase in the current release.",
+           "properties": {
+            "not_confirmed_count": {
+             "description": "The number of DISTINCT rule fields (`RuleField`) with status `not_confirmed` in any of the preset's rule sets. A field that is not confirmed on two platforms counts once. `stored_only` data and stances are not counted (5.4.0, Torno).",
+             "minimum": 0,
+             "type": "integer"
+            },
+            "platform_specific": {
+             "description": "True → the account must choose `firm_platform`.",
+             "type": "boolean"
+            },
+            "preset_id": {
+             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+             "type": "string"
+            },
+            "preset_version_id": {
+             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+             "type": "string"
+            },
+            "size_amount": {
+             "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+             "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+             "type": "string"
+            },
+            "size_label": {
+             "description": "As published, e.g. \"50K\".",
+             "maxLength": 32,
+             "type": "string"
+            }
+           },
+           "required": [
+            "preset_id",
+            "preset_version_id",
+            "size_amount",
+            "platform_specific",
+            "not_confirmed_count"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "phase",
+         "sizes"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "plan_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      }
+     },
+     "required": [
+      "plan_id",
+      "name",
+      "phases"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "platforms": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "code": {
+       "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+       "pattern": "^[a-z][a-z0-9_]{0,31}$",
+       "type": "string"
+      },
+      "label": {
+       "description": "Product name, e.g. \"Rithmic\" (not translated).",
+       "maxLength": 60,
+       "type": "string"
+      },
+      "manual_only": {
+       "additionalProperties": false,
+       "description": "5.4.0 (S-R3-2/S-R3-4, data from the preset release): this firm platform cannot be reached by any V1 output. An account with this `firm_platform` is manual only (routing `routing.account_manual_only`, listed in `listRouteCandidates.manual_only`), like a firm-level `manual_only`.",
+       "properties": {
+        "reason": {
+         "additionalProperties": false,
+         "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+         "properties": {
+          "accessed_at": {
+           "description": "Date the page was read (YYYY-MM-DD).",
+           "format": "date",
+           "type": "string"
+          },
+          "language": {
+           "description": "BCP 47, e.g. 'en'.",
+           "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+           "type": "string"
+          },
+          "page_title": {
+           "maxLength": 300,
+           "type": "string"
+          },
+          "section": {
+           "description": "Heading of the quoted part of the page, if any.",
+           "maxLength": 300,
+           "type": "string"
+          },
+          "text": {
+           "maxLength": 20000,
+           "minLength": 1,
+           "type": "string"
+          },
+          "url": {
+           "format": "uri",
+           "maxLength": 2048,
+           "pattern": "^https://",
+           "type": "string"
+          }
+         },
+         "required": [
+          "text",
+          "language",
+          "page_title",
+          "url",
+          "accessed_at"
+         ],
+         "type": "object"
+        }
+       },
+       "required": [
+        "reason"
+       ],
+       "type": "object"
+      }
+     },
+     "required": [
+      "code",
+      "label"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "stances": {
+    "additionalProperties": false,
+    "description": "`automation` / `copy` are the rule versions of the opt-ins: one entry without `firm_platform` when\nthe stance is the same on every platform, otherwise one entry per firm platform. `vps` ∈ allowed /\nforbidden / conditional / unknown / not_confirmed; `personal_device` ∈ required / not_required /\nunknown / not_confirmed (Q-S16-2; `not_confirmed` from 5.4.0, S16 AC-5, Q-S16-7: the firm's pages\ndisagree, so at least 2 quotes and nothing is prefilled).\n",
+    "properties": {
+     "automation": {
+      "items": {
+       "additionalProperties": false,
+       "allOf": [
+        {
+         "else": {
+          "required": [
+           "firm_id",
+           "firm_name"
+          ]
+         },
+         "if": {
+          "properties": {
+           "is_generic": {
+            "const": true
+           }
+          }
+         },
+         "then": {
+          "not": {
+           "anyOf": [
+            {
+             "required": [
+              "firm_id"
+             ]
+            },
+            {
+             "required": [
+              "firm_name"
+             ]
+            },
+            {
+             "required": [
+              "research"
+             ]
+            },
+            {
+             "required": [
+              "firm_platform"
+             ]
+            }
+           ]
+          },
+          "properties": {
+           "firm_stance": {
+            "const": "unknown"
+           },
+           "quotes": {
+            "maxItems": 0
+           }
+          }
+         }
+        }
+       ],
+       "properties": {
+        "change": {
+         "additionalProperties": false,
+         "description": "Present when this version replaced an earlier one for the same preset selection and kind.",
+         "properties": {
+          "cause": {
+           "description": "`stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the\ntext case is Q42: the publisher flagged it as material). `not_material` never\nsuspends (typo or format fix).\n",
+           "enum": [
+            "stance_changed",
+            "text_changed",
+            "not_material"
+           ],
+           "type": "string"
+          },
+          "previous_firm_stance": {
+           "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+           "enum": [
+            "allowed",
+            "forbidden",
+            "conditional",
+            "unknown",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "previous_rule_version_id": {
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "reason": {
+           "additionalProperties": false,
+           "description": "The publisher's explanation shown to the user, present with `text_changed` (Q42 a: the publisher flags the change and records why); optional in the schema for compatibility.",
+           "properties": {
+            "en": {
+             "maxLength": 2000,
+             "minLength": 1,
+             "type": "string"
+            },
+            "pt-BR": {
+             "maxLength": 2000,
+             "minLength": 1,
+             "type": "string"
+            }
+           },
+           "required": [
+            "pt-BR",
+            "en"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "previous_rule_version_id",
+          "previous_firm_stance",
+          "cause"
+         ],
+         "type": "object"
+        },
+        "firm_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "type": "string"
+        },
+        "firm_name": {
+         "maxLength": 120,
+         "type": "string"
+        },
+        "firm_platform": {
+         "description": "The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules.",
+         "pattern": "^[a-z][a-z0-9_]{0,31}$",
+         "type": "string"
+        },
+        "firm_stance": {
+         "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+         "enum": [
+          "allowed",
+          "forbidden",
+          "conditional",
+          "unknown",
+          "not_confirmed"
+         ],
+         "type": "string"
+        },
+        "id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "type": "string"
+        },
+        "is_generic": {
+         "description": "True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning).",
+         "type": "boolean"
+        },
+        "kind": {
+         "enum": [
+          "automation",
+          "copy"
+         ],
+         "type": "string"
+        },
+        "published_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        },
+        "quotes": {
+         "description": "Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the\nconflicting quotes, each with its own source and date.\n",
+         "items": {
+          "additionalProperties": false,
+          "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+          "properties": {
+           "accessed_at": {
+            "description": "Date the page was read (YYYY-MM-DD).",
+            "format": "date",
+            "type": "string"
+           },
+           "language": {
+            "description": "BCP 47, e.g. 'en'.",
+            "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+            "type": "string"
+           },
+           "page_title": {
+            "maxLength": 300,
+            "type": "string"
+           },
+           "section": {
+            "description": "Heading of the quoted part of the page, if any.",
+            "maxLength": 300,
+            "type": "string"
+           },
+           "text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+           },
+           "url": {
+            "format": "uri",
+            "maxLength": 2048,
+            "pattern": "^https://",
+            "type": "string"
+           }
+          },
+          "required": [
+           "text",
+           "language",
+           "page_title",
+           "url",
+           "accessed_at"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "research": {
+         "additionalProperties": false,
+         "description": "With `unknown` (not generic) — where the publisher looked and found no rule.",
+         "properties": {
+          "searched_on": {
+           "format": "date",
+           "type": "string"
+          },
+          "sources": {
+           "description": "5.4.0 (Torno) — the same `SourceRef` as `StanceInfo.research` and the release file (`page_title` optional, `accessed_at` required).",
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "required": [
+          "searched_on",
+          "sources"
+         ],
+         "type": "object"
+        },
+        "version_number": {
+         "minimum": 1,
+         "type": "integer"
+        }
+       },
+       "required": [
+        "id",
+        "kind",
+        "firm_stance",
+        "is_generic",
+        "version_number",
+        "published_at",
+        "quotes"
+       ],
+       "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+     },
+     "copy": {
+      "items": {
+       "additionalProperties": false,
+       "allOf": [
+        {
+         "else": {
+          "required": [
+           "firm_id",
+           "firm_name"
+          ]
+         },
+         "if": {
+          "properties": {
+           "is_generic": {
+            "const": true
+           }
+          }
+         },
+         "then": {
+          "not": {
+           "anyOf": [
+            {
+             "required": [
+              "firm_id"
+             ]
+            },
+            {
+             "required": [
+              "firm_name"
+             ]
+            },
+            {
+             "required": [
+              "research"
+             ]
+            },
+            {
+             "required": [
+              "firm_platform"
+             ]
+            }
+           ]
+          },
+          "properties": {
+           "firm_stance": {
+            "const": "unknown"
+           },
+           "quotes": {
+            "maxItems": 0
+           }
+          }
+         }
+        }
+       ],
+       "properties": {
+        "change": {
+         "additionalProperties": false,
+         "description": "Present when this version replaced an earlier one for the same preset selection and kind.",
+         "properties": {
+          "cause": {
+           "description": "`stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the\ntext case is Q42: the publisher flagged it as material). `not_material` never\nsuspends (typo or format fix).\n",
+           "enum": [
+            "stance_changed",
+            "text_changed",
+            "not_material"
+           ],
+           "type": "string"
+          },
+          "previous_firm_stance": {
+           "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+           "enum": [
+            "allowed",
+            "forbidden",
+            "conditional",
+            "unknown",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "previous_rule_version_id": {
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "reason": {
+           "additionalProperties": false,
+           "description": "The publisher's explanation shown to the user, present with `text_changed` (Q42 a: the publisher flags the change and records why); optional in the schema for compatibility.",
+           "properties": {
+            "en": {
+             "maxLength": 2000,
+             "minLength": 1,
+             "type": "string"
+            },
+            "pt-BR": {
+             "maxLength": 2000,
+             "minLength": 1,
+             "type": "string"
+            }
+           },
+           "required": [
+            "pt-BR",
+            "en"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "previous_rule_version_id",
+          "previous_firm_stance",
+          "cause"
+         ],
+         "type": "object"
+        },
+        "firm_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "type": "string"
+        },
+        "firm_name": {
+         "maxLength": 120,
+         "type": "string"
+        },
+        "firm_platform": {
+         "description": "The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules.",
+         "pattern": "^[a-z][a-z0-9_]{0,31}$",
+         "type": "string"
+        },
+        "firm_stance": {
+         "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+         "enum": [
+          "allowed",
+          "forbidden",
+          "conditional",
+          "unknown",
+          "not_confirmed"
+         ],
+         "type": "string"
+        },
+        "id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "type": "string"
+        },
+        "is_generic": {
+         "description": "True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning).",
+         "type": "boolean"
+        },
+        "kind": {
+         "enum": [
+          "automation",
+          "copy"
+         ],
+         "type": "string"
+        },
+        "published_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        },
+        "quotes": {
+         "description": "Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the\nconflicting quotes, each with its own source and date.\n",
+         "items": {
+          "additionalProperties": false,
+          "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+          "properties": {
+           "accessed_at": {
+            "description": "Date the page was read (YYYY-MM-DD).",
+            "format": "date",
+            "type": "string"
+           },
+           "language": {
+            "description": "BCP 47, e.g. 'en'.",
+            "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+            "type": "string"
+           },
+           "page_title": {
+            "maxLength": 300,
+            "type": "string"
+           },
+           "section": {
+            "description": "Heading of the quoted part of the page, if any.",
+            "maxLength": 300,
+            "type": "string"
+           },
+           "text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+           },
+           "url": {
+            "format": "uri",
+            "maxLength": 2048,
+            "pattern": "^https://",
+            "type": "string"
+           }
+          },
+          "required": [
+           "text",
+           "language",
+           "page_title",
+           "url",
+           "accessed_at"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "research": {
+         "additionalProperties": false,
+         "description": "With `unknown` (not generic) — where the publisher looked and found no rule.",
+         "properties": {
+          "searched_on": {
+           "format": "date",
+           "type": "string"
+          },
+          "sources": {
+           "description": "5.4.0 (Torno) — the same `SourceRef` as `StanceInfo.research` and the release file (`page_title` optional, `accessed_at` required).",
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "required": [
+          "searched_on",
+          "sources"
+         ],
+         "type": "object"
+        },
+        "version_number": {
+         "minimum": 1,
+         "type": "integer"
+        }
+       },
+       "required": [
+        "id",
+        "kind",
+        "firm_stance",
+        "is_generic",
+        "version_number",
+        "published_at",
+        "quotes"
+       ],
+       "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+     },
+     "personal_device": {
+      "allOf": [
+       {
+        "additionalProperties": false,
+        "description": "VPS/server and personal-device stances (S16 AC-8); verbatim quotes, never translated.",
+        "properties": {
+         "quotes": {
+          "items": {
+           "additionalProperties": false,
+           "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+           "properties": {
+            "accessed_at": {
+             "description": "Date the page was read (YYYY-MM-DD).",
+             "format": "date",
+             "type": "string"
+            },
+            "language": {
+             "description": "BCP 47, e.g. 'en'.",
+             "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+             "type": "string"
+            },
+            "page_title": {
+             "maxLength": 300,
+             "type": "string"
+            },
+            "section": {
+             "description": "Heading of the quoted part of the page, if any.",
+             "maxLength": 300,
+             "type": "string"
+            },
+            "text": {
+             "maxLength": 20000,
+             "minLength": 1,
+             "type": "string"
+            },
+            "url": {
+             "format": "uri",
+             "maxLength": 2048,
+             "pattern": "^https://",
+             "type": "string"
+            }
+           },
+           "required": [
+            "text",
+            "language",
+            "page_title",
+            "url",
+            "accessed_at"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "research": {
+          "additionalProperties": false,
+          "properties": {
+           "searched_on": {
+            "format": "date",
+            "type": "string"
+           },
+           "sources": {
+            "items": {
+             "additionalProperties": false,
+             "properties": {
+              "accessed_at": {
+               "format": "date",
+               "type": "string"
+              },
+              "page_title": {
+               "maxLength": 300,
+               "type": "string"
+              },
+              "url": {
+               "format": "uri",
+               "maxLength": 2048,
+               "pattern": "^https://",
+               "type": "string"
+              }
+             },
+             "required": [
+              "url",
+              "accessed_at"
+             ],
+             "type": "object"
+            },
+            "type": "array"
+           }
+          },
+          "required": [
+           "searched_on",
+           "sources"
+          ],
+          "type": "object"
+         },
+         "value": {
+          "enum": [
+           "allowed",
+           "forbidden",
+           "conditional",
+           "unknown",
+           "not_confirmed",
+           "required",
+           "not_required"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "value",
+         "quotes"
+        ],
+        "type": "object"
+       },
+       {
+        "properties": {
+         "value": {
+          "enum": [
+           "required",
+           "not_required",
+           "unknown",
+           "not_confirmed"
+          ]
+         }
+        }
+       }
+      ]
+     },
+     "vps": {
+      "allOf": [
+       {
+        "additionalProperties": false,
+        "description": "VPS/server and personal-device stances (S16 AC-8); verbatim quotes, never translated.",
+        "properties": {
+         "quotes": {
+          "items": {
+           "additionalProperties": false,
+           "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+           "properties": {
+            "accessed_at": {
+             "description": "Date the page was read (YYYY-MM-DD).",
+             "format": "date",
+             "type": "string"
+            },
+            "language": {
+             "description": "BCP 47, e.g. 'en'.",
+             "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+             "type": "string"
+            },
+            "page_title": {
+             "maxLength": 300,
+             "type": "string"
+            },
+            "section": {
+             "description": "Heading of the quoted part of the page, if any.",
+             "maxLength": 300,
+             "type": "string"
+            },
+            "text": {
+             "maxLength": 20000,
+             "minLength": 1,
+             "type": "string"
+            },
+            "url": {
+             "format": "uri",
+             "maxLength": 2048,
+             "pattern": "^https://",
+             "type": "string"
+            }
+           },
+           "required": [
+            "text",
+            "language",
+            "page_title",
+            "url",
+            "accessed_at"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "research": {
+          "additionalProperties": false,
+          "properties": {
+           "searched_on": {
+            "format": "date",
+            "type": "string"
+           },
+           "sources": {
+            "items": {
+             "additionalProperties": false,
+             "properties": {
+              "accessed_at": {
+               "format": "date",
+               "type": "string"
+              },
+              "page_title": {
+               "maxLength": 300,
+               "type": "string"
+              },
+              "url": {
+               "format": "uri",
+               "maxLength": 2048,
+               "pattern": "^https://",
+               "type": "string"
+              }
+             },
+             "required": [
+              "url",
+              "accessed_at"
+             ],
+             "type": "object"
+            },
+            "type": "array"
+           }
+          },
+          "required": [
+           "searched_on",
+           "sources"
+          ],
+          "type": "object"
+         },
+         "value": {
+          "enum": [
+           "allowed",
+           "forbidden",
+           "conditional",
+           "unknown",
+           "not_confirmed",
+           "required",
+           "not_required"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "value",
+         "quotes"
+        ],
+        "type": "object"
+       },
+       {
+        "properties": {
+         "value": {
+          "enum": [
+           "allowed",
+           "forbidden",
+           "conditional",
+           "unknown",
+           "not_confirmed"
+          ]
+         }
+        }
+       }
+      ]
+     }
+    },
+    "required": [
+     "automation",
+     "copy",
+     "vps",
+     "personal_device"
+    ],
+    "type": "object"
+   },
+   "summary": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "manual_only": {
+      "additionalProperties": false,
+      "description": "S16 AC-7: no V1 output reaches the firm's platforms; risk tracking only, no routing (S7 AC-7b).",
+      "properties": {
+       "reason": {
+        "additionalProperties": false,
+        "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+        "properties": {
+         "accessed_at": {
+          "description": "Date the page was read (YYYY-MM-DD).",
+          "format": "date",
+          "type": "string"
+         },
+         "language": {
+          "description": "BCP 47, e.g. 'en'.",
+          "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+          "type": "string"
+         },
+         "page_title": {
+          "maxLength": 300,
+          "type": "string"
+         },
+         "section": {
+          "description": "Heading of the quoted part of the page, if any.",
+          "maxLength": 300,
+          "type": "string"
+         },
+         "text": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "type": "string"
+         },
+         "url": {
+          "format": "uri",
+          "maxLength": 2048,
+          "pattern": "^https://",
+          "type": "string"
+         }
+        },
+        "required": [
+         "text",
+         "language",
+         "page_title",
+         "url",
+         "accessed_at"
+        ],
+        "type": "object"
+       }
+      },
+      "required": [
+       "reason"
+      ],
+      "type": "object"
+     },
+     "name": {
+      "maxLength": 120,
+      "type": "string"
+     },
+     "not_confirmed_count": {
+      "description": "The sum of `PresetOption.not_confirmed_count` over the presets of the current release. Stances are shown separately and are not counted.",
+      "minimum": 0,
+      "type": "integer"
+     },
+     "plan_names": {
+      "items": {
+       "maxLength": 120,
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "release": {
+      "additionalProperties": false,
+      "properties": {
+       "published_at": {
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+        "type": "string"
+       },
+       "verified_on": {
+        "format": "date",
+        "type": "string"
+       },
+       "version_number": {
+        "minimum": 1,
+        "type": "integer"
+       }
+      },
+      "required": [
+       "version_number",
+       "published_at",
+       "verified_on"
+      ],
+      "type": "object"
+     },
+     "slug": {
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "type": "string"
+     },
+     "stances": {
+      "additionalProperties": false,
+      "properties": {
+       "automation": {
+        "description": "A `FirmStance`, or `varies_by_platform` when the firm's platforms have different stances (the firm detail lists them).",
+        "enum": [
+         "allowed",
+         "forbidden",
+         "conditional",
+         "unknown",
+         "not_confirmed",
+         "varies_by_platform"
+        ],
+        "type": "string"
+       },
+       "copy": {
+        "description": "A `FirmStance`, or `varies_by_platform` when the firm's platforms have different stances (the firm detail lists them).",
+        "enum": [
+         "allowed",
+         "forbidden",
+         "conditional",
+         "unknown",
+         "not_confirmed",
+         "varies_by_platform"
+        ],
+        "type": "string"
+       },
+       "personal_device": {
+        "enum": [
+         "required",
+         "not_required",
+         "unknown",
+         "not_confirmed"
+        ],
+        "type": "string"
+       },
+       "vps": {
+        "enum": [
+         "allowed",
+         "forbidden",
+         "conditional",
+         "unknown",
+         "not_confirmed"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "automation",
+       "copy",
+       "vps",
+       "personal_device"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "id",
+     "slug",
+     "name",
+     "plan_names",
+     "stances",
+     "not_confirmed_count",
+     "release"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "summary",
+   "stances",
+   "platforms",
+   "plans",
+   "excluded_plans"
+  ],
+  "type": "object"
+ },
+ "FirmList": {
+  "additionalProperties": false,
+  "properties": {
+   "firms": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "manual_only": {
+       "additionalProperties": false,
+       "description": "S16 AC-7: no V1 output reaches the firm's platforms; risk tracking only, no routing (S7 AC-7b).",
+       "properties": {
+        "reason": {
+         "additionalProperties": false,
+         "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+         "properties": {
+          "accessed_at": {
+           "description": "Date the page was read (YYYY-MM-DD).",
+           "format": "date",
+           "type": "string"
+          },
+          "language": {
+           "description": "BCP 47, e.g. 'en'.",
+           "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+           "type": "string"
+          },
+          "page_title": {
+           "maxLength": 300,
+           "type": "string"
+          },
+          "section": {
+           "description": "Heading of the quoted part of the page, if any.",
+           "maxLength": 300,
+           "type": "string"
+          },
+          "text": {
+           "maxLength": 20000,
+           "minLength": 1,
+           "type": "string"
+          },
+          "url": {
+           "format": "uri",
+           "maxLength": 2048,
+           "pattern": "^https://",
+           "type": "string"
+          }
+         },
+         "required": [
+          "text",
+          "language",
+          "page_title",
+          "url",
+          "accessed_at"
+         ],
+         "type": "object"
+        }
+       },
+       "required": [
+        "reason"
+       ],
+       "type": "object"
+      },
+      "name": {
+       "maxLength": 120,
+       "type": "string"
+      },
+      "not_confirmed_count": {
+       "description": "The sum of `PresetOption.not_confirmed_count` over the presets of the current release. Stances are shown separately and are not counted.",
+       "minimum": 0,
+       "type": "integer"
+      },
+      "plan_names": {
+       "items": {
+        "maxLength": 120,
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "release": {
+       "additionalProperties": false,
+       "properties": {
+        "published_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        },
+        "verified_on": {
+         "format": "date",
+         "type": "string"
+        },
+        "version_number": {
+         "minimum": 1,
+         "type": "integer"
+        }
+       },
+       "required": [
+        "version_number",
+        "published_at",
+        "verified_on"
+       ],
+       "type": "object"
+      },
+      "slug": {
+       "maxLength": 64,
+       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+       "type": "string"
+      },
+      "stances": {
+       "additionalProperties": false,
+       "properties": {
+        "automation": {
+         "description": "A `FirmStance`, or `varies_by_platform` when the firm's platforms have different stances (the firm detail lists them).",
+         "enum": [
+          "allowed",
+          "forbidden",
+          "conditional",
+          "unknown",
+          "not_confirmed",
+          "varies_by_platform"
+         ],
+         "type": "string"
+        },
+        "copy": {
+         "description": "A `FirmStance`, or `varies_by_platform` when the firm's platforms have different stances (the firm detail lists them).",
+         "enum": [
+          "allowed",
+          "forbidden",
+          "conditional",
+          "unknown",
+          "not_confirmed",
+          "varies_by_platform"
+         ],
+         "type": "string"
+        },
+        "personal_device": {
+         "enum": [
+          "required",
+          "not_required",
+          "unknown",
+          "not_confirmed"
+         ],
+         "type": "string"
+        },
+        "vps": {
+         "enum": [
+          "allowed",
+          "forbidden",
+          "conditional",
+          "unknown",
+          "not_confirmed"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "automation",
+        "copy",
+        "vps",
+        "personal_device"
+       ],
+       "type": "object"
+      }
+     },
+     "required": [
+      "id",
+      "slug",
+      "name",
+      "plan_names",
+      "stances",
+      "not_confirmed_count",
+      "release"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "firms"
+  ],
+  "type": "object"
+ },
+ "FirmReleaseList": {
+  "additionalProperties": false,
+  "properties": {
+   "firm_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "releases": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "changes": {
+       "items": {
+        "additionalProperties": false,
+        "allOf": [
+         {
+          "if": {
+           "properties": {
+            "kind": {
+             "enum": [
+              "stance_changed",
+              "stance_text_changed"
+             ]
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "stance"
+           ]
+          }
+         },
+         {
+          "if": {
+           "properties": {
+            "kind": {
+             "const": "stance_changed"
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "from",
+            "to"
+           ]
+          }
+         },
+         {
+          "if": {
+           "properties": {
+            "kind": {
+             "enum": [
+              "preset_added",
+              "preset_removed"
+             ]
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "preset_id"
+           ]
+          }
+         },
+         {
+          "if": {
+           "properties": {
+            "kind": {
+             "const": "stance_text_changed"
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "material"
+           ]
+          }
+         },
+         {
+          "if": {
+           "properties": {
+            "kind": {
+             "const": "rule_value_changed"
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "field",
+            "preset_id"
+           ]
+          }
+         }
+        ],
+        "properties": {
+         "field": {
+          "description": "Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.",
+          "enum": [
+           "max_position_qty",
+           "drawdown",
+           "daily_loss_limit",
+           "daily_profit_target",
+           "trading_day_reset",
+           "consistency_rule",
+           "commission_per_contract_side",
+           "evaluation_profit_target"
+          ],
+          "type": "string"
+         },
+         "firm_platform": {
+          "description": "5.4.0 (preset release diff, Torno): set when the change concerns one firm platform. For `rule_value_changed` of a preset with per-platform rules there is one entry per platform; for a per-platform automation/copy text it names the platform.",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "type": "string"
+         },
+         "from": {
+          "maxLength": 32,
+          "type": "string"
+         },
+         "kind": {
+          "enum": [
+           "stance_changed",
+           "stance_text_changed",
+           "rule_value_changed",
+           "preset_added",
+           "preset_removed"
+          ],
+          "type": "string"
+         },
+         "material": {
+          "description": "With `stance_text_changed` — flagged by the publisher as a material change (Q42;\n`reason` is expected but optional while Q42 is open); only material automation/copy text\nchanges suspend. Always consistent with the new `RuleVersion.change.cause`: material ⇔\n`text_changed`, not material ⇔ `not_material`.\n",
+          "type": "boolean"
+         },
+         "preset_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+         },
+         "reason": {
+          "additionalProperties": false,
+          "description": "Text written by the catalog publisher in both UI languages (not firm text; firm text is never translated).",
+          "properties": {
+           "en": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+           },
+           "pt-BR": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+           }
+          },
+          "required": [
+           "pt-BR",
+           "en"
+          ],
+          "type": "object"
+         },
+         "stance": {
+          "enum": [
+           "automation",
+           "copy",
+           "vps",
+           "personal_device"
+          ],
+          "type": "string"
+         },
+         "to": {
+          "maxLength": 32,
+          "type": "string"
+         }
+        },
+        "required": [
+         "kind"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "personal_device": {
+       "additionalProperties": false,
+       "description": "VPS/server and personal-device stances (S16 AC-8); verbatim quotes, never translated.",
+       "properties": {
+        "quotes": {
+         "items": {
+          "additionalProperties": false,
+          "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+          "properties": {
+           "accessed_at": {
+            "description": "Date the page was read (YYYY-MM-DD).",
+            "format": "date",
+            "type": "string"
+           },
+           "language": {
+            "description": "BCP 47, e.g. 'en'.",
+            "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+            "type": "string"
+           },
+           "page_title": {
+            "maxLength": 300,
+            "type": "string"
+           },
+           "section": {
+            "description": "Heading of the quoted part of the page, if any.",
+            "maxLength": 300,
+            "type": "string"
+           },
+           "text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+           },
+           "url": {
+            "format": "uri",
+            "maxLength": 2048,
+            "pattern": "^https://",
+            "type": "string"
+           }
+          },
+          "required": [
+           "text",
+           "language",
+           "page_title",
+           "url",
+           "accessed_at"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "research": {
+         "additionalProperties": false,
+         "properties": {
+          "searched_on": {
+           "format": "date",
+           "type": "string"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "required": [
+          "searched_on",
+          "sources"
+         ],
+         "type": "object"
+        },
+        "value": {
+         "enum": [
+          "allowed",
+          "forbidden",
+          "conditional",
+          "unknown",
+          "not_confirmed",
+          "required",
+          "not_required"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "value",
+        "quotes"
+       ],
+       "type": "object"
+      },
+      "published_at": {
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      },
+      "rule_versions": {
+       "description": "The opt-in rule versions of this release (texts viewable with `getRuleVersion`).",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "firm_platform": {
+          "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "type": "string"
+         },
+         "id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+         },
+         "kind": {
+          "enum": [
+           "automation",
+           "copy"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "id",
+         "kind"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "verified_on": {
+       "format": "date",
+       "type": "string"
+      },
+      "version_number": {
+       "minimum": 1,
+       "type": "integer"
+      },
+      "vps": {
+       "additionalProperties": false,
+       "description": "VPS/server and personal-device stances (S16 AC-8); verbatim quotes, never translated.",
+       "properties": {
+        "quotes": {
+         "items": {
+          "additionalProperties": false,
+          "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+          "properties": {
+           "accessed_at": {
+            "description": "Date the page was read (YYYY-MM-DD).",
+            "format": "date",
+            "type": "string"
+           },
+           "language": {
+            "description": "BCP 47, e.g. 'en'.",
+            "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+            "type": "string"
+           },
+           "page_title": {
+            "maxLength": 300,
+            "type": "string"
+           },
+           "section": {
+            "description": "Heading of the quoted part of the page, if any.",
+            "maxLength": 300,
+            "type": "string"
+           },
+           "text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+           },
+           "url": {
+            "format": "uri",
+            "maxLength": 2048,
+            "pattern": "^https://",
+            "type": "string"
+           }
+          },
+          "required": [
+           "text",
+           "language",
+           "page_title",
+           "url",
+           "accessed_at"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "research": {
+         "additionalProperties": false,
+         "properties": {
+          "searched_on": {
+           "format": "date",
+           "type": "string"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "required": [
+          "searched_on",
+          "sources"
+         ],
+         "type": "object"
+        },
+        "value": {
+         "enum": [
+          "allowed",
+          "forbidden",
+          "conditional",
+          "unknown",
+          "not_confirmed",
+          "required",
+          "not_required"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "value",
+        "quotes"
+       ],
+       "type": "object"
+      }
+     },
+     "required": [
+      "version_number",
+      "published_at",
+      "verified_on",
+      "changes",
+      "rule_versions",
+      "vps",
+      "personal_device"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "firm_id",
+   "releases"
+  ],
+  "type": "object"
+ },
+ "PresetVersion": {
+  "additionalProperties": false,
+  "properties": {
+   "firm_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "firm_name": {
+    "maxLength": 120,
+    "type": "string"
+   },
+   "id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "manual_only": {
+    "additionalProperties": false,
+    "description": "S16 AC-7: no V1 output reaches the firm's platforms; risk tracking only, no routing (S7 AC-7b).",
+    "properties": {
+     "reason": {
+      "additionalProperties": false,
+      "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).",
+      "properties": {
+       "accessed_at": {
+        "description": "Date the page was read (YYYY-MM-DD).",
+        "format": "date",
+        "type": "string"
+       },
+       "language": {
+        "description": "BCP 47, e.g. 'en'.",
+        "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+        "type": "string"
+       },
+       "page_title": {
+        "maxLength": 300,
+        "type": "string"
+       },
+       "section": {
+        "description": "Heading of the quoted part of the page, if any.",
+        "maxLength": 300,
+        "type": "string"
+       },
+       "text": {
+        "maxLength": 20000,
+        "minLength": 1,
+        "type": "string"
+       },
+       "url": {
+        "format": "uri",
+        "maxLength": 2048,
+        "pattern": "^https://",
+        "type": "string"
+       }
+      },
+      "required": [
+       "text",
+       "language",
+       "page_title",
+       "url",
+       "accessed_at"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "type": "object"
+   },
+   "not_confirmed_count": {
+    "description": "As `PresetOption.not_confirmed_count`.",
+    "minimum": 0,
+    "type": "integer"
+   },
+   "phase": {
+    "enum": [
+     "evaluation",
+     "funded",
+     "live"
+    ],
+    "type": "string"
+   },
+   "plan_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "plan_name": {
+    "maxLength": 120,
+    "type": "string"
+   },
+   "preset_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "release": {
+    "additionalProperties": false,
+    "properties": {
+     "published_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "type": "string"
+     },
+     "verified_on": {
+      "format": "date",
+      "type": "string"
+     },
+     "version_number": {
+      "minimum": 1,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "version_number",
+     "published_at",
+     "verified_on"
+    ],
+    "type": "object"
+   },
+   "rule_sets": {
+    "description": "One entry without `firm_platform`, or one entry per firm platform when the rules differ by platform.",
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "firm_platform": {
+       "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+       "pattern": "^[a-z][a-z0-9_]{0,31}$",
+       "type": "string"
+      },
+      "rules": {
+       "additionalProperties": false,
+       "properties": {
+        "commission_per_contract_side": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "The firm's published commission per contract and side (U20 a; prefills the account floor, editable on the account).",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "properties": {
+               "amount": {
+                "description": "USD per contract and per side (a round turn costs twice), ≥ 0.",
+                "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+                "type": "string"
+               }
+              },
+              "required": [
+               "amount"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "properties": {
+            "amount": {
+             "description": "USD per contract and per side (a round turn costs twice), ≥ 0.",
+             "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+             "type": "string"
+            }
+           },
+           "required": [
+            "amount"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        },
+        "consistency_rule": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "Consistency rule; optional (an unresolved one is shown as not tracked).",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "properties": {
+               "text": {
+                "description": "The firm's wording (not translated).",
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+               },
+               "threshold_pct": {
+                "pattern": "^[0-9]{1,3}(\\.[0-9]{1,2})?$",
+                "type": "string"
+               }
+              },
+              "required": [
+               "text"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "properties": {
+            "text": {
+             "description": "The firm's wording (not translated).",
+             "maxLength": 2000,
+             "minLength": 1,
+             "type": "string"
+            },
+            "threshold_pct": {
+             "pattern": "^[0-9]{1,3}(\\.[0-9]{1,2})?$",
+             "type": "string"
+            }
+           },
+           "required": [
+            "text"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        },
+        "daily_loss_limit": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "Daily loss limit and its kind.",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "allOf": [
+               {
+                "else": {
+                 "required": [
+                  "amount"
+                 ]
+                },
+                "if": {
+                 "properties": {
+                  "kind": {
+                   "const": "none"
+                  }
+                 }
+                },
+                "then": {
+                 "not": {
+                  "required": [
+                   "amount"
+                  ]
+                 }
+                }
+               }
+              ],
+              "properties": {
+               "amount": {
+                "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+                "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+                "type": "string"
+               },
+               "kind": {
+                "enum": [
+                 "hard",
+                 "soft_pause",
+                 "none"
+                ],
+                "type": "string"
+               }
+              },
+              "required": [
+               "kind"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "allOf": [
+            {
+             "else": {
+              "required": [
+               "amount"
+              ]
+             },
+             "if": {
+              "properties": {
+               "kind": {
+                "const": "none"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "amount"
+               ]
+              }
+             }
+            }
+           ],
+           "properties": {
+            "amount": {
+             "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+             "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+             "type": "string"
+            },
+            "kind": {
+             "enum": [
+              "hard",
+              "soft_pause",
+              "none"
+             ],
+             "type": "string"
+            }
+           },
+           "required": [
+            "kind"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        },
+        "daily_profit_target": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "Daily profit target (S13 AC-5); absent from the preset when the firm has none.",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "properties": {
+               "amount": {
+                "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+                "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+                "type": "string"
+               }
+              },
+              "required": [
+               "amount"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "properties": {
+            "amount": {
+             "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+             "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+             "type": "string"
+            }
+           },
+           "required": [
+            "amount"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        },
+        "drawdown": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "Drawdown amount and type.",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "allOf": [
+               {
+                "if": {
+                 "properties": {
+                  "type": {
+                   "const": "other"
+                  }
+                 }
+                },
+                "then": {
+                 "required": [
+                  "description"
+                 ]
+                }
+               }
+              ],
+              "properties": {
+               "amount": {
+                "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+                "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+                "type": "string"
+               },
+               "description": {
+                "description": "Required for `other`.",
+                "maxLength": 500,
+                "type": "string"
+               },
+               "stops_trailing_at": {
+                "description": "When it stops trailing, as published.",
+                "maxLength": 300,
+                "type": "string"
+               },
+               "type": {
+                "enum": [
+                 "trailing_intraday",
+                 "trailing_eod",
+                 "static",
+                 "other"
+                ],
+                "type": "string"
+               }
+              },
+              "required": [
+               "type",
+               "amount"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "allOf": [
+            {
+             "if": {
+              "properties": {
+               "type": {
+                "const": "other"
+               }
+              }
+             },
+             "then": {
+              "required": [
+               "description"
+              ]
+             }
+            }
+           ],
+           "properties": {
+            "amount": {
+             "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+             "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+             "type": "string"
+            },
+            "description": {
+             "description": "Required for `other`.",
+             "maxLength": 500,
+             "type": "string"
+            },
+            "stops_trailing_at": {
+             "description": "When it stops trailing, as published.",
+             "maxLength": 300,
+             "type": "string"
+            },
+            "type": {
+             "enum": [
+              "trailing_intraday",
+              "trailing_eod",
+              "static",
+              "other"
+             ],
+             "type": "string"
+            }
+           },
+           "required": [
+            "type",
+            "amount"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        },
+        "evaluation_profit_target": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "Evaluation phase only — the profit to reach to pass (Q46; S16 AC-10). Absent for funded / live phases.",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "properties": {
+               "amount": {
+                "description": "Net profit to reach since the evaluation start, > 0.",
+                "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+                "type": "string"
+               }
+              },
+              "required": [
+               "amount"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "properties": {
+            "amount": {
+             "description": "Net profit to reach since the evaluation start, > 0.",
+             "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+             "type": "string"
+            }
+           },
+           "required": [
+            "amount"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        },
+        "max_position_qty": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "Maximum position (MNQ contracts) as the preset publishes it.",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "properties": {
+               "contracts": {
+                "description": "MNQ (micro) contracts; the account's `max_position_qty` cannot exceed it.",
+                "maximum": 10000,
+                "minimum": 1,
+                "type": "integer"
+               },
+               "published_text": {
+                "description": "As published, e.g. \"5 minis / 50 micros\".",
+                "maxLength": 300,
+                "type": "string"
+               }
+              },
+              "required": [
+               "contracts"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "properties": {
+            "contracts": {
+             "description": "MNQ (micro) contracts; the account's `max_position_qty` cannot exceed it.",
+             "maximum": 10000,
+             "minimum": 1,
+             "type": "integer"
+            },
+            "published_text": {
+             "description": "As published, e.g. \"5 minis / 50 micros\".",
+             "maxLength": 300,
+             "type": "string"
+            }
+           },
+           "required": [
+            "contracts"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        },
+        "trading_day_reset": {
+         "additionalProperties": false,
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "else": {
+              "not": {
+               "required": [
+                "value"
+               ]
+              },
+              "required": [
+               "published_values"
+              ]
+             },
+             "if": {
+              "properties": {
+               "status": {
+                "const": "verified"
+               }
+              }
+             },
+             "then": {
+              "not": {
+               "required": [
+                "published_values"
+               ]
+              },
+              "required": [
+               "value",
+               "sources"
+              ]
+             }
+            }
+           ],
+           "description": "`verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`."
+          }
+         ],
+         "description": "Trading-day reset time.",
+         "properties": {
+          "published_values": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "sources": {
+              "items": {
+               "additionalProperties": false,
+               "properties": {
+                "accessed_at": {
+                 "format": "date",
+                 "type": "string"
+                },
+                "page_title": {
+                 "maxLength": 300,
+                 "type": "string"
+                },
+                "url": {
+                 "format": "uri",
+                 "maxLength": 2048,
+                 "pattern": "^https://",
+                 "type": "string"
+                }
+               },
+               "required": [
+                "url",
+                "accessed_at"
+               ],
+               "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+             },
+             "value": {
+              "additionalProperties": false,
+              "properties": {
+               "local_time": {
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                "type": "string"
+               },
+               "published_text": {
+                "description": "As published, e.g. \"5:00 PM ET\".",
+                "maxLength": 100,
+                "type": "string"
+               },
+               "time_zone": {
+                "description": "IANA time zone name, validated by the Core against its tz database.",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+                "type": "string"
+               }
+              },
+              "required": [
+               "local_time",
+               "time_zone"
+              ],
+              "type": "object"
+             }
+            },
+            "required": [
+             "value",
+             "sources"
+            ],
+            "type": "object"
+           },
+           "minItems": 2,
+           "type": "array"
+          },
+          "sources": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "accessed_at": {
+              "format": "date",
+              "type": "string"
+             },
+             "page_title": {
+              "maxLength": 300,
+              "type": "string"
+             },
+             "url": {
+              "format": "uri",
+              "maxLength": 2048,
+              "pattern": "^https://",
+              "type": "string"
+             }
+            },
+            "required": [
+             "url",
+             "accessed_at"
+            ],
+            "type": "object"
+           },
+           "minItems": 1,
+           "type": "array"
+          },
+          "status": {
+           "description": "`not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).",
+           "enum": [
+            "verified",
+            "not_confirmed"
+           ],
+           "type": "string"
+          },
+          "value": {
+           "additionalProperties": false,
+           "properties": {
+            "local_time": {
+             "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+             "type": "string"
+            },
+            "published_text": {
+             "description": "As published, e.g. \"5:00 PM ET\".",
+             "maxLength": 100,
+             "type": "string"
+            },
+            "time_zone": {
+             "description": "IANA time zone name, validated by the Core against its tz database.",
+             "maxLength": 64,
+             "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+             "type": "string"
+            }
+           },
+           "required": [
+            "local_time",
+            "time_zone"
+           ],
+           "type": "object"
+          }
+         },
+         "required": [
+          "status"
+         ],
+         "type": "object"
+        }
+       },
+       "required": [
+        "max_position_qty",
+        "drawdown",
+        "daily_loss_limit",
+        "trading_day_reset"
+       ],
+       "type": "object"
+      }
+     },
+     "required": [
+      "rules"
+     ],
+     "type": "object"
+    },
+    "minItems": 1,
+    "type": "array"
+   },
+   "size_amount": {
+    "description": "Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`.",
+    "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+    "type": "string"
+   },
+   "size_label": {
+    "maxLength": 32,
+    "type": "string"
+   },
+   "superseded_by": {
+    "description": "Present when a newer version of this preset exists.",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "preset_id",
+   "firm_id",
+   "firm_name",
+   "plan_id",
+   "plan_name",
+   "phase",
+   "size_amount",
+   "release",
+   "rule_sets",
+   "not_confirmed_count"
+  ],
+  "type": "object"
+ }
+}

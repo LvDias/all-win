@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT release_id AS \"release_id!\", kind, firm_platform, previous_id AS \"previous_id!\",\n                      id, change_cause AS \"change_cause!\"\n               FROM catalog.opt_in_rule_version\n               WHERE release_id = ANY($1) AND previous_id IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "release_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "release_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "firm_platform",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "firm_platform"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "previous_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "previous_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "change_cause!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "change_cause"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "3fb858c4daaf1bee5981ac004bc8e96855e01205f90eba236a0f80210fccaff0"
+}

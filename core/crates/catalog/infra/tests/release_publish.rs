@@ -253,3 +253,57 @@ async fn concurrent_publications_are_serial_and_commit_in_seq_order() {
     assert!(b > a, "the second publication waited for the first");
     assert!(s2 > s1, "commit order = publish_seq order");
 }
+
+#[tokio::test]
+async fn the_feed_lists_releases_after_the_cursor_with_replaced_texts() {
+    use catalog_application::release_feed::ReleasesPublishedAfter;
+    let Some(db) = support::db().await else {
+        return;
+    };
+    let publish = PublishRelease::new(Arc::new(PgReleaseStore::new(db.publisher.clone())), POLICY);
+    let feed = ReleasesPublishedAfter::new(Arc::new(catalog_infra::PgInstrumentRepository::new(
+        db.app.clone(),
+    )));
+    let s = slug();
+    let PublishResult::Published {
+        publish_seq: seq1, ..
+    } = publish
+        .handle(
+            &file(&with_slug(example!("valid/release-v1-new-firm.json"), &s)),
+            &by(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let PublishResult::Published {
+        publish_seq: seq2, ..
+    } = publish.handle(&file(&v2(&s)), &by()).await.unwrap()
+    else {
+        panic!()
+    };
+    let after = feed.handle(seq1 - 1, 100).await.unwrap();
+    let mine: Vec<_> = after
+        .iter()
+        .filter(|r| r.publish_seq == seq1 || r.publish_seq == seq2)
+        .collect();
+    assert_eq!(mine.len(), 2);
+    assert!(
+        mine[0].replaced.is_empty(),
+        "a first release replaces nothing"
+    );
+    let r = &mine[1].replaced;
+    assert_eq!(r.len(), 1);
+    assert_eq!(
+        (r[0].kind.as_str(), r[0].cause.as_str(), r[0].suspends()),
+        ("automation", "stance_changed", true)
+    );
+    assert!(
+        feed.handle(seq2, 100)
+            .await
+            .unwrap()
+            .iter()
+            .all(|x| x.publish_seq > seq2)
+    );
+}

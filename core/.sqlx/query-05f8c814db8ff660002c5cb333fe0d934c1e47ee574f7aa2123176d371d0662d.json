@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, plan_id, phase, size_key, size_amount, size_label FROM catalog.preset\n               WHERE firm_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "plan_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset",
+            "name": "plan_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "phase",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset",
+            "name": "phase"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "size_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset",
+            "name": "size_key"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "size_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset",
+            "name": "size_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "size_label",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset",
+            "name": "size_label"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "05f8c814db8ff660002c5cb333fe0d934c1e47ee574f7aa2123176d371d0662d"
+}

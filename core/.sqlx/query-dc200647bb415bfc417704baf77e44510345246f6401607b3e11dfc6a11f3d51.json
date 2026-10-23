@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, preset_id, release_id, manual_only FROM catalog.preset_version WHERE firm_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "preset_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "preset_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "release_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "release_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "manual_only",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "manual_only"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "dc200647bb415bfc417704baf77e44510345246f6401607b3e11dfc6a11f3d51"
+}

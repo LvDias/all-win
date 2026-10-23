@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT firm_id FROM catalog.preset_version WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "firm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "firm_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d206f6d4ddc4e590aa6d8887fcc1767650192a55a6b2a471692cef0443c879e1"
+}

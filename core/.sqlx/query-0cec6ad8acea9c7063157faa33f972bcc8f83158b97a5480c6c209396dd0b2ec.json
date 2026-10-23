@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, slug, name FROM catalog.prop_firm WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.prop_firm",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.prop_firm",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.prop_firm",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0cec6ad8acea9c7063157faa33f972bcc8f83158b97a5480c6c209396dd0b2ec"
+}

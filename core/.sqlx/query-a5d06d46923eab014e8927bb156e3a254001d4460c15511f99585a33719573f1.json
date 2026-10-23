@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.release_id, p.code, p.label FROM catalog.firm_release_platform p\n               JOIN catalog.firm_release r ON r.id = p.release_id WHERE r.firm_id = $1 ORDER BY p.code",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "release_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release_platform",
+            "name": "release_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release_platform",
+            "name": "code"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "label",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release_platform",
+            "name": "label"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a5d06d46923eab014e8927bb156e3a254001d4460c15511f99585a33719573f1"
+}

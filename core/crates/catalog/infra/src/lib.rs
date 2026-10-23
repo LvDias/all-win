@@ -2,6 +2,8 @@
 
 pub mod instrument;
 pub mod instrument_http;
+pub mod preset_http;
+pub mod preset_store;
 pub mod release_file;
 pub mod release_store;
 pub mod rule_version;

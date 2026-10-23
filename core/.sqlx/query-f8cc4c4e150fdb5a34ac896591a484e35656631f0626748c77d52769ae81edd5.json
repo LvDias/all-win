@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT f.id FROM catalog.prop_firm f\n               WHERE EXISTS (SELECT 1 FROM catalog.firm_release r WHERE r.firm_id = f.id)\n               ORDER BY lower(f.name), f.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.prop_firm",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f8cc4c4e150fdb5a34ac896591a484e35656631f0626748c77d52769ae81edd5"
+}

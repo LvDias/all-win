@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, version_number, published_at, verified_on, changes, manual_only, excluded_plans\n               FROM catalog.firm_release WHERE firm_id = $1 ORDER BY version_number",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "version_number",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "version_number"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "published_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "published_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "verified_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "verified_on"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "changes",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "changes"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "manual_only",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "manual_only"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "excluded_plans",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "excluded_plans"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "80e0588d5fd2f03b924efe8e8a35aa6aece6c35af79c98170c561204c9389ffd"
+}
