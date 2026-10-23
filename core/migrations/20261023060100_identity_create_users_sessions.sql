@@ -149,10 +149,16 @@ CREATE FUNCTION identity.find_user_for_login(p_email_normalized text)
      WHERE u.email_normalized = p_email_normalized
   $$;
 
+-- createInvitation: only an active platform admin (the transaction's app.user_id) gets an answer;
+-- anyone else gets false, so this is not an e-mail existence oracle.
 CREATE FUNCTION identity.email_registered(p_email_normalized text)
   RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
-  AS $$ SELECT EXISTS (SELECT 1 FROM identity.app_user u WHERE u.email_normalized = p_email_normalized) $$;
+  AS $$
+    SELECT EXISTS (SELECT 1 FROM identity.app_user u WHERE u.email_normalized = p_email_normalized)
+       AND EXISTS (SELECT 1 FROM identity.app_user a
+                    WHERE a.id = app.current_user_id() AND a.is_platform_admin AND a.status = 'active')
+  $$;
 
 CREATE FUNCTION identity.resolve_session(p_token_hash bytea)
   RETURNS TABLE (id uuid, user_id uuid, is_persistent boolean, mfa_state text, login_at timestamptz,
