@@ -14,10 +14,15 @@ paths:
         `getTradesSummary` to show the same set (a manual edit or delete after `as_of` is the only way
         the two can differ, and it raises `trade.captured` / the audit). Every figure is computed by the
         Core with exact decimals (X-3); the browser does no arithmetic, bar lengths included.
-        Rounding: money averages half-up to 2 decimals; `win_rate` half-up to one decimal (Q-S22-2);
-        `avg_duration_seconds` half-up to whole seconds; `bar_ratio` half-up to 4 decimals. Averages are
+        Rounding: half away from zero (a negative average −12.345 → −12.35, symmetric with positives):
+        money averages to 2 decimals; `win_rate` to one decimal (Q-S22-2); `avg_duration_seconds` to whole
+        seconds; `bar_ratio` to 4 decimals. Averages are
         absent (UI `—`) when no trade enters them. Totals exist only for P&L and the number of trades;
         time, MAE and MFE are averages only (Q-S22-3).
+        Isolation (X-2): an unknown or another user's `account_id` simply matches nothing, as in
+        `listTrades` / `listActivity` (empty totals and groups; never a different status such as 404), so
+        the response never reveals whether an account exists. Required test: two users, each filtering by
+        the other's account id, get `trade_count` 0 and no groups (QA Security, 3.4.0 info).
       parameters:
         - $ref: 'trades.yaml#/components/parameters/TradeFrom'
         - $ref: 'trades.yaml#/components/parameters/TradeTo'
@@ -102,7 +107,7 @@ components:
         bar_ratio:
           type: string
           pattern: '^(1\.0000|0\.[0-9]{4})$'
-          description: '|total_pnl| of this group ÷ the largest |total_pnl| among the groups (the bar length; its sign comes from `total_pnl`).'
+          description: '|total_pnl| of this group ÷ the largest |total_pnl| among the groups (the bar length; its sign comes from `total_pnl`). `0.0000` for every group when the largest |total_pnl| is 0.'
     Performance:
       type: object
       additionalProperties: false

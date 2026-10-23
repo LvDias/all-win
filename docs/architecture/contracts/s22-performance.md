@@ -22,12 +22,13 @@ SSE: none of its own. `trade.captured` raises the "novos trades" banner; the fig
    - `win_rate` = wins ÷ all trades, where P&L = 0 is not a win (Q58 a, provisional);
    - MAE / MFE averages over the trades that have the value, with `*_sample_count` (Q55);
    - averages absent (`—`) when nothing enters them.
-3. **Rounding** (decided here, since no business rule exists): money averages half-up to 2 decimals; `win_rate` half-up to one decimal, always with one decimal, e.g. `"62.5"` (Q-S22-2); duration average half-up to whole seconds; `bar_ratio` half-up to 4 decimals. Totals are exact sums.
+3. **Rounding** (decided here, since no business rule exists): half away from zero, so negative averages are symmetric with positive ones (−12.345 → −12.35). Money averages to 2 decimals; `win_rate` to one decimal, always with one decimal, e.g. `"62.5"` (Q-S22-2); the duration average to whole seconds; `bar_ratio` to 4 decimals. Totals are exact sums.
 4. **Groups:**
    - `group_by` ∈ `source_signal` (default), `source`, `signal_type`;
    - `manual` and `platform` trades are their own groups (Q-S22-7); a revoked source keeps its name (`source_revoked`);
    - only groups with at least one trade are returned;
    - sorted by `total_pnl` desc by default;
    - the `Total` row is `totals`, not a browser sum.
-5. **Bars:** `bar_ratio` = |group P&L| ÷ the largest |group P&L|, computed by the Core. The sign comes from `total_pnl`.
-6. **Not in V1:** extra metrics (Q59: profit factor, best/worst trade, average win/loss, per-day curve) until the user decides.
+5. **Bars:** `bar_ratio` = |group P&L| ÷ the largest |group P&L|, computed by the Core. The sign comes from `total_pnl`. When the largest |group P&L| is 0, every group's `bar_ratio` is `0.0000` (no division by zero).
+6. **Isolation (X-2, QA Security on 3.4.0):** a foreign or unknown `account_id` matches nothing (empty totals and groups, never 404), as in `listTrades` / `listActivity`. Required test: two users, each filtering by the other's account id, get `trade_count` 0 and no groups.
+7. **Not in V1:** extra metrics (Q59: profit factor, best/worst trade, average win/loss, per-day curve) until the user decides.

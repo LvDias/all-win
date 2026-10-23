@@ -1,5 +1,9 @@
 # HTTP API — changelog
 
+## 3.4.1 — 2026-10-23 (review notes on 3.4.0; text only)
+- `getPerformance`: a foreign or unknown `account_id` matches nothing (empty figures, never 404); two-user isolation test required (QA Security info).
+- Rounding stated as half away from zero (negative averages); `bar_ratio` is `0.0000` when the largest |total_pnl| is 0 (Crivo N1, N2).
+
 ## 3.4.0 — 2026-10-23 (V1-S22 performance; additive) — notes: docs/architecture/contracts/s22-performance.md
 - Module `performance`: `getPerformance` (totals and per-group figures by source / signal type, win / loss / breakeven counts, averages with sample counts, `bar_ratio`, `as_of`; rounding rules stated).
 - `trades`: `recorded_before` on `listTrades` / `getTradesSummary`, `as_of` on the summary (S22 AC-2 reconciliation); `Trade.reconcile_mismatch` (adapter protocol 1.3 `trade_completed`, Esquadro; a partial excursion is sent as absent `mae` / `mfe`); audit code `trades.reconcile_mismatch`.
