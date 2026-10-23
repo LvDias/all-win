@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 4.2.1 — 2026-10-23 (text only)
+- `Trade.commission`: the allocation of a fill shared by several trades (flip, FIFO partial close) follows the exact protocol 1.3 rule: pro rata by quantity, 4 decimals half away from zero, remainder to the trade allocated last. `pnl` = `gross_pnl` − `commission`.
+- Manual trades: the floor used for a blank commission is the EFFECTIVE floor at save time, as derived by risk (data model 15.1); a pending lowered floor is not used early (Crivo note).
+- Notes (s21): a manual trade with `commission_source: configured` is labelled "estimada" (S21 AC-7, Q71); it is derivable, with no new field.
+
 ## 4.2.0 — 2026-10-23 (Q71 decided; no schema change)
 - Manual trades: a blank `commission` is computed by the Core with the ADR-0004 §7 per-fill rule on both sides: floor × quantity × 2 (`configured`), or 0 with no floor (`none`, "comissões não informadas"). The floor in force at save time is used, with no later recompute. `previewManualTrade` returns the value, and a typed commission overrides it (`manual`).
 - Notes: s13 wording `none` = not reported and no floor (Crivo nit).

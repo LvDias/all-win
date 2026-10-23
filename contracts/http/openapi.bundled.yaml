@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 4.2.0
+  version: 4.2.1
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -10850,7 +10850,15 @@ components:
           description: P&L before commissions (shown alongside).
           $ref: '#/components/schemas/Money'
         commission:
-          description: Total commission of the trade (all its fills), ≥ 0.
+          description: 'Effective commission allocated to this trade (floor applied). A fill shared by several trades (a flip,
+            or a FIFO partial close in individual mode) is allocated pro rata by the quantity each trade takes from it: share
+            = round(fill effective commission × quantity / fill quantity, 4 decimals, half away from zero), and the trade
+            allocated last from that fill gets the remainder, so the shares always sum to the fill''s effective commission.
+            gross_pnl and pnl use the same quantities; pnl = gross_pnl − commission.
+
+            ≥ 0. The same rule as adapter protocol 1.3 `trade_completed.commission` (Esquadro).
+
+            '
           $ref: '#/components/schemas/MoneyString'
         commission_source:
           $ref: '#/components/schemas/CommissionSource'
@@ -11035,9 +11043,13 @@ components:
 
             quantity (exit side) = floor × quantity × 2 (`commission_source: configured`); with no floor →
 
-            0 (`commission_source: none`, labelled "comissões não informadas"). The floor in force when the
+            0 (`commission_source: none`, labelled "comissões não informadas"). The floor used is the
 
-            trade is saved (create or update) is used and the value is stored; a later change of the floor
+            EFFECTIVE floor when the trade is saved (create or update), as derived by the risk module (data
+
+            model 15.1); a lowered floor still pending for the next trading day is not used early. The value
+
+            is stored; a later change of the floor
 
             never recomputes it. The UI shows the Core''s value from `previewManualTrade` and the user may
 
