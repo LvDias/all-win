@@ -1,0 +1,130 @@
+{
+  "common": {
+    "appName": "All Win",
+    "skipToContent": "Pular para o conteúdo",
+    "actions": {
+      "cancel": "Cancelar",
+      "retry": "Tentar novamente",
+      "use": "Usar"
+    },
+    "states": {
+      "loading": "Carregando…",
+      "saving": "Salvando…",
+      "stillLoading": "Ainda carregando…"
+    },
+    "errors": {
+      "network": "Sem conexão com o servidor. Tente de novo.",
+      "failed": "Não foi possível concluir a ação.",
+      "code": "Código: {code}"
+    }
+  },
+  "language": {
+    "label": "Idioma",
+    "triggerName": "Idioma: {language}",
+    "locked": "Feche a janela atual para trocar o idioma",
+    "switching": "Trocando o idioma…",
+    "failed": "Não foi possível salvar o idioma. Tente de novo.",
+    "dirty": {
+      "title": "Trocar o idioma?",
+      "description": "Trocar o idioma recarrega a página e descarta as alterações não salvas.",
+      "stay": "Continuar editando",
+      "confirm": "Trocar idioma"
+    }
+  },
+  "home": {
+    "title": "All Win",
+    "intro": "Execução de ordens com segurança e transparência.",
+    "preferences": "Preferências"
+  },
+  "settings": {
+    "preferences": {
+      "title": "Preferências",
+      "signInRequired": "Entre na sua conta para alterar as preferências.",
+      "loadError": "Não foi possível carregar as preferências.",
+      "saved": "Preferência salva.",
+      "language": {
+        "label": "Idioma da interface",
+        "help": "Também usado pelo plugin do NinjaTrader a partir da próxima conexão."
+      },
+      "timeZone": {
+        "label": "Fuso horário",
+        "help": "Usado para exibir horários de reset e de sessão.",
+        "search": "Buscar fuso horário",
+        "noResults": "Nenhum fuso horário encontrado.",
+        "browserNote": "Seu navegador está em {zone}. Usar este fuso?",
+        "invalid": "Fuso horário inválido. Escolha outro.",
+        "saveFailed": "Não foi possível salvar o fuso horário. Tente de novo."
+      }
+    }
+  },
+  "errors": {
+    "unknown": "Erro inesperado (código: {code})",
+    "accounts": {
+      "opt_in_not_applicable": "Esta opção não se aplica a esta conta.",
+      "opt_in_required": "Ative esta opção na conta antes de continuar.",
+      "rule_version_changed": "As regras mudaram enquanto você revisava. Revise a versão atual e confirme de novo."
+    },
+    "auth": {
+      "forbidden": "Você não tem acesso a esta página.",
+      "invalid_code": "Código inválido. Confira e tente de novo.",
+      "invalid_credentials": "E-mail ou senha incorretos.",
+      "invitation_invalid": "Este convite é inválido ou expirou.",
+      "password_breached": "Esta senha apareceu em vazamentos conhecidos. Escolha outra.",
+      "password_too_long": "A senha é longa demais. Use no máximo 128 caracteres.",
+      "password_too_short": "A senha é curta demais. Use pelo menos 12 caracteres.",
+      "pending_expired": "A verificação expirou. Entre de novo.",
+      "rate_limited": "Muitas tentativas. Aguarde um pouco e tente de novo.",
+      "reauth_failed": "Não foi possível confirmar sua identidade. Tente de novo.",
+      "reset_token_invalid": "Este link de redefinição é inválido ou expirou.",
+      "step_up_required": "Confirme sua identidade para continuar.",
+      "totp_already_enabled": "A verificação em duas etapas já está ativada.",
+      "totp_setup_expired": "A configuração expirou. Comece de novo.",
+      "unauthenticated": "Sua sessão expirou. Entre de novo."
+    },
+    "common": {
+      "forbidden_origin": "A requisição foi bloqueada pela verificação de origem.",
+      "not_found": "Não encontrado."
+    },
+    "connections": {
+      "name_taken": "Você já tem uma conexão com este nome.",
+      "open_positions_not_acknowledged": "Confirme que há posições abertas antes de desparear.",
+      "unpaired": "Esta conexão já foi despareada."
+    },
+    "ingress": {
+      "action_not_allowed_for_source": "A ação não é permitida para esta fonte.",
+      "invalid_json": "O conteúdo recebido não é um JSON válido.",
+      "order_type_not_allowed_for_source": "O tipo de ordem não é permitido para esta fonte.",
+      "payload_too_large": "O conteúdo recebido é grande demais.",
+      "rate_limited": "Limite de requisições da fonte excedido.",
+      "schema_violation": "O conteúdo recebido não segue o formato esperado.",
+      "source_mismatch": "A instrução não corresponde à fonte que a enviou.",
+      "unsupported_instrument": "Instrumento não suportado.",
+      "unsupported_media_type": "Tipo de conteúdo não suportado.",
+      "unsupported_version": "Versão da instrução não suportada."
+    },
+    "invites": {
+      "email_send_failed": "Não foi possível enviar o e-mail do convite.",
+      "email_taken": "Já existe uma conta ou convite para este e-mail."
+    },
+    "me": {
+      "invalid_time_zone": "Fuso horário inválido. Escolha outro."
+    },
+    "pairing": {
+      "adapter_version_unsupported": "A versão do plugin não é suportada. Atualize o plugin.",
+      "invalid_code": "Código de pareamento inválido.",
+      "rate_limited": "Muitas tentativas de pareamento. Aguarde um pouco.",
+      "temporarily_locked": "Pareamento bloqueado temporariamente. Aguarde alguns minutos."
+    },
+    "routing": {
+      "automation_not_accepted": "A automação ainda não foi aceita para esta conta.",
+      "copy_not_accepted": "A cópia de operações ainda não foi aceita para esta conta."
+    },
+    "sources": {
+      "name_taken": "Você já tem uma fonte com este nome.",
+      "revoked": "Esta fonte já foi revogada."
+    },
+    "sync": {
+      "account_not_found_after_repair": "Não encontrada na nova instância."
+    }
+  }
+}

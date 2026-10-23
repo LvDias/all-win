@@ -1,0 +1,130 @@
+{
+  "common": {
+    "appName": "All Win",
+    "skipToContent": "Skip to content",
+    "actions": {
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "use": "Use"
+    },
+    "states": {
+      "loading": "Loading…",
+      "saving": "Saving…",
+      "stillLoading": "Still loading…"
+    },
+    "errors": {
+      "network": "No connection to the server. Try again.",
+      "failed": "The action could not be completed.",
+      "code": "Code: {code}"
+    }
+  },
+  "language": {
+    "label": "Language",
+    "triggerName": "Language: {language}",
+    "locked": "Close the current window to change the language",
+    "switching": "Changing language…",
+    "failed": "Could not save the language. Try again.",
+    "dirty": {
+      "title": "Change the language?",
+      "description": "Changing the language reloads the page and discards unsaved changes.",
+      "stay": "Keep editing",
+      "confirm": "Change language"
+    }
+  },
+  "home": {
+    "title": "All Win",
+    "intro": "Order execution with safety and transparency.",
+    "preferences": "Preferences"
+  },
+  "settings": {
+    "preferences": {
+      "title": "Preferences",
+      "signInRequired": "Sign in to change your preferences.",
+      "loadError": "Could not load your preferences.",
+      "saved": "Preference saved.",
+      "language": {
+        "label": "Interface language",
+        "help": "Also used by the NinjaTrader plugin from its next connection."
+      },
+      "timeZone": {
+        "label": "Time zone",
+        "help": "Used to display reset and session times.",
+        "search": "Search time zone",
+        "noResults": "No time zone found.",
+        "browserNote": "Your browser is in {zone}. Use this time zone?",
+        "invalid": "Invalid time zone. Choose another one.",
+        "saveFailed": "Could not save the time zone. Try again."
+      }
+    }
+  },
+  "errors": {
+    "unknown": "Unexpected error (code: {code})",
+    "accounts": {
+      "opt_in_not_applicable": "This option does not apply to this account.",
+      "opt_in_required": "Turn this option on for the account before continuing.",
+      "rule_version_changed": "The rules changed while you were reviewing. Review the current version and confirm again."
+    },
+    "auth": {
+      "forbidden": "You do not have access to this page.",
+      "invalid_code": "Invalid code. Check it and try again.",
+      "invalid_credentials": "Incorrect email or password.",
+      "invitation_invalid": "This invitation is invalid or has expired.",
+      "password_breached": "This password appeared in known data breaches. Choose another one.",
+      "password_too_long": "The password is too long. Use at most 128 characters.",
+      "password_too_short": "The password is too short. Use at least 12 characters.",
+      "pending_expired": "The verification expired. Sign in again.",
+      "rate_limited": "Too many attempts. Wait a moment and try again.",
+      "reauth_failed": "Could not confirm your identity. Try again.",
+      "reset_token_invalid": "This reset link is invalid or has expired.",
+      "step_up_required": "Confirm your identity to continue.",
+      "totp_already_enabled": "Two-step verification is already on.",
+      "totp_setup_expired": "The setup expired. Start over.",
+      "unauthenticated": "Your session expired. Sign in again."
+    },
+    "common": {
+      "forbidden_origin": "The request was blocked by the origin check.",
+      "not_found": "Not found."
+    },
+    "connections": {
+      "name_taken": "You already have a connection with this name.",
+      "open_positions_not_acknowledged": "Confirm that there are open positions before unpairing.",
+      "unpaired": "This connection has already been unpaired."
+    },
+    "ingress": {
+      "action_not_allowed_for_source": "The action is not allowed for this source.",
+      "invalid_json": "The received content is not valid JSON.",
+      "order_type_not_allowed_for_source": "The order type is not allowed for this source.",
+      "payload_too_large": "The received content is too large.",
+      "rate_limited": "Source request limit exceeded.",
+      "schema_violation": "The received content does not follow the expected format.",
+      "source_mismatch": "The instruction does not match the source that sent it.",
+      "unsupported_instrument": "Unsupported instrument.",
+      "unsupported_media_type": "Unsupported content type.",
+      "unsupported_version": "Unsupported instruction version."
+    },
+    "invites": {
+      "email_send_failed": "Could not send the invitation email.",
+      "email_taken": "An account or invitation already exists for this email."
+    },
+    "me": {
+      "invalid_time_zone": "Invalid time zone. Choose another one."
+    },
+    "pairing": {
+      "adapter_version_unsupported": "The plugin version is not supported. Update the plugin.",
+      "invalid_code": "Invalid pairing code.",
+      "rate_limited": "Too many pairing attempts. Wait a moment.",
+      "temporarily_locked": "Pairing is temporarily locked. Wait a few minutes."
+    },
+    "routing": {
+      "automation_not_accepted": "Automation has not been accepted for this account yet.",
+      "copy_not_accepted": "Trade copying has not been accepted for this account yet."
+    },
+    "sources": {
+      "name_taken": "You already have a source with this name.",
+      "revoked": "This source has already been revoked."
+    },
+    "sync": {
+      "account_not_found_after_repair": "Not found in the new instance."
+    }
+  }
+}
