@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 16.2 (7acd73c); **rev. 16.3 proposed** (Esquadro; Crivo R1/R2): §6.4 rules 1–2 define completion per consumer (consumed, or before a `from_now` consumer's `start_seq` = first receivable `seq`), and state the order rule and the retention predicate.
+- **Status:** Accepted (2026-10-23), rev. 16.3 (4cc8085); **rev. 16.4 proposed** (Brasa's access patterns): §6.4 rule 2 gets the DDL of `app.outbox_consumer` and `app.outbox_delivery` (per-consumer retries), registration, retirement, fetch and dead-letter rules; `published_at` is materialized as "done for all", so the purge needs no join; §8 #14 = `…061400`; §8 also lists `…060630` (#2c) and reserves `…061310` (#2d, `identity.source.name` CHECK, Crivo L1, needs user authorization); §6.1 lists the four ingress codes. **Rev. 16.5** (Esmeril on 16.4, Brasa aligned): a new `backfill` consumer resets `published_at` on retained rows; `outbox_delivery_event_idx` for the purge cascade; `app.outbox.dead_lettered_at` is legacy-only (#1b) and filtered in the fetch; L3 accepted for V1; cutover rules; delivery-consumer test instead of an FK; §8 row order.
+- Rev. 16.3 (4cc8085; Esquadro, Crivo R1/R2): §6.4 rules 1–2 define completion per consumer (consumed, or before a `from_now` consumer's `start_seq` = first receivable `seq`), and state the order rule and the retention predicate.
 - Rev. 16.2 (7acd73c): the outbox no-consumer allowlist (Esquadro, decision (b)) in §6.4 rule 1 and §6.5 retention; §8 versions `…060610` (`app.outbox.seq`) and `…060620` (#7b); a §9 list fix (Crivo nit on 16.1).
 - Rev. 16.1 (1a634da; Crivo N1–N3 and ADR-0008 round 2): binding, change, release and archive write both `account.limits_changed` and `account.binding_changed`; the open-position residual and the gateway mitigation are mirrored in §5.3; §9 gains the rev. 16 constraint and grant tests.
 - Rev. 16 (9dcc772, c509981):
@@ -373,6 +374,8 @@ CREATE TABLE identity.source (
   UNIQUE (user_id, id)
 );
 CREATE UNIQUE INDEX source_user_name_key ON identity.source (user_id, lower(name)) WHERE archived_at IS NULL;
+-- Proposed (rev. 16.4, …061310, needs user authorization): CONSTRAINT source_name_shape_check CHECK (char_length(name) BETWEEN 1 AND 60
+-- AND name ~ '\S' AND name !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'); the audit copies the name.
 
 CREATE TABLE identity.source_key (                       -- token awk_<key_id>_<secret>
   id          uuid PRIMARY KEY,
@@ -1202,7 +1205,7 @@ RETURNING instruction_id;
 -- 0 rows → SELECT instruction_id FROM routing.message_receipt …  → audit 'ingress.duplicate_ignored' → 200 duplicate
 ```
 
-- Ingress audit codes (contract, S1 notes §3): `ingress.received` | `ingress.duplicate_ignored` | `ingress.rejected`. `audit_entry.code` has no enumerating `CHECK` (codes are contract-owned); the S1 integration tests assert these three.
+- Ingress audit codes (contract, S1 notes §3): `ingress.received` | `ingress.duplicate_ignored` | `ingress.rejected` | `ingress.rate_limited` (rev. 16.4: four codes, as in the §6.4 outcome mapping). `audit_entry.code` has no enumerating `CHECK` (codes are contract-owned); the S1 integration tests assert these four.
 - A concurrent duplicate blocks on the primary-key entry until the first transaction commits, then takes the `DO NOTHING` path. Exactly one insert wins, as covered by the ADR-0001 §10 race test.
 - Rejections create no receipt and no instruction. With a valid token they produce an audit entry `ingress.rejected` holding only the error code, JSON pointer and size (Q13 §8). An unknown token goes to the redacted technical log only.
 
@@ -1490,16 +1493,66 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
        - **Per-consumer completion** (rev. 16.3; Esquadro, Crivo R1/R2). When a consumer registers, its type leaves the allowlist (the test forces that), and the older rows of that type are neither published nor listed. Without a rule they would stay forever and trip the old-unpublished alert on the first deploy with the consumer. The same happens to a type that gains a second `from_now` consumer later. So completion is defined per consumer:
          - **`start_seq`**, stored per `(consumer, event_type)` with the rule 2 delivery tracking, is the **first** `app.outbox.seq` that the consumer may receive: the highest `seq` at registration + 1 (1 on an empty outbox). A `from_now` consumer receives only `seq >= start_seq`. No per-event "skipped" marks are written.
          - A row is **done for consumer C** when C consumed it, or when C is `from_now` and `seq < C.start_seq`. A `backfill` consumer is done only by consuming, so a type with a `backfill` consumer never ages out unconsumed (X-5).
-         - A row is **done** when it is done for **every** registered consumer of its type. `published_at` (rule 2) is set when the last consumption makes the row done. Retention and the alert use "done", so a row that is done only through start cursors needs no write.
+         - A row is **done** when it is done for **every** registered consumer of its type. `published_at` (rule 2) is set when the last consumption makes the row done, and at registration for the rows that a new start cursor makes done (rev. 16.4).
          - `seq` is drawn at insert, so a transaction still open at registration can commit a row with `seq < start_seq` afterwards. That row counts as before the start and is never delivered.
          - **Order rule (Esquadro):** every `from_now` consumer records its `start_seq` **before** it runs its startup reconciliation or resync. The reconciliation reads the current state, not events, so such a row's effect is still applied: risk via `list_limits_versions` (ADR-0006 §3.2), gateway via `welcome` / `limits` re-sent on connect (connections are re-made at gateway start), and SSE clients refetch on reconnect. Waiting for in-flight transactions is not needed, because a `from_now` consumer never depends on the event itself.
          - Tests:
            - the newest row at registration (`seq = start_seq - 1`) is neither delivered nor left unpurged;
            - for a type with `from_now` consumer A and a consumer B registered later, a row between the two starts, consumed by A, becomes done and is purged; a row still in A's retry queue when B registers becomes done once A consumes it;
            - an event committed between the registration and the end of the reconciliation has its effect applied (risk derives the new version).
-       - **Retention predicate** (purge job, `allwin_maint`), never for dead-lettered rows: `dead_lettered_at IS NULL AND occurred_at < now() - 7 days AND (event_type = ANY($listed) OR <done>)`. `<done>` is `published_at IS NOT NULL`, or a row that is done for every registered consumer of its type by the definition above. The old-unpublished alert uses the same exclusions without the age bound. The cursor table is created by the rule 2 migration, whose number the DBA assigns.
+       - **Retention predicate** (purge job in the worker, as `allwin_maint`, batches of 1000 by `seq`), never for dead-lettered rows: `dead_lettered_at IS NULL AND occurred_at < now() - 7 days AND (published_at IS NOT NULL OR event_type = ANY($listed))`. `published_at` already includes the rows done through start cursors (rule 2, rev. 16.4). The old-unpublished alert uses the same exclusions without the age bound.
        - No schema change: the purge job receives the listed types from the core, so there is no allowlist table.
-  2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event), plus each consumer's `start_seq` per event type (rev. 16.3). `published_at` is set when a consumption makes the row done for every registered consumer (rule 1, per-consumer completion). A row that is done only through start cursors keeps `published_at` NULL and is treated as done by the predicate.
+  2. **Delivery is tracked per consumer** (rev. 16.4, migration `…061400`, Brasa; DDL below). `app.outbox.published_at` is the summary "done for every registered consumer" (rule 1): the dispatcher sets it when a delivery completes a row, and at registration (step 1 below) for the rows that the new start cursor completes. So retention and the alert need no join.
+     ```sql
+     CREATE TABLE app.outbox_consumer (                    -- rev. 16.4: one row per (consumer, event type); system table
+       consumer      text NOT NULL CHECK (consumer ~ '^[a-z][a-z0-9_.]{0,63}$'),
+       event_type    text NOT NULL CHECK (event_type ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'),
+       start_policy  text NOT NULL CHECK (start_policy IN ('from_now','backfill')),
+       start_seq     bigint NOT NULL CHECK (start_seq >= 1), -- first receivable seq; never changes
+       registered_at timestamptz NOT NULL DEFAULT now(),
+       retired_at    timestamptz,                          -- set by an operator step only (never automatically)
+       PRIMARY KEY (consumer, event_type),
+       CHECK (start_policy = 'from_now' OR start_seq = 1)
+     );
+
+     CREATE TABLE app.outbox_delivery (                    -- rev. 16.4: per-consumer delivery state; created on the first attempt
+       consumer         text NOT NULL,
+       event_id         uuid NOT NULL REFERENCES app.outbox (id) ON DELETE CASCADE,
+       attempts         integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+       next_attempt_at  timestamptz NOT NULL,              -- backoff 2^n s, max 600 s
+       last_error       text CHECK (char_length(last_error) <= 500),  -- error class, never payload
+       delivered_at     timestamptz,
+       dead_lettered_at timestamptz,                       -- after 20 attempts; kept, alerted
+       PRIMARY KEY (consumer, event_id),
+       CHECK (delivered_at IS NULL OR dead_lettered_at IS NULL),
+       CONSTRAINT outbox_delivery_last_error_no_token CHECK (last_error !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
+     );
+     CREATE INDEX outbox_delivery_event_idx ON app.outbox_delivery (event_id);  -- rev. 16.5: the FK cascade on purge (Esmeril M2)
+    CREATE INDEX outbox_pending_idx ON app.outbox (event_type, seq) WHERE published_at IS NULL;  -- per-consumer fetch
+     DROP INDEX app.outbox_due_idx;                        -- retries move to outbox_delivery (index only, no data)
+     -- No user_id and no RLS (system tables, like app.outbox). Grants: allwin_worker SELECT, INSERT, UPDATE on both and
+     -- UPDATE (published_at, dead_lettered_at) on app.outbox (from #1/#1b); allwin_maint SELECT and the retirement/replay
+     -- UPDATEs; allwin_app nothing. outbox_delivery rows go with their event through the FK cascade: the referential
+     -- action runs as the table owner, so allwin_maint needs no DELETE on it (verified at the #6b review).
+     ```
+
+     - **Registration** (worker startup, before the dispatcher and before any reconciliation; rule 1 order rule):
+       - `INSERT … ON CONFLICT (consumer, event_type) DO NOTHING`, with `start_seq = coalesce(max(seq), 0) + 1` for `from_now` (an index-only read through `outbox_seq_key`) and `1` for `backfill`. Then the row is read back. A different `start_policy` than the code declares is a startup error, and `start_seq` never changes.
+       - A row committed later with `seq < start_seq` (a transaction in flight at registration) is never delivered to that consumer. That is accepted for `from_now` (rule 1, order rule). `nextval` would not close that window either, because the in-flight row already holds its lower `seq`.
+       - In the same transaction, the dispatcher sets `published_at` on the rows of that type with `seq < start_seq` that are now done for every registered consumer (rule 1). This is what releases rows from the allowlist period. It is bounded by the 7-day window of one type.
+       - **A new `backfill` consumer** (rev. 16.5, Esmeril M1): when the `INSERT` actually inserts a `backfill` pair, the same transaction runs `UPDATE app.outbox SET published_at = NULL WHERE event_type = $t AND published_at IS NOT NULL AND dead_lettered_at IS NULL`. Rows that other consumers had completed are not done for the new consumer, so they go back to the fetch (one fetch shape, `outbox_pending_idx`). Only retained rows come back: purged rows are gone, which X-5 already rules out for audit types because they are never allowlisted. `published_at` is set again when the new consumer's delivery completes the row. Registration of a consumer runs under that consumer's advisory lock, before its dispatcher loop starts; the purge `DELETE` re-checks `published_at IS NOT NULL` on the locked row, so a reset row is never purged.
+      - **Retirement:** a pair present in the table but not registered by the code fails startup. Removing a consumer is an explicit operator step that sets `retired_at`. A retired consumer no longer counts in "every registered consumer", and its rows are then re-checked as above. So a consumer that is dropped by mistake can never make its events count as done silently.
+     - **Fetch per consumer C**, in batches of 100, ordered by `seq`: `o.event_type = ANY(<C's types>) AND o.seq >= c.start_seq AND o.published_at IS NULL`, joined to `outbox_delivery d` (C, `o.id`) with `d IS NULL OR (d.delivered_at IS NULL AND d.dead_lettered_at IS NULL AND d.next_attempt_at <= now())`.
+       - Also `o.dead_lettered_at IS NULL` (rev. 16.5, reverses 16.4): after `…061400` nothing writes `app.outbox.dead_lettered_at`. It only carries rows dead-lettered under #1b, which stay out of the fetch and the purge, visible to the alert and to replay. A per-consumer dead letter lives only in `outbox_delivery`, so it never stops the other consumers (for example the `backfill` audit consumer, X-5).
+       - Do not use `FOR UPDATE … SKIP LOCKED` on `app.outbox`: it would make consumers block or skip each other on the same row. One dispatcher loop per consumer holds `pg_try_advisory_xact_lock` on the consumer name, and the delivery row (PK) carries the state.
+       - Uses `outbox_pending_idx` and the `outbox_delivery` PK.
+     - **Dead letter:** after 20 attempts, `d.dead_lettered_at` is set; `app.outbox` is not touched (rev. 16.5). The row is not done for that consumer, so `published_at` stays `NULL`: it is never purged and it trips the old-unpublished alert. An operator replay resets the delivery row. A legacy #1b dead letter (`o.dead_lettered_at`) is replayed by clearing that column; the row then re-enters the fetch of every consumer.
+    - **Scan cost behind a stuck consumer (Esmeril L3, accepted for V1):** a row dead-lettered or retrying for one consumer stays in `outbox_pending_idx` and is skipped by the anti-join in every other consumer's fetch. At V1 volume (< 1e6 rows in 7 days) that is bounded by the dead-letter and old-unpublished alerts and the replay/retire operator steps. A per-consumer high-water mark (`outbox_consumer` column) is a later expand-only change if the metrics show it is needed.
+    - **Cutover to `…061400`** (Esmeril L4; only DEV databases exist): `outbox_consumer` starts empty, so the first startup registers every consumer. `from_now` consumers start at `max(seq) + 1`; rows still in #1b retry count as before their start (rule 1, order rule). `backfill` consumers reset `published_at` on the retained rows of their types and receive up to 7 days again, with `attempts` from 0; that is safe because consumers dedupe on the event id (audit on `source_event_id`). Legacy #1b dead letters keep `o.dead_lettered_at` (fetch filter above).
+    - **No FK from `outbox_delivery.consumer`** (Esmeril N5): the key of `outbox_consumer` is `(consumer, event_type)`, and `event_type` is not repeated on the delivery row. A test asserts instead that every delivery row's `(consumer, event type of its event)` exists in `outbox_consumer`.
+    - **Tests (#14, rev. 16.5):** a `backfill` consumer registered after a `from_now` consumer completed rows receives them, and `published_at` is set again only after it consumes; a purge that deletes 1000 outbox rows uses `outbox_delivery_event_idx` for the cascade (plan check, no `EXPLAIN ANALYZE` outside test DBs); a per-consumer dead letter does not stop the other consumer of the same row; a legacy row with `o.dead_lettered_at` is neither fetched nor purged; the consumer test above.
+     - The #1b columns `attempts`, `last_error` and `next_attempt_at` on `app.outbox` are no longer written after `…061400`. Dropping them is a destructive change for a later migration, with user authorization.
+     - **Volume (Brasa's V1 estimate):** ≤ 1e5 rows a day, < 1e6 in 7 days, and 1–3 consumers per type. The delivery table holds at most a few times the outbox, and it shrinks with the purge.
   3. **Each consumer declares a start policy at registration:**
      - `from_now`: cursor at the registration instant, no backfill. This is the default for consumers that **act** (routing, commands).
      - `backfill`: from the oldest unconsumed event. Consumers that **record** (audit) use it, so the user-visible log never misses an entry (X-5).
@@ -1696,9 +1749,12 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
 | 6b | `routing_create_decision_subscription` (`…061200`): `routing_decision`, `subscription` (with `row_version`, rev. 8) | S7 (Ferro); after #6 |
 | 6c | `routing_message_id_no_token_check` (`…061300`, reserved): the §6.4 no-token `CHECK` on `routing.message_receipt` / `routing.instruction`; narrowing, so it needs explicit user authorization first | Ferro |
+| 2d | `identity_source_name_check` (`…061310`, reserved, rev. 16.4): `CHECK` `source_name_shape_check` on `identity.source.name`: 1..60 chars as the contract `DisplayName`, not blank, no token shape (`NOT VALID` + `VALIDATE`); an empty or token-shaped name would dead-letter every ingress audit event of the source; narrowing, so it needs explicit user authorization first | Brasa (identity) |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
 | 1c | `app_outbox_seq` (`…060610`, rev. 16.2): `app.outbox.seq` identity column (§6.4) | Ferro (`s/v1-audit-codes--core`); before #7b |
 | 7b | `audit_entry_activity_columns` (`…060620`, rev. 16.2): the S10 columns and constraints on the partitioned table (see below) | Ferro (`s/v1-audit-codes--core`); after #1c |
+| 2c | `identity_resolve_source_key_name` (`…060630`, rev. 16.4): `identity.resolve_source_key` also returns `source_name` (audit snapshot) | Ferro writes, Brasa approves (`s/v1-audit-codes--core`, 196a30a); after #7b |
+| 14 | `app_create_outbox_consumer_tracking` (`…061400`, rev. 16.4): `app.outbox_consumer`, `app.outbox_delivery`, `outbox_delivery_event_idx` (rev. 16.5), `outbox_pending_idx`, drop `outbox_due_idx` (§6.4 rule 2) | Brasa; after S3 and S5–S7 |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account` (without the binding, rev. 16), `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
 | 10 | `risk_create_account_limits` (rev. 13): `account_limits`, `scheduled_limit` (derived), `trading_day`, `drawdown_tracker`, `account_block`, with RLS | S13; unwritten, so it takes the rev. 13 shape directly |
@@ -1712,9 +1768,9 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - So #2 and #3 (S3, Brasa) merge before #6 and #7. Until then the S1 branch builds on the S3 branch.
 - No branch writes its own copy of another module's table.
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
-- **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, and `…061300` #6c (reserved).
+- **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - From `…061400` on, numbers are assigned on request (#9, #10, #11, #13); no branch picks its own.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). From `…061500` on, numbers are assigned on request (#9, #10, #11, #13); no branch picks its own.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
