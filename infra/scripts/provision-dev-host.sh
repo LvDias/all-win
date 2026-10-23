@@ -16,6 +16,7 @@ DEV_GROUP=devs
 DEV_USERS=(dev1 dev2 dev3)
 NODE_DIR=/opt/node
 RUST_DIR=/opt/rust
+PLAYWRIGHT_DIR=/opt/ms-playwright   # shared browsers, filled by `playwright install`
 WORKTREES_DIR=/srv/www/allwin.worktrees
 
 [[ $EUID -eq 0 ]] || { echo "run as root (sudo)" >&2; exit 1; }
@@ -118,10 +119,14 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 case ":$PATH:" in *:/opt/rust/cargo/bin:*) ;; *) PATH="/opt/rust/cargo/bin:$PATH" ;; esac
 case ":$PATH:" in *:/opt/node/bin:*) ;; *) PATH="/opt/node/bin:$PATH" ;; esac
 export PATH
+export PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+# Group-writable files for agents in group devs (pnpm/cargo/git outputs, shared worktrees).
+case " $(id -nG 2>/dev/null) " in *" devs "*) umask 002 ;; esac
 SH
-for kv in RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo DOTNET_CLI_TELEMETRY_OPTOUT=1; do
+for kv in RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo DOTNET_CLI_TELEMETRY_OPTOUT=1 PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright; do
   grep -q "^${kv%%=*}=" /etc/environment || echo "$kv" >> /etc/environment
 done
+shared_dir "$PLAYWRIGHT_DIR"
 for b in "$CARGO_HOME"/bin/* "$NODE_DIR"/bin/{node,npm,npx,pnpm,pnpx}; do
   if [[ -e $b ]]; then ln -sfn "$b" "/usr/local/bin/$(basename "$b")"; fi
 done
