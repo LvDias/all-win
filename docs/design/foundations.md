@@ -25,7 +25,7 @@
 - **Components used by S3/S4** (add others per slice): `Button`, `Input`, `InputOTP` (base of `CodeInput`), `Label`, `Form` (react-hook-form + zod, shadcn pattern), `Card`, `Table`, `Badge`, `Alert`, `AlertDialog`, `Dialog`, `Drawer` (mobile variant of Dialog, see §9), `DropdownMenu`, `Select`, `Switch`, `Checkbox`, `Tooltip`, `Skeleton`, `Separator`, `Sidebar`, `Sheet`, `Sonner` (toasts), `Progress` (only for non-semantic progress; risk usage uses the Risk meter in §7.3).
 - **Shared composites** to build once in `src/shared/ui` (specified here and in the specs):
   - `SecretField`: §8.1. `StepUpDialog`: §8.2.
-  - `CodeInput`, `CodeChallenge`, `Stepper`, `DataTable`, `RiskBanner` and the `EmptyState` variants: [components.md](components.md).
+  - `CodeInput`, `CodeChallenge`, `Stepper`, `DataTable`, `RiskBanner`, `NotificationBell`, `NotificationItem`, `CriticalBanner` and the `EmptyState` variants: [components.md](components.md).
   - `ProvenanceMark`, `FirmRuleQuote`: §7.4.
   - `StatusBadge`: §7.
   - `RiskMeter`: §7.3 (first used in S13; defined now so tokens are final).
@@ -90,6 +90,7 @@ Additional semantic aliases (no new values):
 - Spacing on the Tailwind 4 px scale. Standard gaps: 4 (inline icon-text), 8 (field internals), 16 (between fields, card padding on mobile), 24 (card padding ≥ `md`, between cards), 32 (page sections).
 - **Breakpoints:** Tailwind defaults (`sm` 640, `md` 768, `lg` 1024, `xl` 1280). **Minimum supported width: 320 CSS px** (WCAG 1.4.10 reflow).
 - **App shell:** shadcn `Sidebar` (collapsible to icons ≥ `lg`, off-canvas `Sheet` below `lg`) + top bar (page title, live connection indicator, user menu). Content max width 1280 px for forms/lists; wide data tables may use full width.
+- **Sidebar order (confirmed 2026-10-23, waves 1–3; items appear when their slice ships):** *Operação:* Início · Contas · Roteamento · Atividade · Trades · Desempenho. *Configuração:* Perfis de stop e alvo · Presets. Then Conexões (Fontes de sinal, NinjaTrader) · Configurações (Segurança, Preferências) · Administração (admin only). Notifications are the top-bar bell only (C§7), never a sidebar item. Group labels are `SidebarGroupLabel`s; collapsed-to-icons mode keeps one icon per item with a tooltip name.
 - **Elevation:** flat. Cards use a border; shadows only for overlays (popover, dialog, toast).
 - **Motion:** 150–200 ms ease-out for overlays only. No motion conveys state. Under `prefers-reduced-motion: reduce`, transitions become opacity-only or instant, and spinners become a static "Carregando…" label.
 
@@ -123,6 +124,7 @@ The same term is used everywhere (web, plugin, errors, audit). The Plugin Engine
 | Out of sync | Fora de sincronia | Out of sync |
 | Paused / Disabled | Pausada / Desativada | Paused / Disabled |
 | Verification code (one-time, sent to e-mail/WhatsApp) | Código de verificação / Código | Verification code / Code |
+| Notification / unread / critical | Notificação / Não lida / Crítica | Notification / Unread / Critical |
 | Sign-in channel | Canal de entrada | Sign-in channel |
 | Resend code | Reenviar código | Resend code |
 | New device | Novo dispositivo | New device |
