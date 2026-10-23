@@ -75,4 +75,13 @@ describe("parseDecimalInput", () => {
       expect(parseDecimalInput("21234.250", "pt-BR", { tick: "0.25" })).toEqual({ ok: true, value: "21234.25" });
     });
   });
+
+  it("returns a prefilled value verbatim when the text is unchanged, even if typed it would be ambiguous", () => {
+    expect(parseDecimalInput("1.125", "pt-BR", { scale: 4 })).toEqual({ ok: false, reason: "ambiguous" });
+    expect(parseDecimalInput("1.125", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: true, value: "1.125" });
+    expect(parseDecimalInput(" 1.125 ", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: true, value: "1.125" });
+    // Any edit goes back through the normal rules.
+    expect(parseDecimalInput("1.126", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: false, reason: "ambiguous" });
+    expect(parseDecimalInput("2.500", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: false, reason: "ambiguous" });
+  });
 });
