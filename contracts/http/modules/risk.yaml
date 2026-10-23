@@ -9,7 +9,8 @@ paths:
       summary: The account's current risk state for today's trading day (used vs limit per rule)
       description: |
         Every figure, percent and state is computed by the Core from execution results and plugin-reported
-        P&L (S13 AC-2); the UI renders it and does no arithmetic (X-3). `stale` is true when the data is
+        P&L (S13 AC-2); manual trades (S21, origin `manual`) do not enter daily loss, drawdown, profit
+        target, consistency or blocks, and never unblock an account (PO rule: S13 AC-2 + S21 AC-3, PO clarification, slice-plan rev. 7); the UI renders it and does no arithmetic (X-3). `stale` is true when the data is
         not fresh (connection down or no recent report): the UI then never shows the values as current.
         Refetch after `risk.state_changed`.
       parameters:

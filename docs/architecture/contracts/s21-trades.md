@@ -33,9 +33,18 @@ SSE: `trade.captured` (also for manual trades), which drives the "n novos trades
 
 ## 3. Requests to other owners
 
-- **Esquadro (adapter protocol):** the completed-trade message from the plugin. It carries exactly the S21 AC-1 fields with decimals as strings, an id for idempotency (a trade is never stored twice), `direction` ∈ `long` / `short`, the originating `command_id` when routed, and `mae` / `mfe` in USD. The HTTP `Trade` mirrors it.
+- **Esquadro (adapter protocol 1.3, agreed):** A→C `trade_completed`, reliable and acked.
+  - It carries a plugin-generated `trade_id` (idempotent, deduped like `event_id`), the S21 AC-1 fields as decimal strings, `direction` long / short, gross `pnl`, `mae` / `mfe` in USD (optional, and absent, never partial, when the plugin did not observe the whole interval), the entry's `command_id` when routed, and `opening_fill_id` + `closing_fill_ids[]`.
+  - The Core reconciles them with the fills it knows. A difference is kept with the plugin's numbers (S21 AC-2) and audited as `trades.reconcile_mismatch`; it is never corrected silently.
+  - HTTP exposes `reconcile_mismatch` (3.4.0). There is no `excursion_complete`: a partial excursion is sent as absent.
 - **Lastro:** table `trades.trade` (decimals NUMERIC, unique plugin trade id per account, `row_version` for manual rows), with indexes for exit time, P&L and duration sorting per user.
 
-## 4. Also in 3.3.0 (Crivo note on 3.2.1)
+## 4. 3.4.0 additions
+
+- `Trade.reconcile_mismatch`, audit code `trades.reconcile_mismatch`.
+- `recorded_before` on `listTrades` / `getTradesSummary` and `as_of` on the summary (S22 reconciliation).
+- **Manual trades and risk (PO rule: S13 AC-2 + S21 AC-3, PO clarification, slice-plan rev. 7; QA Security I1):** manual trades do NOT feed daily loss, drawdown, the profit target, consistency or blocks (S13/S15), and never unblock an account. They feed only the trade list and the metrics (S21/S22). Risk derives only from what the platform reports, so neither a made-up profitable trade nor a typing error can change the day's `used` or block a real account.
+
+## 5. Also in 3.3.0 (Crivo note on 3.2.1)
 
 `risk.yaml` `pending_changes[].change` gains `daily_loss_changed`. It covers a mixed change of the daily loss (stricter in one part, looser in another), which is treated as looser and carries `new_daily_loss`.

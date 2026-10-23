@@ -259,6 +259,7 @@ components:
         - trades.manual_created
         - trades.manual_changed
         - trades.manual_deleted
+        - trades.reconcile_mismatch
       description: |
         Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
         auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
@@ -821,6 +822,16 @@ components:
       properties:
         trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
+    DetailsTradeMismatch:
+      type: object
+      additionalProperties: false
+      required: [trade_id, mismatch]
+      description: The plugin's trade does not match the fills the Core knows; the plugin's numbers are kept (S21 AC-2).
+      properties:
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        mismatch: { type: string, enum: [unknown_fills, pnl_differs, quantity_differs] }
+        plugin_pnl: { $ref: '#/components/schemas/Money' }
+        fills_pnl: { $ref: '#/components/schemas/Money' }
     AuditDetailsByCode:
       type: object
       additionalProperties: false
@@ -904,3 +915,4 @@ components:
         trades.manual_created: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_changed: { $ref: '#/components/schemas/DetailsTradeChanged' }
         trades.manual_deleted: { $ref: '#/components/schemas/DetailsTrade' }
+        trades.reconcile_mismatch: { $ref: '#/components/schemas/DetailsTradeMismatch' }

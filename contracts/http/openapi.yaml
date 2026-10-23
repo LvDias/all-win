@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 3.3.0
+  version: 3.4.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
@@ -10,7 +10,7 @@ info:
     the account's preset (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`), V1-S10
     activity (`audit`), V1-S13 risk (`risk`) and V1-S18
     notifications (`notifications`; codes in contracts/notifications/v1/registry.json) and V1-S21 trades
-    (`trades`). 3.0.0 is the first consumable release of the modules; 2.1.0–2.5.0 were never merged or
+    (`trades`), V1-S22 performance (`performance`). 3.0.0 is the first consumable release of the modules; 2.1.0–2.5.0 were never merged or
     deployed. Security rules: auth-and-session-policy.md rev. 2.
     Version 2.0.0 is breaking (password and TOTP removed). Paths stay `/api/v1`: no version was ever deployed
     and there are no external clients, so the path major moves only for breaking changes after the first
@@ -84,6 +84,7 @@ tags:
   - name: risk
   - name: notifications
   - name: trades
+  - name: performance
 
 paths:
   /ingress/v1/tradingview/{token}:
@@ -1246,6 +1247,8 @@ paths:
   /api/v1/trades/summary: { $ref: 'modules/trades.yaml#/paths/~1api~1v1~1trades~1summary' }
   /api/v1/trades/{trade_id}: { $ref: 'modules/trades.yaml#/paths/~1api~1v1~1trades~1{trade_id}' }
   /api/v1/trade-preview: { $ref: 'modules/trades.yaml#/paths/~1api~1v1~1trade-preview' }
+  # V1-S22 (module performance); owner Compasso.
+  /api/v1/performance: { $ref: 'modules/performance.yaml#/paths/~1api~1v1~1performance' }
 
 components:
   securitySchemes:

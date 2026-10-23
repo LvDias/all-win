@@ -38,8 +38,9 @@ SSE: `risk.state_changed` (state, stale, block, trading-day reset, rules changed
 8. **Q-S13-5:** for trailing drawdowns, `floor` is the account balance at which the drawdown is breached, as it stands now.
 9. **Q-S13-7:** the consistency threshold has at most one decimal, 0–100 (`^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$`, fixed in 3.2.0).
 10. **Playback (S15 AC-7):** `trading_day.playback_clock` carries the simulated clock the day and P&L follow.
-11. **Staleness:** `stale` + `stale_reason` (`connection_down` / `no_recent_data`). The UI never shows stale values as current.
-12. **No step-up in V1** (Q35 list). If the wider list is approved later, the body gains `step_up` (`x-step-up` on the PUT) with no other change.
+11. **Manual trades (PO rule: S13 AC-2 + S21 AC-3, PO clarification, slice-plan rev. 7; QA Security I1, 3.4.0):** trades entered by hand (S21, origin `manual`) do NOT feed daily loss, drawdown, the profit target, consistency or blocks, and never unblock an account; they feed only the trade list and the metrics (S21/S22). Risk derives only from what the platform reports.
+12. **Staleness:** `stale` + `stale_reason` (`connection_down` / `no_recent_data`). The UI never shows stale values as current.
+13. **No step-up in V1** (Q35 list). If the wider list is approved later, the body gains `step_up` (`x-step-up` on the PUT) with no other change.
 
 ## 3. Interplay with S16 and ADR-0006
 

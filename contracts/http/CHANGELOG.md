@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 3.4.0 — 2026-10-23 (V1-S22 performance; additive) — notes: docs/architecture/contracts/s22-performance.md
+- Module `performance`: `getPerformance` (totals and per-group figures by source / signal type, win / loss / breakeven counts, averages with sample counts, `bar_ratio`, `as_of`; rounding rules stated).
+- `trades`: `recorded_before` on `listTrades` / `getTradesSummary`, `as_of` on the summary (S22 AC-2 reconciliation); `Trade.reconcile_mismatch` (adapter protocol 1.3 `trade_completed`, Esquadro; a partial excursion is sent as absent `mae` / `mfe`); audit code `trades.reconcile_mismatch`.
+- Manual trades do not feed daily loss, drawdown, profit target, consistency or blocks; only the trade list and the metrics (PO rule: S13 AC-2 + S21 AC-3, PO clarification, slice-plan rev. 7; QA Security I1).
+
 ## 3.3.0 — 2026-10-23 (V1-S21 trades; additive) — notes: docs/architecture/contracts/s21-trades.md
 - Module `trades`: `listTrades` (exit-time window, account / source / origin / signal filters, sort by exit time / P&L / duration, MAC cursor), `getTradesSummary`, `getTrade`, `createManualTrade` (`Idempotency-Key`), `updateManualTrade` / `deleteManualTrade` (manual only, Q56 provisional), `previewManualTrade`; SSE `trade.captured`.
 - Audit codes `trades.captured`, `trades.manual_created`, `trades.manual_changed`, `trades.manual_deleted`.
