@@ -1,5 +1,9 @@
 # HTTP API — changelog
 
+## 1.1.2 — 2026-10-23 (S1 implementation deltas)
+- Ingress credential guard (s1 notes §2 step 5a, after parsing and before schema validation): a body string shaped like an All Win token (`aw[kd]_…`) → 400 `ingress.schema_violation` with an empty `pointer`, audited with the empty pointer; the body is not stored or logged.
+- Ingress rate limiting (QA Security M1): the per-IP limit before auth becomes a flood cap, with a much higher cap for configured TradingView source ranges; token failures charge a per-IP failure budget (429 on failures only, valid tokens never refused); the per-key limit stays. The over-budget 429 is identical for every failure kind; unknown key_ids go into a 60-s negative cache; trusting X-Forwarded-For is a deployment requirement. Defaults in s1 notes §2 (resolves U14). IPv6 is keyed by /64.
+
 ## 1.1.1 — 2026-10-23 (clarifications for S1 implementation)
 - Ingress 422 adds `ingress.signal_type_not_allowed_for_source` (ADR-0003 §6 policy had no code). Ingress 400 `ingress.unsupported_version` documented with pointer `/schema_version` for a minor newer than the Core supports.
 

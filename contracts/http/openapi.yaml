@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 1.1.1
+  version: 1.1.2
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (auth, invitations, sessions, sources,
@@ -72,8 +72,9 @@ paths:
       summary: Receive a TradingView alert (V1-S1)
       description: |
         Processing order (ADR-0003 §7; full table in docs/architecture/contracts/s1-webhook-ingest.md §2):
-        per-IP rate limit → authenticate token → per-key rate limit → content type and size → parse →
-        validate against instruction schema v1 → apply source policy (ADR-0003 §6) → insert with
+        per-IP flood cap (higher cap for TradingView ranges) → authenticate token (failures charge a per-IP failure
+        budget; valid tokens are never refused by it) → per-key rate limit → content type and size → parse →
+        credential guard → validate against instruction schema v1 → apply source policy (ADR-0003 §6) → insert with
         UNIQUE (user_id, message_id) → respond. Routing is asynchronous after commit. Every response must
         be produced well under TradingView's ~3 s timeout. The whole path after `/ingress/` is treated as
         a secret and never logged (ADR-0001 §5, s1 notes §4). No `Origin` check applies here.
@@ -113,7 +114,7 @@ paths:
                 duplicate:
                   value: { status: duplicate, instruction_id: 0192b3c4-0000-7000-8000-000000000006 }
         '400':
-          description: '`ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version` (pointer `/schema_version`; a minor newer than the Core supports).'
+          description: '`ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version` (pointer `/schema_version`; a minor newer than the Core supports). A body string shaped like an All Win token (`aw[kd]_…`) gives `ingress.schema_violation` with an empty pointer; the body is not stored or logged.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IngressRejected' }
@@ -144,7 +145,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IngressRejected' }
         '429':
-          description: '`ingress.rate_limited` (per key and per IP). Header `Retry-After`.'
+          description: '`ingress.rate_limited`: per-IP flood cap, per-IP token-failure budget (failures only), or per-key limit. Header `Retry-After`.'
           headers:
             Retry-After: { $ref: '#/components/headers/RetryAfter' }
           content:
