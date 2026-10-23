@@ -1,6 +1,6 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 3. Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1–#3 are written and under DBA review (not yet run against PostgreSQL).
+- **Status:** Accepted (2026-10-23), rev. 4. Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3: Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1–#3 are written and under DBA review (not yet run against PostgreSQL).
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
@@ -724,10 +724,23 @@ CREATE TABLE app.outbox (                                -- domain events, writt
   event_type   text NOT NULL,                            -- 'routing.decision_made', …
   occurred_at  timestamptz NOT NULL,
   payload      jsonb NOT NULL,
-  published_at timestamptz
+  published_at timestamptz,
+  attempts         integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),          -- delivery retries (#1b)
+  last_error       text CHECK (char_length(last_error) <= 500),               -- consumer + error, never payload
+  next_attempt_at  timestamptz NOT NULL DEFAULT now(),                        -- backoff 2^n s, max 600 s
+  dead_lettered_at timestamptz,                                               -- after 20 attempts; kept, alerted
+  CONSTRAINT outbox_last_error_no_token CHECK (last_error !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
 );
-CREATE INDEX outbox_unpublished_idx ON app.outbox (occurred_at) WHERE published_at IS NULL;
--- dispatcher (allwin_worker) delivers at least once; published rows purged after 7 days
+CREATE INDEX outbox_due_idx ON app.outbox (next_attempt_at, occurred_at)
+  WHERE published_at IS NULL AND dead_lettered_at IS NULL;
+-- dispatcher (allwin_worker) delivers due, live events at least once; a failure sets attempts+1,
+-- last_error, next_attempt_at, so it never blocks the head of the queue. allwin_worker has
+-- UPDATE (published_at) from #1 and UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at) from #1b.
+-- An event type with no registered consumer is marked published on its first pass (S1, CR5 C3): it never
+-- piles up and is never delivered late when a consumer appears ("never execute late"). M1 adds
+-- per-consumer delivery tracking instead of reusing published_at.
+-- Published rows are purged after 7 days; dead-lettered rows are never purged automatically: they are
+-- an operational alert (a lost audit entry would break X-5) and are replayed or closed by an operator.
 
 CREATE TABLE audit.audit_entry (
   id              uuid NOT NULL,
@@ -818,6 +831,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | # | Migration | Slice |
 |---|---|---|
 | 1 | `app_bootstrap`: schemas, `app.current_user_id()`, default privileges, `app.outbox` | S1 (Ferro); merged alone and first, since S1 and S3 both build on it |
+| 1b | `app_outbox_delivery_attempts`: outbox retry/backoff/dead-letter columns, `outbox_due_idx`, `GRANT UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at)` to `allwin_worker` (expand only) | S1 (Ferro); depends only on #1; version re-stamped after the latest merged migration |
 | 2 | `identity_create_users_sessions`: `app_user`, `invitation`, `session`, `password_reset`, `totp_credential`, `recovery_code`, `resolve_*` / `find_user_for_login` | S3 |
 | 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
