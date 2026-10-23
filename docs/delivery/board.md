@@ -36,13 +36,19 @@
 | V1-S2 hardening (Vigia follow-ups: NuGet lock files, token 0600, ws only in Development, store corruption typing) | Plugin Engineer (Elo @ Dev3) | integrated (main a9a95a7; log 2026-10-23-v1-s2-plugin-hardening) | 9a2ece9 | — | Remove row at next cleanup |
 | V1-S2 prep — AllWin.Adapter.Core + fake-Core harness (Linux) | Plugin Engineer (Elo @ Dev3) | final candidate 1009999 (421 tests); Code Review APPROVED 1009999; QA [Plugins] APPROVED 1009999 (23 probes); QA [Security] APPROVED 1009999 (0 crit/high/medium, 2 low, 3 info); integrated (main 6579023); reason-codes/ADR-0004 committed (4fe3957, bb6b8ba, 46ffa80, d10c9a0) | 78305dd base | Windows VPS for NT8 parts | — |
 
-## Session snapshot (2026-10-23 evening)
-- On `main`: S1, S2 (Linux), S4, U13 (protocol 1.2 + plugin 92fa116), architecture/data/product/design docs; pushed to GitHub (LvDias/all-win). Pre-suspend WIP of every worktree is on GitHub.
-- Approved, waiting to merge together with S3 core: HTTP contract up to 4.3.0 (+ docs 5cd62d8), API-SPEC 30a34fb (N3 closed, allowlist 4939133), S3 web e63f676/4d34a53.
-- Reviews: ADR-0007/0008 round 2 356e23ba24ae APPROVED by Code Review (QA Security pending); data model rev. 16 1741556b905a APPROVED by Code Review.
-- In progress: S3 core (Brasa); S5 core implemented, gates next (Malha); S5 web stepper (Mosaico); S6 core (Torno, Maestri link down); S7 core WIP 480d355/df7bf23 (Ferro); audit-codes delta s/v1-audit-codes--core (Ferro: app.outbox.seq + #7b + dispatcher change approved by Brasa; S1 ingress details aligned to contract 4.3.0; S1 suite rerun by Sentinela); plugin T1 flake + protocol 1.3 (Elo); R3 research (Lupa).
-- VPS Fase 2: scripts + README 86df87c APPROVED (Code Review, QA Security; across rounds 1 high, 2 medium, 11 low fixed; 3 code-review lows tracked by DevOps). Guide sent to the user; the user is running it (RDP already tailnet-only; allwin-agent and NT8 installed).
-- Waiting for the user: Q75; later 061300 (narrowing CHECK, needs explicit authorization).
+## Session snapshot (2026-10-23 night, user's Mac resting)
+- On `main` (d45e14c, on GitHub): S1, S2 (Linux), S4, U13, plus architecture (ADR-0003 S7 gates, ADR-0007/0008, policy rev. 3.1, spike plan rev. 6.1), data model rev. 16.3, product Q73/Q74, design docs.
+- Approved, on slice branches, landing with the implementing code: HTTP contract 5.0.0 (ba676fd), 5.1.0 (66f77f0), 5.1.1 (583f986b1511, commit pending); API-SPEC; S3 web; ADR-0003/0004 r3 849fcd1b8ee0 (Code Review + QA Security approved; commit by Forja).
+- In progress:
+  - S3 core (Brasa; drift allowlist + omitted disconnect_reason under Architect review);
+  - S5 core (Malha, gates next); S5 web (Mosaico, rebased on 51d626a);
+  - S6 core (Torno; Q73 b);
+  - S7 core (Ferro; Q74, 5.1.0/5.1.1);
+  - audit-codes delta (Ferro; commit paused on 3 .sqlx deletions not in the reviewed patch);
+  - plugin delta acc038806e60 (Elo; Code Review approved, QA Plugins re-check pending) and protocol 1.3 next;
+  - outbox purge + per-consumer tracking (Brasa, after S3).
+- VPS Phase 2: 86df87c APPROVED; guide sent; the user is running it (RDP tailnet-only; allwin-agent and NT8 installed). Dev server joins at step 7 (Forja relays the login URL to the user only).
+- Waiting for the user: Q75 (recommendation b); VPS progress; later 061300.
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.
 
 ## Environment notes
