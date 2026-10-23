@@ -6,6 +6,7 @@
 check: check-contracts check-core check-web check-plugin
 
 check-contracts:
+	python3 infra/scripts/check-python-pins.py
 	python3 contracts/scripts/validate_fixtures.py contracts
 	python3 contracts/scripts/check_openapi.py contracts/http/openapi.yaml
 

@@ -1,0 +1,4 @@
+# Python packages used by the contract gates (make check-contracts, CI).
+# Pinned: the OpenAPI drift check compares the bytes of yaml.safe_dump output, which can change between PyYAML versions.
+PyYAML==6.0.1
+jsonschema==4.10.3
