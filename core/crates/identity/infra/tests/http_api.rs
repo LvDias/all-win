@@ -306,6 +306,57 @@ async fn http_contract_behaviour() {
     assert!(url.starts_with(&format!("{ORIGIN}/ingress/v1/tradingview/awk_")));
     let source_id = r.body["source"]["id"].as_str().unwrap().to_owned();
     assert_eq!(r.body["source"]["is_automated"], true);
+    // DisplayName (Esquadro, Crivo L1): trimmed; blank, control characters, a token shape
+    // anywhere and more than 60 characters are 400 on /name, on create and on rename.
+    let token = format!("awk_Abc123Def456_{}", "s".repeat(43));
+    for bad in [
+        String::new(),
+        "   ".to_owned(),
+        "Main\tfeed".to_owned(),
+        token.clone(),
+        format!("feed {token} copy"),
+        "a".repeat(61),
+    ] {
+        let r = api
+            .post(
+                "/api/v1/sources",
+                Some(&ana),
+                json!({"name": bad, "source_type": "tradingview"}),
+            )
+            .await;
+        assert_eq!(
+            (r.status, r.code(), r.pointer()),
+            (StatusCode::BAD_REQUEST, "common.invalid_request", "/name"),
+            "create {bad:?}"
+        );
+        let r = api
+            .call(
+                Method::PATCH,
+                &format!("/api/v1/sources/{source_id}"),
+                Some(&ana),
+                Some(ORIGIN),
+                Some(json!({"name": bad})),
+            )
+            .await;
+        assert_eq!(
+            (r.status, r.code(), r.pointer()),
+            (StatusCode::BAD_REQUEST, "common.invalid_request", "/name"),
+            "rename {bad:?}"
+        );
+    }
+    for (name, stored) in [("  Feed  ", "Feed"), (&*"a".repeat(60), &*"a".repeat(60))] {
+        let r = api
+            .call(
+                Method::PATCH,
+                &format!("/api/v1/sources/{source_id}"),
+                Some(&ana),
+                Some(ORIGIN),
+                Some(json!({"name": name})),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+        assert_eq!(r.body["name"], stored, "stored without the outer spaces");
+    }
     let list = api.get("/api/v1/sources", Some(&ana)).await;
     assert!(
         !list.body.to_string().contains(&url[url.len() - 43..]),

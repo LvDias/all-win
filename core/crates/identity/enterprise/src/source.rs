@@ -9,21 +9,28 @@ use crate::tokens::KeyId;
 
 pub const DISPLAY_NAME_MAX_CHARS: usize = 60;
 
-/// Name shown in lists (`DisplayName`: 1–60 characters).
+/// Name shown in lists (`DisplayName`, Esquadro on Crivo L1): trimmed, then 1–60 characters, no
+/// control character and no token-shaped part. The name is copied into audit details, which
+/// refuse a token shape; accepting one here would let a source silence its own audit trail.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DisplayName(String);
 
 #[derive(Debug, Error, PartialEq, Eq)]
-#[error("display name must have 1 to 60 characters")]
+#[error("display name must have 1 to 60 characters, no control character and no token")]
 pub struct InvalidDisplayName;
 
 impl DisplayName {
     pub fn parse(raw: &str) -> Result<Self, InvalidDisplayName> {
-        let chars = raw.chars().count();
-        if chars == 0 || chars > DISPLAY_NAME_MAX_CHARS {
+        let name = raw.trim();
+        let chars = name.chars().count();
+        if chars == 0
+            || chars > DISPLAY_NAME_MAX_CHARS
+            || name.chars().any(char::is_control)
+            || contains_token_shape(name)
+        {
             return Err(InvalidDisplayName);
         }
-        Ok(Self(raw.to_owned()))
+        Ok(Self(name.to_owned()))
     }
 
     pub fn from_stored(value: String) -> Self {
@@ -33,6 +40,25 @@ impl DisplayName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// Length of the `<key_id>` and `<secret>` parts of a token (ADR-0003 §7).
+const TOKEN_KEY_LEN: usize = 12;
+const TOKEN_SECRET_LEN: usize = 43;
+
+/// True when `s` contains `aw(k|d)_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}` anywhere (source or device
+/// token shape).
+fn contains_token_shape(s: &str) -> bool {
+    let b = s.as_bytes();
+    let key = |c: &u8| c.is_ascii_alphanumeric();
+    let secret = |c: &u8| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-';
+    let len = 4 + TOKEN_KEY_LEN + 1 + TOKEN_SECRET_LEN;
+    b.windows(len).any(|w| {
+        (w.starts_with(b"awk_") || w.starts_with(b"awd_"))
+            && w[4..4 + TOKEN_KEY_LEN].iter().all(key)
+            && w[4 + TOKEN_KEY_LEN] == b'_'
+            && w[5 + TOKEN_KEY_LEN..].iter().all(secret)
+    })
 }
 
 /// Input platform of a source. Only the type string reaches the Core's generic code; the
@@ -126,6 +152,36 @@ mod tests {
         assert!(DisplayName::parse("").is_err());
         assert!(DisplayName::parse(&"é".repeat(60)).is_ok());
         assert!(DisplayName::parse(&"é".repeat(61)).is_err());
+    }
+
+    const TOKEN: &str = "awk_Abc123Def456_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO-_";
+
+    #[test]
+    fn display_name_is_trimmed_and_never_blank() {
+        assert_eq!(DisplayName::parse("  Main  ").unwrap().as_str(), "Main");
+        assert!(DisplayName::parse("   ").is_err());
+        assert!(DisplayName::parse(&format!(" {} ", "a".repeat(60))).is_ok());
+    }
+
+    #[test]
+    fn display_name_refuses_control_characters() {
+        assert!(DisplayName::parse("Main\nfeed").is_err());
+        assert!(DisplayName::parse("Main\u{7f}").is_err());
+        assert!(DisplayName::parse("Ma\u{85}in").is_err());
+    }
+
+    #[test]
+    fn display_name_refuses_any_token_shaped_part() {
+        assert_eq!(TOKEN.len(), 60);
+        assert!(DisplayName::parse(TOKEN).is_err());
+        assert!(DisplayName::parse(&TOKEN.replacen("awk_", "awd_", 1)).is_err());
+        let inside = format!("x{}", &TOKEN[..59]);
+        assert!(
+            DisplayName::parse(&inside).is_ok(),
+            "one char short is no token"
+        );
+        assert!(contains_token_shape(&format!("feed {TOKEN} copy")));
+        assert!(!contains_token_shape("awk_Abc123Def456 is my key id"));
     }
 
     #[test]
