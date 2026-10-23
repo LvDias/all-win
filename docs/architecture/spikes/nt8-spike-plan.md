@@ -1,6 +1,16 @@
 # NinjaTrader 8 spike plan and Windows build/test access (Q15)
 
-- **Status:** rev. 5 (2026-10-23).
+- **Status:** rev. 6 (2026-10-23).
+  - rev. 6, from the actual state: the user already installed Tailscale on the VPS and the Mac, and the VPS joined **untagged** through the user's login. The checklist now:
+    - applies the policy first;
+    - tags the VPS `tag:allwin-nt8` and renames it from the admin console, with **no auth key at all**;
+    - then turns on Tailnet Lock and signs the existing nodes (§6.3, §6.5 steps 3–4).
+    Review notes added:
+    - QA Security I1: the login URL goes to the user only;
+    - QA Security I2: the VPS host key is pinned;
+    - QA Security N1: `sshd` is never started before step 10;
+    - Code Review n1: the firewall check covers UDP 3389, Any-port rules, every profile and the interface;
+    - Code Review n2: the user verifies a node before approving or signing it.
   - rev. 5 (QA Security, Phase 2 review):
     - H1: OpenSSH Server is installed **before** `Lock-Firewall.ps1`, and `sshd` starts only after the firewall is verified (§6.5 steps 5–6, 10).
     - M1: the dev server joins by interactive login, and the user signs its node key on the Mac. No `tag:allwin-dev` auth key exists, so none passes through an agent (§6.3, §6.5 step 8).
@@ -142,19 +152,23 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
   - `tag:allwin-nt8` → anything: **nothing**. The VPS cannot open connections to the dev server or the Mac over the tailnet.
   - Nothing → `tag:allwin-dev`. The dev server is outbound-only in the tailnet; the user keeps using the normal SSH path to it.
   - No exit nodes, no subnet routes, and Tailscale SSH stays off: OpenSSH with keys remains the audited path.
-- **Auth keys (rev. 5, M1):**
-  - There is **one** auth key, for the VPS: single-use, pre-authorized, tagged `tag:allwin-nt8`. The user generates it and types it on the VPS. It is used once and then expires, and it is never stored in the repo or in logs.
-  - The dev server gets **no** auth key, so no reusable credential passes through an agent or its terminal. It joins by **interactive login** (§6.5 step 8): DevOps runs `tailscale up` without a key, the user opens the printed login URL and approves it, and then the user signs the new node from the Mac.
+- **No auth keys (rev. 6; M1):**
+  - The VPS already joined through the user's interactive login, untagged. The user tags it from the admin console (*Machines → Edit ACL tags*, `tag:allwin-nt8`) and renames it `allwin-nt8-01`. The user then checks there that key expiry is disabled for it, and disables it if not.
+  - The dev server also joins by **interactive login** (§6.5 step 8), so no reusable credential passes through an agent or its terminal:
+    - DevOps runs `tailscale up` without a key;
+    - the printed login URL works as a one-time capability, so DevOps sends it **only to the user** (QA Security I1);
+    - the user approves it as the tag owner, and signs the new node from the Mac.
 - **Tailnet Lock (on):**
   - The user's Mac is the trusted signing node; add a second signing node or keep the disablement secrets offline (password manager), as Tailscale requires, so losing the Mac does not lock the tailnet.
-  - The VPS auth key is **pre-signed** on the Mac: `tailscale lock sign <auth-key>` prints a new, signed auth key, and **that printed key** is the one used in `tailscale up --auth-key=…`. The original key would join an unsigned node.
-  - The dev server joins unsigned. The user signs it from the Mac with `tailscale lock sign <node-key>`. DevOps reads the node key from `tailscale lock status` on the dev server and sends it to the user; a node key is public, not a secret.
+  - Tailnet Lock is turned on **after** the policy is applied and the VPS is tagged (§6.5 step 4).
+  - Any node that `tailscale lock status` then reports as unsigned (the VPS, and later the dev server) is signed from the Mac with `tailscale lock sign <node-key>`. A node key is public, not a secret.
+  - **Before approving a login URL or signing a node key,** the user checks in the admin console that the pending node's hostname, OS and node key are the expected machine's (Code Review n2). Otherwise an agent could relay another machine's URL or key.
   - A node that is not signed cannot talk to the others: the T-checks below include (f).
 - **DNS:**
   - **MagicDNS** on, for names such as `allwin-nt8-01`.
   - The dev server runs Tailscale with `--accept-dns=false`, so its system resolver is not changed; it reaches the VPS by its Tailscale IP or a static hosts entry managed by DevOps.
   - The VPS and the Mac may use MagicDNS.
-- **Dev server specifics:** `tailscale up --advertise-tags=tag:allwin-dev --accept-dns=false --accept-routes=false`, with no `--auth-key`. The user approves the login URL while signed in as the tag owner (admin), so the tag applies. No ufw change is needed: the dev server only initiates connections, and the ACL blocks inbound tailnet traffic to it. Installing Tailscale on the dev server is a network change; the user **approved** it on 2026-10-23 (U1). Any other SSH/firewall/exposure change still needs its own approval.
+- **Dev server specifics:** `tailscale up --advertise-tags=tag:allwin-dev --accept-dns=false --accept-routes=false`, with no `--auth-key`. The user approves the login URL while signed in as the tag owner (admin), so the tag applies, and then confirms the tailnet, the tag and the signature in `tailscale status` / `tailscale lock status` (QA Security I1). No ufw change is needed: the dev server only initiates connections, and the ACL blocks inbound tailnet traffic to it. Installing Tailscale on the dev server is a network change; the user **approved** it on 2026-10-23 (U1). Any other SSH/firewall/exposure change still needs its own approval.
 - **Windows firewall on the VPS:**
   - Disable the default public inbound rules for Remote Desktop and `OpenSSH-Server-In-TCP`.
   - Add inbound allow rules for TCP 3389 and 22, scoped to remote addresses **100.64.0.0/10** (the Tailscale range) on the Tailscale interface only.
@@ -166,7 +180,7 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
   - Store the Administrator password in the user's password manager.
   - The panel's **VNC console** is the break-glass path if Tailscale or the firewall locks everyone out. DevOps confirms that Contabo offers it for Windows VPS (unverified).
   - Contabo's network-level firewall, if offered for this product, can additionally block all inbound except Tailscale's UDP (unverified, optional).
-- **Initial exposure window:** a new Contabo Windows VPS usually starts with RDP reachable on its public IP. To keep "never open to the internet" true, the first setup is done through the **VNC console**. If VNC is unavailable, the user does steps 3–6 of the checklist in one short first RDP session with the strong initial password, and then confirms with the T-checks below that 3389 is closed publicly.
+- **Initial exposure window:** a new Contabo Windows VPS usually starts with RDP reachable on its public IP. To keep "never open to the internet" true, the first setup is done through the **VNC console**. If VNC is unavailable, the user does steps 3–6 of the checklist in one short first RDP session with the strong initial password, and then confirms with the T-checks below that 3389 is closed publicly. (rev. 6) The VPS is already running, so this window is open **now**: steps 3–6 are done in one sitting, through VNC if available.
 - **Production stays out:** the future production server must **not** join this tailnet without a separate decision.
 
 ### 6.4 W3 — NT8 restarts (decided)
@@ -182,20 +196,26 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
 1. **Contract** the Contabo VPS (§6.1). Enable 2FA on the Contabo account. Save the Administrator password in the password manager.
 2. **Open the VNC console** in the Contabo panel and sign in as Administrator. Use the first RDP session only if VNC is unavailable, and keep it short.
 3. **Tailscale admin** (create the account if needed; enable 2FA on its login):
-   - apply `infra/tailscale/policy.hujson` (prepared by DevOps);
-   - enable **Tailnet Lock** with the Mac as signing node (and store the disablement secrets in the password manager);
-   - generate **one** single-use, pre-authorized auth key tagged `tag:allwin-nt8`, and pre-sign it on the Mac. Use the signed key that `tailscale lock sign` prints, not the original (§6.3). No key is generated for the dev server (M1).
-4. **VPS:** install Tailscale and join with the signed `tag:allwin-nt8` key (hostname `allwin-nt8-01`).
-5. **VPS:** install the **OpenSSH Server** capability, **without starting `sshd`**. The install creates the rule `OpenSSH-Server-In-TCP`, enabled for any remote address, and the default `sshd_config` accepts passwords. So the capability must exist before step 6 disables that rule, and `sshd` must stay stopped until step 10 (QA Security H1).
+   1. apply `infra/tailscale/policy.hujson` (prepared by DevOps), which makes the admin the owner of both tags;
+   2. the VPS is already in the tailnet, untagged (rev. 6): in *Machines*, set its ACL tag to `tag:allwin-nt8`, rename it `allwin-nt8-01`, and check that key expiry is disabled for it. If that login was done in a browser on the VPS, sign out of the identity provider there and clear its session (Google, GitHub, etc.), so it does not stay in the Administrator profile;
+   3. the Mac stays the user's own, untagged device.
+   **No auth key is generated** (rev. 6; M1).
+4. **Mac: turn on Tailnet Lock**, with the Mac as the trusted signing node:
+   - store the disablement secrets in the password manager, and add a second signing node or keep the secrets offline (§6.3);
+   - run `tailscale lock status`, and sign every node it reports as unsigned (today the VPS) with `tailscale lock sign <node-key>`, after the admin-console check of §6.3 (Code Review n2);
+   - confirm that the VPS shows as signed.
+5. **VPS:** install the **OpenSSH Server** capability, and **never start `sshd` before step 10**, not even once to generate its files (QA Security N1). The install creates the rule `OpenSSH-Server-In-TCP`, enabled for any remote address, and the default `sshd_config` accepts passwords. So the capability must exist before step 6 disables that rule (QA Security H1).
 6. **VPS:** run `infra/windows-test-host/Lock-Firewall.ps1` (DevOps). It:
-   - disables the public RDP rule and `OpenSSH-Server-In-TCP`;
+   - disables the public RDP rules and `OpenSSH-Server-In-TCP`;
    - adds the tailnet-scoped rules;
    - enforces NLA.
-   It is idempotent and ends with a check that fails loudly if any inbound rule for 3389 or 22 allows a remote address outside 100.64.0.0/10.
-7. **Mac:** install Tailscale, sign in, and from now on RDP only to `allwin-nt8-01`.
+   It is idempotent and ends with a check that fails loudly when an **enabled ALLOW** inbound rule, in any profile, meets both conditions (Code Review n1):
+   - it covers TCP or UDP 3389 (Windows ships "Remote Desktop - User Mode (UDP-In)") or TCP 22, including rules whose local port is Any or a range;
+   - it allows a remote address outside 100.64.0.0/10 or an interface other than Tailscale's.
+7. **Mac:** Tailscale is already installed and signed in. From now on, RDP only to `allwin-nt8-01`.
 8. **Dev server**, approved by the user on 2026-10-23 (U1):
    - DevOps runs `tailscale up` with the §6.3 flags and **no auth key**.
-   - The user opens the printed login URL on the Mac and approves it as the admin.
+   - The user opens the printed login URL on the Mac and approves it as the admin, after the admin-console check of §6.3 (Code Review n2).
    - DevOps reads the node key from `tailscale lock status` and sends it to the user.
    - The user runs `tailscale lock sign <node-key>` on the Mac (M1).
 9. **VPS, as Administrator:** create the standard user `allwin-agent` and add it to *Remote Desktop Users*. Install:
@@ -204,7 +224,8 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
    - Build Tools for Visual Studio (MSBuild + .NET Framework 4.8 targeting pack);
    - Git for Windows.
 10. **VPS:** run `infra/windows-test-host/Install-AllWinTestHost.ps1` (DevOps). In this order, it:
-    - writes the `sshd` config (`PasswordAuthentication no`, `AllowUsers allwin-agent`, `DefaultShell`) and the agents' public key;
+    - creates `sshd_config` from `sshd_config_default` and generates the host keys (`ssh-keygen -A`) **without starting the service**. The keys go to `%ProgramData%\ssh` with the ACLs `sshd` requires (SYSTEM and Administrators only), and the script checks those ACLs. Otherwise `sshd` refuses to start, which fails closed but stops the setup (Code Review note b, to be confirmed by DevOps). It then writes the settings (`PasswordAuthentication no`, `AllowUsers allwin-agent`, `DefaultShell`) and the agents' public key, and validates them with `sshd -t` (QA Security N1);
+    - prints the `ssh_host_ed25519` fingerprint. The user reads it on the VNC console and sends it to DevOps, and DevOps pins it in the agents' `known_hosts` with `StrictHostKeyChecking yes`. Trust on first use is not allowed (QA Security I2);
     - re-runs the `Lock-Firewall.ps1` check and **stops** if it fails;
     - only then sets `sshd` to automatic start and starts it;
     - sets up folders and logs;
@@ -219,11 +240,11 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
 
 - **T-checks** (in the spike report):
   - (a) from outside the tailnet, ports 3389 and 22 on the public IP are closed;
-  - (b) the dev server reaches `ssh allwin-agent@allwin-nt8-01`;
+  - (b) the dev server reaches `ssh allwin-agent@allwin-nt8-01` with the pinned host key and `StrictHostKeyChecking yes`;
   - (c) from the VPS, connections to the dev server's Tailscale IP are refused by the ACL;
   - (d) the Mac reaches RDP;
-  - (e) no auth key appears in any file or log, and none was ever handed to an agent;
-  - (f) `tailscale lock status` shows Tailnet Lock enabled and both nodes signed;
+  - (e) no auth key was generated. The dev server's login URL went from DevOps only to the user, never to another agent, a file or a log. Only public node keys and the host-key fingerprint were exchanged;
+  - (f) `tailscale lock status` shows Tailnet Lock enabled and every node signed (Mac, VPS, dev server), with the VPS tagged `tag:allwin-nt8` and the dev server tagged `tag:allwin-dev`;
   - (g) `sshd -T` reports `passwordauthentication no`, and `OpenSSH-Server-In-TCP` is disabled. Repeat (a) and (g) after each Windows feature update, because an update may re-enable default rules.
 - Then the spike starts (§7).
 
