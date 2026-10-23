@@ -99,7 +99,9 @@ Some events leave the user with a position or an account in an unsafe state and 
 
 ## 6. S18-03 Notification catalog
 
-Texts are examples (pt-BR / en); the Core sends `code` + `details`, and the web renders from its catalog, with fallback "Aviso {code}" (a missing translation is detectable, S4 AC-4). Title and body wording for risk events is the **same as C§5/S13** (no per-screen wording). All values are strings from the Core (X-3). **Grouping** is the Core's (PO-approved, with three limits): the same `code` + account + trading day collapses into one item with a count and a last-time; **the audit keeps one entry per event** (S10 AC-1); **the first occurrence of each group creates a new unread notification** (a later occurrence updates count and last time of the group, it does not mark it unread again); and the "notify once" of the profit target (S13 AC-5) and the 80 % warning **per state change** are unaffected by grouping.
+Texts are examples (pt-BR / en); the Core sends `code` + `details`, and the web renders from its catalog, with fallback "Aviso {code}" (a missing translation is detectable, S4 AC-4). Title and body wording for risk events is the **same as C§5/S13** (no per-screen wording). All values are strings from the Core (X-3). **Grouping** is the Core's (PO-approved, with three limits): the same `code` + account + trading day collapses into one item with a count and a last-time; **the audit keeps one entry per event** (S10 AC-1); **the first occurrence of each group creates a new unread notification** (a later occurrence updates count and last time of the group; **by default it does not mark the group unread again** — see the Q68 exception below); and the "notify once" of the profit target (S13 AC-5) and the 80 % warning **per state change** are unaffected by grouping.
+
+**Reopening rule [Provisional, Q68 rec. (b); user decides]:** for the `danger` refusal codes `routing.risk_blocked`, `routing.out_of_sync` and `routing.expired`, **each new occurrence in the same trading day reopens the group as unread** (`read_at` cleared, the count and last time updated, a new `revision`); for every other grouped code the group stays read and only the count and last time rise. A reopened group counts again in the unread count, bumps the bell and, as a `danger` item, raises the toast (§3).
 
 | Category | Code (S10 catalog / proposal) | Severity | Title / body pt-BR | Link |
 |---|---|---|---|---|
@@ -172,7 +174,7 @@ Texts are examples (pt-BR / en); the Core sends `code` + `details`, and the web 
 
 **Plugin panel — data list (the panel is designed by the Plugin Engineer, per the NinjaTrader host's UI conventions):**
 - Same fields as above: id, time (UTC instant, shown in the user's time zone), `severity`, `code` + `details` rendered by the plugin's own catalog in the user's language (S4 AC-3), account (platform account name when mapped), count, read state, short link target (a text hint such as "Abrir no All Win", not a URL with a secret).
-- Unread count and worst severity for the plugin's status area.
+- Unread count and worst severity for the plugin's status area. Protocol 1.3 (Esquadro): the snapshot after `welcome` carries the last 200 items and an **authoritative `unread_count`** covering everything; each `notification` is an upsert with a monotonic `revision`; codes, severities and `params` schemas are in `contracts/notifications/v1/registry.json`, while the pt-BR/en texts stay in each client's catalog with a drift test (every registry code has a key in both languages in both clients).
 - Mark read from the plugin; there is **one** set of notifications and **one** unread count, so reading on either side counts on both (PO).
 - Critical items and the state `blocked until {time}` (S15 AC-6) are shown in the plugin even when the Core is unreachable, from the plugin's cached state (PO, consistent with S15 AC-4; cache detail: Plugin Engineer/Architect).
 - Terms for plugin text: F§5 glossary.
@@ -189,6 +191,7 @@ Texts are examples (pt-BR / en); the Core sends `code` + `details`, and the web 
 |---|---|---|
 | Q50 | Skip for a missing stop/target profile | Notify, grouped (`warning`) |
 | Q51 | "Maximum alert" (Q27) | A top-of-page alert in the Web that cannot be dismissed until the item is marked read (`CriticalBanner`), an equivalent in the plugin, and the audit entry |
+| Q68 | Grouped notifications that keep happening | `danger` refusals (`routing.risk_blocked`, `routing.out_of_sync`, `routing.expired`) reopen the group as unread on each new occurrence in the same trading day; all other groups stay read and only the count rises |
 
 ## 11. AC traceability
 

@@ -108,7 +108,7 @@ The texts in the S3-11 table are the contract between web and plugin and are use
 - **Connected:** section **Estado** (badge, connection name as defined in the web (`welcome.connection_name`, protocol 1.3), plugin version and build, last connected time with zone), section **Contas do NinjaTrader** (§4.3), section **Segurança deste computador** (§4.4), and the `Desconectar este computador` button (§4.5).
 - **Disconnected:** "Sem conexão com o All Win. Tentando reconectar…" + "Última conexão: {time}". Below, a fixed note: "Se a aplicação automática estiver ligada, o NinjaTrader continua aplicando os últimos limites recebidos." / "If automatic enforcement is on, NinjaTrader keeps applying the last limits received." (S15 AC-4). No other action.
 - **Revoked:** "Esta instância foi despareada ou movida para outra máquina no All Win. Gere um novo código para conectar." and "A aplicação automática de risco deixou de funcionar neste computador para as contas desvinculadas." (G7). The pairing form appears below. State and notifications cache cleared (the unread count shows `—`).
-- **Update required:** "Versão do plugin não suportada. Atualize o plugin." + a link to `/<locale>/download` on the paired origin (G8).
+- **Update required:** "Versão do plugin não suportada. Atualize o plugin." + a link to `/<locale>/download` on the build's origin constant (G8).
 
 ### 4.3 NinjaTrader accounts list
 
@@ -201,12 +201,12 @@ Shown from `limits.enforcement_enabled`: `Aplicação automática: ligada` (info
 The notification list in the plugin is the same set and the same unread count as the web (PO: one set, one count; reading on either side counts on both).
 
 - **Toolbar:** `ToggleButton`s `Todas` / `Não lidas`; button `Marcar todas como lidas`; the unread count.
-- **List** (`ListView`, virtualized, newest first; critical unread pinned first, then unread by time, then read): each item shows severity icon + sr-only/automation name ("Crítica", "Atenção", …), title, body (1–2 lines), account, absolute time with zone, `×{n}` and "última às {time}" when grouped, a text badge `Nova` when unread, and the buttons `Marcar como lida` (read items show "Lida"). `Abrir no All Win` opens `https://<origin>/<locale>/accounts/<account_id>` (origin of the paired Core, no secret, G6) in the default browser **[Elo: feasibility]**; items without an account open the notifications list in the web.
+- **List** (`ListView`, virtualized, newest first; critical unread pinned first, then unread by time, then read): each item shows severity icon + sr-only/automation name ("Crítica", "Atenção", …), title, body (1–2 lines), account, absolute time with zone, `×{n}` and "última às {time}" when grouped, a text badge `Nova` when unread, and the buttons `Marcar como lida` (read items show "Lida"). `Abrir no All Win` opens `<welcome.app_url>/<locale>/accounts/<account_id>` (absolute https origin from `welcome.app_url`, no secret, G6) in the default browser **[Elo: feasibility]**; items without an account open the notifications list in the web.
 - **Source and rendering (protocol 1.3, G1):** the Core sends the snapshot (`notifications`, up to 200) after `welcome` and upserts (`notification`); the plugin renders each item from `code` + `params` (codes and values, not text) with its own pt-BR/en catalog, and marks read with `notification_read`.
 - **Catalog:** the codes, severities, titles and bodies are those of the S18 catalog (§6 of the S18 spec) and S10 catalog; the plugin keeps its own pt-BR/en resource copy for the codes it can render; an unknown code renders "Aviso {code}" with the details collapsed. Grouping (same code + account + trading day) is done by the Core.
 - **Window limits:** the last 200 items are a display cache (the record is the audit log, PO); below the list "Mostrando os últimos 200 avisos. Os mais antigos estão no All Win."
 - **States:** loading (first sync) "Carregando…"; empty "Nenhum aviso." ; disconnected: banner "Sem conexão: a lista pode estar incompleta." and the count shows `3*` with the tooltip "Alguns avisos podem ainda não ter sido sincronizados."; Revoked/Not paired: tab hidden.
-- **Offline behavior:** events the plugin itself raised while the Core was unreachable (warnings, flatten, block, reactive cancels, `while_disconnected: true`) appear locally with the tag `Ainda não sincronizado`; after reconnection the Core creates the notifications from the delivered `risk_event`s and each local copy is replaced by the Core's notification when the notification's optional `source_event_id` (protocol 1.3, a dedicated field, not in `params`) equals the local copy's adapter `event_id`: it is the same list item and keeps its position. A notification without `source_event_id` (born in the Core, e.g. consistency or Core `sync.*`) is always a new item. Never match by time + code. Marking read while offline is queued and sent on reconnect.
+- **Offline behavior:** events the plugin itself raised while the Core was unreachable (warnings, flatten, block, reactive cancels, `while_disconnected: true`) appear locally with the tag `Ainda não sincronizado`; after reconnection the Core creates the notifications from the delivered `risk_event`s and each local copy whose adapter `event_id` is on the notification's `source_event_ids` list (protocol 1.3, a dedicated field, not in `params`) is replaced by that notification: the same list item, keeping its position. A notification without `source_event_ids` (born in the Core, e.g. consistency or Core `sync.*`) is always a new item. Never match by time + code. Marking read while offline is queued and sent on reconnect.
 - **Critical items:** `critical` notifications also drive the header strip (§2.2). The strip uses `AutomationProperties.LiveSetting=Assertive` only when the item arrives while the window is open; on window load it is a labeled region and does not re-announce.
 
 ---
@@ -296,23 +296,26 @@ Terms follow F§5 (conta, limite, alerta, fora de sincronia, parear/desparear, p
 |---|---|---|
 | G1 | **In V1 (1.3):** C→A `notifications` (snapshot after `welcome`, up to 200 items, read and unread); C→A `notification` (reliable, upsert by `notification_id` with `code`, `severity`, optional `account_id`, `params` as codes and values, `count`, `created_at`, `updated_at`, optional `read_at`); A→C `notification_read` (`notification_ids[]`, `read_at`). Reading in the web arrives as a `notification` with `read_at`. One set, one count | §6 renders from `code` + `params` with the plugin's own pt-BR/en catalog (the plugin translates); read state shared both ways |
 | G2 | `welcome.connection_name` (1.3) | `Conexão` tab shows the name; before 1.3 the line is omitted |
-| G3 | `welcome.accounts[].display_name` (1.3) | account cards show it; before 1.3 only `platform_account` |
+| G3 | `welcome.accounts[].display_name` (1.3); a rename applies at the next `welcome` (not in `account_state`) | account cards show it; before 1.3 only `platform_account` |
 | G4 | `welcome.time_zone` (IANA, profile) (1.3). Renaming or changing the zone applies at the next `welcome` (reconnection) | §3.4 uses it; before 1.3 the Windows time zone, always labeled |
 | G5 | Consistency goes as a **notification** (no meter, Q-P4) | §6 catalog row only |
-| G6 | No protocol change: base URL = origin of the paired Core; deep link `https://<origin>/<locale>/accounts/<account_id>`, no secret | `Abrir no All Win` is a real link (Elo still confirms launching the default browser) |
+| G6 | **`welcome.app_url`** (absolute https origin, no path or secret); deep link `<app_url>/<locale>/accounts/<account_id>` | `Abrir no All Win` is a real link (Elo still confirms launching the default browser) |
 | G7 | No protocol change: unpairing (or an unmapped account) **stops the local enforcement of that account** (ADR-0004 §7) | `Revoked` state and the web unpair say so; see §4.2 |
-| G8 | No protocol change: static link `/<locale>/download` on the paired origin | `Update required` link |
+| G8 | Build constant (release → production origin, development → local); link `/<locale>/download` on it | `Update required` link |
 
-**Plugin Engineer's technical preferences (decision belongs to the protocol owner; the minor version is the owner's call):**
-- G1: `notification` as an idempotent upsert with a monotonic `revision` per id (grouping updates count and last time); `source_event_ids` (a list) instead of a single id if one notification can come from several events; a snapshot message with an **authoritative `unread_count`** (it can exceed 200); the pt-BR/en catalog as a data file under `contracts/` consumed by both clients with a drift test, fallback "Aviso {code}" only for new codes.
-- G2: treat `connection_name` as untrusted text (maximum length, no markup). G3: also send `display_name` in `account_state` so renames appear without reconnecting.
-- G4: IANA → Windows ids need a generated CLDR table in `AllWin.Adapter.Core` (already needed today for `trading_day.time_zone`).
-- G6: prefers `welcome.app_url` over deriving the origin (staging and production differ); the plugin accepts only `https` and logs only the host. Protocol owner's current answer is the Core's origin; to be settled between them.
-- G8: a per-build constant (the 4003 close arrives before `welcome`), from the same compile-time source as `AdapterBuild`.
+**Final decisions of the protocol owner (Esquadro) on the Plugin Engineer's preferences, protocol 1.3:**
+- **G1 `revision`:** accepted. A monotonic integer per `notification_id`; the plugin applies an upsert only if the revision is greater than the one it holds, so it does not depend on delivery order.
+- **G1 `source_event_ids`:** accepted as a **list** (replaces the single id): the `event_id`s of the plugin's A→C messages aggregated in that notification (`count`), at most the 50 most recent. The plugin replaces each local "not yet synced" copy whose `event_id` is on the list.
+- **G1 snapshot:** the `notifications` snapshot carries the last 200 items and an **authoritative `unread_count`** that covers everything, including unread items older than the 200.
+- **Catalog (accepted in part):** the codes, severities and the schema of each code's `params` are a data file in the contract (`contracts/notifications/v1/registry.json`, the protocol owner's). The pt-BR/en **texts stay in each client's catalog** (web and plugin own their UI copy), with a drift test: every code in the registry has a key in both languages in both clients and no key is orphaned. The fallback "Aviso {code}" is only for codes newer than the plugin.
+- **G3 `display_name` in `account_state`:** declined for V1; a rename takes effect at the next `welcome`.
+- **G6 `welcome.app_url`:** accepted, replacing the earlier "origin of the Core": an absolute `https` origin with no path or secret; deep links are built on it. The plugin accepts only `https` and logs only the host.
+- **G8:** a **build constant** (the 4003 close arrives before `welcome`): release builds point at the production origin, development builds at the local one.
+- **G2 / G4:** as in the table (connection name is untrusted display text, bounded and without markup; IANA zones map to Windows ids via the generated CLDR table in `AllWin.Adapter.Core`).
 
 **Out of V1 (protocol owner):** live propagation of a changed name or time zone (next `welcome` only), history beyond 200 items and search in the plugin, a consistency meter, sound, clearing `out_of_sync` in the plugin, editing any configuration from the plugin.
 
-**Correlation (answered by the protocol owner):** the 1.3 `notification` carries an optional `source_event_id` = the `event_id` of the A→C message that produced it (the `risk_event`, or the `execution_report` when that is the source); the key is always the adapter's durable `event_id`.
+**Correlation (protocol owner):** the 1.3 `notification` carries `source_event_ids` (a list, at most the 50 most recent `event_id`s of the A→C messages aggregated in it); the key is always the adapter's durable `event_id`.
 
 
 ---

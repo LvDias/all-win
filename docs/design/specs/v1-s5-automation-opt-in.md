@@ -133,7 +133,7 @@ Default sort: name A→Z. No pagination in V1 (a user has tens of accounts); vir
 
 Help under *Máximo de contratos*: "Limite de contratos que o All Win envia a esta conta. Instruções acima disso são cortadas e registradas." (vision §8). Under *Multiplicador*: "Quantidade executada = quantidade da instrução × multiplicador." (S7 AC-3).
 
-For a **real** account under "Tamanho" a read-only line: "Perfil de stop/alvo inicial: tamanho padrão mais próximo ({size})." (value from the Core; the profile itself is S6).
+For a **real** account under "Tamanho", on an **exact tie** between two standard sizes (S6 **Q60**, provisional) the form shows a required `RadioGroup` "Copiar o perfil de stop/alvo de qual tamanho?" with the two candidates (from `getNearestProfileSize`; nothing preselected; sent as `profile_size`). Otherwise a read-only line: "Perfil de stop/alvo inicial: tamanho padrão mais próximo ({size})." (value from the Core; the profile itself is S6).
 
 ### 4.3 Section "Conta na plataforma" (link, AC-1)
 

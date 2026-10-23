@@ -70,7 +70,7 @@ No pagination, no sorting controls: six fixed rows in size order.
 
 - Note at the top: "Vale para contas novas deste tamanho. Contas existentes mantêm o próprio perfil." **[Confirmed by PO: only new accounts are affected; each account keeps its own copy (S6 AC-2).]**
 - Actions: `Salvar perfil` (primary), `Cancelar`. Submit: spinner + "Salvando…", disabled, duplicate-submit ignored (F§10). Unsaved changes + Cancel → `AlertDialog` "Descartar alterações?".
-- Errors: 422 with `pointer` mapped to `/stop_distance`, `/target_distance`, `/distance_unit`; other errors as a destructive `Alert` in the dialog; values kept.
+- Errors (contract 2.3.0): **400 `common.invalid_request` with a `pointer`** (`/stop_distance`, `/target_distance`, `/distance_unit`) for a schema error: fractional **ticks**, a dollar value with more than 2 decimals, a missing field; **422** for a rule: `profiles.distance_below_one_tick` (zero or less than one tick after conversion; pointer `/stop_distance` or `/target_distance`) "A distância precisa ser de pelo menos 1 tick." and `profiles.distance_too_large` (above 10 000 ticks) "A distância é grande demais.". Each maps to the field of its pointer and takes focus; anything else is a destructive `Alert` in the dialog; values kept.
 - Success: closes, focus returns to the row's button, toast, audited (§8).
 - No step-up (not in the S3 list, Q35 recommended list).
 
@@ -81,7 +81,7 @@ No pagination, no sorting controls: six fixed rows in size order.
 | Field | Component | Validation (client; the Core is the authority) |
 |---|---|---|
 | Unidade / Unit | `RadioGroup` of three cards: `Pontos` / `Points`, `Ticks`, `Dólares` / `Dollars (US$)`. Nothing preselected for a new profile | required |
-| Stop | `Input inputMode=decimal` (`numeric` for ticks) with the unit as a suffix | required; > 0; **points:** multiple of the tick size ("Use múltiplos de 0,25" / "Use multiples of 0.25", values from the Core); **ticks:** whole number ("Digite um número inteiro de ticks."); **dollars:** ≤ 2 decimals **[proposal; the data model allows 4, Architect to widen if needed]** |
+| Stop | `Input inputMode=decimal` (`numeric` for ticks) with the unit as a suffix | required; > 0; **ticks:** whole number ("Digite um número inteiro de ticks."); **points and dollars:** **not** checked against the tick: an off-tick value is **accepted** and the Core rounds it toward the entry (the preview says so); **dollars:** ≤ 2 decimals (contract) |
 | Alvo / Target | same | same |
 
 Number parsing follows F§6.3 (no thousands separators; pt-BR accepts `,` and `.`). The value sent is a canonical decimal string.
@@ -105,7 +105,8 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 **Layout:** tab `Perfil` on the account detail (S5 §8), content in `Card`s:
 
 1. **Perfil de stop e alvo ({instrument})** card: unit, stop, target (formatted per F§6.2), the "Equivale a" values from the Core (ticks/points/dollars), and the origin line:
-   - copied: "Copiado do perfil padrão de {size} em {date time zone}." / for a real account of another size: "Baseado no perfil padrão do tamanho mais próximo ({size}), copiado em {date}."
+   - `origin` from the contract: `size_default` — "Copiado do perfil padrão de {size} em {date time zone}."; `nearest_size_default` — see below; `set_by_user` — "Definido por você em {date time zone}." (no source size).
+   - copied (`size_default`): / for a real account of another size: "Baseado no perfil padrão do tamanho mais próximo ({size}), copiado em {date}."
    - customized: badge `Personalizado` / `Customized` (`PencilLine`, as F§7.4 `Editado`) + "Padrão do tamanho {size} hoje: {values}" in a popover.
    - Actions: `Personalizar` / `Editar` (opens the same `DistanceFields` dialog, S6-02 layout, title "Perfil da conta {name}"); `Restaurar padrão do tamanho` (`AlertDialog`: "Substituir o perfil desta conta pelo padrão atual de {size}?" confirm `Restaurar`) **[Confirmed by PO: copies the current default to the account, audited]**.
 2. **Modo de stop e alvo** card: "Individual (padrão)" with the AC-3 explanation: "Cada entrada tem o próprio stop e alvo, calculados a partir do preço em que ela foi preenchida. Uma segunda entrada não move as ordens da primeira." The shared-mode selector belongs to S8 and is **not drawn here** (confirmed by PO: per-account setting owned by S8 AC-5; S6 shows `Individual` read-only).
@@ -135,7 +136,7 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 | Dialog title | Perfil de {size} · {instrument} | {size} profile · {instrument} |
 | Rounding | Será usado {n} ticks ({value}), arredondado em direção à entrada. | {n} ticks ({value}) will be used, rounded toward the entry. |
 | Whole ticks | Digite um número inteiro de ticks. | Enter a whole number of ticks. |
-| Tick multiple | Use múltiplos de {tick}. | Use multiples of {tick}. |
+| Below one tick | A distância precisa ser de pelo menos 1 tick. | The distance must be at least 1 tick. |
 
 ---
 
@@ -166,7 +167,7 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 
 | Action | Notes |
 |---|---|
-| `putDefaultProfile` (instrument, size, unit, stop, target) | idempotent upsert; 422 pointers `/distance_unit`, `/stop_distance`, `/target_distance`; codes e.g. `profiles.not_whole_ticks`, `profiles.not_tick_multiple`, `profiles.not_positive` (names proposed) |
+| `putDefaultProfile` (instrument, size, unit, stop, target) | idempotent upsert; 400 `common.invalid_request` with pointers `/distance_unit`, `/stop_distance`, `/target_distance` (fractional ticks, more than 2 decimals); 422 `profiles.distance_below_one_tick`, `profiles.distance_too_large`. Off-tick points and dollars are **accepted**: no `not_tick_multiple` or `not_whole_ticks` 422 exists |
 | `putAccountProfile` (account, instrument, unit, stop, target, `row_version`) | `common.version_conflict` |
 | `restoreAccountProfile` (account, instrument) | copies the current default of the account's size; audited (`profiles.account_changed`, "restaurado do padrão") |
 
@@ -180,7 +181,9 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 
 **Provisional until the user decides Q43:** an entry that reaches an account with no stop/target profile is **ignored and audited** with the reason "sem perfil de stop/alvo" (`routing.no_bracket_profile`, proposed code); exits continue (P1). The banner in §3 and the empty state in §6 say so.
 
-**Architect (Compasso):** Q-S6-6 dollar input decimals (form uses 2; data model allows 4); Q-S6-7 which size a real account between two sizes uses ("nearest"), computed by the Core; the new reason code and the preview endpoint (§9).
+**Architect (Compasso), resolved in the contract:** dollars accept at most 2 decimals; off-tick points and dollars are rounded toward the entry (not rejected); `profiles.default_missing` on restore when the size has no default; `previewProfile` is a `GET` with query parameters.
+
+**User question drawn as recommendation, provisional:** **Q60** which standard size a real account between two sizes copies: the Core offers the nearest candidate (below 25k → 25k, above 300k → 300k); on an **exact tie** the user picks one of the two in the account form (`getNearestProfileSize`, `createAccount.profile_size`); the Core never chooses. If the user later decides "smaller" or "larger", the list always has one entry and nothing else changes.
 
 ## 11. Accessibility
 

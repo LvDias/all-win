@@ -63,7 +63,7 @@ PageHeader: Roteamento                                         [Adicionar conta]
 | Situação / Status | see S7-03: `Recebe` (success) or `Não recebe agora` (neutral/warning) + the reason |
 | Ações | kebab: `Configurar` (opens S7-02), `Remover rota` |
 
-**Turning the switch** off saves immediately, toast "Rota desativada." / on: "Rota ativada." (no step-up). Failure: switch returns, toast with code. While saving, the switch is `aria-busy` and disabled. The route's saved signal types are kept when switched off.
+**Turning the switch** off saves immediately, toast "Rota desativada." / on: "Rota ativada." (no step-up). Failure: switch returns, toast with code. While saving, the switch is `aria-busy` and disabled. The route's saved signal types are kept when switched off. Turning **on** is unavailable while the account is ineligible (§5.2, Q67 provisional); turning off is always allowed.
 
 **States**
 
@@ -124,9 +124,15 @@ For an **automated** source (`is_automated`), an account whose `automation` opt-
 
 The control is **disabled but focusable** (`aria-disabled="true"`), with `Lock`; the reason is inline on touch layouts and a `Tooltip` on pointer layouts (also on focus and tap, F§9), and is the control's `aria-describedby`.
 
-### 5.2 Existing route that became inactive
+### 5.2 Existing route that became inactive **[Provisional, Q67 rec. (b); user decides]**
 
-If a route existed before the account changed to `declined` or `pending_review`, the **route stays visible**, shown inactive (`Situação` = `Não recebe agora` with the same reason) and is not silently deleted. The switch stays on the user's saved value but disabled with the reason. **[PO/S7 to confirm: keep and skip at runtime vs. remove, §11 Q-S7-2; this spec draws "keep".]**
+Compliance rule (S7 AC-6, S5 AC-11): nothing restarts by itself when an account that stopped accepting automation accepts again.
+
+- When the account changes to `declined` or `pending_review`, the **route stays visible and is not deleted** (PO, Q-S7-2), but the Core **turns it off** and records why (audit `routing.subscription_changed` with the cause). The `Situação` cell reads `Não recebe agora` with the reason, for example "Esta conta não aceita ordens automatizadas" or "Escolha de automação pendente nesta conta".
+- **Turning a route off is always allowed**, whatever the account state.
+- **Turning it on is unavailable while the account is ineligible**: the switch is `aria-disabled` (focusable) with the reason inline and in `aria-describedby`, plus the links `Alterar na conta` or `Revisar` (S7-03 §5.1).
+- When the account accepts again, the route is **still off**: nothing resumes on its own. The switch becomes available and the user turns it on deliberately; the toast says "Rota ativada." The `Situação` cell for an off route reads `Desligada` (not `Não recebe agora`) once the account is eligible again.
+- A race (the account changed while the user clicked) is answered by the Core with a refusal (`routing.route_not_eligible`, proposed) and the switch returns to off with the reason.
 
 ### 5.3 Effective status (all reasons, one cell)
 
@@ -219,10 +225,12 @@ Read-only reverse view: one row per source that has a route for this account: so
 | ID | Decision | Where |
 |---|---|---|
 | Q-S7-1 | No signal type preselected, at least one required (design decision, S7 AC-2, Q-A4) | §4 |
-| Q-S7-2 | Route of an account that declined automation stays **inactive with its reason**, never removed. An instruction that arrives is skipped and audited as "conta não aceita fontes automatizadas" (S7 AC-6, S5 AC-11) | §5.2 |
+| Q-S7-2 | Route of an account that declined automation stays **inactive with its reason**, never removed. What the switch does is Q67 (provisional). An instruction that arrives is skipped and audited as "conta não aceita fontes automatizadas" (S7 AC-6, S5 AC-11) | §5.2 |
 | Q-S7-3 | Routes of a revoked source are read-only; the source shows as revoked; nothing is deleted (S10 AC-3) | §3 states |
 | Q-S7-5 | Creating or editing a route while the connection is disconnected is allowed (configuration only; nothing executes late, S12 T1/T2); the status shows the reason | §5.3 |
 | Q-S7-6 | Reason-code names belong to the Architect; those in this spec are proposals | §5, §10 |
+
+**User question drawn as recommendation (b), provisional:** **Q67** (compliance, S7 AC-6) — turning a route **off** is always allowed; turning it **on** is unavailable while the account is ineligible, with the reason; when the account accepts again nothing restarts by itself (the route stays off until the user turns it on). *Contract changes this implies, for the Architect:* the Core sets `is_enabled = false` and audits it when the account becomes ineligible for the source; `updateRoute` with `is_enabled = true` for an ineligible account is refused (`routing.route_not_eligible`); the effective status of an off route whose account is eligible again is `route_disabled`.
 
 **Provisional until the user decides Q37:** Q-S7-4 an account with no bound platform account is not offered for routing (`platform_unbound`).
 
