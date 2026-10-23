@@ -1,5 +1,8 @@
 # Adapter protocol — changelog
 
+## 1.2 registry addendum — 2026-10-23 (documentation only; no schema change, no version bump)
+- `reason-codes.md`: new code `order.live_consent_cancelled` (`cancelled`, `entry`/`exit`, terminal, failure for `depends_on`): the plugin cancelled on its own a working All Win order on a live account without consent (ADR-0005 §N11 row 2). Valid on every version (`reason_code` is the generic `$defs/code`). Web and plugin catalogs need the key in pt-BR and en.
+
 ## 1.2 — 2026-10-23 (additive; Proposed until Code Review) — U13 position-identity guard
 - `command.refs.position_ref` (C→A): the `command_id` of the All Win `place` (open) command whose fill took the account's position in that instrument from flat to non-flat. Allowed only on `place` with `position_effect: reduce`, and **required** there from 1.2; forbidden on 1.0/1.1 envelopes (schema-enforced).
 - The adapter executes a reduce only if its current position has that identity; otherwise `rejected` + new reason code `command.position_changed`, nothing submitted. The Core sets `out_of_sync` (`sync.position_changed`), alerts, audits and waits (alert and wait). `flatten` is unchanged: no guard, no expiry (U13 option A, user decision 2026-10-23).
