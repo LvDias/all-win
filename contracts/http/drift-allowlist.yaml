@@ -6,18 +6,11 @@
 not_implemented:
   - applyPresetVersion
   - archiveAccount
-  - cancelChannelChange
-  - completeSignup
   - createAccount
-  - createConnection
-  - createInvitation
   - createManualTrade
   - createRoute
-  - createSource
   - deleteManualTrade
   - deleteRoute
-  - eventStream
-  - forgetDevice
   - getAccount
   - getAccountArchiveImpact
   - getAccountPreset
@@ -26,11 +19,8 @@ not_implemented:
   - getAccountRiskRules
   - getActivityEntry
   - getActivityFilterOptions
-  - getChallengeDelivery
   - getFirm
   - getInstructionTimeline
-  - getMe
-  - getMySecurity
   - getNearestProfileSize
   - getOptInRules
   - getPerformance
@@ -42,57 +32,49 @@ not_implemented:
   - listAccountProfiles
   - listAccounts
   - listActivity
-  - listConnections
   - listDefaultProfiles
-  - listDevices
   - listFirmReleases
   - listFirms
   - listInstruments
-  - listInvitations
   - listNotifications
   - listRiskSummaries
   - listRouteCandidates
   - listRoutes
-  - listSources
   - listTrades
-  - listUsers
-  - logout
-  - lookupInvitation
   - markNotificationRead
   - markNotificationsRead
-  - newPairingCode
-  - pairAdapter
   - previewAccountRiskRules
   - previewManualTrade
   - previewProfile
   - putAccountProfile
   - putAccountRiskRules
   - putDefaultProfile
-  - renameConnection
-  - renameSource
-  - requestLoginCode
-  - requestStepUp
-  - resendCode
   - restartEvaluation
   - restoreAccountProfile
   - restorePresetValue
-  - revokeInvitation
-  - revokeSource
-  - rotateSource
   - setAccountLifecycle
   - setAccountOptIn
-  - signOutEverywhere
-  - startChannelChange
-  - startSignup
-  - unpairConnection
   - updateAccount
   - updateManualTrade
-  - updateMe
   - updateRoute
-  - verifyChannelChangeCode
-  - verifyLoginCode
 
 # Differences utoipa cannot express: {operationId, pointer (in the canonical operation), reason}.
 # `const: X` and the single-value `enum: [X]` are equivalent in JSON Schema; the check normalizes
 # const to the enum form on both sides, so that difference needs no entry here.
-entries: []
+entries:
+  # S3 (contract 2.0.0+). ChannelChange: on_hold requires hold_until.
+  - operationId: getMySecurity
+    pointer: /responses/200/content/application~1json/schema/properties/pending_channel_change/allOf
+    reason: "the Core generator (utoipa) cannot express if/then; the handler always sends hold_until with status on_hold (tested in identity-infra http handlers: on_hold_changes_always_carry_hold_until). Remove when the generator can emit allOf if/then."
+  - operationId: startChannelChange
+    pointer: /responses/202/content/application~1json/schema/allOf
+    reason: "the Core generator (utoipa) cannot express if/then; the handler always sends hold_until with status on_hold (tested in identity-infra http handlers: on_hold_changes_always_carry_hold_until). Remove when the generator can emit allOf if/then."
+  - operationId: verifyChannelChangeCode
+    pointer: /responses/200/content/application~1json/schema/allOf
+    reason: "the Core generator (utoipa) cannot express if/then; the handler always sends hold_until with status on_hold (tested in identity-infra http handlers: on_hold_changes_always_carry_hold_until). Remove when the generator can emit allOf if/then."
+  # Not a schema difference, so not an entry (the check rejects entries without a difference):
+  # Connection.disconnect_reason (createConnection, listConnections, renameConnection; SSE
+  # connection.status_changed) is omitted for status disconnected, against "present when
+  # disconnected" (Esquadro, temporary exception): only the gateway knows user (close 4100) vs
+  # network. outdated/unpaired are always sent. Removed when S2 records the close code
+  # (identity.adapter_connection.disconnect_reason).
