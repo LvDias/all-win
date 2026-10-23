@@ -137,10 +137,10 @@ export function toWriteBody(
 
 export const toUpdateBody = (body: Omit<AccountCreateBody, "kind">, rowVersion: number): AccountUpdateBody => ({ ...body, row_version: rowVersion });
 
-/** Maps an API error pointer to a form field name, or null when it has no field. */
 /** True when a form error message is one of our i18n keys (translated by the field) rather than server text. */
 export const isFormErrorKey = (message: string | undefined): message is string => message !== undefined && (Object.values(formErrorKeys) as string[]).includes(message);
 
+/** Maps an API error pointer to a form field name, or null when it has no field. */
 export function fieldFromPointer(pointer: string | undefined): keyof AccountFormValues | null {
   switch (pointer) {
     case "/display_name":

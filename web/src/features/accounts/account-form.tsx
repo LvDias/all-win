@@ -11,7 +11,7 @@ import { defaultLocale, isLocale } from "@/shared/i18n/config";
 import { withLocale } from "@/shared/i18n/paths";
 import { StepUpCancelled } from "@/shared/session/step-up";
 import { Alert } from "@/shared/ui/alert";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { ErrorState } from "@/shared/ui/error-state";
@@ -109,8 +109,15 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
     const body = toWriteBody(merged, { kind: account.kind, locale, automationRuleVersionId: rule?.id });
     const send = (proof?: { challenge_id: string; code: string }) => update.mutateAsync(toUpdateBody({ ...body, ...(proof ? { step_up: proof } : {}) }, account.row_version));
     try {
-      if (needsStepUp(body.opt_ins)) await runStepUp({ action: "account_opt_in_accept", target: account.id, description: t("accounts.form.stepUpDescriptionEdit"), send });
-      else await send();
+      // Always through the runner: it sends without proof first and only opens the dialog when the Core asks, which also covers
+      // a binding change on an account that receives automation (account_binding_change, Q35).
+      const accepting = needsStepUp(body.opt_ins);
+      await runStepUp({
+        action: accepting ? "account_opt_in_accept" : "account_binding_change",
+        target: account.id,
+        description: t(accepting ? "accounts.form.stepUpDescriptionEdit" : "accounts.form.stepUpDescriptionBinding"),
+        send,
+      });
       toast.success(t("accounts.form.success.saved"));
       router.push(withLocale(locale, `/accounts/${account.id}`));
     } catch (error) {
@@ -187,10 +194,9 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
       </div>
 
       <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
-        <AlertDialogContent>
+        <AlertDialogContent aria-describedby={undefined}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("accounts.form.discard.title")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("accounts.form.discard.title")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel autoFocus>{t("accounts.form.discard.keep")}</AlertDialogCancel>

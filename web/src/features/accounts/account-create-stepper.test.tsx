@@ -4,6 +4,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/shared/api/client";
 import { server } from "@/test/server";
 import { StepUpCancelled } from "@/shared/session/step-up";
 import { AccountCreateStepper } from "./account-create-stepper";
@@ -283,6 +284,38 @@ describe("AccountCreateStepper", () => {
     await waitFor(() => expect(calls.create).toHaveLength(2));
     expect(calls.create[1]?.key).not.toBe(calls.create[0]?.key);
     await waitFor(() => expect(nav.push).toHaveBeenCalled());
+  });
+
+  it("the step-up probe and the proof request carry the same Idempotency-Key", async () => {
+    const { handlers, calls } = accountHandlers([]);
+    const keys: (string | null)[] = [];
+    server.use(
+      http.post("/api/v1/accounts", async ({ request }) => {
+        keys.push(request.headers.get("Idempotency-Key"));
+        const body = (await request.clone().json()) as { step_up?: unknown };
+        return body.step_up ? undefined : apiError(403, "auth.step_up_required");
+      }),
+      connectionsHandler,
+      ...handlers,
+    );
+    const stepUp = vi.fn(async ({ send }: Parameters<StepUpRunner>[0]) => {
+      try {
+        return await send();
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "auth.step_up_required") return send({ challenge_id: "c1", code: "123456" });
+        throw error;
+      }
+    }) as unknown as StepUpRunner;
+    const user = userEvent.setup();
+    renderAccounts(<AccountCreateStepper stepUp={stepUp} />);
+    await toOptIn(user);
+    await user.click(await screen.findByRole("radio", { name: /Aceitar ordens automatizadas/ }));
+    await user.click(screen.getByRole("checkbox"));
+    await next(user);
+    await user.click(await screen.findByRole("button", { name: "Salvar conta" }));
+    await waitFor(() => expect(calls.create).toHaveLength(1));
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(keys[1]);
   });
 
   it("an exact-tie size asks which standard size to copy the profile from, then sends profile_size", async () => {

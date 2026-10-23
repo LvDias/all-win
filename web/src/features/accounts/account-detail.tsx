@@ -30,6 +30,7 @@ import { PageHeader } from "@/shared/components/page-header";
 function OptInCard({ account, state, onReview }: { account: Account; state: OptInState; onReview: (kind: OptInKind) => void }) {
   const t = useTranslations("accounts.detail");
   const tr = useTranslations("accounts.optIn.review");
+  const tStance = useTranslations("accounts.stance");
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
   const kind = state.kind;
@@ -54,7 +55,7 @@ function OptInCard({ account, state, onReview }: { account: Account; state: OptI
                     ? t("pendingNoPrevious")
                     : t(kind === "automation" ? "pendingAutomation" : "pendingCopy", { firm, date: formatDate(ref.published_at, locale, "UTC"), n: ref.version_number })}
                 </p>
-                {change?.cause === "stance_changed" ? <p>{t("whatChanged.stance", { old: change.previous_firm_stance, new: ref?.firm_stance ?? "" })}</p> : null}
+                {change?.cause === "stance_changed" ? <p>{t("whatChanged.stance", { old: tStance(change.previous_firm_stance), new: ref ? tStance(ref.firm_stance) : "" })}</p> : null}
                 {change?.cause === "text_changed" && change.reason ? <p>{t("whatChanged.text", { reason: change.reason[locale === "en" ? "en" : "pt-BR"] })}</p> : null}
               </div>
             </Alert>

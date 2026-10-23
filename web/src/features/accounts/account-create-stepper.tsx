@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { ApiError } from "@/shared/api/client";
 import { errorMessage } from "@/shared/api/error-message";
 import { FormStepper, type FormStep, type ReviewRow, type SubmitError } from "@/shared/components/form-stepper";
-import { formatMoney } from "@/shared/format";
+import { formatMoney, parseDecimalInput } from "@/shared/format";
 import { defaultLocale, isLocale } from "@/shared/i18n/config";
 import { withLocale } from "@/shared/i18n/paths";
 import { StepUpCancelled } from "@/shared/session/step-up";
@@ -63,6 +63,11 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
   const optInApplies = kind === "prop" && (rule === undefined || rule.firm_stance !== "allowed");
   const schemas = useMemo(() => stepSchemas(locale, { automationRuleId: rule?.id }), [locale, rule?.id]);
 
+  const moneyOrNull = (input: string) => {
+    const parsed = parseDecimalInput(input, locale, { scale: 2 });
+    return parsed.ok ? formatMoney(parsed.value, locale) : null;
+  };
+
   const choiceRow = (v: AccountFormValues): ReviewRow => ({
     label: t("accounts.optIn.automation.legend"),
     value: v.automationChoice === "" ? null : t(v.automationChoice === "accepted" ? "accounts.state.acceptsAutomation" : "accounts.state.noAutomation"),
@@ -116,7 +121,7 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
       content: <DataFields form={form} formId={formId} editing={false} withFirm={false} profileSizeCandidates={profileSizeCandidates} />,
       review: (v) => [
         { label: t("accounts.form.fields.name"), value: v.displayName },
-        { label: t("accounts.form.fields.size"), value: v.size.trim() === "" ? null : formatMoney(v.size.replace(",", "."), locale) },
+        { label: t("accounts.form.fields.size"), value: moneyOrNull(v.size) },
         ...(profileSizeCandidates && v.profileSize !== "" ? [{ label: t("accounts.form.profileSize.label"), value: formatMoney(v.profileSize, locale) }] : []),
         { label: t("accounts.form.fields.maxPosition"), value: v.maxPosition },
         { label: t("accounts.form.fields.multiplier"), value: `${v.multiplier.trim() === "" ? 1 : v.multiplier}×` },

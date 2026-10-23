@@ -8,7 +8,7 @@ import { server } from "@/test/server";
 import { AccountDetail } from "./account-detail";
 import type { StepUpRunner } from "./lib/use-step-up";
 import { ids, propAccount, realAccount, ruleVersion } from "./testing/fixtures";
-import { accountHandlers } from "./testing/handlers";
+import { accountHandlers, apiError } from "./testing/handlers";
 
 const ruleHandlers = (rule = ruleVersion()) => [
   http.get("/api/v1/rule-versions/:id", ({ params }) =>
@@ -32,6 +32,21 @@ describe("AccountDetail", () => {
     server.use(...accountHandlers([]).handlers);
     renderAccounts(<AccountDetail accountId="99999999-9999-4999-8999-999999999999" />);
     expect(await screen.findByText("Conta não encontrada.")).toBeInTheDocument();
+  });
+
+  it("encodes a hostile route id instead of rewriting the request path", async () => {
+    const paths: string[] = [];
+    server.use(
+      http.get("/api/v1/*", ({ request }) => {
+        paths.push(new URL(request.url).pathname);
+        return undefined;
+      }),
+      ...accountHandlers([]).handlers,
+    );
+    renderAccounts(<AccountDetail accountId="..%2F..%2Fme" />);
+    await screen.findByText("Conta não encontrada.");
+    expect(paths.some((p) => p.startsWith("/api/v1/accounts/") && p.includes("%252F"))).toBe(true);
+    expect(paths).not.toContain("/api/v1/me/me");
   });
 
   it("shows no opt-in card for a real account", async () => {
@@ -86,5 +101,37 @@ describe("AccountDetail", () => {
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText(/<img src=x onerror=alert\(1\)> no automation/)).toBeInTheDocument();
     expect(dialog.querySelector("img")).toBeNull();
+  });
+
+  it("translates the stance names in the what-changed line", async () => {
+    const acc = pendingAccount();
+    const { handlers } = accountHandlers([acc]);
+    const changed = ruleVersion({ id: ids.ruleAuto2, version_number: 4, firm_stance: "not_confirmed", change: { previous_rule_version_id: ids.ruleAuto, previous_firm_stance: "unknown", cause: "stance_changed" } });
+    server.use(...ruleHandlers(changed), ...handlers);
+    renderAccounts(<AccountDetail accountId={acc.id} />);
+    expect(await screen.findByText(/passou de desconhecido para não confirmado/)).toBeInTheDocument();
+  });
+
+  it("a stale rule (409) in the review dialog refreshes the account so the new rule version loads", async () => {
+    const acc = pendingAccount();
+    const { handlers } = accountHandlers([acc]);
+    let gets = 0;
+    server.use(
+      http.get("/api/v1/accounts/:id", () => {
+        gets += 1;
+        return HttpResponse.json(gets === 1 ? acc : { ...acc, opt_ins: { ...acc.opt_ins, automation: { ...acc.opt_ins.automation, current_rule_version_id: ids.ruleAuto2 } } });
+      }),
+      http.put("/api/v1/accounts/:id/opt-ins/:kind", () => apiError(409, "accounts.rule_version_changed", { current_rule_version_id: ids.ruleAuto2 })),
+      ...ruleHandlers(v4),
+      ...handlers,
+    );
+    const user = userEvent.setup();
+    renderAccounts(<AccountDetail accountId={acc.id} />);
+    await user.click(await screen.findByRole("button", { name: "Revisar agora" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(await within(dialog).findByRole("radio", { name: /Não aceitar ordens automatizadas/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Salvar conta" }));
+    await waitFor(() => expect(gets).toBeGreaterThanOrEqual(2));
+    expect(await within(dialog).findByText(/foi atualizada enquanto você preenchia/)).toBeInTheDocument();
   });
 });

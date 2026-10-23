@@ -1,4 +1,5 @@
 import { apiFetch } from "@/shared/api/client";
+import { segment } from "@/shared/api/ids";
 import type {
   Account,
   AccountCreateBody,
@@ -25,21 +26,21 @@ export const accountKeys = {
 };
 
 export const listAccounts = (signal?: AbortSignal) => apiFetch<{ accounts: Account[] }>(base, { signal }).then((r) => r.accounts);
-export const getAccount = (id: string, signal?: AbortSignal) => apiFetch<Account>(`${base}/${id}`, { signal });
+export const getAccount = (id: string, signal?: AbortSignal) => apiFetch<Account>(`${base}/${segment(id)}`, { signal });
 
 /** `idempotencyKey` is generated once per form submission and reused on retries (the retry after a step-up too). */
 export const createAccount = (body: AccountCreateBody, idempotencyKey: string) =>
   apiFetch<Account>(base, { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });
 
-export const updateAccount = (id: string, body: AccountUpdateBody) => apiFetch<Account>(`${base}/${id}`, { method: "PUT", body });
-export const archiveAccount = (id: string) => apiFetch<void>(`${base}/${id}`, { method: "DELETE" });
-export const getArchiveImpact = (id: string, signal?: AbortSignal) => apiFetch<ArchiveImpact>(`${base}/${id}/archive-impact`, { signal });
+export const updateAccount = (id: string, body: AccountUpdateBody) => apiFetch<Account>(`${base}/${segment(id)}`, { method: "PUT", body });
+export const archiveAccount = (id: string) => apiFetch<void>(`${base}/${segment(id)}`, { method: "DELETE" });
+export const getArchiveImpact = (id: string, signal?: AbortSignal) => apiFetch<ArchiveImpact>(`${base}/${segment(id)}/archive-impact`, { signal });
 
 export const setLifecycle = (id: string, state: LifecycleState, rowVersion: number) =>
-  apiFetch<Account>(`${base}/${id}/lifecycle`, { method: "PUT", body: { state, row_version: rowVersion } });
+  apiFetch<Account>(`${base}/${segment(id)}/lifecycle`, { method: "PUT", body: { state, row_version: rowVersion } });
 
 export const setOptIn = (id: string, kind: OptInKind, body: { choice: OptInChoice; rule_version_id: string; step_up?: StepUpProof }) =>
-  apiFetch<OptInState>(`${base}/${id}/opt-ins/${kind}`, { method: "PUT", body });
+  apiFetch<OptInState>(`${base}/${segment(id)}/opt-ins/${kind}`, { method: "PUT", body });
 
 export function getOptInRules(params: { presetVersionId: string | null; firmPlatform: string | null }, signal?: AbortSignal) {
   const query = new URLSearchParams();
@@ -49,7 +50,7 @@ export function getOptInRules(params: { presetVersionId: string | null; firmPlat
   return apiFetch<OptInRules>(`/api/v1/opt-in-rules${qs}`, { signal });
 }
 
-export const getRuleVersion = (id: string, signal?: AbortSignal) => apiFetch<RuleVersion>(`/api/v1/rule-versions/${id}`, { signal });
+export const getRuleVersion = (id: string, signal?: AbortSignal) => apiFetch<RuleVersion>(`/api/v1/rule-versions/${segment(id)}`, { signal });
 
 /**
  * The standard size(s) a non-standard account size copies its profile from (S6 read). The candidates depend on the size

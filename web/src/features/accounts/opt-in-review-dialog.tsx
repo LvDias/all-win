@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import { Alert } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { accountKeys } from "./api/accounts-api";
 import { useRuleVersion, useSetOptIn } from "./api/use-accounts";
 import type { Account, OptInKind } from "./api/types";
 import { OptInSection, type OptInValue } from "./opt-in-section";
@@ -26,6 +28,7 @@ export function OptInReviewDialog({ account, kind, onClose, stepUp }: { account:
   const rule = useRuleVersion(state.current_rule_version_id);
   const previous = useRuleVersion(rule.data?.change?.previous_rule_version_id);
   const setOptIn = useSetOptIn(account.id);
+  const queryClient = useQueryClient();
   const interim = useStepUpRunner();
   const run = stepUp ?? interim;
   const [value, setValue] = useState<OptInValue>({ choice: "", ack: false });
@@ -51,7 +54,9 @@ export function OptInReviewDialog({ account, kind, onClose, stepUp }: { account:
       if (error instanceof ApiError && error.code === "accounts.rule_version_changed") {
         setStale(true);
         setValue({ choice: "", ack: false });
-        void rule.refetch();
+        // The rule shown is keyed on the account's current version: refresh the account so the dialog loads the new one.
+        void queryClient.invalidateQueries({ queryKey: accountKeys.detail(account.id) });
+        void queryClient.invalidateQueries({ queryKey: accountKeys.list() });
         return;
       }
       setFailure(errorMessage(t, error).message);

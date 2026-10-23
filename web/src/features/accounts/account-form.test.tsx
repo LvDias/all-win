@@ -4,6 +4,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/shared/api/client";
 import { server } from "@/test/server";
 import { AccountFormPage } from "./account-form";
 import { ids, propAccount } from "./testing/fixtures";
@@ -84,5 +85,40 @@ describe("AccountFormPage (edit)", () => {
     await waitFor(() => expect(calls.update).toHaveLength(1));
     expect(stepUp).toHaveBeenCalledTimes(1);
     expect(calls.update[0]).toMatchObject({ row_version: 3, opt_ins: { automation: { choice: "accepted", rule_version_id: ids.ruleAuto2 } }, step_up: { challenge_id: "c1", code: "123456" } });
+  });
+
+  it("a binding change on an automated account goes through the step-up and saves once with the proof", async () => {
+    const acc = propAccount({ row_version: 4, opt_ins: { automation: { kind: "automation", firm_stance: "unknown", state: "chosen", choice: "accepted", chosen_at: "2026-10-21T10:00:00Z", rule_version_id: ids.ruleAuto, current_rule_version_id: ids.ruleAuto }, copy: { kind: "copy", state: "not_required", firm_stance: "unknown" } } });
+    const { handlers } = accountHandlers([acc]);
+    const puts: { step_up?: unknown; binding?: unknown }[] = [];
+    server.use(
+      http.put("/api/v1/accounts/:id", async ({ request }) => {
+        const body = (await request.clone().json()) as { step_up?: unknown; binding?: unknown };
+        puts.push(body);
+        return body.step_up ? undefined : apiError(403, "auth.step_up_required");
+      }),
+      connectionsHandler,
+      ...handlers,
+    );
+    // Mirrors the shared runner: probe without proof, then one request with the proof.
+    const stepUp = vi.fn(async ({ send }: Parameters<StepUpRunner>[0]) => {
+      try {
+        return await send();
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "auth.step_up_required") return send({ challenge_id: "c9", code: "654321" });
+        throw error;
+      }
+    }) as unknown as StepUpRunner;
+    const user = userEvent.setup();
+    renderAccounts(<AccountFormPage accountId={acc.id} stepUp={stepUp} />);
+    await screen.findByLabelText("Nome");
+    await user.click(await screen.findByRole("combobox", { name: "Conta no NinjaTrader" }));
+    await user.click(await screen.findByRole("option", { name: /Sim101/ }));
+    await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(stepUp).toHaveBeenCalledTimes(1);
+    expect(stepUp).toHaveBeenCalledWith(expect.objectContaining({ action: "account_binding_change", target: acc.id }));
+    expect(puts[0]?.step_up).toBeUndefined();
+    expect(puts[1]).toMatchObject({ binding: { platform_account: "Sim101" }, step_up: { challenge_id: "c9", code: "654321" } });
   });
 });
