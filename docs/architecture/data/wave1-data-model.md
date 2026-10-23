@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 16 (c509981); **rev. 16.1 proposed** (Crivo N1–N3 and ADR-0008 round 2): binding, change, release and archive write both `account.limits_changed` and `account.binding_changed`; the open-position residual and the gateway mitigation are mirrored in §5.3; §9 gains the rev. 16 constraint and grant tests.
+- **Status:** Accepted (2026-10-23), rev. 16.1 (1a634da); **rev. 16.2 proposed**: the outbox no-consumer allowlist (Esquadro, decision (b)) in §6.4 rule 1 and §6.5 retention; §8 versions `…060610` (`app.outbox.seq`) and `…060620` (#7b); a §9 list fix (Crivo nit on 16.1).
+- Rev. 16.1 (1a634da; Crivo N1–N3 and ADR-0008 round 2): binding, change, release and archive write both `account.limits_changed` and `account.binding_changed`; the open-position residual and the gateway mitigation are mirrored in §5.3; §9 gains the rev. 16 constraint and grant tests.
 - Rev. 16 (9dcc772, c509981):
   - **Binding (Esquadro, ADR-0008, approved by the user):** `accounts` owns the account ↔ platform-account binding. `accounts.account` gains `venue_account_id` and `bound_at`, and `gateway.venue_account` loses `account_id`, `bound_at` and `venue_account_bound_key` (§5.2, §5.3).
   - **Wave 1 versions assigned (§8):** old #5 split into a catalog file and an accounts file; `account_rule_value` (old #12) moves to S5; bracket profiles get their own file (S6).
@@ -1388,7 +1389,8 @@ CREATE INDEX outbox_due_idx ON app.outbox (next_attempt_at, occurred_at)
 -- dispatcher (allwin_worker) delivers due, live events at least once; a failure sets attempts+1,
 -- last_error, next_attempt_at, so it never blocks the head of the queue. allwin_worker has
 -- UPDATE (published_at) from #1 and UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at) from #1b.
--- Published rows are purged after 7 days; dead-lettered rows are never purged automatically: they are
+-- Published rows are purged after 7 days, and so are rows whose type is on the no-consumer allowlist
+-- (rev. 16.2, §6.4 rule 1); dead-lettered rows are never purged automatically: they are
 -- an operational alert (a lost audit entry would break X-5) and are replayed or closed by an operator.
 
 CREATE TABLE audit.audit_entry (
@@ -1480,6 +1482,11 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
      - Consumers are registered before start.
      - Startup **fails** when an event type that a module emits has no consumer.
      - Events whose type has no registered consumer are not fetched (`event_type = ANY(<registered types>)`). They stay visible and are counted by a metric and alert: unpublished, not dead-lettered, older than N minutes. That catches, for example, a type retired by a deploy.
+     - **Exception: the no-consumer allowlist** (Esquadro, decision (b), rev. 16.2). A type may be emitted before its consumer slice exists when it is on a versioned allowlist file in the core, owned by the dispatcher owner. Each entry names the type, the future consumer slice and its start policy. Wave 1 entries: `account.limits_changed`, `account.binding_changed`, `account.changed`, `account.archived`.
+       - Only a type whose future consumer is `from_now` may be listed. A type that needs `backfill` (anything that becomes an audit entry, X-5) never is, because the purge would lose it.
+       - Startup does not fail for a listed type. Its rows are excluded from the old-unpublished alert and are purged after 7 days (`occurred_at`), like published rows. They are **not** marked published, so `published_at` still means "consumed".
+       - When the consumer registers (`from_now`), the rows before its cursor stay purgeable after 7 days. A test fails when a listed type has a registered consumer, and another when a listed type is emitted by no module.
+       - No schema change: the purge job receives the listed types from the core, so there is no allowlist table.
   2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event). `published_at` keeps meaning "every registered consumer has consumed it".
   3. **Each consumer declares a start policy at registration:**
      - `from_now`: cursor at the registration instant, no backfill. This is the default for consumers that **act** (routing, commands).
@@ -1496,7 +1503,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `gateway.command`, `gateway.execution_report` | `id`, `event_id`, `(account_id, fill_id)` | no | batched `DELETE` older than N months, children first |
 | `routing.message_receipt` | `(user_id, message_id)` | no | **kept** until the user is erased |
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
-| `app.outbox` (published), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days / 48 h / 7 days |
+| `app.outbox` (published, or of an allowlisted no-consumer type, §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 | `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
 | `identity.channel_change` (completed, cancelled or expired) | `id` | no | 30 days after its end, after its codes; it holds the new value (the audit keeps the masked values) |
@@ -1678,7 +1685,8 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 6b | `routing_create_decision_subscription` (`…061200`): `routing_decision`, `subscription` (with `row_version`, rev. 8) | S7 (Ferro); after #6 |
 | 6c | `routing_message_id_no_token_check` (`…061300`, reserved): the §6.4 no-token `CHECK` on `routing.message_receipt` / `routing.instruction`; narrowing, so it needs explicit user authorization first | Ferro |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
-| 7b | `audit_entry_activity_columns` (rev. 9): the S10 columns and constraints on the partitioned table (see below) | S10 (or whichever slice first emits them); version stamped after the latest merged migration |
+| 1c | `app_outbox_seq` (`…060610`, rev. 16.2): `app.outbox.seq` identity column (§6.4) | Ferro (`s/v1-audit-codes--core`); before #7b |
+| 7b | `audit_entry_activity_columns` (`…060620`, rev. 16.2): the S10 columns and constraints on the partitioned table (see below) | Ferro (`s/v1-audit-codes--core`); after #1c |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account` (without the binding, rev. 16), `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
 | 10 | `risk_create_account_limits` (rev. 13): `account_limits`, `scheduled_limit` (derived), `trading_day`, `drawdown_tracker`, `account_block`, with RLS | S13; unwritten, so it takes the rev. 13 shape directly |
@@ -1693,7 +1701,8 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - No branch writes its own copy of another module's table.
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, and `…061300` #6c (reserved).
-  - From `…061400` on, numbers are assigned on request (#7b, #9, #10, #11, #13, `app.outbox.seq`); no branch picks its own.
+  - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
+  - From `…061400` on, numbers are assigned on request (#9, #10, #11, #13); no branch picks its own.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
@@ -1773,8 +1782,8 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
      - `venue_account_id` without `bound_at` fails, and an archived account that is still bound fails;
      - archiving releases the binding, and the same platform account can then be bound to another account;
      - a bind, rebind, release or archive bumps `limits_version` and writes both `account.limits_changed` and `account.binding_changed` in the same transaction (rev. 16.1);
-   - rev. 16, `account` constraints and grants: a `display_name` of `''` or of 81 characters fails; `row_version = 0` fails; `allwin_app` `DELETE` on `account` is denied;
      - `resolve` with another user's `connection_id` returns `None` (422), so no cross-user binding is possible;
+   - rev. 16, `account` constraints and grants: a `display_name` of `''` or of 81 characters fails; `row_version = 0` fails; `allwin_app` `DELETE` on `account` is denied;
    - rev. 8, `opt_in_rule_version`:
      - a generic row with quotes, a firm or a non-`unknown` stance fails;
      - a second generic version 1 of the same kind fails;
