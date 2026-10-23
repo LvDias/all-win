@@ -1110,6 +1110,8 @@ trading_day_reset: { time: null, tz_as_published: null }
 copy_trading_allowed: conditional
 automated_trading_allowed: conditional
 status: unverified
+excluded: true
+excluded_reason: "User decision 2026-10-23: Phidias LIVE (Fundamental/Premium LIVE, ELITE/MASTER) not offered as V1 preset"
 notes: "LIVE transition is discretionary (5 payouts or $100,000 cumulative profits). LIVE drawdown, daily loss and reset are not published publicly; daily_loss_limit not published for LIVE (kind null — see gaps). Max loss equals the amount transferred from the Wallet (example $500)."
 sources:
   - { field: max_position, url: "https://phidiaspropfirm.com/rules", accessed: "2026-10-23" }
@@ -1170,3 +1172,4 @@ sources:
 ## 9. Changelog
 
 - 2026-10-23 — initial research (Lupa)
+- 2026-10-23 — Fundamental / Premium LIVE block marked `excluded: true` per user decision (R1 conflict list, relayed by the PO); Express to Live LIVE blocks kept; values and status unchanged, not re-validated (Lupa).
