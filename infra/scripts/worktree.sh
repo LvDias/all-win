@@ -33,7 +33,10 @@ case $cmd in
     [[ -e $p ]] && { echo "exists: $p" >&2; exit 1; }
     has_branch "$slice" || git branch "$slice" "$base"
     if has_branch "$b"; then git worktree add "$p" "$b"; else git worktree add -b "$b" "$p" "$slice"; fi
-    echo "branch=$b path=$p base=$(git rev-parse --short "$slice")" ;;
+    echo "branch=$b path=$p base=$(git rev-parse --short "$slice")"
+    # git 2.43 ignores "/srv/www/*"; other users need an explicit entry for this path.
+    git config --system --get-all safe.directory | grep -qxF "$p" \
+      || echo "other users need (root): git config --system --add safe.directory $p" ;;
   remove)
     [[ $# -eq 2 ]] || usage; slice=$1 owner=$2
     check_slice "$slice"; check_owner "$owner"; b="$slice--$owner"; p=$(wt_path "$b")

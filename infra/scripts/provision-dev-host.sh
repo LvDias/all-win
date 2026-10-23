@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Provision the All Win dev host (Ubuntu 24.04) with the ADR-0001 toolchains,
-# shared by the users in group `devs`. Run once as root: sudo bash provision-dev-host.sh
+# shared by the users in group `devs`. Run as root: sudo bash provision-dev-host.sh
+# Idempotent: safe to re-run; finished steps are detected and skipped.
 #
 # Firewall: this script does not touch ufw. Docker manages its own iptables chains
 # (NAT/FORWARD) for container networking; daemon.json binds published ports to
@@ -13,33 +14,48 @@ RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-1.99.1}"   # projects pin their own via rust-t
 SQLX_CLI_VERSION="${SQLX_CLI_VERSION:-0.9.0}"
 DEV_GROUP=devs
 DEV_USERS=(dev1 dev2 dev3)
+NODE_DIR=/opt/node
+RUST_DIR=/opt/rust
+WORKTREES_DIR=/srv/www/allwin.worktrees
 
 [[ $EUID -eq 0 ]] || { echo "run as root (sudo)" >&2; exit 1; }
 getent group "$DEV_GROUP" >/dev/null || { echo "group $DEV_GROUP missing" >&2; exit 1; }
 
-echo "== ufw status before (read-only) =="; ufw status verbose || true
+# sudo resets PATH; npm/pnpm shebangs and install scripts need `node` on it.
+export RUSTUP_HOME="$RUST_DIR/rustup" CARGO_HOME="$RUST_DIR/cargo"
+export PATH="$NODE_DIR/bin:$CARGO_HOME/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y ca-certificates curl gnupg build-essential pkg-config libssl-dev \
-  xz-utils unzip jq postgresql-client dotnet-sdk-10.0
+step() { echo; echo "== $* =="; }
 
 shared_dir() {  # group-writable, setgid directory owned by root:devs
   install -d -o root -g "$DEV_GROUP" -m 2775 "$1"
 }
 fix_shared() {
-  chgrp -R "$DEV_GROUP" "$1"
+  chown -R root:"$DEV_GROUP" "$1"
   chmod -R g+rwX "$1"
   find "$1" -type d -exec chmod g+s {} +
 }
 
-# --- Docker Engine + compose plugin (official repository) ---
+step "ufw status before (read-only)"; ufw status verbose || true
+
+step "apt packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ca-certificates curl gnupg build-essential pkg-config libssl-dev \
+  xz-utils unzip jq postgresql-client dotnet-sdk-10.0
+
+step "Docker Engine + compose plugin"
 install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+if [[ ! -s /etc/apt/keyrings/docker.asc ]]; then
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+fi
 chmod a+r /etc/apt/keyrings/docker.asc
 . /etc/os-release
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
-  > /etc/apt/sources.list.d/docker.list
+docker_list="deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable"
+if [[ "$(cat /etc/apt/sources.list.d/docker.list 2>/dev/null)" != "$docker_list" ]]; then
+  echo "$docker_list" > /etc/apt/sources.list.d/docker.list
+  apt-get update
+fi
 install -d -m 0755 /etc/docker
 if [[ ! -f /etc/docker/daemon.json ]]; then
   cat > /etc/docker/daemon.json <<'JSON'
@@ -48,34 +64,53 @@ if [[ ! -f /etc/docker/daemon.json ]]; then
   "log-driver": "local"
 }
 JSON
+  restart_docker=1
 fi
-apt-get update
+jq -e '.ip == "127.0.0.1"' /etc/docker/daemon.json >/dev/null \
+  || echo "WARNING: /etc/docker/daemon.json has no \"ip\": \"127.0.0.1\"; published ports may bind to all interfaces" >&2
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
-for u in "${DEV_USERS[@]}"; do usermod -aG docker "$u"; done
+if [[ ${restart_docker:-0} -eq 1 ]]; then systemctl restart docker; fi
+for u in "${DEV_USERS[@]}"; do
+  id -nG "$u" | tr ' ' '\n' | grep -qx docker || usermod -aG docker "$u"
+done
 
-# --- Node.js LTS + pnpm (shared prefix /opt/node) ---
-shared_dir /opt/node
-tmp=$(mktemp -d)
-curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o "$tmp/node.tar.xz"
-curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o "$tmp/SHASUMS256.txt"
-(cd "$tmp" && grep " node-v${NODE_VERSION}-linux-x64.tar.xz\$" SHASUMS256.txt | sed 's/ node-v.*/ node.tar.xz/' | sha256sum -c -)
-tar -xJf "$tmp/node.tar.xz" -C /opt/node --strip-components=1
-rm -rf "$tmp"
-/opt/node/bin/npm install -g --prefix /opt/node "pnpm@${PNPM_VERSION}"
-fix_shared /opt/node
+step "Node.js $NODE_VERSION + pnpm $PNPM_VERSION ($NODE_DIR)"
+have_node=$("$NODE_DIR/bin/node" --version 2>/dev/null || true)
+have_pnpm=$("$NODE_DIR/bin/pnpm" --version 2>/dev/null || true)
+if [[ $have_node == "v$NODE_VERSION" && $have_pnpm == "$PNPM_VERSION" ]]; then
+  echo "already installed"
+else
+  tmp=$(mktemp -d)
+  curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o "$tmp/node.tar.xz"
+  curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o "$tmp/SHASUMS256.txt"
+  (cd "$tmp" && grep " node-v${NODE_VERSION}-linux-x64.tar.xz\$" SHASUMS256.txt | sed 's/ node-v.*/ node.tar.xz/' | sha256sum -c -)
+  rm -rf "$NODE_DIR"   # re-extract clean (also drops a partial earlier run)
+  shared_dir "$NODE_DIR"
+  tar -xJf "$tmp/node.tar.xz" -C "$NODE_DIR" --strip-components=1 --no-same-owner
+  rm -rf "$tmp"
+  npm install -g --prefix "$NODE_DIR" "pnpm@${PNPM_VERSION}"
+fi
+fix_shared "$NODE_DIR"
 
-# --- Rust (shared rustup at /opt/rust) ---
-shared_dir /opt/rust
-export RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-  | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" -c rustfmt,clippy
-/opt/rust/cargo/bin/rustup default "$RUST_TOOLCHAIN"
-/opt/rust/cargo/bin/cargo install sqlx-cli --version "$SQLX_CLI_VERSION" --locked \
-  --no-default-features --features rustls,postgres
-fix_shared /opt/rust
+step "Rust $RUST_TOOLCHAIN ($RUST_DIR)"
+shared_dir "$RUST_DIR"
+if [[ -x $CARGO_HOME/bin/rustup ]]; then
+  rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal -c rustfmt,clippy
+else
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" -c rustfmt,clippy
+fi
+rustup default "$RUST_TOOLCHAIN"
+if sqlx --version 2>/dev/null | grep -qF " $SQLX_CLI_VERSION"; then
+  echo "sqlx-cli $SQLX_CLI_VERSION already installed"
+else
+  cargo install sqlx-cli --version "$SQLX_CLI_VERSION" --locked --force \
+    --no-default-features --features rustls,postgres
+fi
+fix_shared "$RUST_DIR"
 
-# --- Environment for every session (login, non-login, non-interactive) ---
+step "Environment for every session"
 cat > /etc/profile.d/allwin-dev.sh <<'SH'
 export RUSTUP_HOME=/opt/rust/rustup
 export CARGO_HOME=/opt/rust/cargo
@@ -87,13 +122,23 @@ SH
 for kv in RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo DOTNET_CLI_TELEMETRY_OPTOUT=1; do
   grep -q "^${kv%%=*}=" /etc/environment || echo "$kv" >> /etc/environment
 done
-for b in /opt/rust/cargo/bin/* /opt/node/bin/node /opt/node/bin/npm /opt/node/bin/npx /opt/node/bin/pnpm /opt/node/bin/pnpx; do
-  [[ -e $b ]] && ln -sf "$b" "/usr/local/bin/$(basename "$b")"
+for b in "$CARGO_HOME"/bin/* "$NODE_DIR"/bin/{node,npm,npx,pnpm,pnpx}; do
+  if [[ -e $b ]]; then ln -sfn "$b" "/usr/local/bin/$(basename "$b")"; fi
 done
 
-echo "== ufw status after (read-only) =="; ufw status verbose || true
-echo "== versions =="
-RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo bash -c \
-  'rustc --version; cargo --version; cargo clippy --version; rustfmt --version; sqlx --version'
+step "git safe.directory for slice worktrees"
+# git 2.43 ignores the "/srv/www/*" pattern; each worktree path needs its own entry.
+for wt in "$WORKTREES_DIR"/*/; do
+  [[ -d $wt ]] || continue
+  wt=${wt%/}
+  git config --system --get-all safe.directory | grep -qxF "$wt" \
+    || git config --system --add safe.directory "$wt"
+done
+
+step "ufw status after (read-only)"; ufw status verbose || true
+
+step "versions"
+rustc --version; cargo --version; cargo clippy --version; rustfmt --version; sqlx --version
 node --version; pnpm --version; dotnet --version; docker --version; docker compose version; psql --version
+echo
 echo "Done. Users must log out and back in (or restart their agent sessions) to get the docker group and env."
