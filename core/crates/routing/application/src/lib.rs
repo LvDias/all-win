@@ -2,6 +2,7 @@
 //! ingress outcome recording (s1-webhook-ingest §2 steps 8–9, §3), and route
 //! configuration (S7).
 
+pub mod decisions;
 pub mod ingest;
 pub mod ports;
 pub mod routes;

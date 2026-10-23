@@ -49,6 +49,8 @@ impl Action {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecisionFacts {
     pub account_active: bool,
+    /// The account is bound to a platform account (ADR-0008: binding and venue account row).
+    pub platform_bound: bool,
     /// Automated source and the account's automation opt-in is not accepted.
     pub automation_not_accepted: bool,
     pub signal_types: SignalTypes,
@@ -120,8 +122,34 @@ impl Decision {
     }
 }
 
+/// How a `reverse` is treated when an entry gate stops its opening leg. The accepted text
+/// skips the whole action; the alternative (flatten, skip only the opening) is with the user
+/// (Architect, 2026-10-23). This is the only place that rule lives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReverseOnEntryGate {
+    SkipWhole,
+    FlattenOnly,
+}
+
+pub const REVERSE_ON_ENTRY_GATE: ReverseOnEntryGate = ReverseOnEntryGate::SkipWhole;
+
 /// Decides what one account does with one instruction of `signal_type`.
+///
+/// The audited code is the first failing gate, in this order (Architect, 2026-10-23):
+/// account_inactive → platform_unbound → automation_not_accepted → (copy_not_accepted, S19)
+/// → signal_type_not_selected → out_of_sync → risk_blocked → limits_pending →
+/// no_bracket_profile (these four only for position-increasing actions) → action rules
+/// (ADR-0003 §4.2) → expired.
 pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -> Decision {
+    decide_with(signal_type, action, f, REVERSE_ON_ENTRY_GATE)
+}
+
+fn decide_with(
+    signal_type: RouteSignalType,
+    action: Action,
+    f: &DecisionFacts,
+    reverse_rule: ReverseOnEntryGate,
+) -> Decision {
     let requested = match action {
         Action::Open { quantity, .. } | Action::Reverse { quantity, .. } => {
             Some(quantity.saturating_mul(f.multiplier))
@@ -129,11 +157,13 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
         Action::Close => None,
     };
     let skip = |code| Decision::not_executed(Outcome::Skipped, code, requested);
-    let increasing = action.increases_position();
 
-    // Gate order: ADR-0003 §4.1.
+    // Gates for every action.
     if !f.account_active {
         return skip("routing.account_inactive");
+    }
+    if !f.platform_bound {
+        return skip("routing.platform_unbound");
     }
     if f.automation_not_accepted {
         return skip("routing.automation_not_accepted");
@@ -141,36 +171,41 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
     if !f.signal_types.contains(signal_type) {
         return skip("routing.signal_type_not_selected");
     }
-    if increasing && f.out_of_sync == Some(true) {
-        return skip("routing.out_of_sync");
-    }
-    if increasing && f.risk_blocked == Some(true) {
-        return skip("routing.risk_blocked");
-    }
-    if f.expired {
-        return Decision::not_executed(Outcome::Expired, "routing.expired", requested);
-    }
-    if increasing && f.limits_pending == Some(true) {
-        return skip("routing.limits_pending");
-    }
-    if increasing && f.has_bracket_profile == Some(false) {
-        return skip("routing.no_bracket_profile");
+
+    // Gates for position-increasing actions only (P1: exits always go through).
+    if action.increases_position()
+        && let Some(code) = entry_gate(f)
+    {
+        return match (action, reverse_rule) {
+            (Action::Reverse { .. }, ReverseOnEntryGate::FlattenOnly) if f.position != 0 => {
+                expire_or(
+                    f,
+                    Decision {
+                        outcome: Outcome::Capped,
+                        reason_code: Some(code),
+                        requested_qty: requested,
+                        executed_qty: Some(0),
+                        steps: vec![Step::Flatten],
+                    },
+                )
+            }
+            _ => skip(code),
+        };
     }
 
-    // Actions: ADR-0003 §4.2.
+    // Action rules: ADR-0003 §4.2; a command that would run is then subject to its TTL.
     let max = i64::from(f.max_position);
-    match action {
+    let planned = match action {
         Action::Close => {
             if f.position == 0 {
-                skip("routing.nothing_to_close")
-            } else {
-                Decision {
-                    outcome: Outcome::Routed,
-                    reason_code: None,
-                    requested_qty: None,
-                    executed_qty: None,
-                    steps: vec![Step::Flatten],
-                }
+                return skip("routing.nothing_to_close");
+            }
+            Decision {
+                outcome: Outcome::Routed,
+                reason_code: None,
+                requested_qty: None,
+                executed_qty: None,
+                steps: vec![Step::Flatten],
             }
         }
         Action::Open { side, .. } => {
@@ -199,20 +234,46 @@ pub fn decide(signal_type: RouteSignalType, action: Action, f: &DecisionFacts) -
             }
             let flatten = (f.position != 0).then_some(Step::Flatten);
             if max == 0 {
-                // Nothing can be opened; still flatten what is there (an exit).
-                return match flatten {
-                    Some(step) => Decision {
-                        outcome: Outcome::Capped,
-                        reason_code: Some("routing.max_position_reached"),
-                        requested_qty: requested,
-                        executed_qty: Some(0),
-                        steps: vec![step],
-                    },
-                    None => skip("routing.max_position_reached"),
+                // Flatten what is there (an exit) and skip the opening.
+                let Some(step) = flatten else {
+                    return skip("routing.max_position_reached");
                 };
+                Decision {
+                    outcome: Outcome::Capped,
+                    reason_code: Some("routing.max_position_reached"),
+                    requested_qty: requested,
+                    executed_qty: Some(0),
+                    steps: vec![step],
+                }
+            } else {
+                place(side, q, max, requested, flatten)
             }
-            place(side, q, max, requested, flatten)
         }
+    };
+    expire_or(f, planned)
+}
+
+/// The first failing entry-only gate. A gate whose slice is not wired yet is `None`.
+fn entry_gate(f: &DecisionFacts) -> Option<&'static str> {
+    if f.out_of_sync == Some(true) {
+        Some("routing.out_of_sync")
+    } else if f.risk_blocked == Some(true) {
+        Some("routing.risk_blocked")
+    } else if f.limits_pending == Some(true) {
+        Some("routing.limits_pending")
+    } else if f.has_bracket_profile == Some(false) {
+        Some("routing.no_bracket_profile")
+    } else {
+        None
+    }
+}
+
+/// The last gate: a plan that would send commands is expired when its TTL has passed.
+fn expire_or(f: &DecisionFacts, planned: Decision) -> Decision {
+    if f.expired && !planned.steps.is_empty() {
+        Decision::not_executed(Outcome::Expired, "routing.expired", planned.requested_qty)
+    } else {
+        planned
     }
 }
 
@@ -242,6 +303,7 @@ mod tests {
     fn facts() -> DecisionFacts {
         DecisionFacts {
             account_active: true,
+            platform_bound: true,
             automation_not_accepted: false,
             signal_types: SignalTypes::new([RouteSignalType::Trigger]).unwrap(),
             out_of_sync: Some(false),
@@ -355,29 +417,94 @@ mod tests {
     fn gate_order_follows_adr_0003() {
         let mut f = facts();
         f.account_active = false;
+        f.platform_bound = false;
         f.automation_not_accepted = true;
         f.out_of_sync = Some(true);
+        f.risk_blocked = Some(true);
+        f.limits_pending = Some(true);
+        f.has_bracket_profile = Some(false);
+        f.expired = true;
+        let order = [
+            "routing.account_inactive",
+            "routing.platform_unbound",
+            "routing.automation_not_accepted",
+            "routing.out_of_sync",
+            "routing.risk_blocked",
+            "routing.limits_pending",
+            "routing.no_bracket_profile",
+            "routing.expired",
+        ];
+        for code in order {
+            let d = decide(T, BUY_2, &f);
+            assert_eq!(d.reason_code, Some(code));
+            match code {
+                "routing.account_inactive" => f.account_active = true,
+                "routing.platform_unbound" => f.platform_bound = true,
+                "routing.automation_not_accepted" => f.automation_not_accepted = false,
+                "routing.out_of_sync" => f.out_of_sync = Some(false),
+                "routing.risk_blocked" => f.risk_blocked = Some(false),
+                "routing.limits_pending" => f.limits_pending = Some(false),
+                "routing.no_bracket_profile" => f.has_bracket_profile = Some(true),
+                _ => assert_eq!(d.outcome, Outcome::Expired),
+            }
+        }
+    }
+
+    #[test]
+    fn action_rules_come_before_expired() {
+        let mut f = facts();
         f.expired = true;
         assert_eq!(
-            decide(T, BUY_2, &f).reason_code,
-            Some("routing.account_inactive")
+            decide(T, Action::Close, &f).reason_code,
+            Some("routing.nothing_to_close")
         );
-        f.account_active = true;
+        f.position = -1;
         assert_eq!(
             decide(T, BUY_2, &f).reason_code,
-            Some("routing.automation_not_accepted")
+            Some("routing.position_conflict")
         );
-        f.automation_not_accepted = false;
+        let up = Action::Open {
+            side: Side::Short,
+            quantity: 1,
+        };
+        f.position = -5;
         assert_eq!(
-            decide(T, BUY_2, &f).reason_code,
-            Some("routing.out_of_sync")
+            decide(T, up, &f).reason_code,
+            Some("routing.max_position_reached")
         );
-        f.out_of_sync = Some(false);
-        let d = decide(T, BUY_2, &f);
+    }
+
+    #[test]
+    fn platform_unbound_blocks_exits_too() {
+        let mut f = facts();
+        f.position = 2;
+        f.platform_bound = false;
+        assert_eq!(
+            decide(T, Action::Close, &f).reason_code,
+            Some("routing.platform_unbound")
+        );
+    }
+
+    #[test]
+    fn reverse_stopped_by_an_entry_gate_follows_the_single_rule() {
+        let mut f = facts();
+        f.position = -3;
+        f.risk_blocked = Some(true);
+        let rev = Action::Reverse {
+            side: Side::Long,
+            quantity: 1,
+        };
+        assert_eq!(REVERSE_ON_ENTRY_GATE, ReverseOnEntryGate::SkipWhole);
+        let d = decide(T, rev, &f);
         assert_eq!(
             (d.outcome, d.reason_code),
-            (Outcome::Expired, Some("routing.expired"))
+            (Outcome::Skipped, Some("routing.risk_blocked"))
         );
+        assert!(d.steps.is_empty());
+        let d = decide_with(T, rev, &f, ReverseOnEntryGate::FlattenOnly);
+        assert_eq!(d.outcome, Outcome::Capped);
+        assert_eq!(d.steps, [Step::Flatten]);
+        assert_eq!(d.reason_code, Some("routing.risk_blocked"));
     }
 
     #[test]
@@ -395,6 +522,23 @@ mod tests {
         let d = decide(T, Action::Close, &facts());
         assert_eq!(d.reason_code, Some("routing.nothing_to_close"));
         assert_eq!(d.requested_qty, None);
+    }
+
+    #[test]
+    fn reverse_with_no_room_flattens_and_skips_the_opening() {
+        let mut f = facts();
+        f.max_position = 0;
+        f.position = -2;
+        let rev = Action::Reverse {
+            side: Side::Long,
+            quantity: 1,
+        };
+        let d = decide(T, rev, &f);
+        assert_eq!(d.outcome, Outcome::Capped);
+        assert_eq!(d.reason_code, Some("routing.max_position_reached"));
+        assert_eq!(d.steps, [Step::Flatten]);
+        f.position = 0;
+        assert_eq!(decide(T, rev, &f).outcome, Outcome::Skipped);
     }
 
     #[test]

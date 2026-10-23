@@ -182,10 +182,9 @@ impl RouteReason {
         matches!(self, Self::AutomationNotAccepted(_) | Self::PlatformUnbound)
     }
 
-    /// Position in the "most severe first" order. The first part is the UI badge priority of
-    /// design foundations §7.2 (out of sync → disconnected → blocked → automation choice
-    /// pending → paused/disabled); the place of the other codes is PROVISIONAL, pending the
-    /// contract owner's answer.
+    /// Position in the "most severe first" display order (Architect, 2026-10-23; s7-routing
+    /// §7). Display only: the code of a skipped instruction follows the gate order
+    /// (`decision::decide`).
     const fn rank(&self) -> u8 {
         match self {
             Self::SourceRevoked => 0,
