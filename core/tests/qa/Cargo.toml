@@ -21,12 +21,17 @@ s6 = []
 s7 = []
 
 [[test]]
+name = "s3_identity"
+required-features = ["s3"]
+
+[[test]]
 name = "s7_routing"
 required-features = ["s7"]
 
 [dev-dependencies]
 app = { path = "../../crates/app" }
 axum.workspace = true
+chrono = { workspace = true, features = ["clock"] }
 http-body-util.workspace = true
 routing-enterprise.workspace = true
 serde_json.workspace = true
