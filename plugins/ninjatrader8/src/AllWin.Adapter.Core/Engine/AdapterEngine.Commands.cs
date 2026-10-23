@@ -250,7 +250,7 @@ namespace AllWin.Adapter.Core.Engine
             Flush();
             try
             {
-                var handles = _platform.Submit(record.PlatformAccount, requests);
+                var handles = GuardedSubmit(record.PlatformAccount, requests);
                 for (var i = 0; i < requests.Count && i < handles.Count; i++)
                     TrackSubmitted(record.PlatformAccount, handles[i], requests[i], workingReason);
             }
@@ -306,7 +306,7 @@ namespace AllWin.Adapter.Core.Engine
                 order.ChangeSeen = false;
                 try
                 {
-                    _platform.Change(record.PlatformAccount, target.Handle!, target.Quantity, target.LimitPrice, target.StopPrice);
+                    GuardedChange(record.PlatformAccount, target.Handle!, target.Quantity, target.LimitPrice, target.StopPrice);
                 }
                 catch (PlatformException e)
                 {
@@ -339,7 +339,7 @@ namespace AllWin.Adapter.Core.Engine
                 foreach (var target in pending) _orders[target.Handle!].CancelRequested = true;
                 try
                 {
-                    _platform.Cancel(record.PlatformAccount, pending.Select(t => t.Handle!).ToList());
+                    GuardedCancel(record.PlatformAccount, pending.Select(t => t.Handle!).ToList());
                 }
                 catch (PlatformException e)
                 {
@@ -459,7 +459,7 @@ namespace AllWin.Adapter.Core.Engine
                 if (toCancel.Count > 0)
                 {
                     foreach (var o in toCancel) o.CancelRequested = true;
-                    try { _platform.Cancel(account, toCancel.Select(o => o.Handle).ToList()); }
+                    try { GuardedCancel(account, toCancel.Select(o => o.Handle).ToList()); }
                     catch (PlatformException e)
                     {
                         _log.Write(LogLevel.Warning, "platform.cancel_failed", record.CommandId + ": " + e.Message);
@@ -513,7 +513,7 @@ namespace AllWin.Adapter.Core.Engine
                 {
                     // Flat already (e.g. a protective fill raced us): withdraw the close order.
                     closeOrder.CancelRequested = true;
-                    try { _platform.Cancel(account, new[] { closeOrder.Handle }); }
+                    try { GuardedCancel(account, new[] { closeOrder.Handle }); }
                     catch (PlatformException e) { _log.Write(LogLevel.Warning, "platform.cancel_failed", record.CommandId + ": " + e.Message); }
                 }
                 return;

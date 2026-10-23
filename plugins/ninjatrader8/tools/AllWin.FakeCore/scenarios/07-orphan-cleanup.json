@@ -1,0 +1,20 @@
+{
+  "name": "orphan-cleanup",
+  "description": "S9 AC-1/AC-2: with the local OCO not acting, the remaining leg is cancelled by orphan protection when the position goes flat.",
+  "requires_sim": true,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21034.50" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "sim", "oco": false },
+    { "do": "command", "id": "E1", "kind": "place",
+      "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open",
+                 "protection": { "mode": "individual", "stop_ticks": 40, "target_ticks": 80 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "target" } },
+    { "do": "sim", "set_price": { "MNQ": "21054.50" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "filled", "child_role": "target", "position_after": { "quantity": 0 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "cancelled", "child_role": "stop", "reason_code": "order.orphan_cancelled" } },
+    { "do": "sim", "external_fill": { "account": "A", "side": "buy", "quantity": 1, "price": "21054.50" } },
+    { "do": "expect_report", "external": true, "match": { "origin": "external", "status": "filled" } }
+  ]
+}

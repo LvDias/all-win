@@ -349,7 +349,7 @@ namespace AllWin.Adapter.Core.Engine
                 Flush();
                 try
                 {
-                    var handles = _platform.Submit(account, requests);
+                    var handles = GuardedSubmit(account, requests);
                     for (var i = 0; i < requests.Count && i < handles.Count; i++) TrackSubmitted(account, handles[i], requests[i], null);
                 }
                 catch (PlatformException e)
@@ -391,7 +391,7 @@ namespace AllWin.Adapter.Core.Engine
                 try
                 {
                     // One change for quantity and price together (answer 7).
-                    _platform.Change(account, leg.Handle, newQuantity, letter == 't' ? newPrice : null, letter == 's' ? newPrice : null);
+                    GuardedChange(account, leg.Handle, newQuantity, letter == 't' ? newPrice : null, letter == 's' ? newPrice : null);
                 }
                 catch (PlatformException e)
                 {
@@ -467,7 +467,7 @@ namespace AllWin.Adapter.Core.Engine
             _log.Write(LogLevel.Info, "orphan.cancel", account + " orders=" + toCancel.Count.ToString(CultureInfo.InvariantCulture));
             try
             {
-                _platform.Cancel(account, toCancel.Select(o => o.Handle).ToList());
+                GuardedCancel(account, toCancel.Select(o => o.Handle).ToList());
             }
             catch (PlatformException e)
             {
@@ -520,6 +520,41 @@ namespace AllWin.Adapter.Core.Engine
             }
             EnqueueSnapshot(SnapshotTrigger.AccountReset, account);
             RaiseChanged();
+        }
+
+        // ------------------------------------------------------------------ guarded platform writes
+
+        /// <summary>
+        /// Every order action passes the simulation guard at the moment it is made (ADR-0005 N4), not only
+        /// when the command was accepted: automatic actions (orphan cancels, bracket resizes, flatten steps)
+        /// included. A refused account gets no order activity at all.
+        /// </summary>
+        private void EnsureWritable(string account)
+        {
+            var info = SafeAccounts().FirstOrDefault(a => a.Name == account);
+            if (info == null || !IsExecutionAllowed(info))
+            {
+                _log.Write(LogLevel.Error, "guard.refused", account);
+                throw new PlatformException("account refused by the simulation guard");
+            }
+        }
+
+        private IReadOnlyList<string> GuardedSubmit(string account, IReadOnlyList<OrderRequest> orders)
+        {
+            EnsureWritable(account);
+            return _platform.Submit(account, orders);
+        }
+
+        private void GuardedChange(string account, string handle, int? quantity, decimal? limit, decimal? stop)
+        {
+            EnsureWritable(account);
+            _platform.Change(account, handle, quantity, limit, stop);
+        }
+
+        private void GuardedCancel(string account, IReadOnlyList<string> handles)
+        {
+            EnsureWritable(account);
+            _platform.Cancel(account, handles);
         }
 
         // ------------------------------------------------------------------ lookups

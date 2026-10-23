@@ -1,0 +1,16 @@
+{
+  "name": "expiry",
+  "description": "ADR-0004 §5 (T1, T2): an entry received after expires_at is expired and never submitted; exits never expire. NT8-compatible.",
+  "requires_sim": false,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21000" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "command", "id": "E1", "kind": "place", "ttl_ms": -1000,
+      "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "expired", "reason_code": "command.expired" } },
+    { "do": "expect_no_report", "command": "E1", "match": { "status": "working" }, "within_ms": 1000 },
+    { "do": "command", "id": "X1", "kind": "flatten", "flatten": { "reason": "close" } },
+    { "do": "expect_report", "command": "X1", "match": { "status": "cancelled", "reason_code": "command.already_flat", "child_role": "flatten" } }
+  ]
+}

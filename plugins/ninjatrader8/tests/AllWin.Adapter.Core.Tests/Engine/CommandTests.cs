@@ -168,6 +168,23 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
+        public void Automatic_actions_never_touch_an_account_refused_by_the_guard()
+        {
+            var welcome = DefaultWelcome();
+            welcome.Accounts[0].PlatformAccount = "Live1";
+            using var h = Ready(p => p.AddAccount("Live1", AccountKind.Live, OcoLocation.Local, "Rithmic"), welcome);
+            h.Platform.SetPrice("MNQ", 21000m);
+            // An order carrying an All Win name exists on the live account (placed by someone else), then the position goes flat.
+            h.Platform.Submit("Live1", new[] { new Core.Platform.OrderRequest { Name = "aw:" + C1 + ":s", Instrument = Mnq, Side = Side.Sell, Type = OrderType.Stop, Quantity = 1, StopPrice = 20000m } });
+            h.Platform.ExternalFill("Live1", Mnq, Side.Buy, 1, 21000m);
+            h.Platform.ExternalFill("Live1", Mnq, Side.Sell, 1, 21000m);
+            h.Platform.CallLog.Clear();
+            h.Settle();
+            Assert.Empty(h.Platform.CallLog); // no orphan cancel on a non-simulation account
+            Assert.Contains(h.Log, l => l.Contains("guard.refused"));
+        }
+
+        [Fact]
         public void Release_build_obeys_simulation_only()
         {
             var welcome = DefaultWelcome();

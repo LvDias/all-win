@@ -1,0 +1,22 @@
+{
+  "name": "flatten-block",
+  "description": "Reverse = flatten then place with depends_on; a blocked account refuses entries (risk.account_blocked) but still executes exits. NT8-compatible.",
+  "requires_sim": false,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21000" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "command", "id": "E1", "kind": "place", "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "filled" } },
+    { "do": "command", "id": "R1", "kind": "flatten", "flatten": { "reason": "reverse" } },
+    { "do": "command", "id": "R2", "kind": "place", "depends_on": "R1", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "R1", "match": { "status": "filled", "child_role": "flatten" } },
+    { "do": "expect_report", "command": "R2", "match": { "status": "filled", "position_after": { "quantity": -1 } } },
+    { "do": "limits", "msg": "L2", "version": 2, "blocked_for_ms": 3600000 },
+    { "do": "expect_ack", "msg": "L2" },
+    { "do": "command", "id": "E3", "kind": "place", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "E3", "match": { "status": "rejected", "reason_code": "risk.account_blocked" } },
+    { "do": "command", "id": "X1", "kind": "flatten", "flatten": { "reason": "close" } },
+    { "do": "expect_report", "command": "X1", "match": { "status": "filled", "position_after": { "quantity": 0 } } }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "reject",
+  "description": "S2 AC-2: a platform rejection is reported with its reason; a dependent command fails its prerequisite.",
+  "requires_sim": true,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21000" } },
+  "steps": [
+    { "do": "wait_ready" },
+    { "do": "sim", "reject_next": true },
+    { "do": "command", "id": "E1", "kind": "place", "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "command", "id": "E2", "kind": "place", "depends_on": "E1", "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "rejected", "reason_code": "order.platform_rejected" } },
+    { "do": "expect_report", "command": "E2", "match": { "status": "rejected", "reason_code": "command.prerequisite_failed" } },
+    { "do": "expect_snapshot", "trigger": "reconnect", "positions": { "A": { "MNQ": 0 } } }
+  ]
+}

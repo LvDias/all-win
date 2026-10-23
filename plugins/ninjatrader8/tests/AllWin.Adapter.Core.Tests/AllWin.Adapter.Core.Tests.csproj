@@ -15,5 +15,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\AllWin.Adapter.Core\AllWin.Adapter.Core.csproj" SetTargetFramework="TargetFramework=netstandard2.0" />
     <ProjectReference Include="..\..\src\AllWin.Adapter.Sim\AllWin.Adapter.Sim.csproj" />
+    <ProjectReference Include="..\..\tools\AllWin.FakeCore\AllWin.FakeCore.csproj" />
   </ItemGroup>
 </Project>
