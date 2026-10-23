@@ -16,7 +16,7 @@ const featureBoundaries = features.map((feature) => ({
       {
         patterns: [
           {
-            group: ["@/app/*", ...features.filter((other) => other !== feature).map((other) => `@/features/${other}`), ...features.filter((other) => other !== feature).map((other) => `@/features/${other}/*`)],
+            group: ["@/app/*", "**/tests/qa", "**/tests/qa/**", ...features.filter((other) => other !== feature).map((other) => `@/features/${other}`), ...features.filter((other) => other !== feature).map((other) => `@/features/${other}/*`)],
             message: "Features import only from @/shared and their own folder.",
           },
         ],
@@ -47,7 +47,12 @@ export default defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [{ group: ["@/features/*", "@/app/*"], message: "Shared code never imports features or routes." }] },
+        {
+          patterns: [
+            { group: ["@/features/*", "@/app/*"], message: "Shared code never imports features or routes." },
+            { group: ["**/tests/qa", "**/tests/qa/**"], message: "Application code never imports tests/qa." },
+          ],
+        },
       ],
     },
   },
@@ -61,7 +66,7 @@ export default defineConfig([
         {
           patterns: [
             { group: ["@/app/*", "@/features/*/*"], message: "tests/qa imports a feature only through @/features/<feature> (its index) and otherwise @/shared." },
-            { group: ["../*", "./*", "@/test/*"], message: "tests/qa uses @/ aliases only." },
+            { group: ["../*", "./*"], message: "tests/qa uses @/ aliases only (@/features/<feature>, @/shared/*, @/test/*)." },
           ],
         },
       ],
