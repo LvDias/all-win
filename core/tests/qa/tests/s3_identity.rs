@@ -1836,3 +1836,413 @@ async fn ac2_login_code_is_dead_after_10_minutes() {
         .await;
     assert_eq!((late.status, late.code()), (401, "auth.code_invalid"));
 }
+
+// ---------------------------------------------------------------- M2: send limits under concurrency
+
+/// Fires `n` login-code requests for `email` at once, each from its own client address.
+async fn burst(env: &Env, email: &str, n: usize) -> Vec<u16> {
+    let mut set = tokio::task::JoinSet::new();
+    for _ in 0..n {
+        let mut c = Client::new(env);
+        let email = email.to_owned();
+        set.spawn(async move {
+            c.post(
+                "/api/v1/auth/login/challenges",
+                json!({"email": email, "channel": "email"}),
+            )
+            .await
+            .status
+        });
+    }
+    let mut statuses = Vec::new();
+    while let Some(r) = set.join_next().await {
+        statuses.push(r.unwrap());
+    }
+    statuses
+}
+
+async fn code_mails(env: &Env, email: &str) -> usize {
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    env.inbox
+        .to(email)
+        .iter()
+        .filter(|m| find_code(&m.body).is_some())
+        .count()
+}
+
+async fn clear_windows(env: &Env, seconds: &[i32]) {
+    sqlx::query("DELETE FROM identity.code_send_counter WHERE window_seconds = ANY($1)")
+        .bind(seconds)
+        .execute(&env.pools.admin)
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn m2_parallel_requests_for_one_identifier_send_at_most_one_code_per_60s() {
+    let env = env_or_skip!(true);
+    let _exclusive = LIMITS.write().await;
+    let email = format!("{}@qa.test", unique("race60"));
+    seed_user(&env, &email, false).await;
+    let statuses = burst(&env, &email, 24).await;
+    assert!(
+        statuses.iter().all(|s| *s == 202 || *s == 429),
+        "{statuses:?}"
+    );
+    let sent = code_mails(&env, &email).await;
+    assert_eq!(
+        sent, 1,
+        "24 parallel requests inside one 60 s window: {sent} codes sent"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn m2_parallel_requests_never_exceed_5_codes_per_15_minutes() {
+    let env = env_or_skip!(true);
+    let _exclusive = LIMITS.write().await;
+    let email = format!("{}@qa.test", unique("race900"));
+    seed_user(&env, &email, false).await;
+    // Four sends spread over distinct 60 s windows (only the 60 s counters are cleared).
+    for _ in 0..4 {
+        clear_windows(&env, &[60]).await;
+        assert_eq!(burst(&env, &email, 1).await, vec![202]);
+    }
+    clear_windows(&env, &[60]).await;
+    burst(&env, &email, 20).await;
+    let sent = code_mails(&env, &email).await;
+    assert!(sent <= 5, "{sent} codes inside 15 minutes (limit 5)");
+    assert_eq!(sent, 5, "the fifth send is still allowed");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn m2_parallel_requests_never_exceed_20_codes_per_24_hours() {
+    let env = env_or_skip!(true);
+    let _exclusive = LIMITS.write().await;
+    let email = format!("{}@qa.test", unique("race86400"));
+    seed_user(&env, &email, false).await;
+    for _ in 0..19 {
+        clear_windows(&env, &[60, 900]).await;
+        assert_eq!(burst(&env, &email, 1).await, vec![202]);
+    }
+    clear_windows(&env, &[60, 900]).await;
+    burst(&env, &email, 20).await;
+    let sent = code_mails(&env, &email).await;
+    assert_eq!(
+        sent, 20,
+        "{sent} codes inside 24 h (limit 20, the 20th allowed)"
+    );
+}
+
+// ---------------------------------------------------------------- M1: rotation after a channel change
+
+#[tokio::test(flavor = "multi_thread")]
+async fn m1_channel_change_does_not_end_the_session_it_rotated_into() {
+    let env = env_or_skip!(true);
+    let (mut c, old) = signed_in(&env, "m1", false).await;
+    age_device(&env, &old).await;
+    let new = format!("{}@qa.test", unique("m1-new"));
+    reset_limits(&env).await;
+    let started = start_change(&mut c, &new).await;
+    assert_eq!(started.status, 202, "{:?}", started.body);
+    let done = confirm_change(&mut c, &env, &started, &old, &new).await;
+    assert_eq!(done.body["status"], "completed", "{:?}", done.body);
+    assert_eq!(
+        c.get("/api/v1/me").await.status,
+        200,
+        "the rotated session works"
+    );
+
+    // The `sessions_ended` event for the other sessions must spare the session the caller now holds.
+    let live: uuid::Uuid = sqlx::query_scalar(
+        "SELECT s.id FROM identity.session s JOIN identity.app_user u ON u.id = s.user_id \
+         WHERE u.email_normalized = $1 AND s.ended_at IS NULL",
+    )
+    .bind(&new)
+    .fetch_one(&env.pools.admin)
+    .await
+    .unwrap();
+    let payloads: Vec<Value> = sqlx::query_scalar(
+        "SELECT o.payload FROM app.outbox o JOIN identity.app_user u ON u.id = o.user_id \
+         WHERE u.email_normalized = $1 AND o.event_type = 'identity.sessions_ended' \
+         AND o.payload->>'reason' = 'channel_changed'",
+    )
+    .bind(&new)
+    .fetch_all(&env.pools.admin)
+    .await
+    .unwrap();
+    assert_eq!(payloads.len(), 1, "{payloads:?}");
+    let spared: Vec<String> = payloads[0]["all_except"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    assert!(
+        spared.contains(&live.to_string()),
+        "session.ended would also close the caller's own rotated session {live}: spared {spared:?}"
+    );
+}
+
+// ---------------------------------------------------------------- code attempts under concurrency
+
+async fn verify_all(env: &Env, challenge: &Value, codes: Vec<String>) -> Vec<u16> {
+    let mut set = tokio::task::JoinSet::new();
+    for code in codes {
+        let mut c = Client::new(env);
+        let challenge = challenge.clone();
+        set.spawn(async move {
+            c.post(
+                "/api/v1/auth/login/verify",
+                json!({"challenge_id": challenge, "code": code, "remember_me": false}),
+            )
+            .await
+            .status
+        });
+    }
+    let mut out = Vec::new();
+    while let Some(r) = set.join_next().await {
+        out.push(r.unwrap());
+    }
+    out
+}
+
+fn wrong_for(code: &str) -> String {
+    if code.starts_with('0') {
+        "1111-1111".into()
+    } else {
+        "0000-0000".into()
+    }
+}
+
+async fn issued_login(env: &Env, prefix: &str) -> (Value, String, String) {
+    let email = format!("{}@qa.test", unique(prefix));
+    seed_user(env, &email, false).await;
+    let mut c = Client::new(env);
+    let issued = c
+        .post(
+            "/api/v1/auth/login/challenges",
+            json!({"email": email, "channel": "email"}),
+        )
+        .await;
+    assert_eq!(issued.status, 202);
+    let code = env.inbox.code(&email).await;
+    (issued.body["challenge_id"].clone(), code, email)
+}
+
+async fn live_sessions(env: &Env, email: &str) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM identity.session s JOIN identity.app_user u ON u.id = s.user_id \
+         WHERE u.email_normalized = $1 AND s.ended_at IS NULL",
+    )
+    .bind(email)
+    .fetch_one(&env.pools.admin)
+    .await
+    .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_wrong_guesses_at_four_attempts_end_at_five() {
+    let env = env_or_skip!(true);
+    let (challenge, code, email) = issued_login(&env, "cwrong").await;
+    let wrong = wrong_for(&code);
+    assert_eq!(
+        verify_all(&env, &challenge, vec![wrong.clone(); 4]).await,
+        vec![401; 4]
+    );
+    let burst = verify_all(&env, &challenge, vec![wrong; 12]).await;
+    assert!(burst.iter().all(|s| *s == 401), "{burst:?}");
+    let attempts: i16 = sqlx::query_scalar(
+        "SELECT max(failed_attempts) FROM identity.one_time_code WHERE destination = $1",
+    )
+    .bind(&email)
+    .fetch_one(&env.pools.admin)
+    .await
+    .unwrap();
+    assert_eq!(attempts, 5, "attempts stop at 5");
+    assert_eq!(
+        verify_all(&env, &challenge, vec![code]).await,
+        vec![401],
+        "the right code is dead after 5 wrong attempts"
+    );
+    assert_eq!(live_sessions(&env, &email).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_success_and_wrong_guess_leave_the_code_unusable() {
+    let env = env_or_skip!(true);
+    let (challenge, code, email) = issued_login(&env, "cmix").await;
+    let wrong = wrong_for(&code);
+    assert_eq!(
+        verify_all(&env, &challenge, vec![wrong.clone(); 4]).await,
+        vec![401; 4]
+    );
+    let mut codes = vec![code.clone()];
+    codes.extend(vec![wrong; 4]);
+    let results = verify_all(&env, &challenge, codes).await;
+    assert!(
+        results.iter().filter(|s| **s == 200).count() <= 1,
+        "{results:?}"
+    );
+    assert!(
+        results.iter().all(|s| *s == 200 || *s == 401),
+        "{results:?}"
+    );
+    // Whatever the order, the code is now spent or invalidated, and at most one session exists.
+    assert_eq!(verify_all(&env, &challenge, vec![code]).await, vec![401]);
+    assert!(live_sessions(&env, &email).await <= 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_code_verified_in_parallel_signs_in_exactly_once() {
+    let env = env_or_skip!(true);
+    let (challenge, code, email) = issued_login(&env, "cone").await;
+    let results = verify_all(&env, &challenge, vec![code; 10]).await;
+    assert_eq!(
+        results.iter().filter(|s| **s == 200).count(),
+        1,
+        "{results:?}"
+    );
+    assert_eq!(live_sessions(&env, &email).await, 1);
+}
+
+// ---------------------------------------------------------------- Q35 setting (server config)
+
+fn refused(status: u16) -> bool {
+    (400..500).contains(&status)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn q35_on_the_conditional_actions_are_refused_without_a_code() {
+    let env = env_or_skip!(true);
+    let (mut a, mail) = signed_in(&env, "q35on", true).await;
+    // One source and one connection exist (with codes) so rotate / pairing-code have a target.
+    let src = create_source(&mut a, &env, &mail, "S").await;
+    let src_id = src.body["source"]["id"].as_str().unwrap().to_owned();
+    let conn = create_connection(&mut a, &env, &mail, "C").await;
+    let conn_id = conn.body["connection"]["id"].as_str().unwrap().to_owned();
+
+    let sources_before = a
+        .get("/api/v1/sources")
+        .await
+        .body
+        .as_array()
+        .unwrap()
+        .len();
+    let r = a
+        .post(
+            "/api/v1/sources",
+            json!({"name": "NoCode", "source_type": "tradingview"}),
+        )
+        .await;
+    assert!(
+        refused(r.status),
+        "create source: {} {:?}",
+        r.status,
+        r.body
+    );
+    assert_eq!(
+        a.get("/api/v1/sources")
+            .await
+            .body
+            .as_array()
+            .unwrap()
+            .len(),
+        sources_before
+    );
+    let r = a
+        .post(&format!("/api/v1/sources/{src_id}/rotate"), json!({}))
+        .await;
+    assert!(refused(r.status), "rotate: {} {:?}", r.status, r.body);
+    let r = a
+        .post("/api/v1/connections", json!({"name": "NoCode"}))
+        .await;
+    assert!(
+        refused(r.status),
+        "create connection: {} {:?}",
+        r.status,
+        r.body
+    );
+    let r = a
+        .post(
+            &format!("/api/v1/connections/{conn_id}/pairing-code"),
+            json!({}),
+        )
+        .await;
+    assert!(refused(r.status), "pairing code: {} {:?}", r.status, r.body);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn q35_off_the_conditional_actions_need_no_code() {
+    let env = env_or_skip!(false);
+    let (mut a, _mail) = signed_in(&env, "q35off", true).await;
+
+    let src = a
+        .post(
+            "/api/v1/sources",
+            json!({"name": "NoCode", "source_type": "tradingview"}),
+        )
+        .await;
+    assert_eq!(src.status, 201, "{:?}", src.body);
+    let src_id = src.body["source"]["id"].as_str().unwrap().to_owned();
+    let rot = a
+        .post(&format!("/api/v1/sources/{src_id}/rotate"), json!({}))
+        .await;
+    assert_eq!(rot.status, 200, "{:?}", rot.body);
+    let conn = a
+        .post("/api/v1/connections", json!({"name": "NoCode"}))
+        .await;
+    assert_eq!(conn.status, 201, "{:?}", conn.body);
+    let conn_id = conn.body["connection"]["id"].as_str().unwrap().to_owned();
+    let pairing = a
+        .post(
+            &format!("/api/v1/connections/{conn_id}/pairing-code"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(pairing.status, 201, "{:?}", pairing.body);
+    let invitation = a
+        .post(
+            "/api/v1/admin/invitations",
+            json!({"email": format!("{}@qa.test", unique("q35inv")), "locale": "en", "send_email": false}),
+        )
+        .await;
+    assert_eq!(invitation.status, 201, "{:?}", invitation.body);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn q35_off_unpair_and_channel_change_still_need_a_code() {
+    let env = env_or_skip!(false);
+    let (mut a, mail) = signed_in(&env, "q35keep", false).await;
+    let conn = a.post("/api/v1/connections", json!({"name": "C"})).await;
+    assert_eq!(conn.status, 201, "{:?}", conn.body);
+    let conn_id = conn.body["connection"]["id"].as_str().unwrap().to_owned();
+    let r = a
+        .post(
+            &format!("/api/v1/connections/{conn_id}/unpair"),
+            json!({"acknowledge_open_positions": false}),
+        )
+        .await;
+    assert!(
+        refused(r.status),
+        "unpair without a code: {} {:?}",
+        r.status,
+        r.body
+    );
+    let list = a.get("/api/v1/connections").await;
+    let c = list
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == conn_id)
+        .unwrap();
+    assert_ne!(c["status"], "unpaired");
+
+    // The channel change keeps its own two-code flow regardless of the setting.
+    age_device(&env, &mail).await;
+    let new = format!("{}@qa.test", unique("q35-new"));
+    let started = start_change(&mut a, &new).await;
+    assert_eq!(started.status, 202, "{:?}", started.body);
+    assert_eq!(started.body["status"], "awaiting_codes");
+    assert_eq!(a.get("/api/v1/me").await.body["email"], mail);
+}
