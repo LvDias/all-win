@@ -1,9 +1,9 @@
 # V1-S13 — Risk rules per account and live risk state — Screen spec
 
-> **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
-> **Slice:** [V1-S13](../../product/release-1/slice-plan.md) AC-1 … AC-6 (slice-plan rev. 7); touch points: S5 (account tabs, list), S16 (preset values, provenance), S14 (Core gate), S15 (enforcement, blocks), S18 (notifications), S10 (audit), S11 (data freshness).
+> **Owner:** Product Designer (Aquarela, took over from Traço) · **Status:** proposed, pending PO review · **Revision:** 2 (PO review 2026-10-23: net basis, commission AC-11, AC-7/8/9 decided, S13b added) · **Date:** 2026-10-23
+> **Slice:** [V1-S13](../../product/release-1/slice-plan.md) AC-1 … AC-11 and [V1-S13b](../../product/release-1/slice-plan.md) AC-1 … AC-6 (slice-plan rev. 8); touch points: S5 (account tabs, list), S16 (preset values, provenance), S14 (Core gate), S15 (enforcement, blocks), S18 (notifications), S10 (audit), S11 (data freshness).
 > **Foundations:** [foundations.md](../foundations.md): F§6 numbers and time, **F§7.1 risk states**, **F§7.3 `RiskMeter`**, F§7.4 provenance, F§10 feedback · **Related:** [S5](v1-s5-automation-opt-in.md) (§0 tabs, §8 detail), [S16](v1-s16-presets.md) (§8.1 edited values, §5 not-confirmed).
-> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/risk.yaml` and the notes [s13-risk](../../architecture/contracts/s13-risk.md). Typed state, rules, preview (`previewAccountRiskRules`), `previewable` limits; ADR-0004 `limits`/`risk_state` for the plugin. **Where this spec and the contract differ, the contract wins.** Operation names below that differ are from the draft: `getAccountRisk`, `listRiskSummaries`, `getAccountRiskRules`, `putAccountRiskRules`, `previewAccountRiskRules`.
+> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9): `contracts/http/modules/risk.yaml` and the notes [s13-risk](../../architecture/contracts/s13-risk.md). Typed state, rules, preview (`previewAccountRiskRules`), `previewable` limits; ADR-0004 `limits`/`risk_state` for the plugin. **Where this spec and the contract differ, the contract wins.** Operation names below that differ are from the draft: `getAccountRisk`, `listRiskSummaries`, `getAccountRiskRules`, `putAccountRiskRules`, `previewAccountRiskRules`.
 > **Surfaces:** Web (Frontend). The plugin's own warnings and panels (S13 AC-3, S15) are the Plugin Engineer's. State computation, resets and warnings are the Core's (Backend). QA owns the checks.
 > **Not in this spec:** the enforcement switch and the flatten/block behavior (S15), and the Core refusal gate (S14): they appear here only as read-only status and explanations.
 
@@ -23,7 +23,7 @@
 ## 2. Concepts shown to the user (no new rules)
 
 - **Per account** the user sets: drawdown (amount and type: trailing intraday, end-of-day trailing, static), daily loss limit, daily profit target, and firm-specific rules such as consistency (AC-1).
-- The Core keeps each account's **current risk state** from execution results and plugin-reported P&L; the user sees **used vs limit** per account (AC-2).
+- The Core keeps each account's **current risk state** from execution results and plugin-reported P&L, **net of commissions** (firms measure on net; Q54 exception, AC-2, AC-11); the user sees **used vs limit** per account. **Only those two sources count:** manual trades (S21) never change the risk state, limits, blocks or consistency figures.
 - **Exactly three levels:** `normal` (< 80 %), `warning` (≥ 80 %), `reached` (limit reached). There is **no 90 % band** (F§7.1, D18). The state is a Core field; the UI maps it.
 - **Warning at 80 %** of each limit appears in the Web and in the plugin (AC-3).
 - **Trading day** resets at the prop firm's reset time (from the preset) or, for real accounts, at the CME futures session close (AC-4).
@@ -46,6 +46,11 @@
    - Freshness: "Atualizado às 14:31:05 (GMT-3)" (absolute time, `<time>`). If the Core flags the data stale or the account's connection is down: badge `Sem dados recentes` (F§7.2) and the line "NinjaTrader desconectado: os valores abaixo podem estar desatualizados." The UI never shows stale data as current.
 2. **Account risk status** (one line, `StatusBadge`): the worst current state (`Alerta (80 %)`, `Limite atingido`, `Bloqueada até {time}` with reason, `Meta atingida`) or nothing when all is `normal`. Reasons follow F§7.1: a block caused by the profit target uses success color and says "motivo: meta de lucro diária atingida".
 3. **Banners:** a limit that is not `normal` shows a `RiskBanner` (C§5) above the meters, with the same wording as the notification (S18) and the shell aggregate.
+   - **Basis line (AC-2, AC-11):** under the strip, a muted line "Valores líquidos, depois de comissões." / "Net values, after commissions." (`pnl_basis`). Gross P&L, when shown, sits beside the net value and is labeled "bruto". Every "usado" value in this tab is **net**.
+   - **Commission notice (`commission_source = none`):** `Alert` info "Comissão não informada: os limites podem estar folgados demais. O líquido é igual ao bruto nesta conta." + link `Informar comissão` (S13-02, section Comissões). It is a notice, never a block. Other sources (`platform`, `configured`, `mixed`, `manual`) show the source in the basis popover (`Info`): "Comissão da plataforma" / "Comissão configurada (mínimo por contrato)" / "Mista".
+   - **Pending lower commission floor (`pending_commission_change`):** "Nova comissão por contrato/lado {value} a partir de {date-time zone}." (change `commission_floor_lowered`) or "A comissão mínima será removida a partir de {date-time zone}." (`commission_floor_removed`, no value), same style as `pending_changes`.
+   - **Manual trades:** one muted line "Operações lançadas à mão não entram no risco desta conta." / "Manually entered trades do not count toward this account's risk." (AC-2).
+   - **Evaluation progress (S13b):** card of §12 below, between the meters and "O que acontece…", only on evaluation accounts.
 4. **Limits** — one `RiskMeter` (F§7.3) per rule that exists, in this order:
 
 | Meter | Label pt-BR / en | Value shown | Notes |
@@ -76,7 +81,7 @@
 | No rules set yet | `EmptyState` `Gauge`: "Esta conta ainda não tem regras de risco." / "Defina limites para receber alertas aos 80 % e para o All Win recusar entradas ao atingi-los." + `Definir regras` |
 | Error | `ErrorState` + retry + code |
 | Stream down | strip shows `Sem dados recentes`; meters dimmed |
-| Blocked | prominent `Alert` (danger, `Lock`, or success variant for target reason): "Conta bloqueada até 17:00 (GMT-3) · motivo: {reason}. Não há desbloqueio antecipado." The block comes from S15; this screen only displays it |
+| Blocked | prominent `Alert` (danger, `Lock`, or success variant for target reason): "Conta bloqueada até 17:00 (GMT-3) · motivo: {reason}. Não há desbloqueio antecipado. Mudar limites não remove o bloqueio: ele continua até o reset." The block comes from S15; this screen only displays it |
 
 ---
 
@@ -95,7 +100,7 @@
 | Limite de perda diária / Daily loss limit | money `Input` | ≥ 0 | `daily_loss_limit` |
 
 - Help for the daily loss limit on prop accounts whose firm states it as **none**: "A firma informa que não há limite de perda diária." (field read-only, source popover).
-- **Required fields [Provisional, Q47 rec. (a); user decides]:** for prop accounts the daily loss limit is required unless the preset says "none" explicitly (drawdown and maximum position are already required, S16 AC-6: a required field cannot be saved while not confirmed). For real accounts all are optional; an empty field means "não definido" / "not set" and the Risk tab says so (§3).
+- **Required fields (Q47 a, decided; AC-7):** for prop accounts the daily loss limit is required unless the preset says "none" explicitly (drawdown and maximum position are already required, S16 AC-6: a required field cannot be saved while not confirmed). For real accounts all are optional; an empty field means "não definido" / "not set" and the Risk tab says so (§3).
 
 ### 4.2 Section "Meta de lucro diária"
 
@@ -105,8 +110,19 @@
 | Ao atingir / When reached | `RadioGroup` of two cards, **"Só avisar" preselected** | `profit_target_on_reach`: `notify` (default, Q3 decided) / `flatten_and_block` |
 
 - "Só avisar": "Você recebe um aviso uma vez quando a meta for atingida. A conta continua operando."
-- "Fechar posições e bloquear até o reset": "Ao atingir a meta, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset, como em um limite de perda." **[Provisional, Q49 rec. (b)]** The option is **unavailable while enforcement is off** on this account: `aria-disabled` (focusable, not removed) with the reason inline and in `aria-describedby`: "Disponível quando a aplicação automática estiver ligada nesta conta." / "Available when automatic enforcement is on for this account." + link `Ligar aplicação automática` (S15 control). If enforcement is later turned off while this option is saved, the target falls back to "só avisar" (S15 §4.2, Q63 provisional; closes Q-S13-8).
+- "Fechar posições e bloquear até o reset": "Ao atingir a meta, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset, como em um limite de perda." *(Q49 b, decided; AC-9)* The option is **unavailable while enforcement is off** on this account: `aria-disabled` (focusable, not removed) with the reason inline and in `aria-describedby`: "Disponível quando a aplicação automática estiver ligada nesta conta." / "Available when automatic enforcement is on for this account." + link `Ligar aplicação automática` (S15 control). If enforcement is later turned off while this option is saved, the target falls back to "só avisar" (S15 §4.2, Q63 provisional; closes Q-S13-8).
 - The radio group is the one place in this spec where a default is preselected, because Q3 decided a default; the opt-ins of S5 are different (no default).
+
+### 4.2b Section "Comissões" (AC-11)
+
+| Field | Component | Validation | Data |
+|---|---|---|---|
+| Comissão por contrato e lado / Commission per contract per side | money `Input` (USD, F§6.3), optional | ≥ 0; decimals as the contract `MoneyAmount` (a preset value is kept exactly as published, up to 4 decimals; the client never rounds a prefilled value and accepts what the Core accepts) | `commission_per_contract_side` (account; `updateAccount`) |
+
+- **Prefilled from the preset** when the firm publishes it, with the provenance mark of F§7.4 (verified popover with source and date, `Editado` when changed, `Restaurar valor do preset`); when the firm does not publish it the field is empty and shows the warning below. Real accounts have no preset: empty, no marks.
+- Help: "O All Win usa, em cada execução, o maior valor entre a comissão informada pela plataforma e este valor × quantidade. Os limites usam o resultado líquido." / "For each fill, All Win uses the greater of the platform-reported commission and this value × quantity. Limits use the net result."
+- **Empty:** inline warning "Comissão não informada. Sem ela o resultado líquido é igual ao bruto e os limites podem ficar folgados demais." (account-level wording; the per-trade label of S21 is "comissões não informadas", keep both exact).
+- **Effect on save [Proposal, Q85 to the user; not a decided rule]:** a **higher** value applies at once; a **lower** value (or clearing it) applies from the next trading day, because it would loosen the net limits (contract `AccountRisk.pending_commission_change`). The form says so under the field: "Uma comissão menor vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the pending line. The Core publishes a new limits version (S13 pending flow, `limits_pending` states as elsewhere).
 
 ### 4.3 Section "Regra de consistência" (prop accounts only)
 
@@ -129,8 +145,8 @@ Read-only block: "Reset do dia: {time} ({zone})" with source. Prop: from the pre
 | Client-side invalid | Inline errors, focus first invalid, summary at ≥ 3 |
 | Server 422 with `pointer` | Map to the field (`/daily_loss_limit`, `/drawdown_type`, `/profit_target_on_reach`, …) and focus it |
 | Unresolved not-confirmed required value | "Resolva este valor para salvar." on the field |
-| Tightening (a stricter value) | **Applies at once** **[Provisional, Q48 rec. (b)]**. The form says so under the field: "Um limite mais apertado vale na hora." |
-| Loosening (a looser value) | **Applies only from the next trading day.** Under the field: "Um limite mais folgado vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the current limit and a line "Novo limite {value} a partir de {date-time zone}" (`pending_changes` from the Core) |
+| Tightening (a stricter value) | **Applies at once** (Q48 b, decided; AC-8). The form says so under the field: "Um limite mais apertado vale na hora." |
+| Loosening (a looser value) | **Applies only from the next trading day.** If the account is **already blocked**, the edit never lifts the block; the form and the toast say "O bloqueio continua até o reset." (AC-8). Under the field: "Um limite mais folgado vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the current limit and a line "Novo limite {value} a partir de {date-time zone}" (`pending_changes` from the Core) |
 | New value already exceeded today (the Core returns `would_be_reached`) | `AlertDialog` before saving: "Com este limite a conta já passou do limite hoje. O All Win vai parar de aceitar novas entradas agora{; com a aplicação automática ligada, o plugin fecha as posições e bloqueia a conta até o reset}. Saídas continuam permitidas." Buttons `Voltar` (focused) / `Salvar e aplicar agora`. The dialog is shown only when the Core says the change would be effective now (tightening) |
 | Conflict (`common.version_conflict`) | "Estas regras mudaram em outro lugar." + `Recarregar` |
 | Success | Toast "Regras de risco salvas." → Risk tab. The Core publishes a new limits version to the plugin; the audit entry records previous and new values |
@@ -222,15 +238,15 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 
 **Architect (Compasso):** Q-S13-5 display of the trailing floor; Q-S13-7 percent precision of the consistency threshold.
 
-**User questions drawn as recommendation (a), provisional:**
+**Decided by the user on 2026-10-23e (Q47, Q48, Q49), no longer provisional:**
 
-| ID | Question | Spec default (provisional) |
+| ID | Question | Decision |
 |---|---|---|
 | Q47 | Daily loss limit required? | Prop: required unless the preset says "none" explicitly (drawdown and max position already are); real: all optional, shown as "não definido" |
 | Q48 | When does a limit edit take effect? | Tightening at once; loosening from the next trading day; if the new value is already exceeded: warn before saving, the Core stops routing entries, and with enforcement on the plugin flattens at once |
 | Q49 | "Flatten and block" at the profit target | Unavailable while enforcement is off, with the reason |
 
-**Still open (S15/Architect):** Q-S13-8 what happens to a saved "flatten and block" profit-target choice if enforcement is turned off later.
+**Closed:** Q-S13-8 — turning enforcement off returns "flatten and block" at the profit target to "só avisar"; the change is stated in the confirmation and audited (S15 AC-10, Q63).
 
 ## 11. AC traceability
 
@@ -242,5 +258,66 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 | AC-4 trading-day reset (firm / CME) | §3 strip, §4.4 |
 | AC-5 profit target: notify only (default) or flatten and block; notify once | §4.2, §3 meter |
 | AC-6 consistency tracked and warned, never enforced | §3, §4.3 |
+| AC-7 prop requires drawdown and daily loss unless the preset says none; real all optional | §4.1 |
+| AC-8 tighten at once, loosen next day, never lifts a block, warning before saving | §4.6 |
+| AC-9 flatten-and-block unavailable until enforcement is on | §4.2 |
+| AC-10 reset time editable on prop copy, real fixed | §4.4 |
+| AC-11 commission floor, prefilled from preset, "comissão não informada" | §4.2b, §3 |
+| S13b AC-1..AC-6 evaluation progress | §12 |
 | F§7.1 three levels, no 90 % band; F§7.3 RiskMeter | §2, §3, §8 |
 | X-2, X-3, X-5, X-6, X-8 | §3 permissions, strings from the Core, §7, §6, time rules |
+
+---
+
+## 12. V1-S13b — Evaluation progress (profit target left to pass)
+
+**Purpose:** on an account in an **evaluation** phase, show how much net profit is left to reach the firm's evaluation profit target (S13b AC-1). Funded and live phases, and real accounts, show nothing (no empty card).
+**Entry point:** card "Meta da avaliação" on the Risk tab (§3) and one line on the account detail header (S5 §8): "Avaliação: faltam US$ 1.200,00". **Permissions:** own account only (X-2).
+**Contract:** `getAccountRisk` → `AccountRisk.evaluation` (`start`, `profit_target`, `earned_before`, `achieved`, `remaining`, `percent`, `state`, `reached_at`, `as_of`); `restartEvaluation` (`POST /accounts/{id}/evaluation/restart`, `evaluation_start`, `evaluation_earned_before`, `row_version`); account fields `evaluation_start` / `evaluation_earned_before` (create/update); preset `evaluation_profit_target` (S16 AC-10). Notification `risk.evaluation_target_reached` (S18).
+
+### 12.1 Card "Meta da avaliação" (AC-1, AC-2, AC-3)
+
+`Card` with:
+- Heading and a progress bar (`RiskMeter`-style but **success** tone, not a limit: it never uses warning/danger; `role="progressbar"` with text value; the percent is the Core's truncated `percent`).
+- Three figures (definition list): **Meta** US$ 6.000,00 · **Acumulado (líquido)** US$ 4.800,00 · **Falta** US$ 1.200,00. In `target_reached`: "Meta atingida em {date-time zone}" in place of "Falta" (never a negative amount). All values are strings from the Core (F§6), no arithmetic in the browser.
+- Count line: "Contagem desde {start}{; inclui US$ {earned_before} já ganhos antes}. Só entram operações capturadas pelo All Win a partir dessa data, mais o valor informado. Operações lançadas à mão não contam." (AC-2, AC-4).
+- Source line for the target (from the preset): "Meta da firma: US$ 6.000,00 · fonte {page title}, verificado em {date}" with the F§7.4 popover.
+- Actions: `Ajustar contagem` (S13b-02).
+- **Header line (PO, Q-S13b-2):** the account detail header shows "Avaliação: faltam {remaining}"; **hidden** when the target is not confirmed or absent.
+- **Not confirmed or absent target (AC-3):** the card shows no progress and says why: "A meta desta avaliação não está confirmada nas páginas oficiais da firma, então não mostramos o progresso." with `Resolver` (S16 `ConflictPicker`) — the product never picks a value. **Absent target on an evaluation account** (the preset has no published evaluation target): the card is shown with the explanation "Esta avaliação não tem meta publicada, então não mostramos o progresso." (no `Resolver`, there is nothing to resolve). A funded or live phase has no card.
+- Stale data: `Sem dados recentes` badge (F§7.2) like the meters; `as_of` shown as absolute time.
+- Net-commission note (keeps the user from being misled): `commission_source = none` → "Comissão não informada: o acumulado pode estar acima do real."; `configured` or `mixed` (estimated from the configured minimum) → "Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real." `platform` and `manual`: no note.
+
+### 12.2 Dialog "Ajustar contagem da avaliação" (AC-4)
+
+`ResponsiveDialog` with one action. After creation, the start date and the amount already earned change **only through `restartEvaluation`** (the contract has no other edit; they exist in `AccountCreateRequest` only), so the dialog is a restart:
+
+| Field | Component | Validation | API |
+|---|---|---|---|
+| Início da contagem / Count start | date `Input` (F§6.4, user time zone), default the current start | required; not in the future (422 `accounts.evaluation_start_invalid`, pointer `/evaluation_start`) | `evaluation_start` |
+| Já ganho antes do início (líquido) / Already earned before the start (net) | money `Input`, optional | ≥ 0 (V1: a loss already made before the start is not recorded; if the user wants it, that is a PO/contract change); decimals as `MoneyAmount` (see §4.2b) | `evaluation_earned_before` |
+
+- Text above the fields: "Só entra o que o All Win capturou a partir da data de início, mais o valor que você informar aqui. Uma reinicialização da simulação ou do Playback não reinicia a contagem." (AC-4, S11 AC-6).
+- Button `Reiniciar contagem` opens an `AlertDialog` "Reiniciar a contagem da avaliação?": "A contagem passa a valer a partir da data e do valor acima. O histórico anterior continua no registro de atividade." Confirm → `restartEvaluation` `{evaluation_start, evaluation_earned_before?, row_version}`; audited as `accounts.evaluation_restarted` (previous and new start). No step-up (not in the S3 list).
+- Errors: pointers map to fields; 409 `common.version_conflict` → "A conta mudou. Recarregue." + `Recarregar`; 422 `accounts.evaluation_not_applicable` → dialog closes with an `Alert` "Esta conta não tem meta de avaliação." Double submit prevented (busy button). Dirty guard like other forms. Focus on the first field; returns to `Ajustar contagem`.
+- If the user wants to edit without restarting (change the earned amount only), that needs a contract operation first: not drawn **[Q-S13b-3 to the Architect]**.
+
+### 12.3 Reaching the target (AC-5)
+
+When `state` becomes `target_reached`: **one** notice on the account (the card turns to success with a `Check` icon and "Meta atingida", `role="status"` announced politely once) and **one** notification (`risk.evaluation_target_reached`, success, S18). **Nothing else happens**: the text says "Nada é fechado nem bloqueado automaticamente." No `CriticalBanner`, no block, no flatten. Minimum trading days and payout rules are not shown (AC-6).
+
+### 12.4 States
+
+Loading `Skeleton`; error `ErrorState` with retry; no evaluation → no card; target not confirmed → §12.1 explanation; in progress; reached; stale.
+
+### 12.5 Accessibility and i18n
+
+Keys `risk.evaluation.*` (pt-BR = en). The bar has a text equivalent ("80 % da meta"); status by text and icon, not color alone; the dialog is keyboard operable and reflows at 320 px; the figures are a `dl`.
+
+### 12.6 Open questions (S13b)
+
+| Id | Question | Owner |
+|---|---|---|
+| Q-S13b-1 | The registration-date default of `evaluation_start` and the `evaluation_earned_before` field in the **create** account form (S5 step "Regras") — spec proposes both optional in the S5 rules step, defaults as in the contract. S5 needs a one-line addition (Nanquim/Aquarela after the S5 delta commit). | Aquarela |
+| Q-S13b-3 | Edit the earned amount or start without restarting: no contract operation (only `restartEvaluation`). | Architect |
+| Q-S13b-2 | **Answered by the PO:** the header shows "faltam", hidden when not confirmed or absent (§12.1). | PO |
