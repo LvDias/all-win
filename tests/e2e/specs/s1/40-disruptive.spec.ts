@@ -54,6 +54,34 @@ test.describe('S1 masking — disruptive (contract §4.3)', () => {
     expect(/:[1-9][0-9]*$/.test(mapped), `core container port ${port} is published on the host (${mapped})`).toBe(false);
   });
 
+  test('token-failure budget: identical 429 for every failure kind, valid token never refused (contract 1.1.2 step 2)', async () => {
+    test.skip(!isFull(), 'needs the Core (edge-only mode)');
+    const { a, b } = ctx();
+    const since = mark();
+    const exhausted = await burst(() => ingress(syntheticToken('x').value), '{}');
+    expect(exhausted.last.status, `no 429 within ${exhausted.sent} failing requests`).toBe(429);
+    // a was revoked in M5; every kind of failure must now look the same.
+    const kinds: Array<[string, string]> = [
+      ['malformed', ingress('awk_short')],
+      ['unknown canonical', ingress(syntheticToken('x').value)],
+      ['known key, wrong secret', ingress(`awk_${b.keyId}_${syntheticToken('x').secret}`)],
+      ['revoked', ingress(a.value)],
+      ['other path under /ingress', '/ingress/v2/tradingview/x'],
+    ];
+    const answers: Array<{ label: string; res: RawResponse }> = [];
+    for (const [label, target] of kinds) answers.push({ label, res: await post(target, validInstruction(), JSON_HEADERS, { retry429: false }) });
+    const shape = (r: RawResponse) => ({ status: r.status, body: r.body, headers: Object.keys(r.headers).filter((h) => h !== 'date').sort(), retryAfter: r.headers['retry-after'] !== undefined });
+    for (const { label, res } of answers) {
+      expect(res.status, `${label}: 429 once the failure budget is exhausted`).toBe(429);
+      expect(shape(res), `${label}: same response as the first failure kind`).toEqual(shape(answers[0]!.res));
+    }
+    // "A valid token from the same IP is never refused."
+    const ok = await post(ingress(b.value), validInstruction(), JSON_HEADERS, { retry429: false });
+    expect(ok.status, 'valid token refused while the IP failure budget is exhausted').toBe(200);
+    expectNoLeak('token-failure budget', await allSources(since, [...answers, { label: 'valid', res: ok }]));
+    await waitRetryAfter(answers.at(-1)!.res);
+  });
+
   test('M8 rate limit with a valid token and with invalid tokens', async () => {
     test.skip(!isFull(), 'rate limiting is a Core feature (edge-only mode)');
     const since = mark();
@@ -134,7 +162,15 @@ test.describe('S1 masking — disruptive (contract §4.3)', () => {
     await waitEdge(404);
   });
 
-  test('whole run after disruptive scenarios: no canary anywhere', async () => {
-    expectNoLeak('whole run (final)', await allSources(undefined));
+  test('whole run after disruptive scenarios: no canary anywhere; no dead-lettered outbox events', async () => {
+    const sources = await allSources(undefined);
+    expectNoLeak('whole run (final)', sources);
+    const metrics = sources.find((x) => x.name === 'metrics')?.text;
+    if (metrics !== undefined) {
+      // Audit rows are written from the outbox; a dead-lettered event is a lost user-visible audit entry.
+      const dead = [...metrics.matchAll(/^allwin_outbox_dead_lettered(?:\{[^}]*\})?\s+([0-9.eE+-]+)$/gm)].map((m) => Number(m[1]));
+      test.info().annotations.push({ type: 'outbox', description: `dead_lettered=${dead.join(',') || 'n/a'}` });
+      expect(dead.every((v) => v === 0), `allwin_outbox_dead_lettered = ${dead.join(',')}`).toBe(true);
+    }
   });
 });

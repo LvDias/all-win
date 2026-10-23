@@ -38,7 +38,8 @@ export function ingress(token: string): string {
 
 /**
  * POST through the edge. A 429 is retried after its Retry-After (bounded) so functional tests are not
- * coupled to the rate-limit configuration; rate-limit tests pass `retry429: false`.
+ * coupled to the rate-limit configuration (contract 1.1.2: 30 token failures per IP per minute, so the 404
+ * matrix and M6 exhaust it); rate-limit tests pass `retry429: false`.
  */
 export async function post(
   target: string,
@@ -49,7 +50,7 @@ export async function post(
   const payload = body === undefined ? undefined : typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
   for (let attempt = 0; ; attempt++) {
     const res = await send(ctx().s.origin, { method: opts.method ?? 'POST', target, headers, body: payload });
-    if (res.status !== 429 || opts.retry429 === false || attempt >= 3) return res;
+    if (res.status !== 429 || opts.retry429 === false || attempt >= 8) return res;
     await waitRetryAfter(res);
   }
 }

@@ -141,6 +141,17 @@ test.describe('S1 masking (contract §4.3)', () => {
     expectNoLeak('M4', await allSources(since, [{ label: 'M4', res }]));
   });
 
+  test('M3b credential guard: another canary token inside the body is neither logged nor stored', async () => {
+    const { a, b } = ctx();
+    const since = mark();
+    const res = await post(ingress(a.value), validInstruction({ details: { pasted: b.value } }));
+    if (isFull()) {
+      const r = expectRejected('M3b', res, 400, 'ingress.schema_violation');
+      expect(r.error.pointer, 'M3b: pointer must be empty').toBe('');
+    }
+    expectNoLeak('M3b', await allSources(since, [{ label: 'M3b', res }]));
+  });
+
   for (const v of V) {
     test(v.id, async () => {
       const { a } = ctx();

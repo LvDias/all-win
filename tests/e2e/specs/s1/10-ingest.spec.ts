@@ -104,6 +104,19 @@ test.describe('S1 ingest', () => {
       });
     }
 
+    test('credential guard (5a): a token-shaped string in the body → 400 schema_violation, empty pointer, nothing stored', async () => {
+      const shaped = syntheticToken('guard').value;
+      const body = validInstruction({ details: { note: shaped } });
+      const r = expectRejected('guard', await post(ingress(ctx().a.value), body), 400, 'ingress.schema_violation');
+      expect(r.error.pointer, 'guard: pointer must be empty').toBe('');
+      expect(receiptRows(String(body.message_id)), 'guard: no receipt').toBe(0);
+      // Runs before schema validation: a body that also has a schema error still gets the empty pointer.
+      const both = expectRejected('guard+schema', await post(ingress(ctx().a.value), validInstruction({ quantity: 0, details: { note: shaped } })), 400, 'ingress.schema_violation');
+      expect(both.error.pointer, 'guard+schema: pointer must be empty').toBe('');
+      const device = expectRejected('guard awd_', await post(ingress(ctx().a.value), validInstruction({ details: { note: `awd_${shaped.slice(4)}` } })), 400, 'ingress.schema_violation');
+      expect(device.error.pointer, 'guard awd_: pointer must be empty').toBe('');
+    });
+
     test('malformed JSON → 400 ingress.invalid_json', async () => {
       expectRejected('invalid json', await post(ingress(ctx().a.value), '{"schema_version":'), 400, 'ingress.invalid_json');
     });
