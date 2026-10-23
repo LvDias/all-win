@@ -36,14 +36,55 @@
 | V1-S2 hardening (Vigia follow-ups: NuGet lock files, token 0600, ws only in Development, store corruption typing) | Plugin Engineer (Elo @ Dev3) | integrated (main a9a95a7; log 2026-10-23-v1-s2-plugin-hardening) | 9a2ece9 | — | Remove row at next cleanup |
 | V1-S2 prep — AllWin.Adapter.Core + fake-Core harness (Linux) | Plugin Engineer (Elo @ Dev3) | final candidate 1009999 (421 tests); Code Review APPROVED 1009999; QA [Plugins] APPROVED 1009999 (23 probes); QA [Security] APPROVED 1009999 (0 crit/high/medium, 2 low, 3 info); integrated (main 6579023); reason-codes/ADR-0004 committed (4fe3957, bb6b8ba, 46ffa80, d10c9a0) | 78305dd base | Windows VPS for NT8 parts | — |
 
-## Session snapshot (2026-10-23 evening)
-- On `main`: S1, S2 (Linux), S4, U13 (protocol 1.2 + plugin 92fa116), architecture/data/product/design docs; pushed to GitHub (LvDias/all-win). Pre-suspend WIP of every worktree is on GitHub.
-- Approved, waiting to merge together with S3 core: HTTP contract up to 4.3.0 (+ docs 5cd62d8), API-SPEC 30a34fb (N3 closed, allowlist 4939133), S3 web e63f676/4d34a53.
-- Reviews: ADR-0007/0008 round 2 356e23ba24ae APPROVED by Code Review (QA Security pending); data model rev. 16 1741556b905a APPROVED by Code Review.
-- In progress: S3 core (Brasa); S5 core implemented, gates next (Malha); S5 web stepper (Mosaico); S6 core (Torno, Maestri link down); S7 core WIP 480d355/df7bf23 (Ferro); audit-codes delta s/v1-audit-codes--core (Ferro: app.outbox.seq + #7b + dispatcher change approved by Brasa; S1 ingress details aligned to contract 4.3.0; S1 suite rerun by Sentinela); plugin T1 flake + protocol 1.3 (Elo); R3 research (Lupa).
-- VPS Fase 2: scripts + README 86df87c APPROVED (Code Review, QA Security; across rounds 1 high, 2 medium, 11 low fixed; 3 code-review lows tracked by DevOps). Guide sent to the user; the user is running it (RDP already tailnet-only; allwin-agent and NT8 installed).
-- Waiting for the user: Q75; later 061300 (narrowing CHECK, needs explicit authorization).
+## Session snapshot (2026-10-23 night, user's Mac resting)
+- On `main` (d45e14c, on GitHub): S1, S2 (Linux), S4, U13, plus architecture (ADR-0003 S7 gates, ADR-0007/0008, policy rev. 3.1, spike plan rev. 6.1), data model rev. 16.3, product Q73/Q74, design docs.
+- Approved, on slice branches, landing with the implementing code: HTTP contract 5.0.0 (ba676fd), 5.1.0 (66f77f0), 5.1.1 (583f986b1511, commit pending); API-SPEC; S3 web; ADR-0003/0004 r3 849fcd1b8ee0 (Code Review + QA Security approved; commit by Forja).
+- In progress:
+  - S3 core (Brasa; drift allowlist + omitted disconnect_reason under Architect review);
+  - S5 core (Malha, gates next); S5 web (Mosaico, rebased on 51d626a);
+  - S6 core (Torno; Q73 b);
+  - S7 core (Ferro; Q74, 5.1.0/5.1.1);
+  - audit-codes delta (Ferro; commit paused on 3 .sqlx deletions not in the reviewed patch);
+  - plugin delta acc038806e60 (Elo; Code Review approved, QA Plugins re-check pending) and protocol 1.3 next;
+  - outbox purge + per-consumer tracking (Brasa, after S3).
+- VPS Phase 2: 86df87c APPROVED; guide sent; the user is running it (RDP tailnet-only; allwin-agent and NT8 installed). Dev server joins at step 7 (Forja relays the login URL to the user only).
+- Waiting for the user: VPS Phase 2 (policy + tag, dev server join, Tailnet Lock, scripts); later 061300 (brought when due). Q75 (b) and Q76 (a) decided. 196a30a merge gated on latency explanation + QA PG tests in Docker.
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.
+
+## Team assignments (2026-10-23 ~22:40) — idle rule: nobody idle >15 min without a reason here
+
+| Agent | Now | Waiting reason (if any) |
+|---|---|---|
+| Forja (DevOps, Dev2) | qa-db hardening (Esmeril findings); integrate de98e86 to main | — |
+| Rebite (DevOps, Dev2, Sonnet, new) | routine queue: QA envs/worktrees (Agulha, Sonda), WIP commits (Mosaico, Lupa, Aquarela), Vitral commits on hash match | — |
+| Brasa | S3 core (critical path) | — |
+| Malha @ Dev3 | S5 core ready SHA; ReadAccounts::binding_of for S7 | — |
+| Torno | S6 core to ready SHA on 5.1.1 | — |
+| Ferro @ Dev3 | S7 decision use case; rebase on 4939133+196a30a+7872ca9 | Q75/Q76 code waits ADR-0003 r4 |
+| Elo @ Dev3 | plugin L-a/L-b delta, then protocol 1.3 | — |
+| Vitral | S3 web passwordless rebuild + findings | — |
+| Mosaico | S5 web: profile_size tie (5.0.0 fields) | — |
+| Esquadro @ Dev3 | ADR-0003 r4 (Pêndulo M-Q75) | user answer on Q75 flatten scope |
+| Compasso | HTTP 5.2.0 draft (freeze after r4) | — |
+| Lastro @ Dev3 | S5/S6 migrations review; 061300 brief | — |
+| Rumo @ Dev3 | Q81 recommendation; wave-2 diff 91358f8f24f471ca in review | — |
+| Aquarela | specs S8/S11/S13/S17 fixes (Esmeril lows); S16 + S5 next | S16/S5 wait Bisturi verdict on a37d36ba45e3 |
+| Lupa | dismissed 2026-10-23 after R4 + questions-to-firms.md (re-recruit for new research) | — |
+| Crivo @ Dev3 | Code Review 196a30a, ADR r4 | — |
+| Bisturi @ Dev3 | Code Review Rumo 91358f8f24f471ca | — |
+| Esmeril @ Dev3 (new) | Code Review Aquarela C§9; next qa-db re-review, HTTP 5.2.0 | — |
+| Vigia | QA Security 196a30a, ADR r4, C3/U13 re-checks | — |
+| Guarita @ Dev3 (new) | QA Security S5 web 2ab3173; qa-db 3c37f2b re-check | — |
+| Pêndulo | NT8 Windows checklist for untested items | — |
+| Sentinela | cargo PG tests on 196a30a; latency A/B with Pulso | — |
+| Pulso (SRE, new) | latency A/B judgement; ingress histogram + perf method proposal | — |
+| Prisma @ Dev3 | QA plans S5 core / S3 core | — |
+| Sonda @ Dev3 (new) | QA crate core/tests/qa + S7 engine tests | — |
+| Agulha (new, Sonnet) | QA tests core/tests/qa s3_identity.rs (S3 3f23c81) | — |
+| Lente @ Dev3 | QA plan S5 web; re-verify S3 web | — |
+| Traço @ Dev3 | not reconnected; specs split Aquarela / Nanquim | — |
+| Nanquim @ Dev3 (new, Sonnet) | specs S21/S22/S10/S15/plugin-panels (4fad5e69d5be in review); S18 next | S18 frozen inside a37d36ba45e3 until Bisturi verdict |
+| Grosa @ Dev3 (new) | Code Review S5 web 2ab3173 | — |
 
 ## Environment notes
 
@@ -84,7 +125,8 @@
 | Q71 | Manual trade with a blank commission | account floor (U20) × quantity × 2 sides (entry and exit), labelled 'estimada' · no floor → zero, labelled 'comissões não informadas' | as decided | DECIDED by the user 2026-10-23 (computed by the Core; user may override; manual trades never feed risk) |
 | U21 | Rebased working branches on GitHub | (a) allow `--force-with-lease` only on `s/*` slice working branches (never `main` or `d/*`), each logged · (b) never force: a rebased branch is pushed under a new name (`-r2`, `-r3`…) | (a) — rebases are routine; (b) multiplies stale branches | DECIDED by the user 2026-10-23: (a) |
 | Q74 | Reverse on an account barred for entries (out of sync, risk blocked, limits pending, no bracket profile) | (a) skip the whole reverse (current ADR-0003 text) · (b) flatten and cancel protections, skip the opening, reason audited and notified | (b) — P1: exits are never blocked; consistent with the M = 0 reverse (Architect Esquadro, Maestro) | DECIDED by the user 2026-10-23: (b) |
-| Q75 | Close (or the closing leg of a barred reverse, Q74) on an out-of-sync account that All Win believes is flat | (a) trust All Win's position and send nothing (current rule) · (b) always send the flatten to the platform; the plugin checks the real position and reports already_flat | (b) — P1; the plugin check makes the extra command safe (Architect, Maestro) | OPEN |
+| Q75 | Close (or the closing leg of a barred reverse, Q74) on an out-of-sync account that All Win believes is flat | (a) trust All Win's position and send nothing (current rule) · (b) always send the flatten to the platform; the plugin checks the real position and reports already_flat | (b) — P1; the plugin check makes the extra command safe (Architect, Maestro) | DECIDED by the user 2026-10-23: (b) |
+| Q76 | Reduce on an out-of-sync account that All Win believes is flat (split from Q75) | (a) do not send; routing.nothing_to_reduce, audited, user notified · (b) send a flatten | (a) | DECIDED by the user 2026-10-23: (a) |
 | Q28–Q36 | Passwordless S3 open questions (slice-plan rev. 7 §7): Q28 loss of both channels, Q29 session/remember device, Q30 step-up per action vs window, Q31 WhatsApp mandatory?, Q32 one channel per account, Q33 send limits, Q34 new-device notice content, Q35 step-up list (QA Security adds: switching on an automated route on a real or "allows" prop account, and changing the platform binding of an account that receives automation — recommended to require a code), Q36 invite e-mail = account e-mail | see slice-plan §7 | PO recommendations; Architect reviews Q33–Q35 | DECIDED by the user 2026-10-23 (see decisions.md) |
 | U17 | WhatsApp code provider | Meta Cloud API · Twilio · Zenvia · other | Meta Cloud API direct (est. US$4–110/month for 100–1,000 users); 2nd Twilio WhatsApp; critical path = Meta business verification (weeks) + dedicated number (user) — docs/product/research/whatsapp-otp-providers.md | DECIDED by the user 2026-10-23: Meta Cloud API direct; the user is starting the Meta business verification |
 
