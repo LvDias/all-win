@@ -1,6 +1,27 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 10; **rev. 11 proposed** (Code Review pending). Rev. 11: `one_time_code.action` gains `route_enable` and `account_binding_change` (HTTP 3.0.0, pending Q35), both targeted (target = account).
+- **Status:** Accepted (2026-10-23), rev. 16.2 (7acd73c); **rev. 16.3 proposed** (Esquadro; Crivo R1/R2): §6.4 rules 1–2 define completion per consumer (consumed, or before a `from_now` consumer's `start_seq` = first receivable `seq`), and state the order rule and the retention predicate.
+- Rev. 16.2 (7acd73c): the outbox no-consumer allowlist (Esquadro, decision (b)) in §6.4 rule 1 and §6.5 retention; §8 versions `…060610` (`app.outbox.seq`) and `…060620` (#7b); a §9 list fix (Crivo nit on 16.1).
+- Rev. 16.1 (1a634da; Crivo N1–N3 and ADR-0008 round 2): binding, change, release and archive write both `account.limits_changed` and `account.binding_changed`; the open-position residual and the gateway mitigation are mirrored in §5.3; §9 gains the rev. 16 constraint and grant tests.
+- Rev. 16 (9dcc772, c509981):
+  - **Binding (Esquadro, ADR-0008, approved by the user):** `accounts` owns the account ↔ platform-account binding. `accounts.account` gains `venue_account_id` and `bound_at`, and `gateway.venue_account` loses `account_id`, `bound_at` and `venue_account_bound_key` (§5.2, §5.3).
+  - **Wave 1 versions assigned (§8):** old #5 split into a catalog file and an accounts file; `account_rule_value` (old #12) moves to S5; bracket profiles get their own file (S6).
+  - **From the S5 migration review (Malha):** `display_name` 1..80 and `row_version ≥ 1` `CHECK`s on `account`; `DELETE` on `account` revoked from `allwin_app`; `opt_in_rule_version` is `SELECT`-only until S16; the Q13-b erasure order is stated (§5.2).
+- Rev. 15.2 (e39d83b): protocol 1.3 shared fills. The trade's fill references become `trades.trade_fill` rows with the quantity and the allocated commission. Trade commission = Σ allocated shares (pro rata, 4 decimals half away from zero, remainder to the trade allocated last).
+- Rev. 15.1 (65d257e): a lower `commission_per_contract_side` is scheduled like other looser inputs (Esquadro, ADR-0006 §3.7), and the adjusted-balance window is stated.
+- Rev. 15 (8101a15) — user decisions of 2026-10-23: net P&L as the main value, risk on net, V1 evaluation target, U20 (a) commission floor. Rev. 15 (§5.6, §5.7, §6.3, §6.6):
+  - per-fill effective commission with its source;
+  - gross / commission / net on trades;
+  - `commission_per_contract_side` and `evaluation_profit_target` as account rule fields, also in the preset;
+  - `account.evaluation_start`;
+  - the risk evaluation baseline, derived under ADR-0006.
+- Rev. 14 (b45a02c, 6b4e8e3): Rev. 14: new `trades` schema with `trades.trade` (§6.6). Captured trades are immutable and only manual ones are editable (Q56, provisional); money is `NUMERIC`; prices are whole ticks (a Core rule). Q52–Q57 are not encoded in constraints.
+- Rev. 13 (2ceab9a): Rev. 13:
+  - turns §5.6 from a preview into the S13 schema: `risk.account_limits` (+ `effective_as_of`) aligned with the S16 value types, the derived `scheduled_limit`, `trading_day`, `drawdown_tracker` and `account_block`;
+  - `account_rule_value` serves accounts without a preset (`set_by_user`), adds the fields `profit_target_on_reach` and `consistency_threshold_pct`, a per-field `saved_at` and an `is_unset` tombstone. Under ADR-0006 §3.7 (Q48), the inputs live in `accounts` and the looser-value schedule is derived in `risk`.
+  - Q47, Q48 and Q49 are provisional and no constraint encodes them.
+- Rev. 12 (1647af5): `audit_entry.actor` (`user` / `system` / `platform_admin`, HTTP 3.0.0 `AuditEntry.actor`), in #7b (§6.4).
+- Rev. 11 (7b976d6): `one_time_code.action` gains `route_enable` and `account_binding_change` (HTTP 3.0.0, pending Q35), both targeted (target = account).
 - Rev. 10 (49dbea0):
   - adds the preset catalog: `prop_firm`, `firm_release`, `firm_release_platform`, `firm_plan`, `preset`, `preset_version`, `preset_rule_set` and `firm_stance`;
   - adds `release_id` and the in-catalog FKs on `opt_in_rule_version`;
@@ -34,7 +55,7 @@
 
 ## 1. Principles
 
-1. **One PostgreSQL schema per Core module.** Schemas: `identity`, `catalog`, `accounts`, `routing`, `gateway`, `audit`, `risk` (preview); plus `app` for shared infrastructure (context function, outbox).
+1. **One PostgreSQL schema per Core module.** Schemas: `identity`, `catalog`, `accounts`, `routing`, `gateway`, `audit`, `risk`, `trades` (rev. 14); plus `app` for shared infrastructure (context function, outbox).
    - A module's `infra` crate reads and writes **only its own schema**.
    - Foreign keys stay inside a module. The only cross-module FK is to `identity.app_user(id)`, the stable owner key.
    - Other cross-module ids are plain `uuid` columns, resolved through query ports and events (ADR-0001 §4).
@@ -561,8 +582,8 @@ CREATE TABLE catalog.opt_in_rule_version (               -- global, no RLS; appe
 );
 CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_version (kind, version_number) WHERE is_generic;
 -- Non-generic: one version per (release, firm_platform, kind), unique index added in S16 (§5.7).
--- Grants: allwin_app SELECT, INSERT (publishing goes through the admin use case); no UPDATE/DELETE for anyone at
--- runtime, so a published text cannot change under a recorded choice. A correction is a new version (change_cause).
+-- Grants: allwin_app SELECT (rev. 16: SELECT only in #5a; INSERT is granted by the S16 migration with the admin
+-- publish use case); no UPDATE/DELETE for anyone at runtime, so a published text cannot change under a recorded choice. A correction is a new version (change_cause).
 -- The current version of a selection is the highest version_number.
 ```
 
@@ -575,7 +596,7 @@ CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_versi
 CREATE TABLE accounts.account (
   id                uuid PRIMARY KEY,
   user_id           uuid NOT NULL REFERENCES identity.app_user(id),
-  display_name      text NOT NULL,
+  display_name      text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 80),  -- rev. 16: AccountName
   kind              text NOT NULL CHECK (kind IN ('prop','real')),
   firm_id           uuid,                                -- prop with a preset; catalog (S16)
   firm_name         text CHECK (char_length(firm_name) BETWEEN 1 AND 80),  -- prop, manual mode (rev. 8)
@@ -605,14 +626,20 @@ CREATE TABLE accounts.account (
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
   archived_at       timestamptz,                         -- "deleted" (S5 AC-6); history keeps the id
-  row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
+  row_version       integer NOT NULL DEFAULT 1 CHECK (row_version >= 1),  -- optimistic concurrency
   limits_version    integer NOT NULL DEFAULT 1 CHECK (limits_version >= 1),  -- ADR-0006: bumped with every limits-relevant change
   limits_changed_at timestamptz NOT NULL DEFAULT now(),  -- ADR-0006 §3.5: age of a version gap (60-s alert)
+  evaluation_start  date,                                -- rev. 15 (S13b): user-given; Core default = registration date (user's time zone); limits input
+  evaluation_earned_before NUMERIC(18,4) CHECK (evaluation_earned_before >= 0),  -- rev. 15 (S13b): optional profit already earned before evaluation_start
+  venue_account_id  uuid,                                -- rev. 16 (ADR-0008): bound gateway.venue_account (cross-module id, no FK); limits input
+  bound_at          timestamptz,                         -- rev. 16: time of the current binding
   create_idempotency_key uuid,                           -- Idempotency-Key of the create (rev. 8)
   create_request_hash    bytea CHECK (octet_length(create_request_hash) = 32),  -- SHA-256 of the canonical body, step_up excluded
   UNIQUE (user_id, id),
   CONSTRAINT account_create_key UNIQUE (user_id, create_idempotency_key),
   CHECK ((create_idempotency_key IS NULL) = (create_request_hash IS NULL)),
+  CHECK ((venue_account_id IS NULL) = (bound_at IS NULL)),                 -- rev. 16
+  CHECK (archived_at IS NULL OR venue_account_id IS NULL),                 -- rev. 16: archiving releases the binding (§5.3)
   CHECK (kind = 'prop' OR (firm_id IS NULL AND firm_name IS NULL AND plan_name IS NULL AND phase IS NULL
                            AND preset_version_id IS NULL AND firm_platform IS NULL)),
   -- prop: a preset XOR the three manual fields (S5 contract §2.4); with a preset they come from the catalog
@@ -636,7 +663,11 @@ CREATE TABLE accounts.account (
 );
 CREATE UNIQUE INDEX account_user_name_key ON accounts.account (user_id, lower(display_name)) WHERE archived_at IS NULL;
 CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX account_venue_account_key ON accounts.account (venue_account_id) WHERE venue_account_id IS NOT NULL;  -- rev. 16
+-- Grants (rev. 16): allwin_app SELECT, INSERT, UPDATE; DELETE revoked, because an account is archived, never deleted at runtime.
 ```
+
+- **Q13-b erasure (rev. 16):** no `ON DELETE CASCADE` reaches `account`, and `routing.subscription` has no FK to it. So the erasure job deletes `account_rule_value`, `account_bracket_profile` and the routing subscriptions (through the routing port) before the account. It runs as `allwin_maint`, with its own grant in a later migration whose number the DBA assigns.
 
 - The bounds `multiplier ≤ 1000` and `max_position_qty ≤ 10000` mirror the structural caps in the contracts (instruction `quantity` ≤ 1000, command `quantity` ≤ 10000). The business limit is the user's value.
 - **Prop selection (rev. 8):** a preset (`preset_version_id`, with `firm_id` and optional `firm_platform`) **or** the manual `firm_name` / `plan_name` / `phase`, never both. Manual mode covers the time before S16 (Q40) and plans excluded from presets (S16 AC-9). With a preset, firm, plan and phase are read from the catalog, not copied. `size_amount` is always stored, since risk reads it.
@@ -668,6 +699,8 @@ CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_
 
 Platform accounts arrive in `hello.accounts` (ADR-0004 §3) and belong to `gateway`. The `accounts` module never sees platform names (X-1).
 
+**Ownership (rev. 16, Esquadro, ADR-0008):** `gateway` owns the platform facts, and `accounts` owns the binding (`account.venue_account_id`, §5.2). #9 is unwritten, so nothing is migrated.
+
 ```sql
 CREATE TABLE gateway.venue_account (
   id               uuid PRIMARY KEY,
@@ -679,16 +712,35 @@ CREATE TABLE gateway.venue_account (
   oco_location     text NOT NULL CHECK (oco_location IN ('local','server','unknown')),  -- hello.accounts[], refreshed on each hello
   first_seen_at    timestamptz NOT NULL DEFAULT now(),
   last_seen_at     timestamptz NOT NULL DEFAULT now(),
-  account_id       uuid,                                 -- bound accounts.account id
-  is_master        boolean NOT NULL DEFAULT false,       -- welcome roles; S19 (V1.1)
-  bound_at         timestamptz,
   UNIQUE (user_id, id),
   UNIQUE (connection_id, platform_account)
 );
-CREATE UNIQUE INDEX venue_account_bound_key ON gateway.venue_account (account_id) WHERE account_id IS NOT NULL;
--- 1 platform account ↔ at most 1 All Win account. Outside production the Core refuses
--- to bind kind IN ('live','unknown') (ADR-0004 §8 environment guard).
+-- rev. 16: account_id, bound_at, is_master and venue_account_bound_key removed (the binding is in accounts).
+-- is_master (S19, V1.1) is decided when S19 opens; it is probably an account role in accounts (Esquadro).
 ```
+
+- **Binding in `createAccount` / `updateAccount`**, all in the `accounts` transaction:
+  - `VenueAccounts::resolve(user_id, connection_id, platform_account) → Option<{venue_account_id, kind}>` is a `gateway` query port, scoped by `user_id`.
+    - `None` → 422 `accounts.platform_account_unknown`.
+    - `kind IN ('live','unknown')` outside production → 422 (ADR-0004 §8 environment guard).
+    - The gateway still refuses commands to a `live`/`unknown` venue account outside production at delivery, because `kind` is refreshed on each `hello`.
+  - **1 platform account ↔ at most 1 All Win account** is the unique index `account_venue_account_key`. A violation → 409 `accounts.platform_account_taken`.
+    - The index is not scoped by RLS, so it also sees another user's rows. They cannot collide, because `resolve` returns only the user's own venue accounts.
+    - Two concurrent binds of the same platform account serialize on the index: one wins and the other gets 409.
+  - Changing or removing a binding first checks `Positions::has_open_position(venue_account_id)` → 409 `accounts.binding_open_position`.
+    - A position that opens between this read and the commit, or a working order that fills after an unbind, is an accepted window (ADR-0008 §3.2).
+    - **Residual:** the platform account then holds a position with no binding, and routing skips every action for it, exits included (`routing.platform_unbound`).
+    - **Mitigation:** `gateway` audits and alerts the user on a fill or a non-flat `position_snapshot` for a venue account that `account_for_venue` reports as unbound. The code comes from the S11 sync contract, and no schema change is needed here.
+  - The same transaction bumps `limits_version` (the binding is a limits input, ADR-0006 §3.1) and writes **two** events to `app.outbox` (rev. 16.1, ADR-0008 §3.2 step 5):
+    - `account.limits_changed {account_id, limits_version}`, the ADR-0006 producer event that `risk` consumes;
+    - `account.binding_changed {account_id, venue_account_id|null, limits_version}`, which `gateway` consumes for side effects (`welcome` / `limits` again).
+- **Archiving releases the binding** (`CHECK`; ADR-0008): the archive transaction sets `venue_account_id` and `bound_at` to `NULL`, bumps `limits_version` and writes both events above. Otherwise an archived account would keep the platform account taken forever.
+  - An open position already refuses `archiveAccount` with 409 `accounts.delete_open_position` (S5 AC-6), so there is no new code.
+- **No FK across schemas** (§1): `gateway` must keep a `venue_account` row as long as an account may name it.
+  - Rows are never deleted at runtime. A revoked connection keeps its rows.
+  - A re-pair keeps the `connection_id` (`newPairingCode` on the same connection, ADR-0004 §8), so the `(connection_id, platform_account)` rows and their bindings survive it. Only an unpair followed by a new connection yields new ids, and the user rebinds (intended, ADR-0008).
+  - Readers treat an id with no row as unbound (`routing.platform_unbound`).
+- **Readers:** `gateway` and `routing` use the `accounts` query ports `binding_of(account_id)` and `account_for_venue(venue_account_id)`, read at the decision; there is no derived copy. `account_for_venue` uses `account_venue_account_key`. Gateway fills `VisibleAccount.account_id` this way; a batch variant for a `welcome` list is a port detail, with no schema impact.
 
 - `oco_location` is stored on `venue_account`, not on `accounts.account`, for two reasons:
   - `hello` reports it per platform account;
@@ -767,31 +819,152 @@ CREATE INDEX subscription_source_idx ON routing.subscription (user_id, source_id
 - The S7 route endpoints accept only `trigger`, `trade_plan` and `nq_trigger`; `master_account` stays in the `CHECK` for S19 follower subscriptions (S7 contract §5). This is a Core validation, with no schema change.
 - Multiplier and max position are read from `accounts` at routing time. Every routing decision **snapshots** the values it used (§6), so the audit trail stays explainable after an edit.
 
-### 5.6 Risk core (preview for S13–S15; only `max_position_qty` is needed by S5–S7)
+### 5.6 Risk core (S13; rev. 13, proposed — contract 3.1.0)
 
-These tables mirror `limits` in ADR-0004, so the Core can publish versioned limits.
+All `risk.*` tables are user-owned (RLS `user_id = app.current_user_id()`), and the `risk` module is their only writer. **The rule inputs are not here.** They belong to `accounts` (`account_rule_value`, the account columns below, §5.7), and `risk.account_limits` is **derived** from them (ADR-0006).
 
 ```sql
-CREATE TABLE risk.account_limits (
-  user_id               uuid NOT NULL REFERENCES identity.app_user(id),
-  account_id            uuid NOT NULL,                   -- accounts.account (cross-module id)
-  version               integer NOT NULL CHECK (version >= 1),   -- monotonic, sent in `limits`; S13 PUT concurrency token
-  derived_from_version  integer NOT NULL CHECK (derived_from_version >= 1),  -- ADR-0006: account.limits_version it was derived from
-  enforcement_enabled   boolean NOT NULL DEFAULT false,  -- S15 AC-1 (off by default)
-  daily_loss_limit      NUMERIC(18,4) CHECK (daily_loss_limit >= 0),
-  daily_profit_target   NUMERIC(18,4) CHECK (daily_profit_target >= 0),
-  profit_target_on_reach text NOT NULL DEFAULT 'notify' CHECK (profit_target_on_reach IN ('notify','flatten_and_block')),
-  drawdown_type         text CHECK (drawdown_type IN ('trailing_intraday','trailing_end_of_day','static')),
-  drawdown_amount       NUMERIC(18,4) CHECK (drawdown_amount >= 0),
-  reset_local_time      time NOT NULL,                   -- firm reset or CME close
-  reset_time_zone       text NOT NULL,                   -- IANA
-  warning_threshold_pct smallint NOT NULL DEFAULT 80 CHECK (warning_threshold_pct BETWEEN 1 AND 99),
-  updated_at            timestamptz NOT NULL DEFAULT now(),
+CREATE TABLE risk.account_limits (                       -- derived, typed copy of the account's tracked rules (ADR-0006)
+  user_id                   uuid NOT NULL REFERENCES identity.app_user(id),
+  account_id                uuid NOT NULL,               -- accounts.account (cross-module id)
+  version                   integer NOT NULL CHECK (version >= 1),   -- monotonic; sent in plugin `limits`
+  derived_from_version      integer NOT NULL CHECK (derived_from_version >= 1),  -- account.limits_version of the consistent read
+  effective_as_of           timestamptz NOT NULL,        -- the trading-day start these effective values cover (re-derived at each reset)
+  enforcement_enabled       boolean NOT NULL DEFAULT false,  -- S15 AC-1; risk-owned, never touched by the derivation upsert
+  daily_loss_kind           text CHECK (daily_loss_kind IN ('hard','soft_pause','none')),   -- NULL = unset
+  daily_loss_limit          NUMERIC(18,4) CHECK (daily_loss_limit > 0),
+  drawdown_type             text CHECK (drawdown_type IN ('trailing_intraday','trailing_eod','static')),  -- 'other' is untracked → NULL
+  drawdown_amount           NUMERIC(18,4) CHECK (drawdown_amount > 0),
+  daily_profit_target       NUMERIC(18,4) CHECK (daily_profit_target > 0),
+  profit_target_on_reach    text NOT NULL DEFAULT 'notify' CHECK (profit_target_on_reach IN ('notify','flatten_and_block')),
+  consistency_threshold_pct NUMERIC(4,1) CHECK (consistency_threshold_pct BETWEEN 0 AND 100),  -- tracked, never enforced (AC-6)
+  evaluation_profit_target  NUMERIC(18,4) CHECK (evaluation_profit_target > 0),   -- rev. 15 (Q46, V1): notice only
+  commission_per_contract_side NUMERIC(18,4) CHECK (commission_per_contract_side >= 0),  -- rev. 15.1: the rate IN FORCE today (a lower one waits in scheduled_limit); NULL = none
+  evaluation_start          date,                        -- rev. 15: copy of account.evaluation_start
+  evaluation_earned_before  NUMERIC(18,4),                -- rev. 15: copy of account.evaluation_earned_before
+  reset_source              text NOT NULL CHECK (reset_source IN ('firm','cme_session_close')),
+  reset_local_time          time,                        -- firm reset (account copy; Q-S13-2)
+  reset_time_zone           text,                        -- IANA
+  updated_at                timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id),
-  CHECK ((drawdown_type IS NULL) = (drawdown_amount IS NULL))
+  UNIQUE (user_id, account_id),
+  CHECK ((daily_loss_kind IS NULL OR daily_loss_kind = 'none') = (daily_loss_limit IS NULL)),
+  CHECK ((drawdown_type IS NULL) = (drawdown_amount IS NULL)),
+  CHECK ((reset_source = 'firm') = (reset_local_time IS NOT NULL AND reset_time_zone IS NOT NULL))
 );
--- Trading-day state, blocks, consistency tracking: designed with S13/S15.
+-- 'cme_session_close' (real accounts): the Core takes the close from the exchange calendar, not a stored time.
+
+CREATE TABLE risk.scheduled_limit (                      -- DERIVED (ADR-0006 §3.7): a looser value in force from a later trading day
+  user_id               uuid NOT NULL,
+  account_id            uuid NOT NULL,
+  kind                  text NOT NULL CHECK (kind IN ('daily_loss','drawdown','daily_profit_target','consistency','profit_target_on_reach',
+                                                   'trading_day_reset',     -- reset changes are ALWAYS scheduled (F1)
+                                                   'commission_per_contract_side')),  -- rev. 15.1: a LOWER rate only
+  new_value             jsonb CHECK (new_value IS NULL OR (jsonb_typeof(new_value) = 'object'
+                          AND NOT jsonb_path_exists(new_value, '$.**.amount ? (@.type() == "number")'))),  -- money as strings
+  is_unset              boolean NOT NULL DEFAULT false,  -- the scheduled change removes the rule
+  effective_from        timestamptz NOT NULL,            -- start of the trading day after the field's saved_at, under the CURRENT reset
+  derived_from_version  integer NOT NULL CHECK (derived_from_version >= 1),
+  PRIMARY KEY (account_id, kind),                        -- latest save wins → at most one schedule per kind
+  CHECK ((new_value IS NULL) = is_unset),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+CREATE INDEX scheduled_limit_due_idx ON risk.scheduled_limit (effective_from);
+
+CREATE TABLE risk.trading_day (                          -- one row per account and trading day; P&L inputs, not percentages
+  user_id         uuid NOT NULL,
+  account_id      uuid NOT NULL,
+  trading_date    date NOT NULL,                         -- the day label in the reset's time zone
+  starts_at       timestamptz NOT NULL,
+  ends_at         timestamptz NOT NULL,                  -- = next_reset
+  source          text NOT NULL CHECK (source IN ('firm','cme_session_close')),
+  start_balance   NUMERIC(18,4),                         -- balance at the reset, from the platform snapshot
+  realized_pnl_gross NUMERIC(18,4) NOT NULL DEFAULT 0,
+  realized_commission NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (realized_commission >= 0),   -- rev. 15: Σ fills' commission_effective
+  commission_gap  NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (commission_gap >= 0),   -- Σ (effective − reported): what the platform balance lacks
+  realized_pnl_net NUMERIC(18,4) GENERATED ALWAYS AS (realized_pnl_gross - realized_commission) STORED,  -- risk runs on net
+  unrealized_pnl  NUMERIC(18,4),                         -- last known; NULL when unknown
+  as_of           timestamptz,                           -- time of the last P&L input (staleness, §AccountRisk.as_of)
+  PRIMARY KEY (account_id, trading_date),
+  CHECK (ends_at > starts_at),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+
+CREATE TABLE risk.evaluation_progress (                  -- rev. 15, DERIVED (ADR-0006): "how much is left to pass" (Q46)
+  user_id               uuid NOT NULL,
+  account_id            uuid NOT NULL PRIMARY KEY,
+  evaluation_start      date NOT NULL,
+  baseline_balance      NUMERIC(18,4) NOT NULL,          -- net balance at the start of evaluation_start's trading day
+  baseline_source       text NOT NULL CHECK (baseline_source IN ('platform_snapshot','account_size')),
+  derived_from_version  integer NOT NULL CHECK (derived_from_version >= 1),
+  target_reached_at     timestamptz,                     -- notice + notification once; no automatic action (user decision)
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+
+CREATE TABLE risk.drawdown_tracker (                     -- trailing drawdown state (Q-S13-5)
+  user_id             uuid NOT NULL,
+  account_id          uuid NOT NULL PRIMARY KEY,
+  high_water_balance  NUMERIC(18,4) NOT NULL,            -- intraday or end-of-day per drawdown_type
+  floor_balance       NUMERIC(18,4) NOT NULL,            -- balance at which the drawdown is breached, now
+  stopped_trailing_at timestamptz,                       -- when the firm's "stops trailing at" condition was met
+  as_of               timestamptz NOT NULL,
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+
+CREATE TABLE risk.account_block (                        -- blocked until the reset (S15 writes it; no early unlock)
+  id          uuid PRIMARY KEY,
+  user_id     uuid NOT NULL,
+  account_id  uuid NOT NULL,
+  cause       text NOT NULL CHECK (cause IN ('daily_loss','drawdown','daily_profit_target')),
+  blocked_at  timestamptz NOT NULL DEFAULT now(),
+  until       timestamptz NOT NULL,                      -- the trading-day end
+  ended_at    timestamptz,                               -- set at the reset
+  CHECK (until > blocked_at),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+CREATE UNIQUE INDEX account_block_active_key ON risk.account_block (account_id) WHERE ended_at IS NULL;
 ```
+
+- **Net (rev. 15; user decision: risk computed on net):**
+  - Daily loss, drawdown, the daily profit target and S15 enforcement all use net figures.
+  - `realized_pnl_net` = gross − effective commissions.
+  - The trailing drawdown's high water and floor follow the **adjusted** balance = platform balance − Σ `commission_gap` **over every `trading_day` row since the account's tracking start** (cumulative, not the day's). For the evaluation baseline and progress, the window is since `evaluation_start`. A simulation account that reports no commission therefore still pays the configured floor.
+  - **Live usage** (daily loss and the intraday drawdown on equity) also deducts the **expected closing commission** = rate × open quantity, using the floor only, since the platform's real one is not known yet. This is fail-closed: a limit triggers a few dollars earlier, never later. End-of-day and realized values stay realized-only. The plugin uses the same rule (ADR-0004 §7, protocol 1.3). The expected commission is computed per request, not stored.
+- **Evaluation target (rev. 15, Q46 in V1):**
+  - Inputs are in `accounts`: `evaluation_start`, defaulting to the registration date, and the `evaluation_profit_target` rule field.
+  - `risk.evaluation_progress` is derived under ADR-0006, through the same consistent read and `derived_from_version`. The baseline is the net balance at the start of `evaluation_start`'s trading day, from `trading_day.start_balance` adjusted by the commission gap (`platform_snapshot`). Before that data exists (e.g. a start date earlier than the account's first day), it is the account's `size_amount` (`account_size`). Esquadro agreed. While `baseline_source = 'account_size'`, the progress view shows "base estimada pelo tamanho da conta".
+  - **Protocol 1.3:** `limits.evaluation.baseline_net_pnl` = `evaluation_earned_before` + (adjusted balance at the previous day's close − baseline). The plugin adds the day's net to it.
+  - Remaining = target − (`evaluation_earned_before` + current adjusted net balance − baseline). It is computed per request, not stored.
+  - **"Reiniciar contagem"** (S13b; `POST /accounts/{id}/evaluation/restart`, HTTP 3.5.0) is the only way to change `evaluation_start` after create. It is an `accounts` write: a new `evaluation_start` (today by default), with `evaluation_earned_before` cleared unless re-entered. It bumps `limits_version` and is audited (`accounts.evaluation_restarted`, old and new start), so `risk` re-derives a fresh `evaluation_progress` with `target_reached_at` NULL.
+  - Reaching the target sets `target_reached_at` and emits a notice and notification once, with no automatic action. Minimum days and payout come later.
+- **Derived, not computed in SQL:** `used`, `limit`, `percent` (truncated), `state`, `unset_rules`, `untracked_rules`, `limits_pending` (ADR-0006 versions) and `stale` / `stale_reason` (connection state from `gateway`, plus `as_of`). Each is computed by the Core per request from the rows above. The 80 % warning level is fixed (D18), so the preview's `warning_threshold_pct` column is dropped.
+- **Provisional decisions stay out of the schema:**
+  - **Q47:** no `NOT NULL` on the daily loss; "required for prop unless the preset says `none`" is a Core check.
+  - **Q49 / Q63:** no `CHECK` couples `flatten_and_block` with `enforcement_enabled`. The Core treats it as `notify` when enforcement is off.
+  - **Q48:** only `risk.scheduled_limit` serves it. If Q48 becomes "immediately", the table stays empty, and the `saved_at` / `is_unset` inputs stay useful anyway.
+- **Q48 (ADR-0006 §3.7, decided by Esquadro; Code Review A1):**
+  - **Input** (`accounts`): the value, or `is_unset`, plus the field's own `saved_at`. The latest save of a field wins.
+  - **Derivation** (`risk`, from the consistent read plus the limits in force), per kind:
+    - stricter → effective now, in `account_limits`;
+    - looser → `scheduled_limit`, with `effective_from` = the start of the trading day after **that field's** `saved_at`. It is never the account-wide `limits_changed_at`, which an unrelated later save would move.
+    - "Looser" follows the contract: removing a rule, `flatten_and_block` → `notify`, and `daily_loss` `hard` → `soft_pause` / `none`.
+    - **An incomparable change of one kind counts as looser** (e.g. drawdown `static` 2000 → `trailing_eod` 2500), so it is scheduled and today's limit stays (fail closed).
+    - **A `trading_day_reset` change is always scheduled, never effective now** (Code Review F1). Its `effective_from` is the start of the trading day after its `saved_at`, computed with the **current** reset. Moving the reset mid-day would otherwise re-cut today: an earlier reset would end the block and restart the daily counters early (an early unlock, vision §9), and a later one would stretch today.
+    - A stricter save replaces the pending one at the input, so after the reset the stricter value is still in force.
+    - Only the derivation writes `account_limits` and `scheduled_limit`, never an API use case. Both can be rebuilt from the accounts read.
+  - **Reset step** (one `risk` step per trading-day start):
+    1. end the previous day's blocks (`account_block.ended_at`);
+    2. apply the due `scheduled_limit` rows (`scheduled_limit_due_idx`) and delete them;
+    3. re-derive, setting `effective_as_of` = that day's start and bumping `version`;
+    4. send `limits` to the plugin.
+    - There is no `limits_version` bump, since no input changed. A looser value never ends a block early (no early unlock).
+  - **Monitoring:** an alert fires when `effective_as_of` stays behind the current trading-day start for more than 60 s (stuck reset). Meanwhile the previous, stricter or equal, limits stay in force.
+  - **A pending-only save still bumps `limits_version`.** That briefly gates entries; it is intended, since it keeps `pending_changes` visible.
+  - `AccountRisk.pending_changes` reads `scheduled_limit`.
+  - **Ports:** only risk → accounts (query port); the trait lives in risk's application crate and is wired in `crates/app`.
+- **Consistency** needs every day's profit, so `trading_day` rows are kept for the account's lifetime and erased with it (Q13-b). The volume is about 250 rows per account per year.
+- **Playback (S15 AC-7):** the day boundaries and P&L follow the simulated clock. `starts_at` / `ends_at` / `as_of` hold simulated instants for playback accounts. This is to be confirmed with S15 when it writes the playback clock source.
+- The P&L inputs (fills, platform balance snapshots) arrive as `gateway` events. Their mapping is S13 Backend work, under ADR-0006 rules for derived state.
 
 ### 5.7 Prop firm presets (S16; rev. 10, proposed)
 
@@ -904,15 +1077,20 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   user_id     uuid NOT NULL,
   account_id  uuid NOT NULL,
   field       text NOT NULL CHECK (field IN ('max_position_qty','drawdown','daily_loss_limit',
-                                             'daily_profit_target','trading_day_reset','consistency_rule')),
-  origin      text NOT NULL CHECK (origin IN ('edited','chosen_from_conflict')),
+                                             'daily_profit_target','trading_day_reset','consistency_rule',
+                                             'profit_target_on_reach','consistency_threshold_pct',  -- S13 (rev. 13)
+                                             'commission_per_contract_side','evaluation_profit_target')),  -- rev. 15
+  origin      text NOT NULL CHECK (origin IN ('edited','chosen_from_conflict','set_by_user')),  -- set_by_user: no preset (rev. 13)
   value       jsonb,                                     -- typed by field (PresetRuleValues); NULL for max_position_qty
   chose       text CHECK (chose IN ('published_value','other_value')),
   chosen_at   timestamptz,
+  is_unset    boolean NOT NULL DEFAULT false,          -- the user removed this rule (S13); a tombstone that keeps its saved_at
+  saved_at    timestamptz NOT NULL DEFAULT now(),        -- this field's own save time (ADR-0006 §3.7; never account-wide)
   updated_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id, field),
   FOREIGN KEY (user_id, account_id) REFERENCES accounts.account (user_id, id),
-  CHECK ((field = 'max_position_qty') = (value IS NULL)),           -- its value is account.max_position_qty (S5)
+  CHECK (CASE WHEN field = 'max_position_qty' THEN value IS NULL AND NOT is_unset  -- value is account.max_position_qty (S5); never removed
+              ELSE (value IS NULL) = is_unset END),
   CHECK (value IS NULL OR jsonb_typeof(value) = 'object'),
   CHECK (value IS NULL OR NOT jsonb_path_exists(value, '$.**.amount ? (@.type() == "number")')),
   CHECK ((origin = 'chosen_from_conflict') = (chose IS NOT NULL)),
@@ -921,16 +1099,34 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
 ```
 
 - **Only deviations are stored.** `preset` is the absence of a row (the value comes from the preset version), and `unresolved` is an optional not-confirmed field with no row. So applying a version or restoring a value deletes or rewrites rows, and the getAccountPreset `origin` is derived.
-- Rows exist only for prop accounts with a preset. Manual-mode accounts have none, which is a Core rule; a cross-table `CHECK` is not possible.
+- **New S13 fields:**
+  - `profit_target_on_reach`: value `{"mode":"notify"|"flatten_and_block"}`. No row means `notify`.
+  - `consistency_threshold_pct`: value `{"pct":"30.0"}`, at most one decimal (Q-S13-7).
+  - They are rule rows so that a looser change (`flatten_and_block` → `notify`, a higher threshold) can be pending like the others.
+- **Rev. 15 fields:**
+  - `commission_per_contract_side`: `{"amount": "0.37"}` (U20 a). It is prefilled from the preset when the firm publishes it (origin = preset, i.e. no row), and editable (`edited` / `set_by_user`).
+    - It **is a limits input** (Esquadro): the plugin applies the same floor in local enforcement and in `trade_completed`, and receives it in `limits.commission_per_contract_side` (protocol 1.3). A change bumps `limits_version` so risk re-sends `limits`.
+    - **A lower rate is looser** (Esquadro, ADR-0006 §3.7): it is scheduled for the next trading day (`scheduled_limit` kind `commission_per_contract_side`), and a higher rate applies now. Fail-closed: live usage deducts less expected commission only from the next day.
+    - The bump recomputes nothing already recorded. It only enters new fills' effective commission, on the Core (gateway snapshot) and in the plugin alike, and past fills keep their rate. A fill at the exact boundary where plugin and Core diverge goes to `trades.reconcile_mismatch`.
+  - `evaluation_profit_target`: `{"amount": "3000.00"}` (Q46). It is a limits input, together with `account.evaluation_start`.
+    - A change applies at once and is never scheduled, because it is a target, not a limit.
+  - Both are optional preset keys too (`PresetRules`; not in the `?&` required list).
+- **Inputs only (Q48, provisional; ADR-0006 §3.7):**
+  - A save writes the user's value, or `is_unset` for a removed rule, plus that field's `saved_at`. The **latest save of a field wins** and replaces any earlier value, whether pending or not.
+  - `accounts` computes no trading day and no effective date. The superseded values are in the audit (`risk.rules_changed`).
+  - A removal is kept as an `is_unset` row (a tombstone), because risk needs its `saved_at` to schedule it.
+- **Accounts without a preset** (real, and manual-mode prop) store each rule they set as `origin = 'set_by_user'` (rev. 13, S13 `putAccountRiskRules`). With a preset, only `edited` / `chosen_from_conflict` occur. These are Core rules, since a cross-table `CHECK` is not possible. A real account has no `trading_day_reset` row (`risk.reset_not_editable`).
 - Applying, restoring and re-selecting rewrite `account` (bumping `row_version`) and its `account_rule_value` rows **in one `accounts` transaction**: same module, so this is atomic by construction.
-- Q13-b erasure deletes the rows with the account. The catalog is reference data and is kept.
+- Q13-b erasure deletes the rows before the account (no `CASCADE`; §5.2). The catalog is reference data and is kept.
 
 **Account ↔ `risk.account_limits` consistency: option (B), [ADR-0006](../adr/0006-derived-state-across-modules.md)** (Esquadro, 2026-10-23):
-- **Producer (`accounts`):** **every write that changes an input of the derived limits** bumps `account.limits_version` and sets `limits_changed_at = now()`, in the same transaction as the change. The inputs are:
+- **Producer (`accounts`):** **every write that changes an input of the derived limits** (rev. 13: including `putAccountRiskRules` and pending-only saves) bumps `account.limits_version` and sets `limits_changed_at = now()`, in the same transaction as the change. The inputs are:
   - account create;
   - an update of firm, plan, phase, size, `firm_platform` or `preset_version_id` (re-selection);
   - `max_position_qty`;
-  - any `account_rule_value` write: an edit, a `chosen_from_conflict` resolution, `restorePresetValue`;
+  - any `account_rule_value` write: an edit, a `chosen_from_conflict` resolution, `restorePresetValue` (rev. 15: including `commission_per_contract_side`, sent in plugin `limits`);
+  - `evaluation_start` / `evaluation_earned_before`, including "reiniciar contagem" (rev. 15);
+  - a binding change or release (`venue_account_id`, rev. 16, ADR-0008);
   - a preset apply;
   - a newly adopted rule version.
 
@@ -948,7 +1144,7 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
 - **Monitoring:** a worker job every 30 s runs the same comparison and raises an operational alert when a gap is older than 60 s, measured from `limits_changed_at`. It **only alerts** and never derives outside the consumer path.
 - **Tests:** ADR-0006 §4 (eb7a6d017161), and §9 below.
 
-**For S13 (preview §5.6 to realign):** the contract's `DrawdownValue.type` uses `trailing_eod` and `other`, while the preview has `trailing_end_of_day` and no `other`. `DailyLossValue.kind` (`hard` / `soft_pause` / `none`) has no column yet. Both are fixed when S13 writes the table.
+**S13 alignment (rev. 13):** §5.6 now uses the S16 value types (`trailing_eod`, `daily_loss_kind`); a drawdown of type `other` is untracked and not derived.
 
 ## 6. Ingest, routing and execution records (S1 + M1)
 
@@ -1090,7 +1286,10 @@ CREATE TABLE gateway.execution_report (
   fill_qty          integer CHECK (fill_qty >= 1),
   fill_price        NUMERIC(22,10),
   fill_operation    text CHECK (fill_operation IN ('add','amend','remove')),  -- wire default 'add', stored explicitly
-  commission        NUMERIC(18,4) CHECK (commission >= 0),   -- non_negative_money (ALIGN-1)
+  commission        NUMERIC(18,4) CHECK (commission >= 0),   -- platform-reported (ALIGN-1); NULL = not reported
+  commission_rate      NUMERIC(18,4) CHECK (commission_rate >= 0),       -- rev. 15: account's commission_per_contract_side at record time (snapshot)
+  commission_effective NUMERIC(18,4) CHECK (commission_effective >= 0),  -- rev. 15 (U20 a): max(reported, rate × fill_qty)
+  commission_source    text CHECK (commission_source IN ('platform','configured','none')),  -- which one won; 'none' = neither exists (warning)
   position_after    integer,                             -- signed
   avg_price_after   NUMERIC(22,10),
   reason_code       text,
@@ -1099,8 +1298,17 @@ CREATE TABLE gateway.execution_report (
   received_at       timestamptz NOT NULL DEFAULT now(),
   payload           jsonb NOT NULL,
   CHECK ((fill_id IS NULL) = (fill_qty IS NULL) AND (fill_id IS NULL) = (fill_price IS NULL)
-         AND (fill_id IS NULL) = (fill_operation IS NULL))
+         AND (fill_id IS NULL) = (fill_operation IS NULL)),
+  CHECK ((fill_id IS NULL) = (commission_effective IS NULL) AND (fill_id IS NULL) = (commission_source IS NULL)),
+  CHECK (commission_source IS DISTINCT FROM 'none' OR commission_effective = 0)
 );
+-- rev. 15/15.1: gateway computes the effective commission once per fill when it records the report. The rate is
+-- the one IN FORCE, read from risk's derived limits through the risk query port
+-- (risk.account_limits.commission_per_contract_side; Code Review F1). It is not the latest input in accounts,
+-- because a lowered rate only applies from the next trading day (ADR-0006 §3.7). Gateway, risk and the plugin's
+-- `limits` therefore use the same rate, also during a derivation lag. It is a point-in-time snapshot, like
+-- routing's multiplier snapshot. Trades and risk consume it, never recompute it, and a later change never rewrites
+-- past fills.
 CREATE UNIQUE INDEX execution_report_fill_key ON gateway.execution_report (account_id, fill_id) WHERE fill_operation = 'add';
 CREATE INDEX execution_report_fill_history_idx ON gateway.execution_report (account_id, fill_id, occurred_at)
   WHERE fill_id IS NOT NULL;
@@ -1182,7 +1390,8 @@ CREATE INDEX outbox_due_idx ON app.outbox (next_attempt_at, occurred_at)
 -- dispatcher (allwin_worker) delivers due, live events at least once; a failure sets attempts+1,
 -- last_error, next_attempt_at, so it never blocks the head of the queue. allwin_worker has
 -- UPDATE (published_at) from #1 and UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at) from #1b.
--- Published rows are purged after 7 days; dead-lettered rows are never purged automatically: they are
+-- Published rows are purged after 7 days, and so are rows whose type is on the no-consumer allowlist
+-- (rev. 16.2, §6.4 rule 1); dead-lettered rows are never purged automatically: they are
 -- an operational alert (a lost audit entry would break X-5) and are replayed or closed by an operator.
 
 CREATE TABLE audit.audit_entry (
@@ -1209,10 +1418,12 @@ CREATE TABLE audit.audit_entry (
   source_name     text CHECK (char_length(source_name) BETWEEN 1 AND 60),                  -- snapshot, like account_name
   safe_to_display boolean NOT NULL,                      -- raw details may be shown; the Core decides each time (no default)
   event_seq       bigint NOT NULL,                       -- rev. 10 (S10-3): app.outbox.seq of the source event
+  actor           text CHECK (actor IN ('user','system','platform_admin')),  -- rev. 12: who caused it; NULL only on rows before #7b
   PRIMARY KEY (occurred_at, id),
   UNIQUE (occurred_at, source_event_id),
   CONSTRAINT audit_entry_source_name_check  CHECK (source_id IS NULL OR source_name IS NOT NULL),   -- #7b: NOT VALID
   CONSTRAINT audit_entry_account_name_check CHECK (account_id IS NULL OR account_name IS NOT NULL), -- #7b: NOT VALID
+  CONSTRAINT audit_entry_actor_check        CHECK (actor IS NOT NULL),                              -- #7b: NOT VALID (rev. 12)
   CONSTRAINT audit_entry_no_token CHECK (                -- rev. 9: also the free-text snapshots (immutable operators only)
         details::text            !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
     AND coalesce(account_name,'') !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
@@ -1253,6 +1464,13 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
     - Before production, a plain `CREATE INDEX` on the partitioned parent, then `DROP INDEX` of the old one, is acceptable.
   - The rejected alternative was a declared non-causal `(occurred_at, recorded_at, id)`.
   - **Rule:** every `audit_entry` row comes from an `app.outbox` event. This is already implied by `source_event_id NOT NULL` and the dedupe key, and today's audit consumer (`core/crates/audit`) only maps events. A producer that wants an audit row (e.g. `security.*` from auth) writes an outbox event in its own transaction, never an audit row directly. So `event_seq` is always available, and the user-visible log keeps the outbox's crash safety (X-5).
+- **`actor` (rev. 12; HTTP 3.0.0 `AuditEntry.actor`):** who caused the entry.
+  - `user`: the account owner's own action.
+  - `system`: an automatic action (route, skip, cap, expire, flatten…).
+  - `platform_admin`: reserved for admin actions on the user's data (Q28 recovery).
+  - It is **stored, not derived**. The same code (e.g. `accounts.updated`, `security.channel_changed`) can come from the user or an admin, so the code alone cannot tell. The producer puts it in the outbox payload.
+  - The admin's identity is not a column; if a code needs it, it goes into `details`, masked per policy.
+  - Nullable only for rows written before #7b, which the contract shows as absent. `audit_entry_actor_check` is added `NOT VALID`, so every new row must set it, and the old rows stay exempt (same pattern as the snapshot checks).
 - **No secret in `audit_entry`** (§1 rule 9; CLAUDE.md):
   - The Core redacts before writing.
   - The storage `CHECK` refuses an `awk_`/`awd_` token in `details`, in the two free-text snapshots (`account_name`, `source_name`), since a user could paste a token into a name, and in `message_id`. Its pattern allows `_`, so a 61-character token would otherwise match.
@@ -1265,7 +1483,23 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
      - Consumers are registered before start.
      - Startup **fails** when an event type that a module emits has no consumer.
      - Events whose type has no registered consumer are not fetched (`event_type = ANY(<registered types>)`). They stay visible and are counted by a metric and alert: unpublished, not dead-lettered, older than N minutes. That catches, for example, a type retired by a deploy.
-  2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event). `published_at` keeps meaning "every registered consumer has consumed it".
+     - **Exception: the no-consumer allowlist** (Esquadro, decision (b), rev. 16.2). A type may be emitted before its consumer slice exists when it is on a versioned allowlist file in the core, owned by the dispatcher owner. Each entry names the type, the future consumer slice and its start policy. Wave 1 entries: `account.limits_changed`, `account.binding_changed`, `account.changed`, `account.archived`.
+       - Only a type whose future consumer is `from_now` may be listed. A type that needs `backfill` (anything that becomes an audit entry, X-5) never is, because the purge would lose it.
+       - Startup does not fail for a listed type. Its rows are excluded from the old-unpublished alert and are purged after 7 days (`occurred_at`), like published rows. They are **not** marked published, so `published_at` is still set only by a consumption (rule 2).
+       - A test fails when a listed type has a registered consumer, and another when a listed type is emitted by no module.
+       - **Per-consumer completion** (rev. 16.3; Esquadro, Crivo R1/R2). When a consumer registers, its type leaves the allowlist (the test forces that), and the older rows of that type are neither published nor listed. Without a rule they would stay forever and trip the old-unpublished alert on the first deploy with the consumer. The same happens to a type that gains a second `from_now` consumer later. So completion is defined per consumer:
+         - **`start_seq`**, stored per `(consumer, event_type)` with the rule 2 delivery tracking, is the **first** `app.outbox.seq` that the consumer may receive: the highest `seq` at registration + 1 (1 on an empty outbox). A `from_now` consumer receives only `seq >= start_seq`. No per-event "skipped" marks are written.
+         - A row is **done for consumer C** when C consumed it, or when C is `from_now` and `seq < C.start_seq`. A `backfill` consumer is done only by consuming, so a type with a `backfill` consumer never ages out unconsumed (X-5).
+         - A row is **done** when it is done for **every** registered consumer of its type. `published_at` (rule 2) is set when the last consumption makes the row done. Retention and the alert use "done", so a row that is done only through start cursors needs no write.
+         - `seq` is drawn at insert, so a transaction still open at registration can commit a row with `seq < start_seq` afterwards. That row counts as before the start and is never delivered.
+         - **Order rule (Esquadro):** every `from_now` consumer records its `start_seq` **before** it runs its startup reconciliation or resync. The reconciliation reads the current state, not events, so such a row's effect is still applied: risk via `list_limits_versions` (ADR-0006 §3.2), gateway via `welcome` / `limits` re-sent on connect (connections are re-made at gateway start), and SSE clients refetch on reconnect. Waiting for in-flight transactions is not needed, because a `from_now` consumer never depends on the event itself.
+         - Tests:
+           - the newest row at registration (`seq = start_seq - 1`) is neither delivered nor left unpurged;
+           - for a type with `from_now` consumer A and a consumer B registered later, a row between the two starts, consumed by A, becomes done and is purged; a row still in A's retry queue when B registers becomes done once A consumes it;
+           - an event committed between the registration and the end of the reconciliation has its effect applied (risk derives the new version).
+       - **Retention predicate** (purge job, `allwin_maint`), never for dead-lettered rows: `dead_lettered_at IS NULL AND occurred_at < now() - 7 days AND (event_type = ANY($listed) OR <done>)`. `<done>` is `published_at IS NOT NULL`, or a row that is done for every registered consumer of its type by the definition above. The old-unpublished alert uses the same exclusions without the age bound. The cursor table is created by the rule 2 migration, whose number the DBA assigns.
+       - No schema change: the purge job receives the listed types from the core, so there is no allowlist table.
+  2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event), plus each consumer's `start_seq` per event type (rev. 16.3). `published_at` is set when a consumption makes the row done for every registered consumer (rule 1, per-consumer completion). A row that is done only through start cursors keeps `published_at` NULL and is treated as done by the predicate.
   3. **Each consumer declares a start policy at registration:**
      - `from_now`: cursor at the registration instant, no backfill. This is the default for consumers that **act** (routing, commands).
      - `backfill`: from the oldest unconsumed event. Consumers that **record** (audit) use it, so the user-visible log never misses an entry (X-5).
@@ -1281,7 +1515,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `gateway.command`, `gateway.execution_report` | `id`, `event_id`, `(account_id, fill_id)` | no | batched `DELETE` older than N months, children first |
 | `routing.message_receipt` | `(user_id, message_id)` | no | **kept** until the user is erased |
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
-| `app.outbox` (published), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days / 48 h / 7 days |
+| `app.outbox` (done for every registered consumer, or of an allowlisted no-consumer type; §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 | `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
 | `identity.channel_change` (completed, cancelled or expired) | `id` | no | 30 days after its end, after its codes; it holds the new value (the audit keeps the masked values) |
@@ -1295,6 +1529,120 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 3. detach and drop expired partitions;
 4. batched deletes of 5,000 rows each, with `lock_timeout`;
 5. erase users whose `closed_at` is past the grace period (Q13-b).
+
+### 6.6 Trades (S21; rev. 14, proposed — contract 3.3.0)
+
+```sql
+CREATE TABLE trades.trade (                              -- one completed trade as the Core defines it (Q57: no schema impact)
+  id                  uuid PRIMARY KEY,                  -- trade_id
+  user_id             uuid NOT NULL REFERENCES identity.app_user(id),
+  account_id          uuid NOT NULL,                     -- accounts.account (cross-module id)
+  account_name        text NOT NULL CHECK (char_length(account_name) BETWEEN 1 AND 80),   -- snapshot
+  instrument_id       uuid NOT NULL,                     -- catalog.instrument (cross-module id)
+  contract_month      date CHECK (extract(day FROM contract_month) = 1),
+  direction           text NOT NULL CHECK (direction IN ('long','short')),
+  quantity            integer NOT NULL CHECK (quantity BETWEEN 1 AND 10000),
+  entry_time          timestamptz NOT NULL,
+  entry_price         NUMERIC(22,10) NOT NULL CHECK (entry_price > 0),   -- whole ticks (Core rule, see below)
+  exit_time           timestamptz NOT NULL,
+  exit_price          NUMERIC(22,10) NOT NULL CHECK (exit_price > 0),
+  duration_seconds    integer GENERATED ALWAYS AS (floor(extract(epoch FROM (exit_time - entry_time)))::integer) STORED,  -- exit − entry (PO)
+  pnl_gross           NUMERIC(18,4) NOT NULL,            -- money (X-3); plugin's value when captured, Core's when manual
+  commission          NUMERIC(18,4) NOT NULL CHECK (commission >= 0),  -- rev. 15.2: Σ the trade's ALLOCATED fill shares (protocol 1.3)
+  commission_source   text NOT NULL CHECK (commission_source IN ('platform','configured','mixed','manual','none')),
+  pnl_net             NUMERIC(18,4) GENERATED ALWAYS AS (pnl_gross - commission) STORED,  -- main value (user, 2026-10-23)
+  mae                 NUMERIC(18,4) CHECK (mae >= 0),    -- USD (Q52); NULL = not observed (partial interval, protocol 1.3) or not provided (manual, Q55); never 0 by default
+  mfe                 NUMERIC(18,4) CHECK (mfe >= 0),
+  origin              text NOT NULL CHECK (origin IN ('routed','master','manual','platform')),
+  source_id           uuid,                              -- identity.source (cross-module id)
+  source_name         text CHECK (char_length(source_name) BETWEEN 1 AND 60),            -- snapshot
+  signal_type         text CHECK (signal_type IN ('trigger','trade_plan','nq_trigger','master_account')),
+  instruction_id      uuid,
+  command_id          uuid,
+  master_account_id   uuid,                              -- S19
+  master_account_name text CHECK (char_length(master_account_name) BETWEEN 1 AND 80),
+  plugin_trade_id     uuid,                              -- trade_completed.trade_id (protocol 1.3), generated by the plugin; idempotency
+  captured_at         timestamptz,
+  create_idempotency_key uuid,                           -- manual create (same rules as createAccount)
+  create_request_hash    bytea CHECK (octet_length(create_request_hash) = 32),
+  row_version         integer NOT NULL DEFAULT 1 CHECK (row_version >= 1),  -- exposed for manual trades only
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, id, account_id),                      -- target of trade_fill's composite FK
+  CHECK (exit_time >= entry_time),
+  CHECK (origin <> 'routed' OR (source_id IS NOT NULL AND source_name IS NOT NULL
+                                AND signal_type IS NOT NULL AND instruction_id IS NOT NULL)),
+  CHECK (origin <> 'master' OR (master_account_id IS NOT NULL AND master_account_name IS NOT NULL)),
+  CHECK ((origin = 'manual') = (captured_at IS NULL)),
+  CHECK ((origin = 'manual') = (plugin_trade_id IS NULL)),
+  CHECK (origin <> 'manual' OR command_id IS NULL),
+  CHECK (origin = 'manual' OR create_idempotency_key IS NULL),
+  CHECK ((create_idempotency_key IS NULL) = (create_request_hash IS NULL)),
+  CHECK (coalesce(account_name,'') || ' ' || coalesce(source_name,'') || ' ' || coalesce(master_account_name,'')
+         !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')   -- no token in user-typed snapshots
+);  -- RLS: user_id = app.current_user_id()
+CREATE UNIQUE INDEX trade_plugin_id_key   ON trades.trade (account_id, plugin_trade_id) WHERE plugin_trade_id IS NOT NULL;  -- never stored twice
+CREATE UNIQUE INDEX trade_create_key      ON trades.trade (user_id, create_idempotency_key) WHERE create_idempotency_key IS NOT NULL;
+CREATE INDEX trade_user_exit_idx          ON trades.trade (user_id, exit_time, id);           -- default sort + from/to (Q53)
+CREATE INDEX trade_user_pnl_idx           ON trades.trade (user_id, pnl_net, id);             -- sort = P&L (net, both orders)
+CREATE INDEX trade_user_duration_idx      ON trades.trade (user_id, duration_seconds, id);    -- sort = duration
+
+CREATE TABLE trades.trade_fill (                         -- rev. 15.2 (protocol 1.3): the fills that make up a captured trade
+  user_id               uuid NOT NULL,
+  trade_id              uuid NOT NULL,
+  account_id            uuid NOT NULL,
+  role                  text NOT NULL CHECK (role IN ('opening','closing')),
+  fill_id               text NOT NULL,                   -- gateway.execution_report.fill_id (cross-module, no FK)
+  quantity              integer NOT NULL CHECK (quantity BETWEEN 1 AND 10000),  -- the part of the fill in THIS trade
+  commission_allocated  NUMERIC(18,4) NOT NULL CHECK (commission_allocated >= 0),  -- Core's share of the fill's effective commission
+  PRIMARY KEY (trade_id, role, fill_id),
+  FOREIGN KEY (user_id, trade_id, account_id) REFERENCES trades.trade (user_id, id, account_id)  -- same user AND same account as the trade
+);  -- RLS: user_id = app.current_user_id(); same immutability trigger as the trade (captured only)
+CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -- every trade sharing a fill (reconciliation)
+-- Immutability: a BEFORE UPDATE OR DELETE trigger raises unless OLD.origin = 'manual'
+-- (or current_user = 'allwin_maint' for the Q13-b erasure).
+```
+
+- **Money and prices** are `NUMERIC` (§2), and decimal strings on the wire.
+- **Whole ticks** cannot be a `CHECK`, because the tick size lives in `catalog`, another module.
+  - Manual trades are checked by the Core, with 422 `trades.not_tick_multiple` and never rounded.
+  - Captured prices are already tick-rounded at the plugin boundary (CLAUDE.md "Exact decimals").
+  - A §9 test covers both.
+- **Captured trades are immutable** (`routed`, `master`, `platform`). These are facts from the platform, so the trigger refuses any change and only the Q13-b erasure (`allwin_maint`) deletes them.
+  - **Manual trades** are updated (with `row_version` +1) or deleted by their use case. The audit keeps the before and after values, and the values of a deleted trade, through `app.outbox` (§6.4 rule). No history table is needed.
+  - If Q56 changes and captured trades become correctable, the trigger condition changes in a forward migration. The facts would better stay as they are, with the correction stored beside them, but that is for Q56's answer.
+- **The provisional decisions stay out of the schema:**
+  - **Q52:** `mae`/`mfe` are nullable USD amounts ≥ 0.
+  - **Q53:** filters use `exit_time`, which is the leading sort index. Another time base would need only an index.
+  - **Q54 (decided, rev. 15):** both values are stored: `pnl_gross`, plus `commission` and a generated `pnl_net`. Wire mapping (HTTP 3.5.0): `Trade.pnl` ← `pnl_net`, `gross_pnl` ← `pnl_gross`, `commission`, `commission_source`; `pnl_basis` stays on the wire, always `net`. The summary's `total_pnl` / `total_gross_pnl` / `total_commission` are sums, and `uncommissioned_count` counts `commission_source = 'none'`. Net is the main value, sorted and summed; gross is shown beside it. `pnl_basis` is removed. #13 is unwritten, so the table takes this shape directly.
+  - **Q55:** `mae`/`mfe` are nullable, and NULL means "not provided", never 0.
+  - **Q56:** the trigger condition, as above.
+  - **Q57:** the Core decides what one trade is; nothing in the schema assumes it.
+- **Indexes:** the contract sorts by exit time, P&L or duration, in both directions, with `id` as the tie-breaker and a keyset cursor. Each `(user_id, key, id)` B-tree serves both directions, so these are required orders, not speculative indexes. `getTradesSummary` (count, sum) scans the user's filtered range through `trade_user_exit_idx`.
+  - `duration_seconds` is a stored generated column so it can be sorted and indexed. It is computed from the two instants, which matches the PO's definition.
+- **Snapshots:** `account_name`, `source_name` and `master_account_name` are kept as they were, like the audit's. `account_deleted` is derived when reading. `instrument_symbol` is resolved from `catalog`, which is global, immutable reference data.
+- **Retention:** trades are kept for the life of the user account (S10 AC-3) and erased with it (Q13-b). The volume is a few rows per account per day.
+- **Commission on trades (rev. 15, U20 a):**
+  - **Captured:** the sum of the trade's **allocated** fill shares (protocol 1.3, Crivo F1 on 1.3). A fill shared by several trades (a flip, or a FIFO partial close) has its effective commission split **pro rata by quantity**.
+    - Each share is rounded to 4 decimals, half away from zero, and the trade allocated **last** from that fill takes the remainder. So the shares of a fill sum exactly to its `commission_effective`.
+    - Gross and net use the same quantities.
+    - `trades.trade_fill` keeps each fill's quantity and the Core's `commission_allocated`, so a fill's allocations can be summed and checked (`trade_fill_fill_idx`).
+    - Fixture example: long 2, then a sell flip of 3 with commission 1.11. Trade N gets 0.74 (2/3) on the closing side plus 0.74 opening = 1.48; trade N+1 gets 0.37.
+    - Fills are read through the gateway query port with the fill ids of the message.
+    - A captured trade has **exactly one opening row and at least one closing row**. This is a Core rule, with a §9 test, since a cross-row `CHECK` is not possible. `commission_source` is `platform`, `configured` or `none` when every fill agrees, else `mixed`.
+  - If a fill is unknown, it uses rate × quantity for that side, with source `configured` (or `none` without a rate), plus `trades.reconcile_mismatch`.
+  - **Manual:** the user's typed commission (`manual`), else rate × quantity × 2 sides (`configured`), else 0 (`none`, warning).
+  - Fixed at capture, like the other numbers.
+- **The adapter's `trade_completed` message** (protocol 1.3, Esquadro; reliable and acked) supplies:
+  - `plugin_trade_id`, the plugin's uuid. It is deduplicated like `event_id` through `trade_plugin_id_key`, so a trade is never stored twice;
+  - the plugin's computed numbers (S21 AC-2): duration, P&L (gross), and `mae`/`mfe`. A partial excursion is sent **absent** (Esquadro, 1.3), so NULL `mae`/`mfe` means "not observed or not provided", and S22 excludes them from averages;
+  - `opening_fill {fill_id, quantity}` + `closing_fills [{fill_id, quantity}]` (rev. 15.2), stored as `trades.trade_fill` rows.
+- **Reconciliation:**
+  - The Core matches the fill ids with `gateway.execution_report`, cross-module, through the gateway query port; there is no FK.
+  - Unknown fills, or a P&L that differs from fills × tick value, are stored **with the plugin's numbers**, plus an audit row `trades.reconcile_mismatch`. They are never corrected silently.
+  - The fill ids use the same `text` type as `gateway.execution_report.fill_id`.
+  - Manual trades' `mae`/`mfe` are the user's input, or absent (Q55).
+  - **Manual trades do not feed S13 risk** (Esquadro's recommendation, PO to confirm), so no trades → risk derivation is needed. If the PO decides otherwise, it follows the ADR-0006 pattern.
 
 ## 7. Indexing policy
 
@@ -1341,16 +1689,21 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 2b | `identity_passwordless` (rev. 6): drops the password/TOTP/recovery/reset objects and adds channels, `known_device`, `signup_code`, `channel_change`, `one_time_code`, `code_send_counter` and the new session columns; see below | S3 (Brasa); version stamped after the latest merged migration |
 | 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
-| 5 | `accounts_create_account`: `catalog.opt_in_rule_version` + the 2 generic seed rows, `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6). Rev. 8 columns go in directly, since #5 is not written yet. The generic rows use fixed literal UUIDs in the migration (no DB default, §1), so the Core and tests can name them | before M1, so seeds use real tables |
+| 5a | `catalog_create_opt_in_rule_version` (`…060900`, rev. 16): `catalog.opt_in_rule_version` + the 2 generic seed rows, with fixed literal UUIDs (no DB default, §1) so the Core and tests can name them | S5 (Malha) |
+| 5 | `accounts_create_account` (`…061000`, rev. 16): `account` with every rev. 8–16 column, including `limits_version` / `limits_changed_at`, `evaluation_*` and `venue_account_id` / `bound_at` | S5 (Malha) |
+| 5b | `accounts_create_rule_values` (`…061050`, rev. 16; was #12): `account_rule_value` (§5.7); no FK to the catalog, so it does not wait for #11 | S5 (Malha); after #5 |
+| 5c | `accounts_create_bracket_profiles` (`…061100`, rev. 16): `default_bracket_profile`, `account_bracket_profile` | S6 (Torno); after #5 |
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
-| 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` (with `row_version`, rev. 8) | M1 / S7 |
+| 6b | `routing_create_decision_subscription` (`…061200`): `routing_decision`, `subscription` (with `row_version`, rev. 8) | S7 (Ferro); after #6 |
+| 6c | `routing_message_id_no_token_check` (`…061300`, reserved): the §6.4 no-token `CHECK` on `routing.message_receipt` / `routing.instruction`; narrowing, so it needs explicit user authorization first | Ferro |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
-| 7b | `audit_entry_activity_columns` (rev. 9): the S10 columns and constraints on the partitioned table (see below) | S10 (or whichever slice first emits them); version stamped after the latest merged migration |
+| 1c | `app_outbox_seq` (`…060610`, rev. 16.2): `app.outbox.seq` identity column (§6.4) | Ferro (`s/v1-audit-codes--core`); before #7b |
+| 7b | `audit_entry_activity_columns` (`…060620`, rev. 16.2): the S10 columns and constraints on the partitioned table (see below) | Ferro (`s/v1-audit-codes--core`); after #1c |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
-| 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
-| 10 | `risk_create_account_limits` (with `derived_from_version`, ADR-0006) | S13 (Wave 3) |
+| 9 | `gateway_create_delivery`: `venue_account` (without the binding, rev. 16), `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
+| 10 | `risk_create_account_limits` (rev. 13): `account_limits`, `scheduled_limit` (derived), `trading_day`, `drawdown_tracker`, `account_block`, with RLS | S13; unwritten, so it takes the rev. 13 shape directly |
 | 11 | `catalog_create_presets` (rev. 10): the §5.7 catalog tables + the forward change on `opt_in_rule_version` | S16; version stamped after the latest merged migration |
-| 12 | `accounts_create_rule_values` (rev. 10): `account_rule_value`; `account.limits_version` / `limits_changed_at` go into #5 directly if it is still unwritten, else they are added here | S16; after #5 and #11 |
+| 13 | `trades_create_trade` (rev. 14/15.2): `CREATE SCHEMA trades` + its grants, `trades.trade`, `trades.trade_fill`, indexes, RLS, immutability triggers | S21; version stamped after the latest merged migration |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
 
 **Dependencies across branches:**
@@ -1358,15 +1711,19 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 - S1 authenticates the webhook through `identity.source_key` / `resolve_source_key` (#3).
 - So #2 and #3 (S3, Brasa) merge before #6 and #7. Until then the S1 branch builds on the S3 branch.
 - No branch writes its own copy of another module's table.
-- Provisional versions: `20261023060000` #1, `…060100`/`…060200` #2/#3, `…060300` #4, `…060400` #5, `…060500` #6, `…060600` #7. Final versions are assigned at integration.
+- Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
+- **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, and `…061300` #6c (reserved).
+  - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
+  - From `…061400` on, numbers are assigned on request (#9, #10, #11, #13); no branch picks its own.
+  - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
 - Plan:
   1. `ADD COLUMN outcome text NOT NULL DEFAULT 'info'` and `safe_to_display boolean NOT NULL DEFAULT false`, then `ALTER … DROP DEFAULT`. These are fast metadata defaults (PG ≥ 11), and dropping the defaults makes every new insert set the values.
-  2. Add the nullable `is_exit`, `message_id` and `source_name`, and `event_seq bigint NOT NULL DEFAULT 0` then `DROP DEFAULT` (rev. 10). Replace `audit_entry_user_time_idx` with `(user_id, occurred_at DESC, event_seq DESC, id DESC)`. `app.outbox.seq` comes first, in its own forward `app` migration.
+  2. Add the nullable `is_exit`, `message_id`, `source_name` and `actor` (with its `IN` check validated, since all existing values are NULL), and `event_seq bigint NOT NULL DEFAULT 0` then `DROP DEFAULT` (rev. 10). Replace `audit_entry_user_time_idx` with `(user_id, occurred_at DESC, event_seq DESC, id DESC)`. `app.outbox.seq` comes first, in its own forward `app` migration.
   3. Add the `CHECK`s:
      - the column `CHECK`s on `outcome`, `is_exit`, `message_id` and `source_name`, validated, since only new values can fail them;
-     - `audit_entry_source_name_check` and `audit_entry_account_name_check` added **`NOT VALID` and never validated**. Old rows have `source_id` with a just-added NULL `source_name`, or a NULL `account_name`, and cannot be backfilled. `NOT VALID` enforces the rule on every new insert and exempts the old rows. Verified on PostgreSQL 16.15 in a scratch database:
+     - `audit_entry_source_name_check`, `audit_entry_account_name_check` and (rev. 12) `audit_entry_actor_check` added **`NOT VALID` and never validated**. Old rows have `source_id` with a just-added NULL `source_name`, or a NULL `account_name`, and cannot be backfilled. `NOT VALID` enforces the rule on every new insert and exempts the old rows. Verified on PostgreSQL 16.15 in a scratch database:
        - it is accepted on the partitioned parent;
        - it propagates to the existing partitions as not validated;
        - new rows are refused;
@@ -1411,7 +1768,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - cross-user reads and writes return nothing or fail, **with and without** application filters, to prove RLS on its own;
    - a missing `app.user_id` returns zero rows;
    - `UPDATE`/`DELETE` on `audit_entry` fails;
-   - rev. 9, `audit_entry`: an insert without `outcome` or `safe_to_display` fails; an unknown `outcome` fails; `is_exit` on an `ingress` entry fails; `source_id` without `source_name` fails; a token in `source_name`, `account_name` or `message_id` fails; a `message_id` with `_` that is not a token passes; #7b applies on a database with pre-existing S1 audit rows (a `source_id` and no `source_name`), and a new insert of that shape then fails;
+   - rev. 9, `audit_entry`: an insert without `outcome` or `safe_to_display` fails; (rev. 12) an insert without `actor`, or with an unknown one, fails, while pre-#7b rows with NULL `actor` remain; an unknown `outcome` fails; `is_exit` on an `ingress` entry fails; `source_id` without `source_name` fails; a token in `source_name`, `account_name` or `message_id` fails; a `message_id` with `_` that is not a token passes; #7b applies on a database with pre-existing S1 audit rows (a `source_id` and no `source_name`), and a new insert of that shape then fails;
    - the token-pattern `CHECK` rejects a planted `awk_`/`awd_` token, and the `key_id` / hash-length `CHECK`s reject malformed rows;
    - fills: a redelivered `event_id` is a no-op; a second `add` for the same `(account_id, fill_id)` fails; an `amend` and a `remove` with new `event_id`s are accepted, and the effective fill is the latest one;
    - `command.step`: `modify:0` with kind `modify` and `orphan_flatten:<uuid>` with kind `flatten` pass; `modify:0` with kind `cancel`, `orphan_flatten:<uuid>` with kind `cancel`, `place:1`, `modify:01` and an upper-case UUID fail;
@@ -1432,11 +1789,18 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - `pending_review` without `*_pending_reason`, and a reason with `chosen`, fail;
      - the same `create_idempotency_key` twice for one user fails, and for two users passes;
      - a key without a hash fails;
+   - rev. 16, binding (`account.venue_account_id`):
+     - a second account of the same user with the same `venue_account_id` fails (`account_venue_account_key` → 409 `accounts.platform_account_taken`); two concurrent binds of one platform account leave exactly one bound;
+     - `venue_account_id` without `bound_at` fails, and an archived account that is still bound fails;
+     - archiving releases the binding, and the same platform account can then be bound to another account;
+     - a bind, rebind, release or archive bumps `limits_version` and writes both `account.limits_changed` and `account.binding_changed` in the same transaction (rev. 16.1);
+     - `resolve` with another user's `connection_id` returns `None` (422), so no cross-user binding is possible;
+   - rev. 16, `account` constraints and grants: a `display_name` of `''` or of 81 characters fails; `row_version = 0` fails; `allwin_app` `DELETE` on `account` is denied;
    - rev. 8, `opt_in_rule_version`:
      - a generic row with quotes, a firm or a non-`unknown` stance fails;
      - a second generic version 1 of the same kind fails;
      - `text_changed` without `change_reason` fails;
-     - `allwin_app` cannot `UPDATE` or `DELETE`;
+     - `allwin_app` cannot `UPDATE` or `DELETE`, and (rev. 16) cannot `INSERT` until the S16 migration grants it;
      - an account's `automation_rule_version_id` pointing to a `copy` row, or to an unknown id, is rejected by the Core (no FK, §1);
    - rev. 8, `account_bracket_profile`:
      - `set_by_user` with `copied_from_size` fails, and so does `set_by_user` with `customized = true`;
@@ -1456,6 +1820,62 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - a JSON-number `amount` fails;
      - another user's account is refused by the composite FK and invisible under RLS;
      - apply rewrites the account and its rows atomically (a forced failure leaves both unchanged);
+   - rev. 15, commission and net:
+     - a fill with reported 0.50 and a rate of 0.37 × 2 → effective 0.74, `configured`;
+     - reported 1.00 → 1.00, `platform`;
+     - neither → 0, `none`;
+     - a non-fill report with a commission source fails;
+     - `pnl_net` = gross − commission;
+     - the sort by P&L uses net;
+     - a mixed trade → `mixed`;
+     - a rate change does not alter past fills or trades, and it does bump `limits_version` (the plugin gets the new floor);
+     - a lower rate mid-day → a `scheduled_limit` row for the next trading day, while today's floor stays; a higher rate applies at once;
+     - after a mid-day lowering, today's fills still use the old, higher floor in gateway (`commission_rate`), risk and plugin `limits` alike, so no `trades.reconcile_mismatch` results; from the next trading day all three use the lower rate;
+     - the adjusted balance subtracts the cumulative gap since tracking start (drawdown) or since `evaluation_start` (evaluation), never only today's;
+     - live daily-loss usage deducts rate × open quantity, while end-of-day and realized values do not;
+     - `evaluation_start` does bump it;
+     - the risk daily loss uses `realized_pnl_net`;
+     - the drawdown on a sim account with no reported commission uses the adjusted balance;
+     - evaluation progress uses the baseline from the snapshot, else the account size, plus `evaluation_earned_before`;
+     - "reiniciar contagem" bumps `limits_version`, writes the audit row, and yields fresh progress with `target_reached_at` NULL;
+     - reaching the target sets `target_reached_at` once and takes no action;
+   - rev. 14, trades:
+     - a routed trade without a source or instruction fails;
+     - a manual trade with `captured_at`, `command_id` or `plugin_trade_id` fails;
+     - a captured trade without them fails;
+     - the same `plugin_trade_id` twice on one account fails (a redelivered `trade_completed` is a no-op), and on two accounts passes;
+     - a manual trade with `trade_fill` rows is refused by the Core;
+     - a flip fill shared by two trades: the allocated shares sum exactly to the fill's `commission_effective` (1.11 → 0.74 + 0.37), with the remainder on the trade allocated last;
+     - a `trade_fill` with quantity 0 fails;
+     - a `trade_fill` naming another account of the same user fails (composite FK);
+     - a captured trade without an opening row, with two opening rows, or without a closing row is refused by the Core;
+     - `trade_fill` rows of a captured trade cannot be updated or deleted;
+     - a captured trade with absent `mae`/`mfe` is accepted;
+     - a P&L mismatch with the fills keeps the plugin's numbers and emits `trades.reconcile_mismatch`;
+     - `exit_time < entry_time` fails;
+     - a negative `mae` fails;
+     - `UPDATE` or `DELETE` of a captured trade fails for `allwin_app`; a manual one succeeds, and `allwin_maint` can delete for erasure;
+     - an off-tick manual price → 422 (Core);
+     - `duration_seconds` equals `exit − entry`;
+     - a token in `source_name` fails;
+     - another user's trades are invisible;
+   - rev. 13, risk:
+     - `daily_loss_kind = 'none'` with a limit fails, and `hard` without one fails;
+     - `drawdown_type = 'other'` fails, because it is untracked and never derived;
+     - an amount of 0 fails;
+     - `reset_source = 'firm'` without a time fails;
+     - a second active block fails;
+     - another user's rows are invisible;
+     - the derivation upsert never changes `enforcement_enabled`;
+     - Q48:
+       - a looser save → a `scheduled_limit` row at the start of the trading day after that field's `saved_at`, while the stricter limit holds;
+       - an unrelated later save of another field does not move it;
+       - looser then stricter → only the stricter value remains, and it is still in force after the reset;
+       - the reset applies due rows with no `limits_version` bump and sets `effective_as_of`;
+       - an active block stays until the reset even if a looser value is due;
+       - a mid-day `trading_day_reset` edit is scheduled: today's `trading_day` boundaries and the active block are unchanged, and the new reset applies from the next trading day;
+       - an incomparable drawdown change (`static` → `trailing_eod`) is scheduled, not applied now;
+       - `is_unset` with a value, or `max_position_qty` unset, fails;
    - rev. 10, ADR-0006:
      - an entry for an account whose limits are stale (or missing) is skipped with `routing.limits_pending`, and an exit goes through;
      - a redelivered or out-of-order `limits_changed` never lowers `derived_from_version`;
