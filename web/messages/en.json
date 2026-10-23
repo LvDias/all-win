@@ -5,7 +5,8 @@
     "actions": {
       "cancel": "Cancel",
       "retry": "Try again",
-      "use": "Use"
+      "use": "Use",
+      "close": "Close"
     },
     "states": {
       "loading": "Loading…",

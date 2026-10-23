@@ -44,3 +44,24 @@ describe("errorMessage", () => {
     expect(errorMessage(t, new Error("boom")).message).toBe("Failed");
   });
 });
+
+describe("apiFetch request options", () => {
+  it("merges extra headers over the defaults", async () => {
+    let seen: Headers | undefined;
+    server.use(
+      http.post("*/api/v1/x", ({ request }) => {
+        seen = request.headers;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    await apiFetch("/api/v1/x", { method: "POST", body: {}, headers: { "Idempotency-Key": "k-1" } });
+    expect(seen?.get("Idempotency-Key")).toBe("k-1");
+    expect(seen?.get("Content-Type")).toBe("application/json");
+    expect(seen?.get("Accept")).toBe("application/json");
+  });
+
+  it("returns undefined for an empty 202/204 body", async () => {
+    server.use(http.post("*/api/v1/x", () => new HttpResponse(null, { status: 202 })));
+    await expect(apiFetch("/api/v1/x", { method: "POST", body: {} })).resolves.toBeUndefined();
+  });
+});
