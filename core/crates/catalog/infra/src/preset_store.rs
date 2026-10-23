@@ -152,8 +152,9 @@ impl catalog_application::release_feed::ReleaseFeedReader for PgInstrumentReposi
         use catalog_application::release_feed::{PublishedRelease, ReplacedRuleText};
         let mut tx = self.pool.begin().await.map_err(err)?;
         let releases = sqlx::query!(
-            r#"SELECT publish_seq, id, firm_id, version_number FROM catalog.firm_release
-               WHERE publish_seq > $1 ORDER BY publish_seq LIMIT $2"#,
+            r#"SELECT r.publish_seq, r.id, r.firm_id, f.name AS firm_name, r.version_number
+               FROM catalog.firm_release r JOIN catalog.prop_firm f ON f.id = r.firm_id
+               WHERE r.publish_seq > $1 ORDER BY r.publish_seq LIMIT $2"#,
             after,
             limit
         )
@@ -164,9 +165,22 @@ impl catalog_application::release_feed::ReleaseFeedReader for PgInstrumentReposi
         // A replaced text has a predecessor; a firm's first texts replace nothing.
         let replaced = sqlx::query!(
             r#"SELECT release_id AS "release_id!", kind, firm_platform, previous_id AS "previous_id!",
-                      id, change_cause AS "change_cause!"
+                      id, version_number, change_cause AS "change_cause!"
                FROM catalog.opt_in_rule_version
                WHERE release_id = ANY($1) AND previous_id IS NOT NULL"#,
+            &ids
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(err)?;
+        // The same preset's version in the firm's previous release.
+        let superseded = sqlx::query!(
+            r#"SELECT nv.release_id, ov.id AS old_id, nv.id AS new_id
+               FROM catalog.preset_version nv
+               JOIN catalog.firm_release nr ON nr.id = nv.release_id
+               JOIN catalog.firm_release orr ON orr.firm_id = nr.firm_id AND orr.version_number = nr.version_number - 1
+               JOIN catalog.preset_version ov ON ov.release_id = orr.id AND ov.preset_id = nv.preset_id
+               WHERE nv.release_id = ANY($1)"#,
             &ids
         )
         .fetch_all(&mut *tx)
@@ -179,6 +193,7 @@ impl catalog_application::release_feed::ReleaseFeedReader for PgInstrumentReposi
                 publish_seq: r.publish_seq,
                 release_id: r.id,
                 firm_id: r.firm_id,
+                firm_name: r.firm_name,
                 version_number: r.version_number,
                 replaced: replaced
                     .iter()
@@ -188,8 +203,14 @@ impl catalog_application::release_feed::ReleaseFeedReader for PgInstrumentReposi
                         firm_platform: t.firm_platform.clone(),
                         previous_rule_version_id: t.previous_id,
                         new_rule_version_id: t.id,
+                        new_version_number: t.version_number,
                         cause: t.change_cause.clone(),
                     })
+                    .collect(),
+                superseded: superseded
+                    .iter()
+                    .filter(|x| x.release_id == r.id)
+                    .map(|x| (x.old_id, x.new_id))
                     .collect(),
             })
             .collect())

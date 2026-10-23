@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO app.outbox (id, user_id, event_type, occurred_at, payload)\n           VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "edf9e78cbafaa9e1c538661ae351b48a3b77c02a47ce9cd6f751254e24c3a807"
+}

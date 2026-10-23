@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 
 const POLICY: ImportPolicy = ImportPolicy {
     accept_personal_device_not_confirmed: false,
+    accept_not_material: false,
 };
 
 macro_rules! example {
@@ -293,7 +294,10 @@ async fn the_feed_lists_releases_after_the_cursor_with_replaced_texts() {
         mine[0].replaced.is_empty(),
         "a first release replaces nothing"
     );
+    assert!(mine[0].superseded.is_empty() && !mine[1].superseded.is_empty());
+    assert!(!mine[1].firm_name.is_empty());
     let r = &mine[1].replaced;
+    assert_eq!(r.first().map(|t| t.new_version_number), Some(2));
     assert_eq!(r.len(), 1);
     assert_eq!(
         (r[0].kind.as_str(), r[0].cause.as_str(), r[0].suspends()),

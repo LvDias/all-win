@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounts.account\n               SET automation_rule_version_id = $4, updated_at = $5, row_version = row_version + 1\n               WHERE user_id = $1 AND id = $2 AND archived_at IS NULL\n                 AND automation_state = 'chosen' AND automation_rule_version_id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6fc2120cf24ce77d18e37e9c486f6a36a01c9f1bca6d929f7b3ac1905d22af4d"
+}

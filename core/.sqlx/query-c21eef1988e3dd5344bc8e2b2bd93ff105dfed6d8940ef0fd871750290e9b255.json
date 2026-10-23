@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT nv.release_id, ov.id AS old_id, nv.id AS new_id\n               FROM catalog.preset_version nv\n               JOIN catalog.firm_release nr ON nr.id = nv.release_id\n               JOIN catalog.firm_release orr ON orr.firm_id = nr.firm_id AND orr.version_number = nr.version_number - 1\n               JOIN catalog.preset_version ov ON ov.release_id = orr.id AND ov.preset_id = nv.preset_id\n               WHERE nv.release_id = ANY($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "release_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "release_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "old_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "new_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c21eef1988e3dd5344bc8e2b2bd93ff105dfed6d8940ef0fd871750290e9b255"
+}

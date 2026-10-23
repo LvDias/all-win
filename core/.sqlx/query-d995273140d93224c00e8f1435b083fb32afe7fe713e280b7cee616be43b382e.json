@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT publish_seq, id, firm_id, version_number FROM catalog.firm_release\n               WHERE publish_seq > $1 ORDER BY publish_seq LIMIT $2",
+  "query": "SELECT r.publish_seq, r.id, r.firm_id, f.name AS firm_name, r.version_number\n               FROM catalog.firm_release r JOIN catalog.prop_firm f ON f.id = r.firm_id\n               WHERE r.publish_seq > $1 ORDER BY r.publish_seq LIMIT $2",
   "describe": {
     "columns": [
       {
@@ -38,6 +38,17 @@
       },
       {
         "ordinal": 3,
+        "name": "firm_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.prop_firm",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "version_number",
         "type_info": "Int4",
         "origin": {
@@ -58,8 +69,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "4a8a4f973280f2058c09310b404eed1102820df95cb319fd9ca11678a8cc0733"
+  "hash": "d995273140d93224c00e8f1435b083fb32afe7fe713e280b7cee616be43b382e"
 }

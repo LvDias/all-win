@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT last_publish_seq FROM accounts.catalog_release_cursor",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "last_publish_seq",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts.catalog_release_cursor",
+            "name": "last_publish_seq"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "44e6891baee7742edd4545ec9c10ea3e2ae618b85e69382e3f5d6084258d5b6b"
+}

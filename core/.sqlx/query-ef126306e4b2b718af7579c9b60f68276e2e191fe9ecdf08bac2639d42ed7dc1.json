@@ -1,0 +1,150 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, display_name, automation_state, automation_choice, automation_rule_version_id,\n                  automation_chosen_at, copy_state, copy_choice, copy_rule_version_id, copy_chosen_at,\n                  preset_version_id\n           FROM accounts.account\n           WHERE user_id = $1 AND archived_at IS NULL\n             AND (automation_rule_version_id = ANY($2) OR copy_rule_version_id = ANY($2)\n                  OR preset_version_id = ANY($3))\n           ORDER BY id\n           FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "automation_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_state"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "automation_choice",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_choice"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "automation_rule_version_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_rule_version_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "automation_chosen_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_chosen_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "copy_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_state"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "copy_choice",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_choice"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "copy_rule_version_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_rule_version_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "copy_chosen_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_chosen_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "preset_version_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "preset_version_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ef126306e4b2b718af7579c9b60f68276e2e191fe9ecdf08bac2639d42ed7dc1"
+}

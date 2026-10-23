@@ -70,6 +70,10 @@ pub struct StoredFirm {
 pub struct ImportPolicy {
     /// `personal_device: not_confirmed` only once HTTP 5.4.0 can return it.
     pub accept_personal_device_not_confirmed: bool,
+    /// A rule text change with cause `not_material` only once the accounts job re-points opt-ins
+    /// (`accounts.opt_in_rule_updated`); until then such a release is refused before anything is
+    /// written (Esquadro L1). The app sets it from the accounts job's compiled capability.
+    pub accept_not_material: bool,
 }
 
 /// Why a file is refused. Every problem found is reported (the import never stops at the first).
@@ -109,6 +113,10 @@ pub enum ImportProblem {
     UnsafeText(String),
     #[error("personal_device not_confirmed needs HTTP 5.4.0")]
     PersonalDeviceNotConfirmed,
+    #[error(
+        "{0}: not_material ainda não suportado; publique como text_changed (o usuário revisa) ou espere a versão do Core que suporta"
+    )]
+    NotMaterialUnsupported(String),
     #[error("invalid {0}")]
     Invalid(String),
     #[error("changes differ from the Core's diff: missing {missing:?}, unexpected {unexpected:?}")]
@@ -229,6 +237,17 @@ pub fn plan_import(
     }
     let presets = presets(file, stored, &mut p);
     let new_rule_texts = rule_texts(file, stored, &mut p);
+    if !policy.accept_not_material {
+        for t in new_rule_texts
+            .iter()
+            .filter(|t| t.change_cause.as_deref() == Some("not_material"))
+        {
+            p.push(ImportProblem::NotMaterialUnsupported(slot_text(&(
+                t.kind.clone(),
+                t.firm_platform.clone(),
+            ))));
+        }
+    }
     if let Some(firm) = stored {
         let computed = diff(file, &firm.latest);
         compare_changes(&file.release.changes, &computed, &mut p);

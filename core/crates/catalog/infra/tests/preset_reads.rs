@@ -86,6 +86,7 @@ async fn publish(db: &support::TestDb, v: &Value) {
         Arc::new(PgReleaseStore::new(db.publisher.clone())),
         ImportPolicy {
             accept_personal_device_not_confirmed: false,
+            accept_not_material: false,
         },
     );
     p.handle(

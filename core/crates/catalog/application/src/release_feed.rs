@@ -16,6 +16,7 @@ pub struct ReplacedRuleText {
     pub firm_platform: Option<String>,
     pub previous_rule_version_id: Uuid,
     pub new_rule_version_id: Uuid,
+    pub new_version_number: i32,
     /// `stance_changed` / `text_changed` suspend `chosen` opt-ins; `not_material` never does.
     pub cause: String,
 }
@@ -31,8 +32,12 @@ pub struct PublishedRelease {
     pub publish_seq: i64,
     pub release_id: Uuid,
     pub firm_id: Uuid,
+    pub firm_name: String,
     pub version_number: i32,
     pub replaced: Vec<ReplacedRuleText>,
+    /// `(previous preset version, its version in this release)`: accounts on the previous one
+    /// are told a newer version is available (S16 AC-3; never applied silently).
+    pub superseded: Vec<(Uuid, Uuid)>,
 }
 
 #[async_trait]

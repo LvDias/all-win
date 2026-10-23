@@ -1,0 +1,112 @@
+{
+ "accounts.opt_in_rule_updated": {
+  "additionalProperties": false,
+  "description": "`accounts.opt_in_rule_updated` (5.4.0, Esquadro; S16): a newer rule version with `change.cause:\nnot_material` (a typo or format fix) was published. The Core moved the account's `chosen` /\n`accepted` opt-in to it automatically, keeping the same choice and `chosen_at`. It is an automatic\naction on consent, so it is always audited (category config, actor system, outcome `info`); it is\nnot notified. A `stance_changed` or `text_changed` version never re-points: it suspends\n(`accounts.opt_in_suspended`, Q26).\n",
+  "properties": {
+   "account_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "cause": {
+    "const": "not_material"
+   },
+   "kind": {
+    "enum": [
+     "automation",
+     "copy"
+    ],
+    "type": "string"
+   },
+   "previous_rule_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "rule_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "account_id",
+   "kind",
+   "previous_rule_version_id",
+   "rule_version_id",
+   "cause"
+  ],
+  "type": "object"
+ },
+ "accounts.opt_in_suspended": {
+  "additionalProperties": false,
+  "properties": {
+   "cause": {
+    "enum": [
+     "stance_changed",
+     "text_changed",
+     "preset_attached"
+    ],
+    "type": "string"
+   },
+   "firm_name": {
+    "maxLength": 120,
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "automation",
+     "copy"
+    ],
+    "type": "string"
+   },
+   "previous_rule_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "rule_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "rule_version_number": {
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "kind",
+   "cause",
+   "rule_version_id"
+  ],
+  "type": "object"
+ },
+ "presets.version_available": {
+  "additionalProperties": false,
+  "description": "A new release of a firm affects some of the caller's accounts (refresh the notice; S18 sends one notification per firm, Q-S16-5).",
+  "properties": {
+   "account_ids": {
+    "items": {
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+     "type": "string"
+    },
+    "minItems": 1,
+    "type": "array"
+   },
+   "at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   },
+   "firm_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "type": {
+    "const": "presets.version_available"
+   }
+  },
+  "required": [
+   "type",
+   "at",
+   "firm_id",
+   "account_ids"
+  ],
+  "type": "object"
+ }
+}

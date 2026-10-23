@@ -31,6 +31,7 @@ const VALID: [&str; 5] = [
 
 const POLICY: ImportPolicy = ImportPolicy {
     accept_personal_device_not_confirmed: false,
+    accept_not_material: false,
 };
 
 fn sha(v: &Value) -> [u8; 32] {
@@ -141,6 +142,7 @@ fn v2() -> Value {
 fn every_valid_example_imports_as_a_new_firm_or_after_v1() {
     let policy = ImportPolicy {
         accept_personal_device_not_confirmed: true,
+        accept_not_material: false,
     };
     for raw in VALID.iter().map(|s| parse(s)) {
         if raw["release"]["version_number"] == 1 {
@@ -360,6 +362,7 @@ fn personal_device_not_confirmed_waits_for_http_5_4() {
     assert!(problems(&raw, None).contains(&ImportProblem::PersonalDeviceNotConfirmed));
     let open = ImportPolicy {
         accept_personal_device_not_confirmed: true,
+        accept_not_material: false,
     };
     assert!(run(&raw, None, open).is_ok());
 }
@@ -385,5 +388,39 @@ fn canonical_json_sorts_keys_at_every_level() {
     assert_eq!(
         String::from_utf8(canonical_json(&a)).unwrap(),
         r#"{"a":{"c":null,"d":[1,{"y":"é","z":0}]},"b":1}"#
+    );
+}
+
+#[test]
+fn not_material_waits_for_the_accounts_path() {
+    let v1 = parse(V1);
+    let stored = stored_after(&plan(&v1, None), &v1, None);
+    // A typo fix in the copy text, declared not material.
+    let mut v2 = parse(V1);
+    v2["release"]["version_number"] = json!(2);
+    let quote = &mut v2["stances"]["copy"][0];
+    if quote["quotes"].as_array().is_some_and(|q| !q.is_empty()) {
+        quote["quotes"][0]["text"] = json!("Copy trading is permitted (typo fixed).");
+    } else {
+        quote["research"]["searched_on"] = json!("2026-10-21");
+    }
+    quote["version"] = json!(2);
+    quote["change"] = json!({"cause": "not_material"});
+    v2["release"]["changes"] =
+        json!([{"kind": "stance_text_changed", "stance": "copy", "material": false}]);
+    let p = problems(&v2, Some(&stored));
+    assert!(
+        p.iter()
+            .any(|x| matches!(x, ImportProblem::NotMaterialUnsupported(_))),
+        "{p:?}"
+    );
+    let open = ImportPolicy {
+        accept_personal_device_not_confirmed: false,
+        accept_not_material: true,
+    };
+    assert!(
+        matches!(run(&v2, Some(&stored), open), Ok(ImportOutcome::Publish(_))),
+        "{:?}",
+        run(&v2, Some(&stored), open)
     );
 }

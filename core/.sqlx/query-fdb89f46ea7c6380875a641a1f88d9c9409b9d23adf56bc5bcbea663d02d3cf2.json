@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT release_id AS \"release_id!\", kind, firm_platform, previous_id AS \"previous_id!\",\n                      id, change_cause AS \"change_cause!\"\n               FROM catalog.opt_in_rule_version\n               WHERE release_id = ANY($1) AND previous_id IS NOT NULL",
+  "query": "SELECT release_id AS \"release_id!\", kind, firm_platform, previous_id AS \"previous_id!\",\n                      id, version_number, change_cause AS \"change_cause!\"\n               FROM catalog.opt_in_rule_version\n               WHERE release_id = ANY($1) AND previous_id IS NOT NULL",
   "describe": {
     "columns": [
       {
@@ -60,6 +60,17 @@
       },
       {
         "ordinal": 5,
+        "name": "version_number",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "version_number"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
         "name": "change_cause!",
         "type_info": "Text",
         "origin": {
@@ -81,8 +92,9 @@
       true,
       true,
       false,
+      false,
       true
     ]
   },
-  "hash": "3fb858c4daaf1bee5981ac004bc8e96855e01205f90eba236a0f80210fccaff0"
+  "hash": "fdb89f46ea7c6380875a641a1f88d9c9409b9d23adf56bc5bcbea663d02d3cf2"
 }

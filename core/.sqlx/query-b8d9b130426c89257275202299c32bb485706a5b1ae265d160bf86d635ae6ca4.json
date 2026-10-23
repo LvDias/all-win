@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounts.catalog_release_cursor SET last_publish_seq = $2, updated_at = now()\n               WHERE last_publish_seq = $1 AND $2 > $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b8d9b130426c89257275202299c32bb485706a5b1ae265d160bf86d635ae6ca4"
+}

@@ -2,6 +2,7 @@
 
 pub mod http;
 mod outbox;
+pub mod presets;
 pub mod profiles;
 pub mod store;
 
