@@ -198,12 +198,14 @@ async fn every_wired_handler_checks_the_session_then_origin() {
     );
     let ops = wired_operations();
     assert_eq!(ops.len(), 19, "{ops:?}");
-    let send = |method: Method, uri: String, cookie: Option<&str>, origin: &str| {
+    let send = |method: Method, uri: String, cookie: Option<&str>, origin: Option<&str>| {
         let mut b = Request::builder()
             .method(method)
             .uri(uri)
-            .header(header::ORIGIN, origin)
             .header(header::CONTENT_TYPE, "application/json");
+        if let Some(o) = origin {
+            b = b.header(header::ORIGIN, o);
+        }
         if let Some(c) = cookie {
             b = b.header(header::COOKIE, format!("__Host-aw_session={c}"));
         }
@@ -220,25 +222,24 @@ async fn every_wired_handler_checks_the_session_then_origin() {
         }
     };
     for (method, uri) in ops {
-        let (status, body) = send(method.clone(), uri.clone(), None, "https://app.test").await;
+        let (status, body) =
+            send(method.clone(), uri.clone(), None, Some("https://app.test")).await;
         assert_eq!(
             (status, body.contains("auth.unauthenticated")),
             (401, true),
             "{method} {uri} without a session: {body}"
         );
         if method != Method::GET {
-            let (status, body) = send(
-                method.clone(),
-                uri.clone(),
-                Some(STUB_COOKIE),
-                "https://evil.test",
-            )
-            .await;
-            assert_eq!(
-                (status, body.contains("common.forbidden_origin")),
-                (403, true),
-                "{method} {uri} with a foreign Origin: {body}"
-            );
+            // A foreign Origin and a missing one are both refused on writes.
+            for origin in [Some("https://evil.test"), None] {
+                let (status, body) =
+                    send(method.clone(), uri.clone(), Some(STUB_COOKIE), origin).await;
+                assert_eq!(
+                    (status, body.contains("common.forbidden_origin")),
+                    (403, true),
+                    "{method} {uri} with Origin {origin:?}: {body}"
+                );
+            }
         }
     }
 }
