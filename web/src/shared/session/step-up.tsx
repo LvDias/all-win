@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, apiFetch } from "@/shared/api/client";
 import type { ChallengeIssued, StepUpAction, StepUpProof } from "@/shared/api/types";
@@ -52,6 +53,7 @@ type Pending = {
 };
 
 export function StepUpProvider({ children }: { children: ReactNode }) {
+  const t = useTranslations();
   const [pending, setPending] = useState<Pending | null>(null);
   const busy = useRef(false);
 
@@ -63,7 +65,10 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
         if (!(error instanceof ApiError && error.code === "auth.step_up_required")) throw error;
       }
       // One dialog at a time: a second sensitive action while one is open is refused, not queued.
-      if (busy.current) throw new StepUpCancelled();
+      if (busy.current) {
+        toast.info(t("stepUp.busy"));
+        throw new StepUpCancelled();
+      }
       busy.current = true;
       return new Promise<T>((resolve, reject) => {
         const close = () => {
@@ -90,7 +95,7 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
         });
       });
     })();
-  }, []);
+  }, [t]);
 
   const value = useMemo<StepUp>(() => ({ run }), [run]);
   return (
@@ -118,10 +123,13 @@ function StepUpForm({ pending }: { pending: Pending }) {
     });
   }, [request.action, request.targetId]);
 
-  // Ask for the code once per attempt.
+  // Ask for the code once per attempt. The request is kept in a ref so React StrictMode's second effect run
+  // reuses it instead of sending a second code (and a second e-mail) in development.
+  const requested = useRef<{ attempt: number; promise: Promise<ChallengeIssued> } | null>(null);
   useEffect(() => {
     let current = true;
-    issue().then(
+    if (requested.current?.attempt !== attempt) requested.current = { attempt, promise: issue() };
+    requested.current.promise.then(
       (issued) => current && setChallenge(issued),
       (error: unknown) => current && setFailure(errorMessage(t, error).message),
     );

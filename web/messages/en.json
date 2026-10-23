@@ -35,9 +35,6 @@
       "copyFailed": "Could not copy. The value was revealed and selected: copy it by hand.",
       "hiddenSuffix": "hidden"
     },
-    "password": {
-      "toggle": "Show password"
-    },
     "otp": {
       "label": "6-digit code"
     },
@@ -472,7 +469,8 @@
       "sourceRotate": "rotate the URL of source “{name}”",
       "sourceCreate": "create source “{name}”",
       "invite": "invite {email}"
-    }
+    },
+    "busy": "Finish the open confirmation first."
   },
   "auth": {
     "login": {

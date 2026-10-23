@@ -232,3 +232,28 @@ describe("InviteForm", () => {
     expect(await screen.findByText(/Você está conectado como trader@example.com/)).toBeInTheDocument();
   });
 });
+
+describe("InviteForm back", () => {
+  it("Voltar from the code step returns to step 1 with focus on its first field and a new request needs a new code", async () => {
+    window.history.replaceState(null, "", "/pt-BR/invite#t=T");
+    let requests = 0;
+    server.use(
+      http.post("*/api/v1/auth/invitations/lookup", () => HttpResponse.json({ email: "new@example.com", expires_at: "2099-01-01T00:00:00Z" })),
+      http.post("*/api/v1/auth/signup/challenges", () => {
+        requests += 1;
+        return issued(`signup-${requests}`);
+      }),
+      http.post("*/api/v1/auth/challenges/delivery", () => HttpResponse.json({ delivery: "sent" })),
+    );
+    renderApp(<InviteForm />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("button", { name: "Enviar código" }));
+    await screen.findByLabelText(codeLabel);
+    await person.click(screen.getByRole("button", { name: "Voltar" }));
+    await waitFor(() => expect(screen.getByLabelText("E-mail")).toHaveFocus());
+    expect(screen.getByLabelText("E-mail")).toHaveValue("new@example.com");
+    await person.click(screen.getByRole("button", { name: "Enviar código" }));
+    await screen.findByLabelText(codeLabel);
+    expect(requests).toBe(2);
+  });
+});

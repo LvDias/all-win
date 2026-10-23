@@ -194,7 +194,15 @@ export function InviteForm() {
             return next;
           }}
           secondaryActions={
-            <Button type="button" variant="ghost" onClick={() => setChallenge(null)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setChallenge(null);
+                // Back drops the code step, so focus goes to the first field of step 1 instead of the page body.
+                window.setTimeout(() => document.getElementById("invite-email")?.focus(), 0);
+              }}
+            >
               {t("auth.invite.back")}
             </Button>
           }

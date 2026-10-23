@@ -165,3 +165,36 @@ describe("event stream", () => {
     expect(FakeEventSource.instances).toHaveLength(0);
   });
 });
+
+describe("step-up robustness", () => {
+  it("asks for one code per opening even when React runs the effect twice, and tells the user when a second action collides", async () => {
+    let issuedCount = 0;
+    server.use(
+      http.get("*/api/v1/me", () => HttpResponse.json(user)),
+      http.post("*/api/v1/sources", stepUpRequired),
+      http.post("*/api/v1/auth/step-up", () => {
+        issuedCount += 1;
+        return issueChallenge();
+      }),
+    );
+    const { StrictMode } = await import("react");
+    const result = vi.fn();
+    renderApp(
+      <StrictMode>
+        <Action onResult={result} />
+        <Action onResult={result} />
+      </StrictMode>,
+    );
+    const person = userEvent.setup();
+    const [first, second] = screen.getAllByRole("button", { name: "go" });
+    await person.click(first as HTMLElement);
+    await screen.findByLabelText(/Código de verificação/);
+    expect(issuedCount).toBe(1);
+    await act(async () => {
+      second?.click();
+    });
+    expect(await screen.findByText("Conclua a confirmação aberta primeiro.")).toBeInTheDocument();
+    await waitFor(() => expect(result).toHaveBeenCalledWith("cancelled"));
+    expect(issuedCount).toBe(1);
+  });
+});
