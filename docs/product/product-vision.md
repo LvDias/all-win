@@ -2,7 +2,7 @@
 
 > **Canonical location:** `docs/product/product-vision.md`
 > **Owner:** the user (business decisions). The Product Owner maintains this document; every agent reads it before working on this project.
-> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 7 — passwordless sign-in; rev. 6 — opt-ins, preset rules, items 1–22, Q24–Q27 recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
+> **Status:** approved baseline · **Last updated:** 2026-10-23 (rev. 9 — net P&L risk, evaluation target, commission floor; rev. 8 — user decisions of 2026-10-23e; rev. 7 — passwordless sign-in; rev. 6 — opt-ins, preset rules, items 1–22, Q24–Q27 recorded; details in [release-1/slice-plan.md](release-1/slice-plan.md))
 > Labels used below: **[Decision]** confirmed by the user · **[Proposal]** recommended, awaiting user confirmation · **[Open]** unresolved question.
 
 ---
@@ -204,6 +204,8 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - **No early unlock:** a blocked account stays blocked until the reset. **[Decision]**
 - **Warnings at 80%** of each limit, shown in the web application and in the platform adapter (e.g., NinjaTrader). **[Decision]**
 - **Daily profit target:** per account, "notify only" (default) or "flatten and block". **[Decision 2026-10-23]**
+- **Net P&L and commissions:** limits, drawdown, the profit targets and enforcement are measured on **net P&L**. Each account has a commission per contract per side, prefilled by the preset when the firm publishes it and editable; the effective commission of a fill is the greater of the platform-reported value and the configured value × quantity; when neither exists the account shows a "commission not reported" warning. **[Decision 2026-10-23f]**
+- **Evaluation profit target:** on evaluation accounts the product shows how much profit is left to reach the preset's evaluation target (net P&L since the start of the count). The count starts on the date given by the user (default: the account's registration date), with an optional amount already earned and a "restart the count" action, both audited; on reaching the target the user gets a notice and a notification, nothing automatic. Minimum trading days and payout rules are not part of release 1. **[Decision 2026-10-23e/f]**
 - **Consistency rules:** tracked and warned in release 1, not enforced. **[Decision 2026-10-23]**
 - **Core gate with enforcement off:** the Core still refuses new instructions to an account that has reached a limit (it never closes trades). **[Decision 2026-10-23]**
 - In NinjaTrader the block is reactive: orders placed manually on a blocked account are cancelled/flattened right after submission. **[Decision 2026-10-23, plan approval]**
@@ -212,7 +214,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 ## 10. Performance analysis
 
 - Trades are captured automatically from execution results (Output) or entered manually. **[Decision]**
-- Per trade: account, instrument, direction, quantity, entry and exit time and price, **time in trade**, P&L, **maximum adverse excursion**, maximum favorable excursion, and the originating signal/source. **[Decision]**
+- Per trade: account, instrument, direction, quantity, entry and exit time and price, **time in trade**, **net P&L (with commissions) as the main value and gross P&L beside it** **[Decision 2026-10-23e]**, **maximum adverse excursion**, maximum favorable excursion, and the originating signal/source. **[Decision]**
 - **Phase 1:** metrics computed by the platform adapter (e.g., in NinjaTrader with the user's own data); only computed numbers are sent. **[Decision]**
 - **Phase 2:** trade-on-chart views with licensed data (same provider decision as §7 Phase 2). The platform must not store or redistribute price data from the user's own data feeds. **[Decision]**
 
@@ -283,4 +285,13 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - **[Decision 2026-10-23, user requirement change]** Replaces password + optional TOTP (Q20 reset part, Q22, A5). Sign-up is invite-only; the user gives e-mail and WhatsApp number and confirms each with a code. Sign-in: the user picks e-mail or WhatsApp to receive a code; **no password exists**.
 - Code: single-use, valid 10 minutes, invalidated after 5 wrong attempts, send limits per user and per IP. A new-device sign-in sends an e-mail notice. Sensitive actions (turning automation on for an account, unpairing NinjaTrader, changing e-mail or WhatsApp) ask for a new code. Changing e-mail or WhatsApp needs a code on both the old and the new channel.
 - Slicing: e-mail first (V1-S3); WhatsApp later (V1-S3b), after the supplier decision.
-- **Open:** U16 (code format), U17 (WhatsApp supplier/cost), and Q28–Q36 in the slice plan (loss of all channels, sessions, step-up window, WhatsApp mandatory or not, shared channels, send limits, new-device notice, step-up list, invitation e-mail).
+- **Decided 2026-10-23e:** see §18. U16 (code format) and U17 (supplier: Meta WhatsApp Cloud API direct) are no longer open.
+
+## 18. Decision log (2026-10-23, sixth batch) — passwordless details, screens, commissions, evaluation target
+
+- **[Decision 2026-10-23e]** The user accepted every recommendation of U16, M2, M3 and Q28–Q68 ([release-1/slice-plan.md](release-1/slice-plan.md) §7), with two exceptions below.
+- **Sign-in details:** code of 8 Crockford Base32 characters shown as `XXXX-XXXX`; channel changes from a device first seen less than 7 days ago take a 72-hour hold; on such a device the persistence actions need the e-mail code; loss of every channel is recovered by the admin after an out-of-band identity check (72-hour hold); one account per e-mail and per number; WhatsApp optional; sensitive actions (the user's three plus source create/rotate, connection create, pairing code, admin invitation, route enable and platform-link change) ask a fresh code each time. WhatsApp via the Meta Cloud API direct; the user started the business verification.
+- **Exception 1 — commissions (Q54):** **net P&L (with commissions) is the main value, gross beside it**, because firms measure drawdown and limits on net. This changes the figures behind the risk state (S13, S15), the trade list (S21) and the metrics (S22).
+- **Exception 2 — Q46:** the **evaluation profit target** (how much is left to pass) is included in V1 as a new slice (V1-S13b); minimum trading days and payout rules come later.
+- **Details 2026-10-23f:** risk on net P&L; evaluation target start = user-given date (default registration), notice + notification only on reaching it; **U20 (a)** commission floor per account, prefilled by the preset, editable, warning when no commission exists.
+- **Provisional:** Q71 — a manual trade with the commission left blank counts as zero (net = gross, labeled "commissions not entered"), awaiting the user's confirmation; display only, manual trades never feed risk.
