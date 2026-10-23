@@ -430,7 +430,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 - **AC-10** A trade placed directly in the platform without a signal has its own origin category, distinct from "manual" (hand-entered).
 - **AC-11** Manual trades feed **only** the trade list and the performance metrics, never the risk state or enforcement (S13 AC-2).
 - **AC-12** Trades of an **archived** account stay in the trade list and the metrics, selectable with an "archived" filter and excluded from the default view (Q79 a, [Decision 2026-10-24]).
-- **AC-13** Trades closed while NinjaTrader or the plugin was off are **captured on reconnect from the platform's execution history**, deduplicated and labeled "recovered", **if the platform exposes that history**; otherwise only trades seen live are captured and the gap is shown (Q80 a/b, [Decision 2026-10-24]; the Architect confirms what the platform exposes).
+- **AC-13** Trades closed while NinjaTrader or the plugin was off (Q80, [Decision 2026-10-24]). **Current behaviour (b):** only trades seen live are captured and the gap is shown, until the Architect's spike (E4/K15) shows that NinjaTrader exposes the executions of the period it was off **and** the plugin recovers on every restore. **Then (a):** the executions are captured from the platform's history, deduplicated (a restart never captures the same trade twice) and labeled "recovered" (derived by the Core from the fill's time, no new contract field). The recovery runs when the plugin starts **and every time an account's connection is restored**, so a trade closed while the account was disconnected is captured when it returns.
 
 ### V1-S22 — Performance metrics view (ready)
 
@@ -438,7 +438,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 - **AC-2** Numbers in the view reconcile exactly with the trade list (X-3).
 - **AC-3** Win rate counts a trade as a win only if its **net** P&L is greater than 0; the denominator is all trades; the screen states the counts (wins, losses, zero) (Q58 a). Totals and averages of P&L use net P&L (S13 AC-11 commission rule) with gross beside it. [Decision 2026-10-23e/f]
 - **AC-4** V1 shows only the AC-1 list; extra metrics (profit factor, best/worst trade, average win/loss, per-day curve) come in a later slice (Q59 a). Totals: total P&L and number of trades; time in trade, MAE and MFE only as averages.
-- **AC-5** With no trades in the selected period and accounts, every total shows 0 and every average, rate and ratio shows "—" (no division by zero), with the sentence that there are no trades. Trades of an archived account (S5 AC-14) stay in the metrics only while it is selectable (see Q79). [Proposal]
+- **AC-5** With no trades in the selected period and accounts (the "filter" is the current selection), the **trade count is 0**, every **total** shows **US$ 0,00** (pt-BR; the en format follows S4), every **average, rate and ratio** shows **"—"** (no division by zero), and the sentence **"Nenhum trade neste filtro."** (en: "No trades in this filter.") is shown. Trades of an archived account stay out of the metrics by default and are included when the "archived" filter is selected (S21 AC-12, Q79 a). [Decision 2026-10-24, PO detail, not a business rule]
 
 ---
 
