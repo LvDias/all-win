@@ -61,6 +61,184 @@ pub struct TokenBody {
     pub token: String,
 }
 
+/// Sealed challenge token (auth policy §3); opaque to clients. Never logged.
+pub struct ChallengeId;
+
+impl utoipa::PartialSchema for ChallengeId {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::schema::ObjectBuilder::new()
+            .schema_type(utoipa::openapi::schema::Type::String)
+            .pattern(Some("^[A-Za-z0-9_-]{16,256}$"))
+            .into()
+    }
+}
+
+impl ToSchema for ChallengeId {}
+
+/// The code as typed; the Core normalizes it (U16 format 1). Never logged.
+pub struct OneTimeCode;
+
+impl utoipa::PartialSchema for OneTimeCode {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::schema::ObjectBuilder::new()
+            .schema_type(utoipa::openapi::schema::Type::String)
+            .min_length(Some(1))
+            .max_length(Some(32))
+            .into()
+    }
+}
+
+impl ToSchema for OneTimeCode {}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodeChannel {
+    Email,
+    Whatsapp,
+}
+
+impl CodeChannel {
+    pub fn domain(self) -> identity_enterprise::channel::Channel {
+        match self {
+            Self::Email => identity_enterprise::channel::Channel::Email,
+            Self::Whatsapp => identity_enterprise::channel::Channel::Whatsapp,
+        }
+    }
+
+    pub fn of(c: identity_enterprise::channel::Channel) -> Self {
+        match c {
+            identity_enterprise::channel::Channel::Email => Self::Email,
+            identity_enterprise::channel::Channel::Whatsapp => Self::Whatsapp,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StepUpAction {
+    SourceCreate,
+    SourceRotate,
+    ConnectionCreate,
+    PairingCodeNew,
+    ConnectionUnpair,
+    AccountOptInAccept,
+    AccountCreateOptInAccept,
+    AdminInvitationCreate,
+    RouteEnable,
+    AccountBindingChange,
+}
+
+impl StepUpAction {
+    pub fn domain(self) -> access::StepUpAction {
+        use access::StepUpAction as A;
+        match self {
+            Self::SourceCreate => A::SourceCreate,
+            Self::SourceRotate => A::SourceRotate,
+            Self::ConnectionCreate => A::ConnectionCreate,
+            Self::PairingCodeNew => A::PairingCodeNew,
+            Self::ConnectionUnpair => A::ConnectionUnpair,
+            Self::AccountOptInAccept => A::AccountOptInAccept,
+            Self::AccountCreateOptInAccept => A::AccountCreateOptInAccept,
+            Self::AdminInvitationCreate => A::AdminInvitationCreate,
+            Self::RouteEnable => A::RouteEnable,
+            Self::AccountBindingChange => A::AccountBindingChange,
+        }
+    }
+}
+
+/// Step-up proof carried in the body of a step-up operation; consumed in the action's transaction.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StepUpProof {
+    #[schema(value_type = ChallengeId)]
+    pub challenge_id: String,
+    #[schema(value_type = OneTimeCode)]
+    pub code: String,
+}
+
+impl StepUpProof {
+    pub fn domain(self) -> access::StepUpProof {
+        access::StepUpProof {
+            challenge_id: self.challenge_id,
+            code: self.code,
+        }
+    }
+}
+
+/// Body of a step-up operation that has no other input.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StepUpBody {
+    #[schema(nullable = false)]
+    pub step_up: Option<StepUpProof>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RequestLoginCodeRequest {
+    #[schema(format = Email, max_length = 254)]
+    pub email: String,
+    pub channel: CodeChannel,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VerifyLoginCodeRequest {
+    #[schema(value_type = ChallengeId)]
+    pub challenge_id: String,
+    #[schema(value_type = OneTimeCode)]
+    pub code: String,
+    pub remember_me: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChallengeBody {
+    #[schema(value_type = ChallengeId)]
+    pub challenge_id: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RequestStepUpRequest {
+    pub action: StepUpAction,
+    /// Required for source_rotate, pairing_code_new, connection_unpair, account_opt_in_accept, route_enable, account_binding_change; forbidden otherwise.
+    #[schema(value_type = Option<Uuid>, nullable = false)]
+    pub target_id: Option<String>,
+    pub channel: CodeChannel,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CompleteSignupRequest {
+    #[schema(value_type = ChallengeId)]
+    pub challenge_id: String,
+    #[schema(value_type = OneTimeCode)]
+    pub code: String,
+    pub locale: Locale,
+    #[schema(value_type = TimeZone)]
+    pub time_zone: String,
+    pub remember_me: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StartChannelChangeRequest {
+    pub channel: CodeChannel,
+    /// An e-mail address for `email`; an E.164 number (`+5511…`) for `whatsapp`.
+    #[schema(max_length = 254)]
+    pub new_value: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VerifyChannelChangeCodeRequest {
+    #[schema(value_type = ChallengeId)]
+    pub challenge_id: String,
+    #[schema(value_type = OneTimeCode)]
+    pub code: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 #[schema(min_properties = 1)]
@@ -79,6 +257,8 @@ pub struct CreateInvitationRequest {
     pub locale: Locale,
     #[schema(default = true, nullable = false)]
     pub send_email: Option<bool>,
+    #[schema(nullable = false)]
+    pub step_up: Option<StepUpProof>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
@@ -93,6 +273,17 @@ pub struct CreateSourceRequest {
     #[schema(value_type = DisplayName)]
     pub name: String,
     pub source_type: SourceTypeDto,
+    #[schema(nullable = false)]
+    pub step_up: Option<StepUpProof>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateConnectionRequest {
+    #[schema(value_type = DisplayName)]
+    pub name: String,
+    #[schema(nullable = false)]
+    pub step_up: Option<StepUpProof>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -107,6 +298,8 @@ pub struct RenameRequest {
 pub struct UnpairRequest {
     /// Must be true when any mapped account has an open position (design S3-10 checkbox).
     pub acknowledge_open_positions: bool,
+    #[schema(nullable = false)]
+    pub step_up: Option<StepUpProof>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
@@ -169,6 +362,110 @@ impl From<&identity_enterprise::user::User> for Me {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct LoginResult {
+    pub user: Me,
+    /// True when this sign-in registered a new device (the notice e-mail was sent; never on sign-up).
+    pub new_device: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChallengeIssued {
+    #[schema(value_type = ChallengeId)]
+    pub challenge_id: String,
+    #[schema(value_type = Timestamp)]
+    pub expires_at: String,
+    /// Seconds until `resendCode` is accepted (60 after a send).
+    #[schema(value_type = ResendAfter)]
+    pub resend_after_s: i64,
+}
+
+plain_integer!(
+    /// Seconds until a resend is accepted.
+    ResendAfter,
+    Some(0),
+    None::<i64>
+);
+
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryStateDto {
+    Pending,
+    Sent,
+    Failed,
+    NotReported,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChallengeDelivery {
+    pub delivery: DeliveryStateDto,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Device {
+    #[schema(value_type = Uuid)]
+    pub id: String,
+    /// Coarse browser and OS family from the User-Agent, e.g. "Chrome on Windows".
+    #[schema(max_length = 128)]
+    pub label: String,
+    #[schema(value_type = Timestamp)]
+    pub first_seen_at: String,
+    #[schema(value_type = Timestamp)]
+    pub last_seen_at: String,
+    /// True for the device of this request.
+    pub current: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeStatusDto {
+    AwaitingCodes,
+    OnHold,
+    Completed,
+    Cancelled,
+    Expired,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CodeRoleDto {
+    CurrentValue,
+    NewValue,
+    OtherChannel,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChangeCode {
+    pub role: CodeRoleDto,
+    #[schema(value_type = ChallengeId)]
+    pub challenge_id: String,
+    pub confirmed: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChannelChange {
+    #[schema(value_type = Uuid)]
+    pub id: String,
+    pub channel: CodeChannel,
+    /// `on_hold` = every code confirmed, the change waits until `hold_until` (auth policy §9 hold; §7 M2) and can be cancelled.
+    pub status: ChangeStatusDto,
+    #[schema(max_length = 64)]
+    pub masked_new_value: String,
+    /// One entry per code of the flow.
+    pub codes: Vec<ChangeCode>,
+    #[schema(value_type = Timestamp)]
+    pub expires_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Timestamp>, nullable = false)]
+    pub hold_until: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SessionInfo {
     pub persistent: bool,
     /// 43200 (12 h) or 604800 (7 d) — Q21.
@@ -181,13 +478,23 @@ pub struct SessionInfo {
     pub idle_expires_at: String,
     #[schema(value_type = Timestamp)]
     pub absolute_expires_at: String,
-    #[schema(value_type = Timestamp)]
-    pub step_up_valid_until: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SecurityState {
+    #[schema(format = Email)]
+    pub email: String,
+    /// Confirmed WhatsApp number (E.164), absent until added (S3b).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(pattern = "^\\+[1-9][0-9]{7,14}$", nullable = false)]
+    pub whatsapp: Option<String>,
+    /// When a new channel change is accepted (24 h after the last one; auth policy §7). In the past when allowed now.
+    #[schema(value_type = Timestamp)]
+    pub channel_change_allowed_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub pending_channel_change: Option<ChannelChange>,
     pub session: SessionInfo,
 }
 
@@ -257,6 +564,7 @@ pub struct AdminUser {
     #[schema(format = Email)]
     pub email: String,
     pub status: UserStatusDto,
+    pub whatsapp_verified: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
     pub is_platform_admin: Option<bool>,

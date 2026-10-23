@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -18,18 +18,23 @@ use identity_application::auth::{Activity, AuthContext, AuthenticateSession};
 use identity_application::changes::{ChangeSet, Write};
 use identity_application::deps::{IdentityDeps, IdentitySettings, RequestMeta};
 use identity_application::ports::*;
+use identity_application::usecases::delivery::DeliveryJob;
+use identity_application::usecases::signin::{
+    RequestLoginCode, RequestLoginCodeCommand, VerifyLoginCode, VerifyLoginCodeCommand,
+};
+use identity_application::views::SignedIn;
+use identity_enterprise::channel::Channel;
 use identity_enterprise::connection::AdapterInfo;
 use identity_enterprise::email::EmailAddress;
-use identity_enterprise::ids::{SessionId, SourceId};
+use identity_enterprise::ids::SourceId;
 use identity_enterprise::profile::{Locale, TimeZoneName};
 use identity_enterprise::secret::SecretString;
-use identity_enterprise::session::{ClientInfo, NewSession, Session};
-use identity_enterprise::tokens::SecretBytes;
 use identity_enterprise::user::{User, UserStatus};
 use identity_infra::crypto::{OsRandom, PepperedHasher, VersionedKeys};
 use identity_infra::store::PgIdentityStore;
 use identity_infra::throttle::{
-    LogPairingAlerts, PairingThrottlePolicy, PerIpPublicThrottle, PrefixPairingThrottle,
+    CodeThrottlePolicy, LogPairingAlerts, LogSecurityAlerts, PairingThrottlePolicy,
+    PerIpPublicThrottle, PrefixCodeThrottle, PrefixPairingThrottle,
 };
 use shared_kernel::{SystemClock, UserId};
 use sqlx::postgres::PgPoolOptions;
@@ -205,12 +210,58 @@ impl AdapterCompatibility for AllAdapters {
         true
     }
 }
+pub struct NoAccounts;
+#[async_trait]
+impl AccountTargets for NoAccounts {
+    async fn owned_by(&self, _: UserId, _: Uuid) -> Result<bool, String> {
+        Ok(false)
+    }
+}
+
+/// Captures deliveries (the plaintext code lives only here, as in memory) and records each
+/// outcome as `sent` through the real use case, like the detached worker would.
+#[derive(Default)]
+pub struct CapturingDelivery {
+    pub jobs: Mutex<Vec<DeliveryJob>>,
+}
+
+impl DeliveryQueue for CapturingDelivery {
+    fn dispatch(&self, job: DeliveryJob) {
+        self.jobs.lock().unwrap().push(job);
+    }
+}
+
+impl CapturingDelivery {
+    pub fn last_code_to(&self, destination: &str) -> Option<String> {
+        self.jobs
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|j| j.delivery.destination.normalized() == destination && !j.suppressed)
+            .map(|j| j.delivery.code.expose().to_owned())
+    }
+
+    pub fn take(&self) -> Vec<DeliveryJob> {
+        std::mem::take(&mut *self.jobs.lock().unwrap())
+    }
+}
+
 pub fn keys() -> VersionedKeys {
     VersionedKeys::new(1, BTreeMap::from([(1, vec![7u8; 32])])).unwrap()
 }
 
-pub fn deps(db: &Db) -> (IdentityDeps, Arc<PgIdentityStore>) {
+pub fn deps(db: &Db) -> (IdentityDeps, Arc<PgIdentityStore>, Arc<CapturingDelivery>) {
+    deps_with(db, true)
+}
+
+/// `q35`: the `step_up.q35_persistence_actions` setting.
+pub fn deps_with(
+    db: &Db,
+    q35: bool,
+) -> (IdentityDeps, Arc<PgIdentityStore>, Arc<CapturingDelivery>) {
     let store = Arc::new(PgIdentityStore::new(db.app.clone(), db.worker.clone()));
+    let delivery = Arc::new(CapturingDelivery::default());
     let deps = IdentityDeps {
         store: store.clone(),
         clock: Arc::new(SystemClock),
@@ -230,78 +281,126 @@ pub fn deps(db: &Db) -> (IdentityDeps, Arc<PgIdentityStore>) {
             Arc::new(LogPairingAlerts),
         )),
         public_throttle: Arc::new(PerIpPublicThrottle::new(1000)),
+        code_throttle: Arc::new(PrefixCodeThrottle::new(
+            CodeThrottlePolicy {
+                per_ip_15min: 1000,
+                per_ip_24h: 1000,
+                per_prefix_hour: 1000,
+                ..CodeThrottlePolicy::default()
+            },
+            Arc::new(LogSecurityAlerts),
+        )),
+        delivery: delivery.clone(),
+        alerts: Arc::new(LogSecurityAlerts),
+        account_targets: Arc::new(NoAccounts),
         settings: IdentitySettings {
             public_origin: "https://app.test".into(),
+            step_up_q35_persistence_actions: q35,
+            whatsapp_enabled: false,
         },
     };
-    (deps, store)
+    (deps, store, delivery)
 }
 
 pub fn meta() -> RequestMeta {
     RequestMeta {
         ip: IpAddr::V4(Ipv4Addr::new(203, 0, 113, 9)),
-        user_agent: Some("it".into()),
+        user_agent: Some("Mozilla/5.0 (X11; Linux x86_64) Firefox/131.0".into()),
     }
 }
 
-/// Seeds a user directly (sign-up is being replaced, contract 2.0.0). Superuser insert: the row
-/// is test data, not a use-case write.
-pub async fn seed_user(db: &Db, email: &str, admin: bool) -> User {
+/// Seeds a user through the store (sign-up is covered by its own test).
+pub async fn seed_user(deps: &IdentityDeps, email: &str, admin: bool) -> User {
+    let now = Utc::now();
     let user = User {
         id: UserId::new_v7(),
         email: EmailAddress::parse(email).unwrap(),
+        email_verified_at: now,
+        whatsapp: None,
         locale: Locale::En,
         time_zone: TimeZoneName::parse("UTC").unwrap(),
         is_platform_admin: admin,
         status: UserStatus::Active,
-        created_at: Utc::now(),
+        created_at: now,
+        channel_changed_at: None,
     };
-    sqlx::query(
-        "INSERT INTO identity.app_user (id, email, email_normalized, password_hash, locale, time_zone, is_platform_admin, created_at)
-         VALUES ($1, $2, $3, 'unused', 'en', 'UTC', $4, $5)",
-    )
-    .bind(user.id.as_uuid())
-    .bind(user.email.as_entered())
-    .bind(user.email.normalized())
-    .bind(admin)
-    .bind(user.created_at)
-    .execute(&db.inspect)
-    .await
-    .unwrap();
+    deps.store
+        .commit(ChangeSet::new(user.id).write(Write::InsertUser(user.clone())))
+        .await
+        .unwrap();
     user
 }
 
-/// Starts a session through the store, as the sign-in use case would.
-pub async fn sign_in(deps: &IdentityDeps, email: &str) -> (String, AuthContext) {
-    let normalized = EmailAddress::parse(email).unwrap();
-    let user = deps
-        .store
-        .user_for_login(normalized.normalized())
-        .await
-        .unwrap()
-        .unwrap();
-    let mut secret = [0u8; 32];
-    deps.random.fill(&mut secret);
-    let secret = SecretBytes::from_random(secret);
-    let new = NewSession {
-        id: SessionId::new_v7(),
-        user_id: user.id,
-        token_hash: deps.hasher.sha256(secret.as_bytes()),
-        persistent: false,
-        client: ClientInfo {
-            ip: Some(meta().ip),
-            user_agent: meta().user_agent,
-        },
-    };
-    let session = Session::start(new, false, Utc::now());
-    deps.store
-        .commit(ChangeSet::new(user.id).write(Write::InsertSession(session)))
+/// Signs in by code (request, captured code, verify) and returns the cookies and context. The
+/// durable send counters are cleared first, so tests can sign in again within the cooldown.
+pub async fn sign_in(
+    db: &Db,
+    deps: &IdentityDeps,
+    delivery: &CapturingDelivery,
+    email: &str,
+    device_cookie: Option<&str>,
+) -> (SignedIn, AuthContext) {
+    reset_send_limits(db).await;
+    let normalized = EmailAddress::parse(email).unwrap().normalized().to_owned();
+    let ch = RequestLoginCode::new(deps.clone())
+        .handle(RequestLoginCodeCommand {
+            email: email.into(),
+            channel: Channel::Email,
+            device_cookie: device_cookie.map(str::to_owned),
+            meta: meta(),
+        })
         .await
         .unwrap();
-    let value = secret.encode().expose().to_owned();
+    let code = delivery.last_code_to(&normalized).unwrap();
+    let signed = VerifyLoginCode::new(deps.clone())
+        .handle(VerifyLoginCodeCommand {
+            challenge_id: ch.challenge_id.expose().to_owned(),
+            code,
+            remember_me: false,
+            device_cookie: device_cookie.map(str::to_owned),
+            meta: meta(),
+        })
+        .await
+        .unwrap();
     let ctx = AuthenticateSession::new(deps.clone())
-        .handle(Some(&value), Activity::UserInitiated)
+        .handle(Some(signed.session.value.expose()), Activity::UserInitiated)
         .await
         .unwrap();
-    (value, ctx)
+    (signed, ctx)
+}
+
+/// Requests a step-up code by e-mail and returns the proof for the action.
+pub async fn step_up(
+    db: &Db,
+    deps: &IdentityDeps,
+    delivery: &CapturingDelivery,
+    ctx: &AuthContext,
+    action: identity_enterprise::otp::StepUpAction,
+    target: Option<Uuid>,
+) -> identity_application::usecases::step_up::StepUpProof {
+    reset_send_limits(db).await;
+    let issued = identity_application::usecases::step_up::RequestStepUp::new(deps.clone())
+        .handle(
+            ctx,
+            identity_application::usecases::step_up::RequestStepUpCommand {
+                action,
+                target_id: target,
+                channel: Channel::Email,
+                meta: meta(),
+            },
+        )
+        .await
+        .unwrap();
+    identity_application::usecases::step_up::StepUpProof {
+        challenge_id: issued.challenge_id.expose().to_owned(),
+        code: delivery.last_code_to(ctx.user.email.normalized()).unwrap(),
+    }
+}
+
+/// Clears the durable send counters (tests sign in repeatedly within the 60-s cooldown).
+pub async fn reset_send_limits(db: &Db) {
+    sqlx::query("DELETE FROM identity.code_send_counter")
+        .execute(&db.inspect)
+        .await
+        .unwrap();
 }

@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COALESCE(sum(sends), 0)::int AS \"sends!\" FROM identity.code_send_counter\n                    WHERE identifier_hmac = $1 AND device_class = $2 AND window_seconds = $3 AND window_start = $4",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sends!",
+        "type_info": "Int4",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Text",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "01d9a13167aaac43fc6fd9e292aae61eb163eb8d021fccbaf2b6daaba5c821da"
+}

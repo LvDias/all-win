@@ -18,9 +18,7 @@ use crate::ports::{CodeDelivery, CodeMessage};
 use crate::usecases::codes::{self, Check};
 use crate::usecases::common::user_audit;
 use crate::usecases::delivery::DeliveryJob;
-use crate::usecases::sessions::{
-    device_class_known, new_session, request_label, resolve_device,
-};
+use crate::usecases::sessions::{device_class_known, new_session, request_label, resolve_device};
 use crate::views::{ChallengeIssued, DeliveryView, SignedIn};
 
 pub struct RequestLoginCodeCommand {
@@ -42,7 +40,10 @@ impl RequestLoginCode {
         Self { deps }
     }
 
-    pub async fn handle(&self, cmd: RequestLoginCodeCommand) -> Result<ChallengeIssued, IdentityError> {
+    pub async fn handle(
+        &self,
+        cmd: RequestLoginCodeCommand,
+    ) -> Result<ChallengeIssued, IdentityError> {
         let deps = &self.deps;
         let now = deps.clock.now();
         let normalized = EmailAddress::parse(&cmd.email)
@@ -183,7 +184,8 @@ impl VerifyLoginCode {
                 return Err(IdentityError::CodeInvalid);
             }
         };
-        let device = resolve_device(deps, owner, cmd.device_cookie.as_deref(), &cmd.meta, now).await?;
+        let device =
+            resolve_device(deps, owner, cmd.device_cookie.as_deref(), &cmd.meta, now).await?;
         let (session, cookie) = new_session(
             deps,
             owner,
@@ -338,10 +340,7 @@ impl ResendCode {
         if written.is_err() {
             return Ok(());
         }
-        let email = EmailAddress::from_stored(
-            invitation.email.clone(),
-            invitation.email.clone(),
-        );
+        let email = EmailAddress::from_stored(invitation.email.clone(), invitation.email.clone());
         deps.delivery.dispatch(DeliveryJob {
             table: CodeTable::Signup,
             code_id,
@@ -478,12 +477,14 @@ impl GetChallengeDelivery {
                     .map(|r| r.state)
             }
         };
-        Ok(match state.filter(|s| s.is_open(now)).map(|s| s.delivery_state) {
-            Some(DeliveryState::Pending) => DeliveryView::Pending,
-            Some(DeliveryState::Sent) => DeliveryView::Sent,
-            Some(DeliveryState::Failed) => DeliveryView::Failed,
-            None => DeliveryView::NotReported,
-        })
+        Ok(
+            match state.filter(|s| s.is_open(now)).map(|s| s.delivery_state) {
+                Some(DeliveryState::Pending) => DeliveryView::Pending,
+                Some(DeliveryState::Sent) => DeliveryView::Sent,
+                Some(DeliveryState::Failed) => DeliveryView::Failed,
+                None => DeliveryView::NotReported,
+            },
+        )
     }
 }
 
@@ -543,7 +544,10 @@ impl SignOutEverywhere {
                 reason: EndReason::SignedOutEverywhere,
                 at: now,
             })
-            .write(Write::RevokeAllDevices { user_id: user, at: now })
+            .write(Write::RevokeAllDevices {
+                user_id: user,
+                at: now,
+            })
             .audit(user_audit(
                 user,
                 Actor::User(user),

@@ -1,9 +1,14 @@
-//! PostgreSQL implementation of [`IdentityStore`] (migrations #2, #3, #8).
+//! PostgreSQL implementation of [`IdentityStore`] (migrations #2, #2b, #3, #8).
 //!
 //! - User-owned reads and every change set run in a transaction that first sets
 //!   `app.user_id` (RLS, data model §3) on the `allwin_app` pool.
 //! - Pre-authentication lookups use the `SECURITY DEFINER` functions (`resolve_*`,
-//!   `find_user_for_login`); `list_live_connections` runs on the `allwin_worker` pool.
+//!   `find_user_for_login`, `device_key_in_use`); `list_live_connections` and the due-hold scan
+//!   run on the `allwin_worker` pool.
+//! - Code verification uses conditional UPDATEs instead of `SELECT … FOR UPDATE` (Lastro,
+//!   2026-10-23): a failure increments and invalidates at 5 only on an open row, a success consumes
+//!   only the open row with the HMAC that was checked, and expiry is compared with the same clock
+//!   that wrote it (the app clock, passed as a parameter).
 //! - A change set is one transaction: its writes in order, then one outbox row per audit
 //!   record and event. Conditional writes that touch no row and unique violations become
 //!   [`StoreConflict`]s; the transaction is then rolled back.
@@ -13,18 +18,29 @@ use std::net::IpAddr;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use identity_application::changes::{ChangeSet, StoredKey, Write};
+use identity_application::changes::{ChangeSet, CodeTable, StoredKey, Write};
 use identity_application::ports::{
-    ConnectionRecord, IdentityStore, StoreConflict, StoreError, UserSummary,
+    ConnectionRecord, IdentityStore, LoginTarget, StoreConflict, StoreError, UserSummary,
+    WindowCount,
 };
+use identity_enterprise::channel::{Channel, Destination, PhoneNumber};
+use identity_enterprise::channel_change::{ChangeStatus, ChannelChange};
 use identity_enterprise::connection::{
     AdapterBuild, AdapterInfo, Connection, ConnectionStatus, PairedInstance, PairingCode,
 };
+use identity_enterprise::device::KnownDevice;
 use identity_enterprise::email::EmailAddress;
-use identity_enterprise::ids::{ConnectionId, InvitationId, PairingCodeId, SessionId, SourceId};
+use identity_enterprise::ids::{
+    ChannelChangeId, CodeId, ConnectionId, DeviceId, InvitationId, PairingCodeId, SessionId,
+    SourceId,
+};
 use identity_enterprise::invitation::Invitation;
+use identity_enterprise::otp::{
+    CodeRole, CodeState, DeliveryState, DeviceClass, InvalidReason, OneTimeCode, Purpose,
+    SignupCode, StepUpAction,
+};
 use identity_enterprise::profile::{Locale, TimeZoneName};
-use identity_enterprise::session::{ClientInfo, EndReason, MfaState, Session};
+use identity_enterprise::session::{ClientInfo, EndReason, Session};
 use identity_enterprise::source::{DisplayName, Source, SourceType};
 use identity_enterprise::tokens::{CodeHmac, KeyId, TokenHash};
 use identity_enterprise::user::{User, UserStatus};
@@ -72,6 +88,8 @@ fn db(e: sqlx::Error) -> StoreError {
             Some("app_user_email_normalized_key" | "invitation_open_email_key") => {
                 Some(StoreConflict::EmailTaken)
             }
+            Some("app_user_whatsapp_key") => Some(StoreConflict::WhatsappTaken),
+            Some("channel_change_one_open") => Some(StoreConflict::ChannelChangeOpen),
             Some("source_user_name_key" | "adapter_connection_user_name_key") => {
                 Some(StoreConflict::NameTaken)
             }
@@ -104,53 +122,208 @@ fn ensure(rows: u64, conflict: StoreConflict) -> Result<(), StoreError> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn user_row(
+struct UserRow {
     id: Uuid,
     email: String,
     email_normalized: String,
+    email_verified_at: DateTime<Utc>,
+    whatsapp_e164: Option<String>,
     locale: String,
     time_zone: String,
     is_platform_admin: bool,
     status: String,
     created_at: DateTime<Utc>,
-) -> Result<User, StoreError> {
-    Ok(User {
-        id: UserId::from_uuid(id),
-        email: EmailAddress::from_stored(email, email_normalized),
-        locale: Locale::parse(&locale).ok_or_else(|| corrupt("locale"))?,
-        time_zone: TimeZoneName::from_stored(time_zone),
-        is_platform_admin,
-        status: match status.as_str() {
-            "active" => UserStatus::Active,
-            "closed" => UserStatus::Closed,
-            _ => return Err(corrupt("user status")),
-        },
-        created_at,
-    })
+    channel_changed_at: Option<DateTime<Utc>>,
 }
 
-fn mfa(raw: &str) -> Result<MfaState, StoreError> {
-    match raw {
-        "not_required" => Ok(MfaState::NotRequired),
-        "pending" => Ok(MfaState::Pending),
-        "verified" => Ok(MfaState::Verified),
-        _ => Err(corrupt("mfa_state")),
+impl UserRow {
+    fn into_user(self) -> Result<User, StoreError> {
+        Ok(User {
+            id: UserId::from_uuid(self.id),
+            email: EmailAddress::from_stored(self.email, self.email_normalized),
+            email_verified_at: self.email_verified_at,
+            whatsapp: self.whatsapp_e164.map(PhoneNumber::from_stored),
+            locale: Locale::parse(&self.locale).ok_or_else(|| corrupt("locale"))?,
+            time_zone: TimeZoneName::from_stored(self.time_zone),
+            is_platform_admin: self.is_platform_admin,
+            status: UserStatus::parse(&self.status).ok_or_else(|| corrupt("user status"))?,
+            created_at: self.created_at,
+            channel_changed_at: self.channel_changed_at,
+        })
     }
 }
 
 fn end_reason(raw: Option<String>) -> Result<Option<EndReason>, StoreError> {
-    Ok(match raw.as_deref() {
-        None => None,
-        Some("logout") => Some(EndReason::Logout),
-        Some("expired") => Some(EndReason::Expired),
-        Some("password_reset") => Some(EndReason::PasswordReset),
-        Some("password_changed") => Some(EndReason::PasswordChanged),
-        Some("totp_changed") => Some(EndReason::TotpChanged),
-        Some("admin_totp_reset") => Some(EndReason::AdminTotpReset),
-        Some("rotated") => Some(EndReason::Rotated),
-        Some(_) => return Err(corrupt("end_reason")),
+    raw.map(|r| EndReason::parse(&r).ok_or_else(|| corrupt("end_reason")))
+        .transpose()
+}
+
+fn channel(raw: &str) -> Result<Channel, StoreError> {
+    Channel::parse(raw).ok_or_else(|| corrupt("channel"))
+}
+
+fn device_class(c: DeviceClass) -> &'static str {
+    c.as_str()
+}
+
+fn ip_of(raw: Option<String>) -> Option<IpAddr> {
+    raw.and_then(|s| s.split('/').next().and_then(|a| a.parse().ok()))
+}
+
+struct DeviceRow {
+    id: Uuid,
+    user_id: Uuid,
+    device_key_hash: Vec<u8>,
+    label: Option<String>,
+    first_seen_at: DateTime<Utc>,
+    last_seen_at: DateTime<Utc>,
+    last_ip: Option<String>,
+    revoked_at: Option<DateTime<Utc>>,
+}
+
+impl DeviceRow {
+    fn into_device(self) -> Result<KnownDevice, StoreError> {
+        Ok(KnownDevice {
+            id: DeviceId::from_uuid(self.id),
+            user_id: UserId::from_uuid(self.user_id),
+            key_hash: TokenHash::from_bytes(hash32(self.device_key_hash)?),
+            label: self.label,
+            first_seen_at: self.first_seen_at,
+            last_seen_at: self.last_seen_at,
+            last_ip: ip_of(self.last_ip),
+            revoked_at: self.revoked_at,
+        })
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn code_state(
+    code_hmac: Vec<u8>,
+    pepper_version: i16,
+    failed_attempts: i16,
+    created_at: DateTime<Utc>,
+    sent_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    consumed_at: Option<DateTime<Utc>>,
+    invalidated_at: Option<DateTime<Utc>>,
+    invalidated_reason: Option<String>,
+    delivery_state: &str,
+) -> Result<CodeState, StoreError> {
+    Ok(CodeState {
+        code_hmac: CodeHmac {
+            bytes: hash32(code_hmac)?,
+            pepper_version,
+        },
+        failed_attempts,
+        created_at,
+        sent_at,
+        expires_at,
+        consumed_at,
+        invalidated_at,
+        invalidated_reason: invalidated_reason
+            .map(|r| InvalidReason::parse(&r).ok_or_else(|| corrupt("invalidated_reason")))
+            .transpose()?,
+        delivery_state: DeliveryState::parse(delivery_state)
+            .ok_or_else(|| corrupt("delivery_state"))?,
     })
+}
+
+struct OneTimeRow {
+    id: Uuid,
+    user_id: Uuid,
+    channel_change_id: Option<Uuid>,
+    purpose: String,
+    channel: String,
+    destination: String,
+    action: Option<String>,
+    target_id: Option<Uuid>,
+    session_id: Option<Uuid>,
+    code_role: Option<String>,
+    code_hmac: Vec<u8>,
+    pepper_version: i16,
+    failed_attempts: i16,
+    created_at: DateTime<Utc>,
+    sent_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    consumed_at: Option<DateTime<Utc>>,
+    invalidated_at: Option<DateTime<Utc>>,
+    invalidated_reason: Option<String>,
+    request_ip: Option<String>,
+    delivery_state: String,
+}
+
+impl OneTimeRow {
+    fn into_code(self) -> Result<OneTimeCode, StoreError> {
+        Ok(OneTimeCode {
+            id: CodeId::from_uuid(self.id),
+            user_id: UserId::from_uuid(self.user_id),
+            purpose: Purpose::parse(&self.purpose).ok_or_else(|| corrupt("purpose"))?,
+            destination: Destination::from_stored(channel(&self.channel)?, self.destination),
+            action: self
+                .action
+                .map(|a| StepUpAction::parse(&a).ok_or_else(|| corrupt("action")))
+                .transpose()?,
+            target_id: self.target_id,
+            session_id: self.session_id.map(SessionId::from_uuid),
+            channel_change_id: self.channel_change_id.map(ChannelChangeId::from_uuid),
+            role: self
+                .code_role
+                .map(|r| CodeRole::parse(&r).ok_or_else(|| corrupt("code_role")))
+                .transpose()?,
+            request_ip: ip_of(self.request_ip),
+            state: code_state(
+                self.code_hmac,
+                self.pepper_version,
+                self.failed_attempts,
+                self.created_at,
+                self.sent_at,
+                self.expires_at,
+                self.consumed_at,
+                self.invalidated_at,
+                self.invalidated_reason,
+                &self.delivery_state,
+            )?,
+        })
+    }
+}
+
+struct ChangeRow {
+    id: Uuid,
+    user_id: Uuid,
+    channel: String,
+    new_value: String,
+    requested_session_id: Uuid,
+    status: String,
+    created_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    hold_until: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
+    cancelled_at: Option<DateTime<Utc>>,
+    cancelled_by_session_id: Option<Uuid>,
+}
+
+impl ChangeRow {
+    fn into_change(self) -> Result<ChannelChange, StoreError> {
+        Ok(ChannelChange {
+            id: ChannelChangeId::from_uuid(self.id),
+            user_id: UserId::from_uuid(self.user_id),
+            new_value: Destination::from_stored(channel(&self.channel)?, self.new_value),
+            requested_session_id: SessionId::from_uuid(self.requested_session_id),
+            status: ChangeStatus::parse(&self.status).ok_or_else(|| corrupt("change status"))?,
+            created_at: self.created_at,
+            expires_at: self.expires_at,
+            hold_until: self.hold_until,
+            completed_at: self.completed_at,
+            cancelled_at: self.cancelled_at,
+            cancelled_by_session_id: self.cancelled_by_session_id.map(SessionId::from_uuid),
+        })
+    }
+}
+
+fn window_start(now: DateTime<Utc>, seconds: i32) -> DateTime<Utc> {
+    let s = i64::from(seconds);
+    let t = now.timestamp();
+    DateTime::from_timestamp(t - t.rem_euclid(s), 0).unwrap_or(now)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -261,11 +434,12 @@ fn ip_text(ip: Option<IpAddr>) -> Option<String> {
 
 #[async_trait]
 impl IdentityStore for PgIdentityStore {
-    async fn user_for_login(&self, email_normalized: &str) -> Result<Option<User>, StoreError> {
+    async fn login_target(
+        &self,
+        email_normalized: &str,
+    ) -> Result<Option<LoginTarget>, StoreError> {
         let row = sqlx::query!(
-            r#"SELECT id AS "id!", email AS "email!", email_normalized AS "email_normalized!",
-                      password_hash AS "password_hash!", locale AS "locale!", time_zone AS "time_zone!",
-                      is_platform_admin AS "is_platform_admin!", status AS "status!", created_at AS "created_at!"
+            r#"SELECT id AS "id!", status AS "status!", locale AS "locale!", email AS "email!", whatsapp_e164
                  FROM identity.find_user_for_login($1)"#,
             email_normalized
         )
@@ -273,24 +447,29 @@ impl IdentityStore for PgIdentityStore {
         .await
         .map_err(db)?;
         row.map(|r| {
-            user_row(
-                r.id,
+            let mut destinations = vec![Destination::Email(EmailAddress::from_stored(
                 r.email,
-                r.email_normalized,
-                r.locale,
-                r.time_zone,
-                r.is_platform_admin,
-                r.status,
-                r.created_at,
-            )
+                email_normalized.to_owned(),
+            ))];
+            if let Some(w) = r.whatsapp_e164 {
+                destinations.push(Destination::Whatsapp(PhoneNumber::from_stored(w)));
+            }
+            Ok(LoginTarget {
+                user_id: UserId::from_uuid(r.id),
+                status: UserStatus::parse(&r.status).ok_or_else(|| corrupt("user status"))?,
+                locale: Locale::parse(&r.locale).ok_or_else(|| corrupt("locale"))?,
+                destinations,
+            })
         })
         .transpose()
     }
 
     async fn user(&self, user_id: UserId) -> Result<Option<User>, StoreError> {
         let mut tx = self.scoped(user_id).await?;
-        let row = sqlx::query!(
-            r#"SELECT id, email, email_normalized, password_hash, locale, time_zone, is_platform_admin, status, created_at
+        let row = sqlx::query_as!(
+            UserRow,
+            r#"SELECT id, email, email_normalized, email_verified_at, whatsapp_e164, locale, time_zone,
+                      is_platform_admin, status, created_at, channel_changed_at
                  FROM identity.app_user WHERE id = $1"#,
             user_id.as_uuid()
         )
@@ -298,26 +477,14 @@ impl IdentityStore for PgIdentityStore {
         .await
         .map_err(db)?;
         tx.commit().await.map_err(db)?;
-        row.map(|r| {
-            user_row(
-                r.id,
-                r.email,
-                r.email_normalized,
-                r.locale,
-                r.time_zone,
-                r.is_platform_admin,
-                r.status,
-                r.created_at,
-            )
-        })
-        .transpose()
+        row.map(UserRow::into_user).transpose()
     }
 
     async fn users(&self, admin: UserId) -> Result<Vec<UserSummary>, StoreError> {
         let mut tx = self.scoped(admin).await?;
         let rows = sqlx::query!(
             r#"SELECT l.id AS "id!", l.status AS "status!", l.is_platform_admin AS "is_platform_admin!",
-                      l.created_at AS "created_at!", l.totp_enabled AS "totp_enabled!", l.last_sign_in_at,
+                      l.created_at AS "created_at!", l.whatsapp_verified AS "whatsapp_verified!", l.last_sign_in_at,
                       l.email AS "email!"
                  FROM identity.admin_list_users() l"#
         )
@@ -327,18 +494,13 @@ impl IdentityStore for PgIdentityStore {
         tx.commit().await.map_err(db)?;
         rows.into_iter()
             .map(|r| {
-                let normalized = r.email.trim().to_lowercase();
                 Ok(UserSummary {
-                    user: user_row(
-                        r.id,
-                        r.email,
-                        normalized,
-                        "en".into(),
-                        "UTC".into(),
-                        r.is_platform_admin,
-                        r.status,
-                        r.created_at,
-                    )?,
+                    id: UserId::from_uuid(r.id),
+                    email: r.email,
+                    status: UserStatus::parse(&r.status).ok_or_else(|| corrupt("user status"))?,
+                    is_platform_admin: r.is_platform_admin,
+                    whatsapp_verified: r.whatsapp_verified,
+                    created_at: r.created_at,
                     last_sign_in_at: r.last_sign_in_at,
                 })
             })
@@ -367,8 +529,8 @@ impl IdentityStore for PgIdentityStore {
         token_hash: &TokenHash,
     ) -> Result<Option<Session>, StoreError> {
         let row = sqlx::query!(
-            r#"SELECT id AS "id!", user_id AS "user_id!", is_persistent AS "is_persistent!", mfa_state AS "mfa_state!",
-                      login_at AS "login_at!", authenticated_at AS "authenticated_at!", last_activity_at AS "last_activity_at!",
+            r#"SELECT id AS "id!", user_id AS "user_id!", device_id AS "device_id!", is_persistent AS "is_persistent!",
+                      login_channel AS "login_channel!", login_at AS "login_at!", last_activity_at AS "last_activity_at!",
                       idle_expires_at AS "idle_expires_at!", absolute_expires_at AS "absolute_expires_at!",
                       ended_at, end_reason
                  FROM identity.resolve_session($1)"#,
@@ -381,11 +543,11 @@ impl IdentityStore for PgIdentityStore {
             Ok(Session {
                 id: SessionId::from_uuid(r.id),
                 user_id: UserId::from_uuid(r.user_id),
+                device_id: DeviceId::from_uuid(r.device_id),
                 token_hash: *token_hash,
                 persistent: r.is_persistent,
-                mfa_state: mfa(&r.mfa_state)?,
+                login_channel: channel(&r.login_channel)?,
                 login_at: r.login_at,
-                authenticated_at: r.authenticated_at,
                 last_activity_at: r.last_activity_at,
                 idle_expires_at: r.idle_expires_at,
                 absolute_expires_at: r.absolute_expires_at,
@@ -397,27 +559,108 @@ impl IdentityStore for PgIdentityStore {
         .transpose()
     }
 
-    async fn signed_in_from(
+    async fn session(
         &self,
         user_id: UserId,
-        ip: IpAddr,
-        since: DateTime<Utc>,
-    ) -> Result<bool, StoreError> {
+        session_id: SessionId,
+    ) -> Result<Option<Session>, StoreError> {
         let mut tx = self.scoped(user_id).await?;
-        let found = sqlx::query_scalar!(
-            r#"SELECT EXISTS (
-                 SELECT 1 FROM identity.session
-                  WHERE user_id = $1 AND ip_address = $2::text::inet AND login_at >= $3 AND mfa_state <> 'pending'
-               ) AS "found!""#,
+        let row = sqlx::query!(
+            r#"SELECT id, user_id, device_id, token_hash, is_persistent, login_channel, login_at, last_activity_at,
+                      idle_expires_at, absolute_expires_at, ended_at, end_reason
+                 FROM identity.session WHERE user_id = $1 AND id = $2"#,
             user_id.as_uuid(),
-            ip.to_string(),
-            since
+            session_id.as_uuid()
         )
-        .fetch_one(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(db)?;
         tx.commit().await.map_err(db)?;
-        Ok(found)
+        row.map(|r| {
+            Ok(Session {
+                id: SessionId::from_uuid(r.id),
+                user_id: UserId::from_uuid(r.user_id),
+                device_id: DeviceId::from_uuid(r.device_id),
+                token_hash: TokenHash::from_bytes(hash32(r.token_hash)?),
+                persistent: r.is_persistent,
+                login_channel: channel(&r.login_channel)?,
+                login_at: r.login_at,
+                last_activity_at: r.last_activity_at,
+                idle_expires_at: r.idle_expires_at,
+                absolute_expires_at: r.absolute_expires_at,
+                ended_at: r.ended_at,
+                end_reason: end_reason(r.end_reason)?,
+                client: ClientInfo::default(),
+            })
+        })
+        .transpose()
+    }
+
+    async fn device_by_key(
+        &self,
+        user_id: UserId,
+        key_hash: &TokenHash,
+    ) -> Result<Option<KnownDevice>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let row = sqlx::query_as!(
+            DeviceRow,
+            r#"SELECT id, user_id, device_key_hash, label, first_seen_at, last_seen_at, last_ip::text AS last_ip, revoked_at
+                 FROM identity.known_device WHERE user_id = $1 AND device_key_hash = $2
+                ORDER BY revoked_at IS NULL DESC, last_seen_at DESC LIMIT 1"#,
+            user_id.as_uuid(),
+            &key_hash.as_bytes()[..]
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.map(DeviceRow::into_device).transpose()
+    }
+
+    async fn device_key_in_use(&self, key_hash: &TokenHash) -> Result<bool, StoreError> {
+        sqlx::query_scalar!(
+            r#"SELECT identity.device_key_in_use($1) AS "found!""#,
+            &key_hash.as_bytes()[..]
+        )
+        .fetch_one(&self.app)
+        .await
+        .map_err(db)
+    }
+
+    async fn device(
+        &self,
+        user_id: UserId,
+        device_id: DeviceId,
+    ) -> Result<Option<KnownDevice>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let row = sqlx::query_as!(
+            DeviceRow,
+            r#"SELECT id, user_id, device_key_hash, label, first_seen_at, last_seen_at, last_ip::text AS last_ip, revoked_at
+                 FROM identity.known_device WHERE user_id = $1 AND id = $2"#,
+            user_id.as_uuid(),
+            device_id.as_uuid()
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.map(DeviceRow::into_device).transpose()
+    }
+
+    async fn devices(&self, user_id: UserId) -> Result<Vec<KnownDevice>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let rows = sqlx::query_as!(
+            DeviceRow,
+            r#"SELECT id, user_id, device_key_hash, label, first_seen_at, last_seen_at, last_ip::text AS last_ip, revoked_at
+                 FROM identity.known_device WHERE user_id = $1 AND revoked_at IS NULL
+                ORDER BY last_seen_at DESC"#,
+            user_id.as_uuid()
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        rows.into_iter().map(DeviceRow::into_device).collect()
     }
 
     async fn invitation(
@@ -537,6 +780,287 @@ impl IdentityStore for PgIdentityStore {
                 )
             })
             .collect()
+    }
+
+    async fn signup_code(&self, code_id: CodeId) -> Result<Option<SignupCode>, StoreError> {
+        let r = sqlx::query!(
+            r#"SELECT id, invitation_id, code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at,
+                      consumed_at, invalidated_at, invalidated_reason, request_ip::text AS request_ip, delivery_state
+                 FROM identity.signup_code WHERE id = $1"#,
+            code_id.as_uuid()
+        )
+        .fetch_optional(&self.app)
+        .await
+        .map_err(db)?;
+        r.map(|r| {
+            Ok(SignupCode {
+                id: CodeId::from_uuid(r.id),
+                invitation_id: InvitationId::from_uuid(r.invitation_id),
+                request_ip: ip_of(r.request_ip),
+                state: code_state(
+                    r.code_hmac,
+                    r.pepper_version,
+                    r.failed_attempts,
+                    r.created_at,
+                    r.sent_at,
+                    r.expires_at,
+                    r.consumed_at,
+                    r.invalidated_at,
+                    r.invalidated_reason,
+                    &r.delivery_state,
+                )?,
+            })
+        })
+        .transpose()
+    }
+
+    async fn one_time_code_owner(
+        &self,
+        code_id: CodeId,
+    ) -> Result<Option<(UserId, Purpose)>, StoreError> {
+        let r = sqlx::query!(
+            r#"SELECT user_id AS "user_id!", purpose AS "purpose!" FROM identity.resolve_one_time_code($1)"#,
+            code_id.as_uuid()
+        )
+        .fetch_optional(&self.app)
+        .await
+        .map_err(db)?;
+        r.map(|r| {
+            Ok((
+                UserId::from_uuid(r.user_id),
+                Purpose::parse(&r.purpose).ok_or_else(|| corrupt("purpose"))?,
+            ))
+        })
+        .transpose()
+    }
+
+    async fn one_time_code(
+        &self,
+        user_id: UserId,
+        code_id: CodeId,
+    ) -> Result<Option<OneTimeCode>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let row = sqlx::query_as!(
+            OneTimeRow,
+            r#"SELECT id, user_id, channel_change_id, purpose, channel, destination, action, target_id, session_id,
+                      code_role, code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at,
+                      consumed_at, invalidated_at, invalidated_reason, request_ip::text AS request_ip, delivery_state
+                 FROM identity.one_time_code WHERE user_id = $1 AND id = $2"#,
+            user_id.as_uuid(),
+            code_id.as_uuid()
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.map(OneTimeRow::into_code).transpose()
+    }
+
+    async fn change_codes(
+        &self,
+        user_id: UserId,
+        change_id: ChannelChangeId,
+    ) -> Result<Vec<OneTimeCode>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let rows = sqlx::query_as!(
+            OneTimeRow,
+            r#"SELECT id, user_id, channel_change_id, purpose, channel, destination, action, target_id, session_id,
+                      code_role, code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at,
+                      consumed_at, invalidated_at, invalidated_reason, request_ip::text AS request_ip, delivery_state
+                 FROM identity.one_time_code WHERE user_id = $1 AND channel_change_id = $2
+                ORDER BY created_at, id"#,
+            user_id.as_uuid(),
+            change_id.as_uuid()
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        rows.into_iter().map(OneTimeRow::into_code).collect()
+    }
+
+    async fn signed_in_sends_since(
+        &self,
+        user_id: UserId,
+        since: DateTime<Utc>,
+    ) -> Result<i64, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let n = sqlx::query_scalar!(
+            r#"SELECT count(*) AS "n!" FROM identity.one_time_code
+                WHERE user_id = $1 AND purpose IN ('step_up', 'channel_change') AND created_at >= $2"#,
+            user_id.as_uuid(),
+            since
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(n)
+    }
+
+    async fn channel_change(
+        &self,
+        user_id: UserId,
+        change_id: ChannelChangeId,
+    ) -> Result<Option<ChannelChange>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let row = sqlx::query_as!(
+            ChangeRow,
+            r#"SELECT id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at,
+                      hold_until, completed_at, cancelled_at, cancelled_by_session_id
+                 FROM identity.channel_change WHERE user_id = $1 AND id = $2"#,
+            user_id.as_uuid(),
+            change_id.as_uuid()
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.map(ChangeRow::into_change).transpose()
+    }
+
+    async fn open_channel_change(
+        &self,
+        user_id: UserId,
+    ) -> Result<Option<ChannelChange>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let row = sqlx::query_as!(
+            ChangeRow,
+            r#"SELECT id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at,
+                      hold_until, completed_at, cancelled_at, cancelled_by_session_id
+                 FROM identity.channel_change
+                WHERE user_id = $1 AND status IN ('awaiting_codes', 'on_hold')"#,
+            user_id.as_uuid()
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.map(ChangeRow::into_change).transpose()
+    }
+
+    async fn latest_channel_change(
+        &self,
+        user_id: UserId,
+    ) -> Result<Option<ChannelChange>, StoreError> {
+        let mut tx = self.scoped(user_id).await?;
+        let row = sqlx::query_as!(
+            ChangeRow,
+            r#"SELECT id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at,
+                      hold_until, completed_at, cancelled_at, cancelled_by_session_id
+                 FROM identity.channel_change WHERE user_id = $1
+                ORDER BY created_at DESC, id DESC LIMIT 1"#,
+            user_id.as_uuid()
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.map(ChangeRow::into_change).transpose()
+    }
+
+    async fn due_channel_holds(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<(UserId, ChannelChangeId)>, StoreError> {
+        let rows = sqlx::query!(
+            r#"SELECT user_id, id FROM identity.channel_change
+                WHERE status = 'on_hold' AND hold_until <= $1 ORDER BY hold_until"#,
+            now
+        )
+        .fetch_all(&self.worker)
+        .await
+        .map_err(db)?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    UserId::from_uuid(r.user_id),
+                    ChannelChangeId::from_uuid(r.id),
+                )
+            })
+            .collect())
+    }
+
+    async fn count_send(
+        &self,
+        identifier: &CodeHmac,
+        class: DeviceClass,
+        windows: &[i32],
+        now: DateTime<Utc>,
+    ) -> Result<Vec<WindowCount>, StoreError> {
+        let mut tx = self.app.begin().await.map_err(db)?;
+        let mut out = Vec::with_capacity(windows.len());
+        for w in windows {
+            let start = window_start(now, *w);
+            let sends = sqlx::query_scalar!(
+                r#"INSERT INTO identity.code_send_counter
+                     (identifier_hmac, pepper_version, device_class, window_seconds, window_start, sends)
+                   VALUES ($1, $2, $3, $4, $5, 1)
+                   ON CONFLICT (identifier_hmac, pepper_version, device_class, window_seconds, window_start)
+                   DO UPDATE SET sends = identity.code_send_counter.sends + 1
+                   RETURNING sends"#,
+                &identifier.bytes[..],
+                identifier.pepper_version,
+                device_class(class),
+                w,
+                start
+            )
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(db)?;
+            out.push(WindowCount {
+                window_seconds: *w,
+                window_start: start,
+                sends,
+            });
+        }
+        tx.commit().await.map_err(db)?;
+        Ok(out)
+    }
+
+    async fn send_counts(
+        &self,
+        identifier: &CodeHmac,
+        class: DeviceClass,
+        windows: &[i32],
+        now: DateTime<Utc>,
+    ) -> Result<Vec<WindowCount>, StoreError> {
+        let mut out = Vec::with_capacity(windows.len());
+        for w in windows {
+            let start = window_start(now, *w);
+            let sends = sqlx::query_scalar!(
+                r#"SELECT COALESCE(sum(sends), 0)::int AS "sends!" FROM identity.code_send_counter
+                    WHERE identifier_hmac = $1 AND device_class = $2 AND window_seconds = $3 AND window_start = $4"#,
+                &identifier.bytes[..],
+                device_class(class),
+                w,
+                start
+            )
+            .fetch_one(&self.app)
+            .await
+            .map_err(db)?;
+            out.push(WindowCount {
+                window_seconds: *w,
+                window_start: start,
+                sends,
+            });
+        }
+        Ok(out)
+    }
+
+    async fn login_code_placeholder(&self) -> Result<(), StoreError> {
+        // The same scoped transaction and a statement on the code table, writing nothing.
+        let mut tx = self.scoped(UserId::new_v7()).await?;
+        sqlx::query!(
+            "SELECT id FROM identity.one_time_code WHERE id = $1 FOR UPDATE",
+            Uuid::now_v7()
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
     }
 
     async fn sources(
@@ -784,6 +1308,24 @@ async fn insert_source_key(
     Ok(())
 }
 
+async fn invalidate_signup_codes(
+    tx: &mut Transaction<'static, Postgres>,
+    invitation_id: InvitationId,
+    at: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query!(
+        r#"UPDATE identity.signup_code SET invalidated_at = $2, invalidated_reason = 'invitation_closed'
+            WHERE invitation_id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL"#,
+        invitation_id.as_uuid(),
+        at
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(db)?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_lines)]
 async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<(), StoreError> {
     match write {
         Write::UpdateProfile {
@@ -803,18 +1345,128 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
             .await
             .map_err(db)?;
         }
+        Write::InsertUser(u) => {
+            sqlx::query!(
+                r#"INSERT INTO identity.app_user
+                     (id, email, email_normalized, email_verified_at, whatsapp_e164, whatsapp_verified_at, locale, time_zone,
+                      is_platform_admin, status, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $11, $6, $7, $8, $9, $10, $10)"#,
+                u.id.as_uuid(),
+                u.email.as_entered(),
+                u.email.normalized(),
+                u.email_verified_at,
+                u.whatsapp.as_ref().map(PhoneNumber::as_str),
+                u.locale.as_str(),
+                u.time_zone.as_str(),
+                u.is_platform_admin,
+                u.status.as_str(),
+                u.created_at,
+                u.whatsapp.as_ref().map(|_| u.email_verified_at)
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::SetChannelValue { user_id, value, at } => match value {
+            Destination::Email(e) => {
+                sqlx::query!(
+                    r#"UPDATE identity.app_user
+                          SET email = $2, email_normalized = $3, email_verified_at = $4, channel_changed_at = $4, updated_at = $4
+                        WHERE id = $1"#,
+                    user_id.as_uuid(),
+                    e.as_entered(),
+                    e.normalized(),
+                    at
+                )
+                .execute(&mut **tx)
+                .await
+                .map_err(db)?;
+            }
+            Destination::Whatsapp(p) => {
+                sqlx::query!(
+                    r#"UPDATE identity.app_user
+                          SET whatsapp_e164 = $2, whatsapp_verified_at = $3, channel_changed_at = $3, updated_at = $3
+                        WHERE id = $1"#,
+                    user_id.as_uuid(),
+                    p.as_str(),
+                    at
+                )
+                .execute(&mut **tx)
+                .await
+                .map_err(db)?;
+            }
+        },
+        Write::InsertDevice(d) => {
+            sqlx::query!(
+                r#"INSERT INTO identity.known_device (id, user_id, device_key_hash, label, first_seen_at, last_seen_at, last_ip)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7::text::inet)"#,
+                d.id.as_uuid(),
+                d.user_id.as_uuid(),
+                &d.key_hash.as_bytes()[..],
+                d.label,
+                d.first_seen_at,
+                d.last_seen_at,
+                ip_text(d.last_ip)
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::TouchDevice {
+            user_id,
+            device_id,
+            ip,
+            at,
+        } => {
+            sqlx::query!(
+                "UPDATE identity.known_device SET last_seen_at = $3, last_ip = $4::text::inet WHERE user_id = $1 AND id = $2",
+                user_id.as_uuid(),
+                device_id.as_uuid(),
+                at,
+                ip_text(ip)
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::RevokeDevice {
+            user_id,
+            device_id,
+            at,
+        } => {
+            sqlx::query!(
+                "UPDATE identity.known_device SET revoked_at = $3 WHERE user_id = $1 AND id = $2 AND revoked_at IS NULL",
+                user_id.as_uuid(),
+                device_id.as_uuid(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::RevokeAllDevices { user_id, at } => {
+            sqlx::query!(
+                "UPDATE identity.known_device SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL",
+                user_id.as_uuid(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
         Write::InsertSession(s) => {
             sqlx::query!(
                 r#"INSERT INTO identity.session
-                     (id, user_id, token_hash, is_persistent, mfa_state, created_at, login_at, authenticated_at,
+                     (id, user_id, device_id, token_hash, is_persistent, login_channel, created_at, login_at,
                       last_activity_at, idle_expires_at, absolute_expires_at, ip_address, user_agent)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $6, $6, $8, $9, $10::text::inet, $11)"#,
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $9, $10, $11::text::inet, $12)"#,
                 s.id.as_uuid(),
                 s.user_id.as_uuid(),
+                s.device_id.as_uuid(),
                 &s.token_hash.as_bytes()[..],
                 s.persistent,
-                s.mfa_state.as_str(),
-                s.authenticated_at,
+                s.login_channel.as_str(),
+                s.last_activity_at,
                 s.login_at,
                 s.idle_expires_at,
                 s.absolute_expires_at,
@@ -829,15 +1481,13 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
             session_id,
             last_activity_at,
             idle_expires_at,
-            authenticated_at,
         } => {
             sqlx::query!(
-                r#"UPDATE identity.session SET last_activity_at = $2, idle_expires_at = $3, authenticated_at = $4
+                r#"UPDATE identity.session SET last_activity_at = $2, idle_expires_at = $3
                     WHERE id = $1 AND ended_at IS NULL"#,
                 session_id.as_uuid(),
                 last_activity_at,
-                idle_expires_at,
-                authenticated_at
+                idle_expires_at
             )
             .execute(&mut **tx)
             .await
@@ -876,6 +1526,321 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
             .await
             .map_err(db)?;
         }
+        Write::EndDeviceSessions {
+            user_id,
+            device_id,
+            reason,
+            at,
+        } => {
+            sqlx::query!(
+                r#"UPDATE identity.session SET ended_at = $3, end_reason = $4
+                    WHERE user_id = $1 AND device_id = $2 AND ended_at IS NULL"#,
+                user_id.as_uuid(),
+                device_id.as_uuid(),
+                at,
+                reason.as_str()
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::InsertOneTimeCode(c) => {
+            sqlx::query!(
+                r#"INSERT INTO identity.one_time_code
+                     (id, user_id, channel_change_id, purpose, channel, destination, action, target_id, session_id, code_role,
+                      code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at, request_ip, delivery_state)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::text::inet, $18)"#,
+                c.id.as_uuid(),
+                c.user_id.as_uuid(),
+                c.channel_change_id.map(|x| x.as_uuid()),
+                c.purpose.as_str(),
+                c.destination.channel().as_str(),
+                c.destination.normalized(),
+                c.action.map(StepUpAction::as_str),
+                c.target_id,
+                c.session_id.map(|x| x.as_uuid()),
+                c.role.map(CodeRole::as_str),
+                &c.state.code_hmac.bytes[..],
+                c.state.code_hmac.pepper_version,
+                c.state.failed_attempts,
+                c.state.created_at,
+                c.state.sent_at,
+                c.state.expires_at,
+                ip_text(c.request_ip),
+                c.state.delivery_state.as_str()
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::InsertSignupCode(c) => {
+            sqlx::query!(
+                r#"INSERT INTO identity.signup_code
+                     (id, invitation_id, code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at,
+                      request_ip, delivery_state)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::text::inet, $10)"#,
+                c.id.as_uuid(),
+                c.invitation_id.as_uuid(),
+                &c.state.code_hmac.bytes[..],
+                c.state.code_hmac.pepper_version,
+                c.state.failed_attempts,
+                c.state.created_at,
+                c.state.sent_at,
+                c.state.expires_at,
+                ip_text(c.request_ip),
+                c.state.delivery_state.as_str()
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::ResendCode {
+            table,
+            code_id,
+            code_hmac,
+            sent_at,
+            expires_at,
+        } => {
+            let rows = match table {
+                CodeTable::OneTime => sqlx::query!(
+                    r#"UPDATE identity.one_time_code
+                          SET code_hmac = $2, pepper_version = $3, sent_at = $4, expires_at = $5, delivery_state = 'pending'
+                        WHERE id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL AND expires_at > $4"#,
+                    code_id.as_uuid(),
+                    &code_hmac.bytes[..],
+                    code_hmac.pepper_version,
+                    sent_at,
+                    expires_at
+                )
+                .execute(&mut **tx)
+                .await,
+                CodeTable::Signup => sqlx::query!(
+                    r#"UPDATE identity.signup_code
+                          SET code_hmac = $2, pepper_version = $3, sent_at = $4, expires_at = $5, delivery_state = 'pending'
+                        WHERE id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL AND expires_at > $4"#,
+                    code_id.as_uuid(),
+                    &code_hmac.bytes[..],
+                    code_hmac.pepper_version,
+                    sent_at,
+                    expires_at
+                )
+                .execute(&mut **tx)
+                .await,
+            }
+            .map_err(db)?;
+            ensure(rows.rows_affected(), StoreConflict::CodeGone)?;
+        }
+        Write::FailCode { table, code_id } => {
+            match table {
+                CodeTable::OneTime => sqlx::query!(
+                    r#"UPDATE identity.one_time_code
+                          SET failed_attempts = failed_attempts + 1,
+                              invalidated_at = CASE WHEN failed_attempts + 1 >= 5 THEN now() END,
+                              invalidated_reason = CASE WHEN failed_attempts + 1 >= 5 THEN 'attempts' END
+                        WHERE id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL"#,
+                    code_id.as_uuid()
+                )
+                .execute(&mut **tx)
+                .await,
+                CodeTable::Signup => sqlx::query!(
+                    r#"UPDATE identity.signup_code
+                          SET failed_attempts = failed_attempts + 1,
+                              invalidated_at = CASE WHEN failed_attempts + 1 >= 5 THEN now() END,
+                              invalidated_reason = CASE WHEN failed_attempts + 1 >= 5 THEN 'attempts' END
+                        WHERE id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL"#,
+                    code_id.as_uuid()
+                )
+                .execute(&mut **tx)
+                .await,
+            }
+            .map_err(db)?;
+        }
+        Write::ConsumeCode {
+            table,
+            code_id,
+            code_hmac,
+            at,
+        } => {
+            let rows = match table {
+                CodeTable::OneTime => sqlx::query!(
+                    r#"UPDATE identity.one_time_code SET consumed_at = $3
+                        WHERE id = $1 AND code_hmac = $2 AND consumed_at IS NULL AND invalidated_at IS NULL AND expires_at > $3"#,
+                    code_id.as_uuid(),
+                    &code_hmac.bytes[..],
+                    at
+                )
+                .execute(&mut **tx)
+                .await,
+                CodeTable::Signup => sqlx::query!(
+                    r#"UPDATE identity.signup_code SET consumed_at = $3
+                        WHERE id = $1 AND code_hmac = $2 AND consumed_at IS NULL AND invalidated_at IS NULL AND expires_at > $3"#,
+                    code_id.as_uuid(),
+                    &code_hmac.bytes[..],
+                    at
+                )
+                .execute(&mut **tx)
+                .await,
+            }
+            .map_err(db)?;
+            ensure(rows.rows_affected(), StoreConflict::CodeGone)?;
+        }
+        Write::SetDeliveryState {
+            table,
+            code_id,
+            state,
+        } => {
+            match table {
+                CodeTable::OneTime => {
+                    sqlx::query!(
+                        "UPDATE identity.one_time_code SET delivery_state = $2 WHERE id = $1",
+                        code_id.as_uuid(),
+                        state.as_str()
+                    )
+                    .execute(&mut **tx)
+                    .await
+                }
+                CodeTable::Signup => {
+                    sqlx::query!(
+                        "UPDATE identity.signup_code SET delivery_state = $2 WHERE id = $1",
+                        code_id.as_uuid(),
+                        state.as_str()
+                    )
+                    .execute(&mut **tx)
+                    .await
+                }
+            }
+            .map_err(db)?;
+        }
+        Write::InvalidateUserCodes {
+            user_id,
+            reason,
+            at,
+        } => {
+            sqlx::query!(
+                r#"UPDATE identity.one_time_code SET invalidated_at = $3, invalidated_reason = $2
+                    WHERE user_id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL"#,
+                user_id.as_uuid(),
+                reason.as_str(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::InsertChannelChange(c) => {
+            sqlx::query!(
+                r#"INSERT INTO identity.channel_change
+                     (id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at)
+                   VALUES ($1, $2, $3, $4, $5, 'awaiting_codes', $6, $7)"#,
+                c.id.as_uuid(),
+                c.user_id.as_uuid(),
+                c.channel().as_str(),
+                c.new_value.normalized(),
+                c.requested_session_id.as_uuid(),
+                c.created_at,
+                c.expires_at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::ExpireStaleChannelChange { user_id, at } => {
+            sqlx::query!(
+                r#"WITH stale AS (
+                     UPDATE identity.channel_change SET status = 'expired'
+                      WHERE user_id = $1 AND status = 'awaiting_codes' AND expires_at <= $2
+                      RETURNING id
+                   )
+                   UPDATE identity.one_time_code SET invalidated_at = $2, invalidated_reason = 'change_closed'
+                    WHERE channel_change_id IN (SELECT id FROM stale)
+                      AND consumed_at IS NULL AND invalidated_at IS NULL"#,
+                user_id.as_uuid(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
+        Write::AssertChannelChangeAwaiting { change_id, at } => {
+            // A no-op update takes the row lock, so a concurrent cancel or expiry is serialized.
+            let rows = sqlx::query!(
+                r#"UPDATE identity.channel_change SET status = status
+                    WHERE id = $1 AND status = 'awaiting_codes' AND expires_at > $2"#,
+                change_id.as_uuid(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+            ensure(rows.rows_affected(), StoreConflict::ChannelChangeGone)?;
+        }
+        Write::CompleteChannelChange { change_id, at } => {
+            let rows = sqlx::query!(
+                r#"UPDATE identity.channel_change SET status = 'completed', completed_at = $2
+                    WHERE id = $1 AND status = 'awaiting_codes' AND expires_at > $2"#,
+                change_id.as_uuid(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+            ensure(rows.rows_affected(), StoreConflict::ChannelChangeGone)?;
+        }
+        Write::HoldChannelChange {
+            change_id,
+            hold_until,
+            at,
+        } => {
+            let rows = sqlx::query!(
+                r#"UPDATE identity.channel_change SET status = 'on_hold', hold_until = $2
+                    WHERE id = $1 AND status = 'awaiting_codes' AND expires_at > $3"#,
+                change_id.as_uuid(),
+                hold_until,
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+            ensure(rows.rows_affected(), StoreConflict::ChannelChangeGone)?;
+        }
+        Write::FinishHeldChannelChange { change_id, at } => {
+            let rows = sqlx::query!(
+                r#"UPDATE identity.channel_change SET status = 'completed', completed_at = $2
+                    WHERE id = $1 AND status = 'on_hold'"#,
+                change_id.as_uuid(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+            ensure(rows.rows_affected(), StoreConflict::ChannelChangeGone)?;
+        }
+        Write::CancelChannelChange {
+            change_id,
+            by_session,
+            at,
+        } => {
+            let rows = sqlx::query!(
+                r#"UPDATE identity.channel_change SET status = 'cancelled', cancelled_at = $3, cancelled_by_session_id = $2
+                    WHERE id = $1 AND (status = 'on_hold' OR (status = 'awaiting_codes' AND expires_at > $3))"#,
+                change_id.as_uuid(),
+                by_session.map(|x| x.as_uuid()),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+            ensure(rows.rows_affected(), StoreConflict::ChannelChangeGone)?;
+            sqlx::query!(
+                r#"UPDATE identity.one_time_code SET invalidated_at = $2, invalidated_reason = 'change_closed'
+                    WHERE channel_change_id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL"#,
+                change_id.as_uuid(),
+                at
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(db)?;
+        }
         Write::InsertInvitation {
             invitation: i,
             token_hash,
@@ -905,6 +1870,7 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
             .execute(&mut **tx)
             .await
             .map_err(db)?;
+            invalidate_signup_codes(tx, invitation_id, at).await?;
         }
         Write::AcceptInvitation {
             invitation_id,
@@ -933,6 +1899,7 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
             .execute(&mut **tx)
             .await
             .map_err(db)?;
+            invalidate_signup_codes(tx, invitation_id, at).await?;
         }
         Write::InsertSource { source: s, key } => {
             sqlx::query!(

@@ -6,11 +6,11 @@ use identity_enterprise::channel::Channel;
 use identity_enterprise::channel_change::ChangeStatus;
 use identity_enterprise::connection::{Connection, ConnectionStatus};
 use identity_enterprise::ids::{ChannelChangeId, ConnectionId, DeviceId};
-use identity_enterprise::otp::CodeRole;
-use identity_enterprise::user::User;
 use identity_enterprise::invitation::{Invitation, InvitationStatus};
+use identity_enterprise::otp::CodeRole;
 use identity_enterprise::secret::SecretString;
 use identity_enterprise::source::Source;
+use identity_enterprise::user::User;
 
 use crate::ports::VisibleAccount;
 

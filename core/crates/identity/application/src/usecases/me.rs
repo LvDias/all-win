@@ -8,6 +8,7 @@ use crate::auth::AuthContext;
 use crate::changes::{ChangeSet, Write};
 use crate::deps::IdentityDeps;
 use crate::error::IdentityError;
+use crate::usecases::channel_change;
 use crate::views::{SecurityView, SessionInfo};
 
 pub struct GetMe;
@@ -64,30 +65,40 @@ impl UpdateMe {
     }
 }
 
-pub struct GetMySecurity;
+/// Channels, the current session and any pending channel change.
+pub struct GetMySecurity {
+    deps: IdentityDeps,
+}
 
 impl GetMySecurity {
-    pub fn new() -> Self {
-        Self
+    pub fn new(deps: IdentityDeps) -> Self {
+        Self { deps }
     }
 
-    pub fn handle(&self, ctx: &AuthContext) -> SecurityView {
+    pub async fn handle(&self, ctx: &AuthContext) -> Result<SecurityView, IdentityError> {
+        let deps = &self.deps;
+        let now = deps.clock.now();
+        let user = &ctx.user;
+        let pending = match deps.store.open_channel_change(user.id).await? {
+            Some(change) if change.status_at(now).is_open() => {
+                let codes = deps.store.change_codes(user.id, change.id).await?;
+                Some(channel_change::view(deps, &change, &codes, now))
+            }
+            _ => None,
+        };
         let s = &ctx.session;
-        SecurityView {
+        Ok(SecurityView {
+            email: user.email.as_entered().to_owned(),
+            whatsapp: user.whatsapp.as_ref().map(|p| p.as_str().to_owned()),
+            channel_change_allowed_at: user.channel_change_allowed_at(),
+            pending_channel_change: pending,
             session: SessionInfo {
                 persistent: s.persistent,
                 idle_timeout_s: session::idle_timeout(s.persistent).num_seconds(),
                 absolute_timeout_s: session::absolute_timeout(s.persistent).num_seconds(),
                 idle_expires_at: s.idle_expires_at,
                 absolute_expires_at: s.absolute_expires_at,
-                step_up_valid_until: s.step_up_valid_until(),
             },
-        }
-    }
-}
-
-impl Default for GetMySecurity {
-    fn default() -> Self {
-        Self::new()
+        })
     }
 }

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.session SET ended_at = $3, end_reason = $4\n                    WHERE user_id = $1 AND device_id = $2 AND ended_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c125b3f2ddf6d6f708c077a2e1c57cf64f78fc6893087edbb9fe4b6c399e4d2a"
+}

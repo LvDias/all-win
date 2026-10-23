@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.one_time_code SET invalidated_at = $3, invalidated_reason = $2\n                    WHERE user_id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "53ba98823ec584f384feb03acc2f7dadebe4f407a03fce616e12e75e47564d17"
+}

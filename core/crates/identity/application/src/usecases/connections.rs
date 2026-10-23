@@ -17,7 +17,9 @@ use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
 use crate::ports::{ConnectionAccounts, ConnectionRecord, StoreConflict, StoreError};
 use crate::usecases::common::user_audit;
+use crate::usecases::step_up::{self, StepUpProof};
 use crate::views::{ConnectionView, CreatedConnection, PairingCodeView};
+use identity_enterprise::otp::StepUpAction;
 
 /// A collision on a random 40-bit code (unique over the whole history) is retried.
 const CODE_ATTEMPTS: usize = 3;
@@ -146,17 +148,20 @@ impl CreateConnection {
         &self,
         ctx: &AuthContext,
         name: &str,
+        proof: Option<&StepUpProof>,
         meta: &RequestMeta,
     ) -> Result<CreatedConnection, IdentityError> {
         let deps = &self.deps;
         let now = deps.clock.now();
         let name = DisplayName::parse(name)
             .map_err(|_| IdentityError::InvalidRequest { pointer: "/name" })?;
-        ctx.require_step_up(now)?;
+        let grant =
+            step_up::authorize(deps, ctx, StepUpAction::ConnectionCreate, None, proof, meta)
+                .await?;
         let connection = Connection::create(ConnectionId::new_v7(), ctx.user.id, name, now);
         for _ in 0..CODE_ATTEMPTS {
             let (stored, shown) = new_code(deps, &connection, now)?;
-            let changes = ChangeSet::new(ctx.user.id)
+            let changes = step_up::with_grant(ctx.user.id, grant.clone())
                 .write(Write::InsertConnection(connection.clone()))
                 .write(Write::IssuePairingCode(stored))
                 .audit(user_audit(
@@ -164,6 +169,7 @@ impl CreateConnection {
                     Actor::User(ctx.user.id),
                     AuditAction::ConnectionCreated {
                         connection_id: connection.id,
+                        connection_name: connection.name.as_str().to_owned(),
                     },
                     now,
                     Some(meta.ip),
@@ -221,7 +227,11 @@ impl RenameConnection {
             .audit(user_audit(
                 ctx.user.id,
                 Actor::User(ctx.user.id),
-                AuditAction::ConnectionRenamed { connection_id: id },
+                AuditAction::ConnectionRenamed {
+                    connection_id: id,
+                    connection_name: name.as_str().to_owned(),
+                    previous_name: record.connection.name.as_str().to_owned(),
+                },
                 now,
                 Some(meta.ip),
             ));
@@ -247,12 +257,21 @@ impl NewPairingCode {
         &self,
         ctx: &AuthContext,
         id: ConnectionId,
+        proof: Option<&StepUpProof>,
         meta: &RequestMeta,
     ) -> Result<PairingCodeView, IdentityError> {
         let deps = &self.deps;
         let now = deps.clock.now();
         let record = owned(deps, ctx, id).await?;
-        ctx.require_step_up(now)?;
+        let grant = step_up::authorize(
+            deps,
+            ctx,
+            StepUpAction::PairingCodeNew,
+            Some(id.as_uuid()),
+            proof,
+            meta,
+        )
+        .await?;
         record
             .connection
             .ensure_not_unpaired()
@@ -260,14 +279,15 @@ impl NewPairingCode {
         let superseded = record.active_code_expires_at.is_some_and(|at| at > now);
         for _ in 0..CODE_ATTEMPTS {
             let (stored, shown) = new_code(deps, &record.connection, now)?;
-            let mut changes = ChangeSet::new(ctx.user.id)
+            let mut changes = step_up::with_grant(ctx.user.id, grant.clone())
                 .write(Write::IssuePairingCode(stored))
                 .audit(user_audit(
                     ctx.user.id,
                     Actor::User(ctx.user.id),
                     AuditAction::PairingCodeIssued {
                         connection_id: id,
-                        repairing: record.connection.is_paired(),
+                        connection_name: record.connection.name.as_str().to_owned(),
+                        code_expires_at: shown.expires_at,
                     },
                     now,
                     Some(meta.ip),
@@ -305,15 +325,24 @@ impl UnpairConnection {
         ctx: &AuthContext,
         id: ConnectionId,
         acknowledge_open_positions: bool,
+        proof: Option<&StepUpProof>,
         meta: &RequestMeta,
     ) -> Result<(), IdentityError> {
         let deps = &self.deps;
         let now = deps.clock.now();
         let mut record = owned(deps, ctx, id).await?;
-        ctx.require_step_up(now)?;
         if record.connection.unpaired_at.is_some() {
             return Ok(());
         }
+        let grant = step_up::authorize(
+            deps,
+            ctx,
+            StepUpAction::ConnectionUnpair,
+            Some(id.as_uuid()),
+            proof,
+            meta,
+        )
+        .await?;
         let was_paired = record.connection.is_paired();
         if was_paired && !acknowledge_open_positions {
             let open = accounts_of(deps, ctx.user.id, &[id])
@@ -325,7 +354,7 @@ impl UnpairConnection {
             }
         }
         record.connection.unpair(now);
-        let changes = ChangeSet::new(ctx.user.id)
+        let changes = step_up::with_grant(ctx.user.id, grant)
             .write(Write::UnpairConnection {
                 user_id: ctx.user.id,
                 connection_id: id,
@@ -336,6 +365,7 @@ impl UnpairConnection {
                 Actor::User(ctx.user.id),
                 AuditAction::ConnectionUnpaired {
                     connection_id: id,
+                    connection_name: record.connection.name.as_str().to_owned(),
                     open_positions_acknowledged: acknowledge_open_positions,
                 },
                 now,
@@ -374,6 +404,7 @@ impl RecordConnectionLiveState {
             return Ok(());
         };
         let connection = &mut record.connection;
+        let previous = connection.status;
         if !connection.record_live_state(state, at) {
             return Ok(());
         }
@@ -385,6 +416,18 @@ impl RecordConnectionLiveState {
                 status_changed_at: connection.status_changed_at,
                 last_seen_at: connection.last_seen_at,
             })
+            .audit(user_audit(
+                user_id,
+                Actor::Adapter(id),
+                AuditAction::ConnectionStatusChanged {
+                    connection_id: id,
+                    connection_name: connection.name.as_str().to_owned(),
+                    previous_status: previous,
+                    status: connection.status,
+                },
+                at,
+                None,
+            ))
             .event(IdentityEvent::ConnectionStatusChanged {
                 user_id,
                 connection_id: id,
@@ -420,6 +463,9 @@ impl DisconnectLiveConnectionsAtStartup {
         for (user_id, connections) in by_user {
             let mut changes = ChangeSet::new(user_id);
             for connection_id in &connections {
+                let Some(record) = deps.store.connection(user_id, *connection_id).await? else {
+                    continue;
+                };
                 changes = changes
                     .write(Write::DisconnectLiveConnection {
                         user_id,
@@ -429,8 +475,11 @@ impl DisconnectLiveConnectionsAtStartup {
                     .audit(user_audit(
                         user_id,
                         Actor::System,
-                        AuditAction::ConnectionDisconnectedByRestart {
+                        AuditAction::ConnectionStatusChanged {
                             connection_id: *connection_id,
+                            connection_name: record.connection.name.as_str().to_owned(),
+                            previous_status: record.connection.status,
+                            status: ConnectionStatus::Disconnected,
                         },
                         now,
                         None,

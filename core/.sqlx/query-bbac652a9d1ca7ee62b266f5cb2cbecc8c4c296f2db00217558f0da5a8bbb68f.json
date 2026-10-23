@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.one_time_code\n                     (id, user_id, channel_change_id, purpose, channel, destination, action, target_id, session_id, code_role,\n                      code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at, request_ip, delivery_state)\n                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::text::inet, $18)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Int2",
+        "Int2",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bbac652a9d1ca7ee62b266f5cb2cbecc8c4c296f2db00217558f0da5a8bbb68f"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.signup_code SET invalidated_at = $2, invalidated_reason = 'invitation_closed'\n            WHERE invitation_id = $1 AND consumed_at IS NULL AND invalidated_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3b4d164007fafc09b155287387921401af851851ecf9e18b5e636fb74083aa96"
+}

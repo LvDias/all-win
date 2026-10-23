@@ -112,9 +112,10 @@ impl PairAdapter {
                     Actor::Adapter(connection_id),
                     AuditAction::ConnectionPaired {
                         connection_id,
-                        instance_id: cmd.instance_id,
-                        device_key_id: device_key.key_id.clone(),
-                        replaced_previous_instance: replaced_previous,
+                        connection_name: record.connection.name.as_str().to_owned(),
+                        instance_name: cmd.instance_name.clone(),
+                        adapter_version: cmd.adapter.version.clone(),
+                        repaired: replaced_previous,
                     },
                     now,
                     Some(cmd.ip),

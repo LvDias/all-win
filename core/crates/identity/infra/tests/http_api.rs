@@ -28,6 +28,7 @@ const ORIGIN: &str = "https://app.test";
 
 struct Api {
     app: Router,
+    delivery: Arc<CapturingDelivery>,
 }
 
 struct Reply {
@@ -54,9 +55,30 @@ impl Api {
         origin: Option<&str>,
         body: Option<Value>,
     ) -> Reply {
-        let mut req = Request::builder().method(method).uri(path);
-        if let Some(c) = cookie {
-            req = req.header(header::COOKIE, format!("__Host-aw_session={c}"));
+        self.call_with(
+            method,
+            path,
+            cookie.map(|c| format!("__Host-aw_session={c}")),
+            origin,
+            body,
+        )
+        .await
+    }
+
+    async fn call_with(
+        &self,
+        method: Method,
+        path: &str,
+        cookie_header: Option<String>,
+        origin: Option<&str>,
+        body: Option<Value>,
+    ) -> Reply {
+        let mut req = Request::builder().method(method).uri(path).header(
+            header::USER_AGENT,
+            "Mozilla/5.0 (X11; Linux x86_64) Firefox/131.0",
+        );
+        if let Some(c) = cookie_header {
+            req = req.header(header::COOKIE, c);
         }
         if let Some(o) = origin {
             req = req.header(header::ORIGIN, o);
@@ -95,27 +117,70 @@ impl Api {
         self.call(Method::GET, path, cookie, None, None).await
     }
 
-    async fn login(&self, deps: &identity_application::deps::IdentityDeps, email: &str) -> String {
-        sign_in(deps, email).await.0
+    /// Signs in over HTTP: request a code, read it from the capture, verify. Returns the session
+    /// cookie value and the full reply.
+    async fn sign_in(&self, db: &Db, email: &str, device: Option<&str>) -> (String, Reply) {
+        reset_send_limits(db).await;
+        let cookie = device.map(|d| format!("__Host-aw_device={d}"));
+        let ch = self
+            .call_with(
+                Method::POST,
+                "/api/v1/auth/login/challenges",
+                cookie.clone(),
+                Some(ORIGIN),
+                Some(json!({"email": email, "channel": "email"})),
+            )
+            .await;
+        assert_eq!(ch.status, StatusCode::ACCEPTED, "{:?}", ch.body);
+        let code = self.delivery.last_code_to(&email.to_lowercase()).unwrap();
+        let r = self
+            .call_with(
+                Method::POST,
+                "/api/v1/auth/login/verify",
+                cookie,
+                Some(ORIGIN),
+                Some(json!({"challenge_id": ch.body["challenge_id"], "code": code, "remember_me": false})),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+        (set_cookie(&r, "__Host-aw_session").unwrap(), r)
     }
+
+    async fn login(&self, db: &Db, email: &str) -> String {
+        self.sign_in(db, email, None).await.0
+    }
+}
+
+fn set_cookie(r: &Reply, name: &str) -> Option<String> {
+    r.headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|v| v.starts_with(&format!("{name}=")))
+        .and_then(|v| v.split(';').next())
+        .map(|kv| kv[name.len() + 1..].to_owned())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn http_contract_behaviour() {
     let Some(db) = setup().await else { return };
-    let (deps, _store) = deps(&db);
+    // Q35 off here: the step-up flows have their own test below.
+    let (deps, _store, delivery) = deps_with(&db, false);
     let state = Arc::new(IdentityHttpState {
         deps: deps.clone(),
         public_origin: ORIGIN.into(),
         trust_forwarded_for: false,
         events: Arc::new(SseHub::new()),
     });
-    let api = Api { app: router(state) };
-    seed_user(&db, "admin@example.com", true).await;
-    seed_user(&db, "ana@example.com", false).await;
-    seed_user(&db, "bob@example.com", false).await;
+    let api = Api {
+        app: router(state),
+        delivery,
+    };
+    seed_user(&deps, "admin@example.com", true).await;
+    seed_user(&deps, "ana@example.com", false).await;
+    seed_user(&deps, "bob@example.com", false).await;
 
-    let ana = api.login(&deps, "ana@example.com").await;
+    let ana = api.login(&db, "ana@example.com").await;
 
     // Precedence: 401 before Origin; Origin before 400; admin 403 before 400.
     let r = api
@@ -246,7 +311,7 @@ async fn http_contract_behaviour() {
         !list.body.to_string().contains(&url[url.len() - 43..]),
         "list never shows the secret"
     );
-    let bob = api.login(&deps, "bob@example.com").await;
+    let bob = api.login(&db, "bob@example.com").await;
     for (m, path, body) in [
         (
             Method::PATCH,
@@ -392,7 +457,7 @@ async fn http_contract_behaviour() {
     );
 
     // Admin: invitation link uses the fragment and is no-store.
-    let admin = api.login(&deps, "admin@example.com").await;
+    let admin = api.login(&db, "admin@example.com").await;
     let r = api
         .post(
             "/api/v1/admin/invitations",
@@ -429,5 +494,273 @@ async fn http_contract_behaviour() {
     let users = api.get("/api/v1/admin/users", Some(&admin)).await;
     assert_eq!(users.body.as_array().unwrap().len(), 3);
 
+    db.teardown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http_passwordless_flows() {
+    let Some(db) = setup().await else { return };
+    let (deps, _store, delivery) = deps(&db);
+    let state = Arc::new(IdentityHttpState {
+        deps: deps.clone(),
+        public_origin: ORIGIN.into(),
+        trust_forwarded_for: false,
+        events: Arc::new(SseHub::new()),
+    });
+    let api = Api {
+        app: router(state),
+        delivery,
+    };
+    seed_user(&deps, "ana@example.com", false).await;
+    seed_user(&deps, "bob@example.com", false).await;
+
+    // Login request: identical 202 for a registered and an unknown e-mail.
+    let known = api
+        .post(
+            "/api/v1/auth/login/challenges",
+            None,
+            json!({"email": "ana@example.com", "channel": "email"}),
+        )
+        .await;
+    let unknown = api
+        .post(
+            "/api/v1/auth/login/challenges",
+            None,
+            json!({"email": "zz@example.com", "channel": "email"}),
+        )
+        .await;
+    assert_eq!(
+        (known.status, unknown.status),
+        (StatusCode::ACCEPTED, StatusCode::ACCEPTED)
+    );
+    let keys = |r: &Reply| {
+        let mut k: Vec<String> = r.body.as_object().unwrap().keys().cloned().collect();
+        k.sort();
+        k
+    };
+    assert_eq!(keys(&known), keys(&unknown));
+    assert_eq!(known.body["resend_after_s"], 60);
+    // Wrong code: the same 401 for both.
+    let wrong = |ch: &Reply| json!({"challenge_id": ch.body["challenge_id"], "code": "0000-0000", "remember_me": false});
+    let a = api
+        .post("/api/v1/auth/login/verify", None, wrong(&known))
+        .await;
+    let b = api
+        .post("/api/v1/auth/login/verify", None, wrong(&unknown))
+        .await;
+    assert_eq!(
+        (a.status, a.code()),
+        (StatusCode::UNAUTHORIZED, "auth.code_invalid")
+    );
+    assert_eq!((b.status, b.body.clone()), (a.status, a.body.clone()));
+    // Resend within the cooldown: 429 with Retry-After for both.
+    for ch in [&known, &unknown] {
+        let r = api
+            .post(
+                "/api/v1/auth/challenges/resend",
+                None,
+                json!({"challenge_id": ch.body["challenge_id"]}),
+            )
+            .await;
+        assert_eq!(
+            (r.status, r.code()),
+            (StatusCode::TOO_MANY_REQUESTS, "auth.rate_limited")
+        );
+        assert!(r.headers.get(header::RETRY_AFTER).is_some());
+    }
+    let d = api
+        .post(
+            "/api/v1/auth/challenges/delivery",
+            None,
+            json!({"challenge_id": known.body["challenge_id"]}),
+        )
+        .await;
+    assert_eq!(d.body, json!({"delivery": "not_reported"}));
+    let r = api
+        .post(
+            "/api/v1/auth/login/verify",
+            None,
+            json!({"challenge_id": "x".repeat(20), "code": "1".repeat(33), "remember_me": false}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.pointer()),
+        (StatusCode::BAD_REQUEST, "/code"),
+        "more than 32 characters is 400"
+    );
+
+    // Full sign-in: session and device cookies with the contract attributes.
+    let (ana, reply) = api.sign_in(&db, "ana@example.com", None).await;
+    assert_eq!(reply.body["new_device"], true);
+    let cookies: Vec<String> = reply
+        .headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|v| v.to_str().unwrap().to_owned())
+        .collect();
+    assert!(cookies.iter().any(|c| c.starts_with("__Host-aw_session=")
+        && c.contains("HttpOnly; Secure; SameSite=Lax; Path=/")));
+    assert!(
+        cookies
+            .iter()
+            .any(|c| c.starts_with("__Host-aw_device=") && c.ends_with("Max-Age=34560000"))
+    );
+    let device = set_cookie(&reply, "__Host-aw_device").unwrap();
+    let (_, again) = api.sign_in(&db, "ana@example.com", Some(&device)).await;
+    assert_eq!(again.body["new_device"], false, "known browser");
+
+    // Step-up: required, bound and single use.
+    let r = api
+        .post(
+            "/api/v1/sources",
+            Some(&ana),
+            json!({"name": "Main", "source_type": "tradingview"}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code()),
+        (StatusCode::FORBIDDEN, "auth.step_up_required")
+    );
+    reset_send_limits(&db).await;
+    let ch = api
+        .post(
+            "/api/v1/auth/step-up",
+            Some(&ana),
+            json!({"action": "source_create", "channel": "email"}),
+        )
+        .await;
+    assert_eq!(ch.status, StatusCode::ACCEPTED, "{:?}", ch.body);
+    let d = api
+        .post(
+            "/api/v1/auth/challenges/delivery",
+            Some(&ana),
+            json!({"challenge_id": ch.body["challenge_id"]}),
+        )
+        .await;
+    assert_eq!(
+        d.body,
+        json!({"delivery": "pending"}),
+        "a step-up challenge reports its delivery"
+    );
+    let proof = json!({"challenge_id": ch.body["challenge_id"], "code": api.delivery.last_code_to("ana@example.com").unwrap()});
+    let r = api
+        .post(
+            "/api/v1/sources",
+            Some(&ana),
+            json!({"name": "Main", "source_type": "tradingview", "step_up": proof}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::CREATED, "{:?}", r.body);
+    let source_id = r.body["source"]["id"].as_str().unwrap().to_owned();
+    let r = api
+        .post(
+            "/api/v1/sources",
+            Some(&ana),
+            json!({"name": "Other", "source_type": "tradingview", "step_up": proof}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code()),
+        (StatusCode::FORBIDDEN, "auth.code_invalid")
+    );
+    let bob = api.login(&db, "bob@example.com").await;
+    let r = api
+        .post(
+            "/api/v1/auth/step-up",
+            Some(&bob),
+            json!({"action": "source_rotate", "target_id": source_id, "channel": "email"}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code()),
+        (StatusCode::NOT_FOUND, "common.not_found")
+    );
+    let r = api
+        .post(
+            "/api/v1/auth/step-up",
+            Some(&bob),
+            json!({"action": "source_rotate", "channel": "email"}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.pointer()),
+        (StatusCode::BAD_REQUEST, "/target_id")
+    );
+    let r = api
+        .post(
+            "/api/v1/auth/step-up",
+            Some(&bob),
+            json!({"action": "source_create", "channel": "whatsapp"}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code()),
+        (StatusCode::UNPROCESSABLE_ENTITY, "auth.channel_unavailable")
+    );
+
+    // Channel change: two codes, cancel from the same user, 404 for another.
+    reset_send_limits(&db).await;
+    let r = api
+        .post(
+            "/api/v1/me/channel-changes",
+            Some(&ana),
+            json!({"channel": "email", "new_value": "new@example.com"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::ACCEPTED, "{:?}", r.body);
+    assert_eq!(r.body["codes"].as_array().unwrap().len(), 2);
+    assert_eq!(r.body["masked_new_value"], "n***@e***.com");
+    let change = r.body["id"].as_str().unwrap().to_owned();
+    let sec = api.get("/api/v1/me/security", Some(&ana)).await;
+    assert_eq!(sec.body["pending_channel_change"]["id"], change.as_str());
+    let r = api
+        .post(
+            &format!("/api/v1/me/channel-changes/{change}/cancel"),
+            Some(&bob),
+            json!({}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    let r = api
+        .post(
+            &format!("/api/v1/me/channel-changes/{change}/cancel"),
+            Some(&ana),
+            json!({}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    let r = api
+        .post(
+            "/api/v1/me/channel-changes",
+            Some(&ana),
+            json!({"channel": "email", "new_value": "ana@example.com"}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code()),
+        (StatusCode::UNPROCESSABLE_ENTITY, "me.channel_unchanged")
+    );
+
+    // Devices and sign out everywhere.
+    let devices = api.get("/api/v1/me/devices", Some(&ana)).await;
+    assert_eq!(devices.body.as_array().unwrap().len(), 1);
+    assert_eq!(devices.body[0]["label"], "Firefox on Linux");
+    assert_eq!(devices.body[0]["current"], true);
+    let r = api
+        .post("/api/v1/auth/logout-everywhere", Some(&ana), json!({}))
+        .await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    let cleared: Vec<String> = r
+        .headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|v| v.to_str().unwrap().to_owned())
+        .collect();
+    assert!(cleared.iter().any(|c| c.starts_with("__Host-aw_session=;")));
+    assert!(cleared.iter().any(|c| c.starts_with("__Host-aw_device=;")));
+    assert_eq!(
+        api.get("/api/v1/me", Some(&ana)).await.status,
+        StatusCode::UNAUTHORIZED
+    );
     db.teardown().await;
 }

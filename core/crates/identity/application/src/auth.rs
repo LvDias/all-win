@@ -67,7 +67,7 @@ impl AuthenticateSession {
         }
         let user = match self.deps.store.user(session.user_id).await? {
             Some(user) if user.is_active() => user,
-            SessionStatus::Ended => return Err(IdentityError::Unauthenticated),
+            _ => return Err(IdentityError::Unauthenticated),
         };
         if activity == Activity::UserInitiated
             && now - session.last_activity_at >= ACTIVITY_WRITE_INTERVAL

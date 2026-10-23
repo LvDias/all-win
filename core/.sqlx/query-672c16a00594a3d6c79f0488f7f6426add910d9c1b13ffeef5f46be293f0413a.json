@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.channel_change SET status = 'on_hold', hold_until = $2\n                    WHERE id = $1 AND status = 'awaiting_codes' AND expires_at > $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "672c16a00594a3d6c79f0488f7f6426add910d9c1b13ffeef5f46be293f0413a"
+}

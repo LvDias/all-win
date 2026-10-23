@@ -86,6 +86,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "access",
  "adapter-tradingview",
  "anyhow",
  "async-trait",
@@ -98,6 +99,9 @@ dependencies = [
  "chrono",
  "contracts",
  "http-body-util",
+ "identity-application",
+ "identity-enterprise",
+ "identity-infra",
  "rand 0.10.3",
  "routing-application",
  "routing-infra",
@@ -1100,14 +1104,17 @@ dependencies = [
 name = "identity-infra"
 version = "0.1.0"
 dependencies = [
+ "access",
  "async-trait",
  "axum",
+ "base64",
  "chrono",
  "contracts",
  "hmac",
  "http-body-util",
  "identity-application",
  "identity-enterprise",
+ "jsonschema",
  "rand 0.10.3",
  "serde",
  "serde_json",
@@ -1120,6 +1127,7 @@ dependencies = [
  "tracing",
  "utoipa",
  "uuid",
+ "yaml_serde",
 ]
 
 [[package]]

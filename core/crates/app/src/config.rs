@@ -14,7 +14,15 @@
 //! | `INGRESS_IP_TOKEN_FAILURES_PER_MIN` | `30` | step 2: token failures per IP before the identical 429 |
 //! | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | step 3: per authenticated key |
 //! | `INGRESS_UNKNOWN_KEY_CACHE_TTL_S` | `60` | step 2: negative cache of unknown `key_id`s (0 disables) |
-//! | `APP_PUBLIC_ORIGIN` | unset | exact origin of the web app (`https://host[:port]`) for the `/api/v1` CSRF `Origin` check; required once `/api/v1` routes are wired |
+//! | `APP_PUBLIC_ORIGIN` | unset | exact origin of the web app (`https://host[:port]`) for the `/api/v1` CSRF `Origin` check; required with `IDENTITY_PEPPERS` |
+//! | `APP_ENV` | `production` | `development`, `test` or `production` |
+//! | `IDENTITY_PEPPERS` | unset | versioned server peppers, `VERSION:BASE64URL[,…]` (each at least 32 bytes); unset = the identity routes are not mounted |
+//! | `IDENTITY_PEPPER_CURRENT` | highest version | pepper version for new codes and tokens |
+//! | `STEP_UP_Q35_PERSISTENCE_ACTIONS` | `true` | `false` waives the conditional step-ups (Q35); missing or invalid = `true` (fail closed); logged at startup |
+//! | `CODE_SENDER` | `disabled` | `disabled` (no provider: every code delivery fails) or `dev_smtp` (only with `APP_ENV` development or test) |
+//! | `DEV_SMTP_ADDR` | `127.0.0.1:1025` | SMTP of the development mail catcher (Mailpit), for `CODE_SENDER=dev_smtp` |
+//! | `DEV_SMTP_FROM` | `core@allwin.local` | sender address of development mail |
+//! | `IDENTITY_ADAPTER_MIN_VERSIONS` | `ninjatrader8=1.0.0` | minimum plugin version per adapter type, `type=semver[,…]`; development builds pair only outside production |
 //! | `RUST_LOG` | `info` | tracing filter |
 //!
 //! Limits burst up to their per-minute value (s1-webhook-ingest §2, HTTP 1.1.2).
@@ -68,6 +76,133 @@ pub struct Config {
     pub unknown_key_cache_ttl_s: u64,
     /// Origin allowed on state-changing `/api/v1` requests (`scheme://host[:port]`).
     pub public_origin: Option<String>,
+    pub app_env: AppEnv,
+    /// Identity (S3); `None` when `IDENTITY_PEPPERS` is unset.
+    pub identity: Option<IdentityConfig>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppEnv {
+    Development,
+    Test,
+    Production,
+}
+
+impl AppEnv {
+    pub fn is_production(self) -> bool {
+        self == Self::Production
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CodeSenderConfig {
+    /// No provider (Q8/U17): every code delivery fails, notices are dropped with a warning.
+    Disabled,
+    /// Plain SMTP to a development mail catcher; refused outside development and test.
+    DevSmtp {
+        host: String,
+        port: u16,
+        from: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct IdentityConfig {
+    /// `(version, key)` pairs; the keys are secrets.
+    pub peppers: Vec<(i16, SecretBytes)>,
+    pub pepper_current: i16,
+    pub step_up_q35_persistence_actions: bool,
+    pub code_sender: CodeSenderConfig,
+    pub adapter_min_versions: Vec<(String, String)>,
+}
+
+/// Key bytes that never reach logs.
+#[derive(Clone)]
+pub struct SecretBytes(Vec<u8>);
+
+impl SecretBytes {
+    pub fn expose(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for SecretBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("REDACTED")
+    }
+}
+
+fn identity_config(
+    non_empty: &impl Fn(&str) -> Option<String>,
+    app_env: AppEnv,
+) -> Result<Option<IdentityConfig>, ConfigError> {
+    use base64::Engine;
+    let Some(raw) = non_empty("IDENTITY_PEPPERS") else {
+        return Ok(None);
+    };
+    let peppers = raw
+        .split(',')
+        .map(|entry| {
+            let (v, key) = entry.trim().split_once(':')?;
+            let version: i16 = v.parse().ok()?;
+            let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(key.trim_end_matches('='))
+                .ok()?;
+            (bytes.len() >= 32).then_some((version, SecretBytes(bytes)))
+        })
+        .collect::<Option<Vec<_>>>()
+        .filter(|p| !p.is_empty())
+        .ok_or(ConfigError::Invalid("IDENTITY_PEPPERS"))?;
+    let highest = peppers.iter().map(|(v, _)| *v).max().unwrap_or_default();
+    let pepper_current = match non_empty("IDENTITY_PEPPER_CURRENT") {
+        Some(v) => v
+            .parse()
+            .ok()
+            .filter(|c| peppers.iter().any(|(p, _)| p == c))
+            .ok_or(ConfigError::Invalid("IDENTITY_PEPPER_CURRENT"))?,
+        None => highest,
+    };
+    // Fail closed: anything but an explicit "false" keeps the step-ups on.
+    let step_up_q35_persistence_actions =
+        non_empty("STEP_UP_Q35_PERSISTENCE_ACTIONS").as_deref() != Some("false");
+    let code_sender = match non_empty("CODE_SENDER").as_deref() {
+        None | Some("disabled") => CodeSenderConfig::Disabled,
+        Some("dev_smtp") => {
+            if app_env.is_production() {
+                return Err(ConfigError::Conflict(
+                    "CODE_SENDER=dev_smtp is only allowed with APP_ENV development or test",
+                ));
+            }
+            let addr = non_empty("DEV_SMTP_ADDR").unwrap_or_else(|| "127.0.0.1:1025".into());
+            let (host, port) = addr
+                .rsplit_once(':')
+                .and_then(|(h, p)| Some((h.to_owned(), p.parse().ok()?)))
+                .ok_or(ConfigError::Invalid("DEV_SMTP_ADDR"))?;
+            CodeSenderConfig::DevSmtp {
+                host,
+                port,
+                from: non_empty("DEV_SMTP_FROM").unwrap_or_else(|| "core@allwin.local".into()),
+            }
+        }
+        Some(_) => return Err(ConfigError::Invalid("CODE_SENDER")),
+    };
+    let adapter_min_versions = non_empty("IDENTITY_ADAPTER_MIN_VERSIONS")
+        .unwrap_or_else(|| "ninjatrader8=1.0.0".into())
+        .split(',')
+        .map(|pair| {
+            pair.trim()
+                .split_once('=')
+                .map(|(t, v)| (t.to_owned(), v.to_owned()))
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(ConfigError::Invalid("IDENTITY_ADAPTER_MIN_VERSIONS"))?;
+    Ok(Some(IdentityConfig {
+        peppers,
+        pepper_current,
+        step_up_q35_persistence_actions,
+        code_sender,
+        adapter_min_versions,
+    }))
 }
 
 impl Config {
@@ -103,6 +238,23 @@ impl Config {
                 "INGRESS_TRADINGVIEW_SOURCE_RANGES requires INGRESS_TRUST_FORWARDED_FOR=true",
             ));
         }
+        let app_env = match non_empty("APP_ENV").as_deref() {
+            None | Some("production") => AppEnv::Production,
+            Some("development") => AppEnv::Development,
+            Some("test") => AppEnv::Test,
+            Some(_) => return Err(ConfigError::Invalid("APP_ENV")),
+        };
+        let identity = identity_config(&non_empty, app_env)?;
+        let public_origin = match non_empty("APP_PUBLIC_ORIGIN") {
+            Some(origin) if is_origin(&origin) => Some(origin),
+            Some(_) => return Err(ConfigError::Invalid("APP_PUBLIC_ORIGIN")),
+            None => None,
+        };
+        if identity.is_some() && public_origin.is_none() {
+            return Err(ConfigError::Conflict(
+                "IDENTITY_PEPPERS requires APP_PUBLIC_ORIGIN (the /api/v1 Origin check)",
+            ));
+        }
         Ok(Self {
             database_url: SecretString::new(database_url),
             worker_database_url: SecretString::new(worker_database_url),
@@ -124,11 +276,9 @@ impl Config {
             )?,
             rate_per_key_per_min: parse_or(&get, "INGRESS_RATE_PER_KEY_PER_MIN", Some(60))?,
             unknown_key_cache_ttl_s: parse_or(&get, "INGRESS_UNKNOWN_KEY_CACHE_TTL_S", Some(60))?,
-            public_origin: match non_empty("APP_PUBLIC_ORIGIN") {
-                Some(origin) if is_origin(&origin) => Some(origin),
-                Some(_) => return Err(ConfigError::Invalid("APP_PUBLIC_ORIGIN")),
-                None => None,
-            },
+            public_origin,
+            app_env,
+            identity,
         })
     }
 }
@@ -262,6 +412,70 @@ mod tests {
                 .unwrap()
                 .tradingview_source_ranges
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn identity_needs_peppers_and_origin_and_keeps_dev_smtp_out_of_production() {
+        let key = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"; // 32 bytes
+        let with = |extra: &'static [(&'static str, &'static str)]| {
+            let key = key.to_owned();
+            Config::from_lookup(move |k| match k {
+                "DATABASE_URL" => Some("postgres://x".into()),
+                "IDENTITY_PEPPERS" => Some(format!("1:{key}")),
+                _ => extra
+                    .iter()
+                    .find(|(n, _)| *n == k)
+                    .map(|(_, v)| (*v).to_owned()),
+            })
+        };
+        assert!(
+            matches!(with(&[]), Err(ConfigError::Conflict(_))),
+            "origin required"
+        );
+        let ok = with(&[("APP_PUBLIC_ORIGIN", "https://app.test")]).unwrap();
+        let id = ok.identity.unwrap();
+        assert_eq!(
+            (id.pepper_current, id.code_sender.clone()),
+            (1, CodeSenderConfig::Disabled)
+        );
+        assert!(id.step_up_q35_persistence_actions);
+        assert!(!format!("{id:?}").contains(key));
+        assert!(
+            matches!(
+                with(&[
+                    ("APP_PUBLIC_ORIGIN", "https://app.test"),
+                    ("CODE_SENDER", "dev_smtp")
+                ]),
+                Err(ConfigError::Conflict(_))
+            ),
+            "never in production"
+        );
+        let dev = with(&[
+            ("APP_PUBLIC_ORIGIN", "https://app.test"),
+            ("CODE_SENDER", "dev_smtp"),
+            ("APP_ENV", "development"),
+            ("STEP_UP_Q35_PERSISTENCE_ACTIONS", "nope"),
+        ])
+        .unwrap()
+        .identity
+        .unwrap();
+        assert!(matches!(
+            dev.code_sender,
+            CodeSenderConfig::DevSmtp { port: 1025, .. }
+        ));
+        assert!(dev.step_up_q35_persistence_actions, "invalid means on");
+        assert!(
+            matches!(
+                Config::from_lookup(|k| match k {
+                    "DATABASE_URL" => Some("postgres://x".into()),
+                    "APP_PUBLIC_ORIGIN" => Some("https://app.test".into()),
+                    "IDENTITY_PEPPERS" => Some("1:c2hvcnQ".into()),
+                    _ => None,
+                }),
+                Err(ConfigError::Invalid("IDENTITY_PEPPERS"))
+            ),
+            "short keys are refused"
         );
     }
 }

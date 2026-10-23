@@ -117,7 +117,14 @@ impl RequestStepUp {
             suppressed: false,
             ip: Some(cmd.meta.ip),
         });
-        let challenge = codes::seal(deps, code_id, Purpose::StepUp, &ident, DeviceClass::Known, now);
+        let challenge = codes::seal(
+            deps,
+            code_id,
+            Purpose::StepUp,
+            &ident,
+            DeviceClass::Known,
+            now,
+        );
         Ok(codes::issued(challenge, now))
     }
 

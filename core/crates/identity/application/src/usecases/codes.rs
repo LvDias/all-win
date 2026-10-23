@@ -18,7 +18,7 @@ use shared_kernel::UserId;
 use crate::changes::{Actor, AuditAction, ChangeSet, CodeTable, Write};
 use crate::deps::IdentityDeps;
 use crate::error::IdentityError;
-use crate::ports::{SecurityAlert, WindowCount};
+use crate::ports::WindowCount;
 use crate::throttle::ThrottleDecision;
 use crate::usecases::common::user_audit;
 use crate::views::ChallengeIssued;
@@ -228,7 +228,9 @@ pub(crate) async fn admit_verify(
 ) -> Result<(), IdentityError> {
     match deps.code_throttle.admit_verify(ip, now).await {
         ThrottleDecision::Allow => Ok(()),
-        ThrottleDecision::Limited { retry_after } => Err(IdentityError::RateLimited { retry_after }),
+        ThrottleDecision::Limited { retry_after } => {
+            Err(IdentityError::RateLimited { retry_after })
+        }
     }
 }
 
@@ -242,12 +244,6 @@ pub(crate) fn consume_conflict(e: crate::ports::StoreError) -> IdentityError {
         E::Conflict(C::ChannelChangeGone) => IdentityError::ChannelChangeClosed,
         other => other.into(),
     }
-}
-
-/// Raises the global-send alert hook for infra policies that count them (kept here so the alert
-/// type stays in the application layer).
-pub(crate) fn alert(deps: &IdentityDeps, alert: SecurityAlert) {
-    deps.alerts.raise(alert);
 }
 
 #[cfg(test)]

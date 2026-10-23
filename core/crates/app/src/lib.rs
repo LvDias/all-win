@@ -3,9 +3,11 @@
 pub mod config;
 pub mod dev;
 pub mod http;
+pub mod identity;
 pub mod openapi;
 pub mod outbox;
 pub mod telemetry;
+pub mod unconsumed;
 pub mod wiring;
 
 use std::sync::Arc;
@@ -41,12 +43,18 @@ pub struct AppState {
     /// Outbox event types with a registered consumer (for the unconsumed-events metric).
     pub consumed_event_types: Arc<[String]>,
     pub ingress: Arc<IngressState>,
+    /// The identity routes (`/api/v1/auth`, `/me`, `/admin`, `/sources`, `/connections`,
+    /// `/adapter/v1/pairings`, `/events`); `None` without `IDENTITY_PEPPERS`.
+    pub identity: Option<axum::Router>,
 }
 
 /// The wired application plus its background workers.
 pub struct App {
     pub state: AppState,
     pub dispatcher: outbox::OutboxDispatcher,
+    /// Identity startup work and background tasks; run [`identity::IdentityWiring::start`]
+    /// before accepting connections.
+    pub identity: Option<identity::IdentityWiring>,
 }
 
 /// Connects a pool without echoing connection details (they hold credentials).
@@ -108,7 +116,7 @@ impl App {
                 UNKNOWN_KEY_CACHE_CAPACITY,
             ),
             metrics: Arc::new(IngressMetrics::default()),
-            clock,
+            clock: clock.clone(),
             trust_forwarded_for: config.trust_forwarded_for,
         });
         // Consumers are registered before the dispatcher exists (architecture rule).
@@ -119,15 +127,34 @@ impl App {
         for event_type in IngressEvent::TYPES {
             consumers.register(event_type, audit.clone());
         }
-        consumers.require(&IngressEvent::TYPES)?;
+        consumers.require(&IngressEvent::TYPES, unconsumed::UNCONSUMED)?;
+        let identity = match &config.identity {
+            Some(cfg) => Some(identity::wire(
+                config,
+                cfg,
+                &db,
+                &worker,
+                clock,
+                ingress.clone(),
+                audit,
+                &mut consumers,
+            )?),
+            None => {
+                tracing::warn!("IDENTITY_PEPPERS is not set: the identity routes are not mounted");
+                None
+            }
+        };
+        unconsumed::check(&consumers, unconsumed::UNCONSUMED)?;
         Ok(Self {
             state: AppState {
                 db,
                 worker: worker.clone(),
                 consumed_event_types: consumers.types().into(),
                 ingress,
+                identity: identity.as_ref().map(|w| w.router.clone()),
             },
             dispatcher: outbox::OutboxDispatcher::new(worker, consumers, wake),
+            identity,
         })
     }
 }

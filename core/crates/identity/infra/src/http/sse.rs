@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 use http_body_util::Channel;
 use identity_application::auth::{Activity, AuthenticateSession};
 use identity_application::deps::IdentityDeps;
-use identity_enterprise::ids::SessionId;
+use identity_enterprise::ids::{DeviceId, SessionId};
 use serde_json::{Value, json};
 use shared_kernel::UserId;
 use tokio::sync::broadcast;
@@ -31,13 +31,16 @@ const PER_USER_BUFFER: usize = 64;
 enum Ends {
     One(Uuid),
     AllExcept(Vec<Uuid>),
+    /// Every session bound to this device ("forget this device").
+    Device(Uuid),
 }
 
 impl Ends {
-    fn covers(&self, session: SessionId) -> bool {
+    fn covers(&self, session: SessionId, device: DeviceId) -> bool {
         match self {
             Self::One(id) => *id == session.as_uuid(),
             Self::AllExcept(except) => !except.contains(&session.as_uuid()),
+            Self::Device(id) => *id == device.as_uuid(),
         }
     }
 }
@@ -81,9 +84,10 @@ impl SseHub {
     ) -> bool {
         let message = match event_type {
             "identity.sessions_ended" => {
-                let ends = match uuid_at(payload, "session_id") {
-                    Some(id) => Ends::One(id),
-                    None => Ends::AllExcept(
+                let ends = match (uuid_at(payload, "session_id"), uuid_at(payload, "device_id")) {
+                    (Some(id), _) => Ends::One(id),
+                    (None, Some(device)) => Ends::Device(device),
+                    (None, None) => Ends::AllExcept(
                         payload
                             .get("all_except")
                             .and_then(Value::as_array)
@@ -165,6 +169,7 @@ pub fn open(
     deps: IdentityDeps,
     user_id: UserId,
     session_id: SessionId,
+    device_id: DeviceId,
     cookie: String,
 ) -> Response {
     let mut rx = hub.subscribe(user_id);
@@ -184,7 +189,7 @@ pub fn open(
             tokio::select! {
                 msg = rx.recv() => match msg {
                     Ok(m) => {
-                        let closing = m.ends.as_ref().is_some_and(|e| e.covers(session_id));
+                        let closing = m.ends.as_ref().is_some_and(|e| e.covers(session_id, device_id));
                         if m.ends.is_some() && !closing {
                             continue;
                         }
@@ -240,7 +245,7 @@ mod tests {
         let v: Value = serde_json::from_str(&m.data).unwrap();
         assert_eq!(v["status"], "connected");
         assert!(v["at"].as_str().unwrap().ends_with('Z'));
-        assert!(!hub.publish(user, "security.password_changed", Utc::now(), &json!({})));
+        assert!(!hub.publish(user, "security.signed_in", Utc::now(), &json!({})));
         assert!(!hub.publish(
             user,
             "identity.sessions_ended",
@@ -252,8 +257,11 @@ mod tests {
     #[test]
     fn session_end_scope() {
         let s = SessionId::new_v7();
-        assert!(Ends::One(s.as_uuid()).covers(s));
-        assert!(!Ends::AllExcept(vec![s.as_uuid()]).covers(s));
-        assert!(Ends::AllExcept(vec![]).covers(s));
+        let d = DeviceId::new_v7();
+        assert!(Ends::One(s.as_uuid()).covers(s, d));
+        assert!(!Ends::AllExcept(vec![s.as_uuid()]).covers(s, d));
+        assert!(Ends::AllExcept(vec![]).covers(s, d));
+        assert!(Ends::Device(d.as_uuid()).covers(s, d));
+        assert!(!Ends::Device(Uuid::now_v7()).covers(s, d));
     }
 }

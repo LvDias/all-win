@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.channel_change SET status = 'cancelled', cancelled_at = $3, cancelled_by_session_id = $2\n                    WHERE id = $1 AND (status = 'on_hold' OR (status = 'awaiting_codes' AND expires_at > $3))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "21569bf8246c6cdd73a0739840884836d7f5e1826aaaf8b2814a78b738fe96b0"
+}

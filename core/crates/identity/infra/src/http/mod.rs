@@ -34,10 +34,32 @@ pub fn router(state: Arc<IdentityHttpState>) -> Router {
     guard::register_components(&IdentityApi::openapi());
     use handlers::*;
     Router::new()
+        .route("/api/v1/auth/login/challenges", post(request_login_code))
+        .route("/api/v1/auth/login/verify", post(verify_login_code))
+        .route("/api/v1/auth/challenges/resend", post(resend_code))
+        .route(
+            "/api/v1/auth/challenges/delivery",
+            post(get_challenge_delivery),
+        )
         .route("/api/v1/auth/logout", post(logout))
+        .route("/api/v1/auth/logout-everywhere", post(sign_out_everywhere))
+        .route("/api/v1/auth/step-up", post(request_step_up))
+        .route("/api/v1/auth/signup/challenges", post(start_signup))
+        .route("/api/v1/auth/signup/verify", post(complete_signup))
         .route("/api/v1/auth/invitations/lookup", post(lookup_invitation))
         .route("/api/v1/me", get(get_me).patch(update_me))
         .route("/api/v1/me/security", get(get_my_security))
+        .route("/api/v1/me/devices", get(list_devices))
+        .route("/api/v1/me/devices/{device_id}/forget", post(forget_device))
+        .route("/api/v1/me/channel-changes", post(start_channel_change))
+        .route(
+            "/api/v1/me/channel-changes/{change_id}/verify",
+            post(verify_channel_change_code),
+        )
+        .route(
+            "/api/v1/me/channel-changes/{change_id}/cancel",
+            post(cancel_channel_change),
+        )
         .route(
             "/api/v1/admin/invitations",
             get(list_invitations).post(create_invitation),
@@ -76,11 +98,24 @@ pub fn router(state: Arc<IdentityHttpState>) -> Router {
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        handlers::request_login_code,
+        handlers::verify_login_code,
+        handlers::resend_code,
+        handlers::get_challenge_delivery,
         handlers::logout,
+        handlers::sign_out_everywhere,
+        handlers::request_step_up,
+        handlers::start_signup,
+        handlers::complete_signup,
         handlers::lookup_invitation,
         handlers::get_me,
         handlers::update_me,
         handlers::get_my_security,
+        handlers::list_devices,
+        handlers::forget_device,
+        handlers::start_channel_change,
+        handlers::verify_channel_change_code,
+        handlers::cancel_channel_change,
         handlers::list_invitations,
         handlers::create_invitation,
         handlers::revoke_invitation,

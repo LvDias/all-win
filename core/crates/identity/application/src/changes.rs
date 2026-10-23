@@ -575,10 +575,7 @@ pub enum Notice {
         hold_until: DateTime<Utc>,
     },
     /// To every channel after a cancellation.
-    ChannelChangeCancelled {
-        to: Destination,
-        channel: Channel,
-    },
+    ChannelChangeCancelled { to: Destination, channel: Channel },
 }
 
 /// Integration events published through the outbox (SSE projection, gateway, audit, notices).

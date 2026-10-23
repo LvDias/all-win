@@ -31,6 +31,7 @@ const INSTRUCTION_COMPONENT: &str = "InstructionV1";
 pub fn openapi() -> utoipa::openapi::OpenApi {
     let mut doc = CoreApi::openapi();
     doc.merge(adapter_tradingview::IngressApi::openapi());
+    doc.merge(identity_infra::http::IdentityApi::openapi());
     add_security_schemes(&mut doc);
     mark_public_operations(&mut doc);
     doc
@@ -52,12 +53,10 @@ pub fn document() -> Result<Value, serde_json::Error> {
 
 fn add_security_schemes(doc: &mut utoipa::openapi::OpenApi) {
     let components = doc.components.get_or_insert_with(Default::default);
-    for name in ["session", "pendingSession"] {
-        components.add_security_scheme(
-            name,
-            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("__Host-aw_session"))),
-        );
-    }
+    components.add_security_scheme(
+        "session",
+        SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("__Host-aw_session"))),
+    );
 }
 
 /// `utoipa` renders `security(())` as `[{}]` ("anonymous allowed"); the contract's

@@ -1,18 +1,20 @@
 //! Use-case behaviour through fakes: authorization, isolation (X-2), step-up, throttling
-//! seams, one-time secrets and atomic effects.
+//! seams, one-time secrets and atomic effects. The passwordless flows are in `tests_auth.rs`.
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration as StdDuration;
 
 use chrono::Duration;
+use identity_enterprise::channel::Channel;
 use identity_enterprise::connection::{AdapterBuild, AdapterInfo, ConnectionStatus, LiveState};
+use identity_enterprise::device::KnownDevice;
 use identity_enterprise::email::EmailAddress;
-use identity_enterprise::ids::SessionId;
-use identity_enterprise::ids::{ConnectionId, SourceId};
+use identity_enterprise::ids::{ConnectionId, DeviceId, SessionId, SourceId};
+use identity_enterprise::otp::StepUpAction;
 use identity_enterprise::profile::{Locale, TimeZoneName};
-use identity_enterprise::session::EndReason;
-use identity_enterprise::session::{ClientInfo, NewSession, Session};
+use identity_enterprise::session::{ClientInfo, EndReason, NewSession, Session};
 use identity_enterprise::source::SourceType;
+use identity_enterprise::tokens::TokenHash;
 use identity_enterprise::user::{User, UserStatus};
 use shared_kernel::{Clock, UserId};
 use uuid::Uuid;
@@ -31,66 +33,120 @@ use crate::usecases::me::*;
 use crate::usecases::pairing::{PairAdapter, PairAdapterCommand};
 use crate::usecases::signin::*;
 use crate::usecases::sources::*;
+use crate::usecases::step_up::{RequestStepUp, RequestStepUpCommand, StepUpProof};
 
-fn meta() -> RequestMeta {
+pub(crate) fn meta() -> RequestMeta {
     RequestMeta {
         ip: IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)),
-        user_agent: Some("test".into()),
+        user_agent: Some(
+            "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/131.0 Safari/537.36".into(),
+        ),
     }
 }
 
-fn add_user(w: &World, email: &str, admin: bool) -> User {
+pub(crate) fn add_user(w: &World, email: &str, admin: bool) -> User {
     let email = EmailAddress::parse(email).unwrap();
     let user = User {
         id: UserId::new_v7(),
         email,
+        email_verified_at: w.clock.now(),
+        whatsapp: None,
         locale: Locale::PtBr,
         time_zone: TimeZoneName::parse("America/Sao_Paulo").unwrap(),
         is_platform_admin: admin,
         status: UserStatus::Active,
         created_at: w.clock.now(),
+        channel_changed_at: None,
     };
     w.store.insert_user(user.clone());
     user
 }
 
-/// Starts a session for the user directly (the sign-in flow is being replaced, contract 2.0.0).
-async fn login(w: &World, email: &str) -> String {
+/// Starts a session directly on a device first seen `device_age` ago.
+pub(crate) async fn login_on(w: &World, email: &str, device_age: Duration) -> String {
     let user = w.store.user_by_email(email).expect("test user exists");
+    let now = w.clock.now();
+    let device = KnownDevice::new(
+        DeviceId::new_v7(),
+        user.id,
+        TokenHash::from_bytes([0xAB; 32]),
+        meta().user_agent.as_deref(),
+        Some(meta().ip),
+        now - device_age,
+    );
     let token = w.deps.issue_token();
-    let new = NewSession {
-        id: SessionId::new_v7(),
-        user_id: user.id,
-        token_hash: token.hash,
-        persistent: false,
-        client: ClientInfo {
-            ip: Some(meta().ip),
-            user_agent: meta().user_agent,
+    let session = Session::start(
+        NewSession {
+            id: SessionId::new_v7(),
+            user_id: user.id,
+            device_id: device.id,
+            token_hash: token.hash,
+            persistent: false,
+            login_channel: Channel::Email,
+            client: ClientInfo {
+                ip: Some(meta().ip),
+                user_agent: meta().user_agent,
+            },
         },
-    };
-    let session = Session::start(new, false, w.clock.now());
+        now,
+    );
     w.deps
         .store
-        .commit(ChangeSet::new(user.id).write(Write::InsertSession(session)))
+        .commit(
+            ChangeSet::new(user.id)
+                .write(Write::InsertDevice(device))
+                .write(Write::InsertSession(session)),
+        )
         .await
         .unwrap();
     token.value().expose().to_owned()
 }
 
-async fn ctx(w: &World, cookie: &str) -> Result<AuthContext, IdentityError> {
+/// A session on a device known for 30 days.
+pub(crate) async fn login(w: &World, email: &str) -> String {
+    login_on(w, email, Duration::days(30)).await
+}
+
+pub(crate) async fn ctx(w: &World, cookie: &str) -> Result<AuthContext, IdentityError> {
     AuthenticateSession::new(w.deps.clone())
         .handle(Some(cookie), Activity::UserInitiated)
         .await
 }
 
-async fn signed_in(w: &World, email: &str, admin: bool) -> (User, String, AuthContext) {
+pub(crate) async fn signed_in(w: &World, email: &str, admin: bool) -> (User, String, AuthContext) {
     let user = add_user(w, email, admin);
     let cookie = login(w, email).await;
     let c = ctx(w, &cookie).await.unwrap();
     (user, cookie, c)
 }
 
-fn adapter(version: &str) -> AdapterInfo {
+/// Requests a step-up code by e-mail and returns the proof the action needs.
+pub(crate) async fn proof(
+    w: &World,
+    c: &AuthContext,
+    action: StepUpAction,
+    target: Option<Uuid>,
+) -> StepUpProof {
+    let issued = RequestStepUp::new(w.deps.clone())
+        .handle(
+            c,
+            RequestStepUpCommand {
+                action,
+                target_id: target,
+                channel: Channel::Email,
+                meta: meta(),
+            },
+        )
+        .await
+        .unwrap();
+    w.clock.advance(Duration::seconds(61));
+    StepUpProof {
+        challenge_id: issued.challenge_id.expose().to_owned(),
+        code: w.delivery.last_code_to(c.user.email.normalized()).unwrap(),
+    }
+}
+
+pub(crate) fn adapter(version: &str) -> AdapterInfo {
     AdapterInfo {
         adapter_type: "ninjatrader8".into(),
         version: version.into(),
@@ -98,7 +154,7 @@ fn adapter(version: &str) -> AdapterInfo {
     }
 }
 
-fn pair_cmd(code: &str) -> PairAdapterCommand {
+pub(crate) fn pair_cmd(code: &str) -> PairAdapterCommand {
     PairAdapterCommand {
         pairing_code: code.into(),
         instance_id: Uuid::now_v7(),
@@ -108,7 +164,7 @@ fn pair_cmd(code: &str) -> PairAdapterCommand {
     }
 }
 
-fn debug_of_everything(w: &World) -> String {
+pub(crate) fn debug_of_everything(w: &World) -> String {
     format!("{:?}", w.store.committed())
 }
 
@@ -197,7 +253,7 @@ async fn logout_is_idempotent() {
 
 #[tokio::test]
 async fn invitation_flow_admin_only_one_time_and_reinvite_after_expiry() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (_, _, admin) = signed_in(&w, "admin@example.com", true).await;
     let (_, _, plain) = signed_in(&w, "plain@example.com", false).await;
     let create = CreateInvitation::new(w.deps.clone());
@@ -205,6 +261,7 @@ async fn invitation_flow_admin_only_one_time_and_reinvite_after_expiry() {
         email: email.into(),
         locale: Locale::En,
         send_email: true,
+        step_up: None,
         meta: meta(),
     };
     assert!(matches!(
@@ -265,7 +322,7 @@ async fn invitation_flow_admin_only_one_time_and_reinvite_after_expiry() {
 
 #[tokio::test]
 async fn invitation_mail_failure_still_returns_the_link() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (_, _, admin) = signed_in(&w, "admin@example.com", true).await;
     *w.mailer.fail.lock().unwrap() = true;
     let created = CreateInvitation::new(w.deps.clone())
@@ -275,6 +332,7 @@ async fn invitation_mail_failure_still_returns_the_link() {
                 email: "x@example.com".into(),
                 locale: Locale::PtBr,
                 send_email: true,
+                step_up: None,
                 meta: meta(),
             },
         )
@@ -288,10 +346,10 @@ async fn invitation_mail_failure_still_returns_the_link() {
 
 #[tokio::test]
 async fn sources_lifecycle_and_one_time_url() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (_, _, c) = signed_in(&w, "ana@example.com", false).await;
     let created = CreateSource::new(w.deps.clone())
-        .handle(&c, "Main", SourceType::TradingView, &meta())
+        .handle(&c, "Main", SourceType::TradingView, None, &meta())
         .await
         .unwrap();
     let url = created.webhook_url.expose().to_owned();
@@ -310,7 +368,7 @@ async fn sources_lifecycle_and_one_time_url() {
 
     assert!(matches!(
         CreateSource::new(w.deps.clone())
-            .handle(&c, "MAIN", SourceType::TradingView, &meta())
+            .handle(&c, "MAIN", SourceType::TradingView, None, &meta())
             .await,
         Err(IdentityError::SourceNameTaken)
     ));
@@ -321,7 +379,7 @@ async fn sources_lifecycle_and_one_time_url() {
         "fresh key leaves the ingress negative cache"
     );
     let rotated = RotateSource::new(w.deps.clone())
-        .handle(&c, id, &meta())
+        .handle(&c, id, None, &meta())
         .await
         .unwrap();
     assert_ne!(rotated.webhook_url.expose(), url);
@@ -338,7 +396,7 @@ async fn sources_lifecycle_and_one_time_url() {
     );
     assert!(matches!(
         CreateSource::new(w.deps.clone())
-            .handle(&c, "MAIN", SourceType::TradingView, &meta())
+            .handle(&c, "MAIN", SourceType::TradingView, None, &meta())
             .await,
         Err(IdentityError::SourceNameTaken)
     ));
@@ -364,7 +422,7 @@ async fn sources_lifecycle_and_one_time_url() {
     ));
     assert!(matches!(
         RotateSource::new(w.deps.clone())
-            .handle(&c, id, &meta())
+            .handle(&c, id, None, &meta())
             .await,
         Err(IdentityError::SourceRevoked)
     ));
@@ -385,18 +443,18 @@ async fn sources_lifecycle_and_one_time_url() {
     );
     // The revoked name is free again among active sources.
     CreateSource::new(w.deps.clone())
-        .handle(&c, "Main", SourceType::TradingView, &meta())
+        .handle(&c, "Main", SourceType::TradingView, None, &meta())
         .await
         .unwrap();
 }
 
 #[tokio::test]
 async fn sources_of_another_user_are_not_found() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (_, _, a) = signed_in(&w, "a@example.com", false).await;
     let (_, _, b) = signed_in(&w, "b@example.com", false).await;
     let id = CreateSource::new(w.deps.clone())
-        .handle(&a, "Main", SourceType::TradingView, &meta())
+        .handle(&a, "Main", SourceType::TradingView, None, &meta())
         .await
         .unwrap()
         .source
@@ -410,7 +468,7 @@ async fn sources_of_another_user_are_not_found() {
     ));
     assert!(matches!(
         RotateSource::new(w.deps.clone())
-            .handle(&b, id, &meta())
+            .handle(&b, id, None, &meta())
             .await,
         Err(IdentityError::NotFound)
     ));
@@ -435,7 +493,7 @@ async fn sources_of_another_user_are_not_found() {
     );
     // Same name for another user is fine.
     CreateSource::new(w.deps.clone())
-        .handle(&b, "Main", SourceType::TradingView, &meta())
+        .handle(&b, "Main", SourceType::TradingView, None, &meta())
         .await
         .unwrap();
 }
@@ -444,10 +502,10 @@ async fn sources_of_another_user_are_not_found() {
 
 #[tokio::test]
 async fn pairing_flow_single_use_repairing_and_unpair() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (user, _, c) = signed_in(&w, "ana@example.com", false).await;
     let created = CreateConnection::new(w.deps.clone())
-        .handle(&c, "Desk A", &meta())
+        .handle(&c, "Desk A", None, &meta())
         .await
         .unwrap();
     assert_eq!(created.connection.status, ConnectionStatus::AwaitingPairing);
@@ -486,7 +544,7 @@ async fn pairing_flow_single_use_repairing_and_unpair() {
 
     // Re-pairing: old instance keeps working until the new code is used.
     let again = NewPairingCode::new(w.deps.clone())
-        .handle(&c, id, &meta())
+        .handle(&c, id, None, &meta())
         .await
         .unwrap();
     let listed = ListConnections::new(w.deps.clone())
@@ -498,7 +556,7 @@ async fn pairing_flow_single_use_repairing_and_unpair() {
     pair.handle(pair_cmd(again.pairing_code.expose()))
         .await
         .unwrap();
-    let st = w.store.state.lock().unwrap().devices.clone();
+    let st = w.store.state.lock().unwrap().device_tokens.clone();
     assert_eq!(
         st.iter().filter(|d| !d.revoked).count(),
         1,
@@ -515,23 +573,31 @@ async fn pairing_flow_single_use_repairing_and_unpair() {
     );
     let unpair = UnpairConnection::new(w.deps.clone());
     assert!(matches!(
-        unpair.handle(&c, id, false, &meta()).await,
+        unpair.handle(&c, id, true, None, &meta()).await,
+        Err(IdentityError::StepUpRequired)
+    ));
+    let p = proof(&w, &c, StepUpAction::ConnectionUnpair, Some(id.as_uuid())).await;
+    assert!(matches!(
+        unpair.handle(&c, id, false, Some(&p), &meta()).await,
         Err(IdentityError::OpenPositionsNotAcknowledged)
     ));
-    unpair.handle(&c, id, true, &meta()).await.unwrap();
-    unpair.handle(&c, id, true, &meta()).await.unwrap();
+    unpair
+        .handle(&c, id, true, Some(&p), &meta())
+        .await
+        .unwrap();
+    unpair.handle(&c, id, true, None, &meta()).await.unwrap();
     assert!(
         w.store
             .state
             .lock()
             .unwrap()
-            .devices
+            .device_tokens
             .iter()
             .all(|d| d.revoked)
     );
     assert!(matches!(
         NewPairingCode::new(w.deps.clone())
-            .handle(&c, id, &meta())
+            .handle(&c, id, None, &meta())
             .await,
         Err(IdentityError::ConnectionUnpaired)
     ));
@@ -543,22 +609,22 @@ async fn pairing_flow_single_use_repairing_and_unpair() {
     ));
     // The unpaired name is free again.
     CreateConnection::new(w.deps.clone())
-        .handle(&c, "desk a", &meta())
+        .handle(&c, "desk a", None, &meta())
         .await
         .unwrap();
 }
 
 #[tokio::test]
 async fn superseded_and_expired_codes_are_one_invalid_code() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (_, _, c) = signed_in(&w, "ana@example.com", false).await;
     let created = CreateConnection::new(w.deps.clone())
-        .handle(&c, "Desk A", &meta())
+        .handle(&c, "Desk A", None, &meta())
         .await
         .unwrap();
     let id = created.connection.connection.id;
     let newer = NewPairingCode::new(w.deps.clone())
-        .handle(&c, id, &meta())
+        .handle(&c, id, None, &meta())
         .await
         .unwrap();
     let superseded = w.store.committed().pop().unwrap().events;
@@ -607,11 +673,11 @@ async fn pairing_throttle_and_version_gate() {
 
 #[tokio::test]
 async fn connections_of_another_user_are_not_found() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (_, _, a) = signed_in(&w, "a@example.com", false).await;
     let (_, _, b) = signed_in(&w, "b@example.com", false).await;
     let id = CreateConnection::new(w.deps.clone())
-        .handle(&a, "Desk", &meta())
+        .handle(&a, "Desk", None, &meta())
         .await
         .unwrap()
         .connection
@@ -625,19 +691,19 @@ async fn connections_of_another_user_are_not_found() {
     ));
     assert!(matches!(
         NewPairingCode::new(w.deps.clone())
-            .handle(&b, id, &meta())
+            .handle(&b, id, None, &meta())
             .await,
         Err(IdentityError::NotFound)
     ));
     assert!(matches!(
         UnpairConnection::new(w.deps.clone())
-            .handle(&b, id, true, &meta())
+            .handle(&b, id, true, None, &meta())
             .await,
         Err(IdentityError::NotFound)
     ));
     assert!(matches!(
         UnpairConnection::new(w.deps.clone())
-            .handle(&b, ConnectionId::new_v7(), true, &meta())
+            .handle(&b, ConnectionId::new_v7(), true, None, &meta())
             .await,
         Err(IdentityError::NotFound)
     ));
@@ -652,10 +718,10 @@ async fn connections_of_another_user_are_not_found() {
 
 #[tokio::test]
 async fn startup_reset_disconnects_live_connections_with_audit_per_user() {
-    let w = World::new();
+    let w = World::with_settings(false);
     let (user, _, c) = signed_in(&w, "ana@example.com", false).await;
     let created = CreateConnection::new(w.deps.clone())
-        .handle(&c, "Desk", &meta())
+        .handle(&c, "Desk", None, &meta())
         .await
         .unwrap();
     PairAdapter::new(w.deps.clone())
@@ -706,7 +772,7 @@ async fn profile_update_validates_time_zone() {
         (me.locale, me.time_zone.as_str()),
         (Locale::En, "Europe/Lisbon")
     );
-    let sec = GetMySecurity::new().handle(&c);
+    let sec = GetMySecurity::new(w.deps.clone()).handle(&c).await.unwrap();
     assert_eq!(
         (sec.session.idle_timeout_s, sec.session.absolute_timeout_s),
         (43_200, 86_400)

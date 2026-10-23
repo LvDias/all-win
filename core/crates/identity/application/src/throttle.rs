@@ -32,7 +32,9 @@ pub trait CodeThrottle: Send + Sync {
 pub enum PairingDecision {
     Allow,
     /// `pairing.rate_limited`.
-    RateLimited { retry_after: Duration },
+    RateLimited {
+        retry_after: Duration,
+    },
 }
 
 #[async_trait]

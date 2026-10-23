@@ -14,6 +14,7 @@ name = "allwin-core"
 path = "src/main.rs"
 
 [dependencies]
+access = { workspace = true, features = ["axum"] }
 adapter-tradingview.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
@@ -24,6 +25,9 @@ base64.workspace = true
 chrono.workspace = true
 catalog-application.workspace = true
 catalog-infra.workspace = true
+identity-application.workspace = true
+identity-enterprise.workspace = true
+identity-infra.workspace = true
 rand.workspace = true
 routing-application.workspace = true
 routing-infra.workspace = true

@@ -31,7 +31,11 @@ impl StartSignup {
         Self { deps }
     }
 
-    pub async fn handle(&self, token: &str, meta: &RequestMeta) -> Result<ChallengeIssued, IdentityError> {
+    pub async fn handle(
+        &self,
+        token: &str,
+        meta: &RequestMeta,
+    ) -> Result<ChallengeIssued, IdentityError> {
         let deps = &self.deps;
         let now = deps.clock.now();
         check_public_throttle(deps, meta.ip, now).await?;
@@ -64,7 +68,14 @@ impl StartSignup {
             suppressed: false,
             ip: Some(meta.ip),
         });
-        let challenge = codes::seal(deps, code_id, Purpose::Signup, &ident, DeviceClass::Unknown, now);
+        let challenge = codes::seal(
+            deps,
+            code_id,
+            Purpose::Signup,
+            &ident,
+            DeviceClass::Unknown,
+            now,
+        );
         Ok(codes::issued(challenge, now))
     }
 }

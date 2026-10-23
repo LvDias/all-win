@@ -125,7 +125,9 @@ impl Destination {
     /// Rebuilds a stored destination of a known channel.
     pub fn from_stored(channel: Channel, normalized: String) -> Self {
         match channel {
-            Channel::Email => Self::Email(EmailAddress::from_stored(normalized.clone(), normalized)),
+            Channel::Email => {
+                Self::Email(EmailAddress::from_stored(normalized.clone(), normalized))
+            }
             Channel::Whatsapp => Self::Whatsapp(PhoneNumber::from_stored(normalized)),
         }
     }
@@ -144,10 +146,18 @@ mod tests {
     #[test]
     fn phone_numbers_are_e164() {
         assert_eq!(
-            PhoneNumber::parse(" +55 (11) 98765-4321 ").unwrap().as_str(),
+            PhoneNumber::parse(" +55 (11) 98765-4321 ")
+                .unwrap()
+                .as_str(),
             "+5511987654321"
         );
-        for bad in ["5511987654321", "+0511987654", "+55", "+55abc12345678", "+1234567890123456"] {
+        for bad in [
+            "5511987654321",
+            "+0511987654",
+            "+55",
+            "+55abc12345678",
+            "+1234567890123456",
+        ] {
             assert!(PhoneNumber::parse(bad).is_none(), "{bad}");
         }
     }

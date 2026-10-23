@@ -13,16 +13,18 @@ workspace = true
 [dependencies]
 identity-application.workspace = true
 identity-enterprise.workspace = true
+access = { workspace = true, features = ["axum"] }
 shared-kernel.workspace = true
 async-trait.workspace = true
 chrono = { workspace = true, features = ["clock", "std"] }
 uuid = { workspace = true, features = ["v7"] }
-tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros", "net", "io-util"] }
 tracing.workspace = true
 sha2.workspace = true
 hmac.workspace = true
 rand.workspace = true
 subtle.workspace = true
+base64.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 axum.workspace = true
@@ -32,6 +34,8 @@ contracts.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros"] }
 
 [dev-dependencies]
+jsonschema.workspace = true
+yaml_serde.workspace = true
 tower = { workspace = true, features = ["util"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros"] }

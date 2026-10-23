@@ -8,8 +8,8 @@ use identity_enterprise::tokens::{KeyId, SecretBytes, TokenHash};
 use shared_kernel::Clock;
 
 use crate::ports::{
-    AccountTargets, AdapterCompatibility, ConnectionPresence, DeliveryQueue, IdentityStore, Mailer, RandomSource,
-    SecretHasher, SecurityAlerts, SourceActivity, SourceKeyListener,
+    AccountTargets, AdapterCompatibility, ConnectionPresence, DeliveryQueue, IdentityStore, Mailer,
+    RandomSource, SecretHasher, SecurityAlerts, SourceActivity, SourceKeyListener,
 };
 use crate::throttle::{CodeThrottle, PairingThrottle, PublicEndpointThrottle};
 

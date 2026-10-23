@@ -9,7 +9,9 @@ use identity_enterprise::channel_change::ChannelChange;
 use identity_enterprise::codes::NormalizedCode;
 use identity_enterprise::connection::{AdapterInfo, Connection, PairingCode};
 use identity_enterprise::device::KnownDevice;
-use identity_enterprise::ids::{ChannelChangeId, CodeId, ConnectionId, DeviceId, InvitationId, SourceId};
+use identity_enterprise::ids::{
+    ChannelChangeId, CodeId, ConnectionId, DeviceId, InvitationId, SourceId,
+};
 use identity_enterprise::invitation::Invitation;
 use identity_enterprise::otp::{ChallengeClaims, DeviceClass, OneTimeCode, Purpose, SignupCode};
 use identity_enterprise::profile::Locale;
@@ -101,7 +103,8 @@ pub struct WindowCount {
 #[async_trait]
 pub trait IdentityStore: Send + Sync {
     /// `find_user_for_login`; also runs, for every identifier, the statements a known one runs.
-    async fn login_target(&self, email_normalized: &str) -> Result<Option<LoginTarget>, StoreError>;
+    async fn login_target(&self, email_normalized: &str)
+    -> Result<Option<LoginTarget>, StoreError>;
     async fn user(&self, user_id: UserId) -> Result<Option<User>, StoreError>;
     /// Every user; answered only when `admin` is an active platform admin (RLS scope).
     async fn users(&self, admin: UserId) -> Result<Vec<UserSummary>, StoreError>;
@@ -180,8 +183,10 @@ pub trait IdentityStore: Send + Sync {
         change_id: ChannelChangeId,
     ) -> Result<Option<ChannelChange>, StoreError>;
     /// The user's change in `awaiting_codes` or `on_hold`, if any.
-    async fn open_channel_change(&self, user_id: UserId)
-    -> Result<Option<ChannelChange>, StoreError>;
+    async fn open_channel_change(
+        &self,
+        user_id: UserId,
+    ) -> Result<Option<ChannelChange>, StoreError>;
     /// The user's most recent change, whatever its status.
     async fn latest_channel_change(
         &self,
@@ -261,8 +266,12 @@ pub trait SecretHasher: Send + Sync {
     /// `HMAC(k_code, challenge_id ‖ code)` under the current pepper.
     fn otp_hmac(&self, code_id: CodeId, code: &NormalizedCode) -> CodeHmac;
     /// The same under a given pepper version (verification uses the row's version).
-    fn otp_hmac_with(&self, code_id: CodeId, code: &NormalizedCode, version: i16)
-    -> Option<CodeHmac>;
+    fn otp_hmac_with(
+        &self,
+        code_id: CodeId,
+        code: &NormalizedCode,
+        version: i16,
+    ) -> Option<CodeHmac>;
     /// `HMAC(k_ident, normalized identifier)` under the current pepper (send limits, §3).
     fn identifier_hmac(&self, normalized_identifier: &str) -> CodeHmac;
     /// Seals challenge claims with `k_challenge`; the result is URL-safe (`ChallengeId` pattern).

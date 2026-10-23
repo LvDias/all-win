@@ -64,6 +64,10 @@ async fn serve() -> anyhow::Result<()> {
         );
     }
     let app = App::connect(&config).await?;
+    // Startup reset of live connections runs before the listener accepts adapters.
+    if let Some(identity) = app.identity {
+        identity.start().await?;
+    }
     tokio::spawn(app.dispatcher.run());
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await

@@ -293,7 +293,12 @@ pub fn validate(
 pub fn pattern_matches(pattern: &str, s: &str) -> Option<bool> {
     let b = s.as_bytes();
     Some(match pattern {
-        "^[0-9]{6}$" => b.len() == 6 && b.iter().all(u8::is_ascii_digit),
+        // ChallengeId (sealed challenge token).
+        "^[A-Za-z0-9_-]{16,256}$" => {
+            (16..=256).contains(&b.len())
+                && b.iter()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+        }
         "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" => is_lower_uuid(s),
         "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$" => {
             let mut parts = s.split('/');
@@ -401,7 +406,7 @@ mod tests {
     #[test]
     fn refs_enums_and_patterns() {
         let components: Map<String, Value> = serde_json::from_value(json!({
-            "Code": { "type": "string", "pattern": "^[0-9]{6}$" }
+            "Code": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,256}$" }
         }))
         .unwrap();
         let schema = json!({ "type": "object", "properties": {
@@ -410,14 +415,14 @@ mod tests {
         assert_eq!(
             validate(
                 &schema,
-                &json!({"code": "123456", "build": "release"}),
+                &json!({"code": "AbcdEfgh_1234-xyz", "build": "release"}),
                 "",
                 &components
             ),
             Ok(())
         );
         assert_eq!(
-            validate(&schema, &json!({"code": "12345a"}), "", &components),
+            validate(&schema, &json!({"code": "short"}), "", &components),
             Err(Violation::At("/code".into()))
         );
         assert_eq!(

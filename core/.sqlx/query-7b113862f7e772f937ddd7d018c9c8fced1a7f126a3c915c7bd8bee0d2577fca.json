@@ -1,0 +1,148 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, email, email_normalized, email_verified_at, whatsapp_e164, locale, time_zone,\n                      is_platform_admin, status, created_at, channel_changed_at\n                 FROM identity.app_user WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "email_normalized",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "email_normalized"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "email_verified_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "email_verified_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "whatsapp_e164",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "whatsapp_e164"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "locale",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "locale"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "time_zone",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "time_zone"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "is_platform_admin",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "is_platform_admin"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "channel_changed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.app_user",
+            "name": "channel_changed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "7b113862f7e772f937ddd7d018c9c8fced1a7f126a3c915c7bd8bee0d2577fca"
+}

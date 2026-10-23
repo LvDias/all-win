@@ -1,9 +1,11 @@
 //! `createInvitation`, `revokeInvitation`, `listInvitations` (admin) and the public
 //! `lookupInvitation` (S3 AC-1, Q6/Q19).
 
+use identity_enterprise::channel::mask_email;
 use identity_enterprise::email::EmailAddress;
 use identity_enterprise::ids::InvitationId;
 use identity_enterprise::invitation::{Invitation, InvitationStatus};
+use identity_enterprise::otp::StepUpAction;
 use identity_enterprise::profile::Locale;
 
 use crate::auth::AuthContext;
@@ -12,12 +14,14 @@ use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
 use crate::ports::{StoreConflict, StoreError};
 use crate::usecases::common::{admin_audit, check_public_throttle, fragment_link};
+use crate::usecases::step_up::{self, StepUpProof};
 use crate::views::{CreatedInvitation, InvitationLookup, InvitationView};
 
 pub struct CreateInvitationCommand {
     pub email: String,
     pub locale: Locale,
     pub send_email: bool,
+    pub step_up: Option<StepUpProof>,
     pub meta: RequestMeta,
 }
 
@@ -42,6 +46,15 @@ impl CreateInvitation {
         let now = deps.clock.now();
         let email = EmailAddress::parse(&cmd.email)
             .map_err(|_| IdentityError::InvalidRequest { pointer: "/email" })?;
+        let grant = step_up::authorize(
+            deps,
+            ctx,
+            StepUpAction::AdminInvitationCreate,
+            None,
+            cmd.step_up.as_ref(),
+            &cmd.meta,
+        )
+        .await?;
         if deps
             .store
             .email_registered(ctx.user.id, email.normalized())
@@ -49,7 +62,7 @@ impl CreateInvitation {
         {
             return Err(IdentityError::InvitationEmailTaken);
         }
-        let mut changes = ChangeSet::new(ctx.user.id);
+        let mut changes = step_up::with_grant(ctx.user.id, grant);
         if let Some(open) = deps.store.open_invitation_for(email.normalized()).await? {
             if open.status(now) == InvitationStatus::Pending {
                 return Err(IdentityError::InvitationEmailTaken);
@@ -67,19 +80,10 @@ impl CreateInvitation {
             ctx.user.id,
             now,
         );
-        let changes = changes
-            .write(Write::InsertInvitation {
-                invitation: invitation.clone(),
-                token_hash: token.hash,
-            })
-            .audit(admin_audit(
-                ctx.user.id,
-                AuditAction::InvitationIssued {
-                    invitation_id: invitation.id,
-                },
-                now,
-                Some(cmd.meta.ip),
-            ));
+        let changes = changes.write(Write::InsertInvitation {
+            invitation: invitation.clone(),
+            token_hash: token.hash,
+        });
         match deps.store.commit(changes).await {
             Ok(()) => {}
             Err(StoreError::Conflict(StoreConflict::EmailTaken)) => {
@@ -94,6 +98,19 @@ impl CreateInvitation {
                 .send_invitation(email.as_entered(), cmd.locale, &invite_url)
                 .await
                 .is_ok();
+        // Audited once the e-mail outcome is known (the admin trail records `email_sent`).
+        deps.store
+            .commit(ChangeSet::new(ctx.user.id).audit(admin_audit(
+                ctx.user.id,
+                AuditAction::InvitationIssued {
+                    invitation_id: invitation.id,
+                    masked_email: mask_email(&email),
+                    email_sent,
+                },
+                now,
+                Some(cmd.meta.ip),
+            )))
+            .await?;
         Ok(CreatedInvitation {
             invitation: InvitationView {
                 status: invitation.status(now),
@@ -176,7 +193,10 @@ impl ListInvitations {
 
 /// Resolves a presented invitation token to a pending invitation; every other case is the
 /// single `auth.invitation_invalid`.
-pub(crate) async fn pending_invitation(deps: &IdentityDeps, token: &str) -> Result<Invitation, IdentityError> {
+pub(crate) async fn pending_invitation(
+    deps: &IdentityDeps,
+    token: &str,
+) -> Result<Invitation, IdentityError> {
     let now = deps.clock.now();
     let Some(hash) = deps.hash_presented_token(token) else {
         return Err(IdentityError::InvitationInvalid);

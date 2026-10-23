@@ -136,3 +136,42 @@ impl FromRequestParts<Arc<IdentityHttpState>> for StreamSession {
         Ok(Self(ctx, cookie))
     }
 }
+
+/// `security: [{ session: [] }, {}]`: a session when a valid one comes with the request, none
+/// otherwise (never 401). `Origin` is checked either way.
+pub struct OptionalSession(pub Option<AuthContext>);
+
+impl FromRequestParts<Arc<IdentityHttpState>> for OptionalSession {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        s: &Arc<IdentityHttpState>,
+    ) -> Result<Self, Self::Rejection> {
+        check_origin(&parts.method, &parts.headers, &s.public_origin)
+            .map_err(IntoResponse::into_response)?;
+        let cookie = super::cookie::read(&parts.headers);
+        let ctx = match cookie {
+            Some(c) => AuthenticateSession::new(s.deps.clone())
+                .handle(Some(&c), Activity::UserInitiated)
+                .await
+                .ok(),
+            None => None,
+        };
+        Ok(Self(ctx))
+    }
+}
+
+/// The raw `__Host-aw_device` value, if any (device recognition at sign-in).
+pub struct DeviceCookieValue(pub Option<String>);
+
+impl FromRequestParts<Arc<IdentityHttpState>> for DeviceCookieValue {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _s: &Arc<IdentityHttpState>,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(Self(super::cookie::read_device(&parts.headers)))
+    }
+}

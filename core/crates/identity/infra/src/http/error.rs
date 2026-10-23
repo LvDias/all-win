@@ -18,18 +18,27 @@ impl From<IdentityError> for ApiError {
 pub fn status_of(e: &IdentityError) -> StatusCode {
     use IdentityError as E;
     match e {
-        E::Unauthenticated | E::InvalidCode => StatusCode::UNAUTHORIZED,
-        E::Forbidden | E::StepUpRequired => StatusCode::FORBIDDEN,
+        E::Unauthenticated => StatusCode::UNAUTHORIZED,
+        // 401 only on the unauthenticated verify endpoints (they pass it explicitly); for a
+        // signed-in caller a wrong code is 403 (`StepUpFailed`, `CodeInvalidOrOrigin`).
+        E::Forbidden | E::StepUpRequired | E::CodeInvalid => StatusCode::FORBIDDEN,
         E::RateLimited { .. } | E::PairingRateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
         E::InvitationInvalid | E::NotFound => StatusCode::NOT_FOUND,
-        E::InvalidTimeZone => StatusCode::UNPROCESSABLE_ENTITY,
+        E::InvalidTimeZone
+        | E::InvalidChannelValue
+        | E::ChannelUnchanged
+        | E::ChannelUnavailable
+        | E::StepUpChannelNotAllowed => StatusCode::UNPROCESSABLE_ENTITY,
         E::InvalidRequest { .. } | E::PairingInvalidCode => StatusCode::BAD_REQUEST,
         E::InvitationEmailTaken
         | E::SourceNameTaken
         | E::SourceRevoked
         | E::ConnectionNameTaken
         | E::ConnectionUnpaired
-        | E::OpenPositionsNotAcknowledged => StatusCode::CONFLICT,
+        | E::OpenPositionsNotAcknowledged
+        | E::ChannelChangeTooSoon
+        | E::ChannelChangePending
+        | E::ChannelChangeClosed => StatusCode::CONFLICT,
         E::AdapterVersionUnsupported => StatusCode::UPGRADE_REQUIRED,
         E::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -41,7 +50,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// Same body, explicit status (e.g. `confirmTotpSetup` answers `auth.invalid_code` with 422).
+/// Same body, explicit status (e.g. `verifyLoginCode` answers `auth.code_invalid` with 401).
 pub fn respond(e: &IdentityError, status: StatusCode) -> Response {
     if let IdentityError::Internal(detail) = e {
         tracing::error!(error = %detail, "identity request failed");
