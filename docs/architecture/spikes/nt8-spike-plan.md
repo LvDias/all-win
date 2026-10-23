@@ -56,6 +56,8 @@ Retire the plugin risks before V1-S2 is implemented, and leave a **repeatable bu
 | K11 | **Bracket integrity (new):** close NT8 with a working bracket on Sim101, move price through the stop with the Simulated Data Feed on restart, and observe the orphan leg, `Unknown` states and reconnect detection | new **E11** | ADR-0004 §6.1 cases reproduced, or documented as not reproducible on Sim |
 | K12 | Durable local store (outbox, processed `command_id`s, cached limits) survives a crash; DPAPI token storage | new **E12** | Kill NT8 mid-command → restart → no duplicate execution |
 | K13 | Latency: Core send → submit → fill report on Sim101, plus the Core relay round trip (A4) | new **E13** | p50/p95 table |
+| K14 | **Commissions (U20, net P&L):**<br>• `Execution.Commission` with and without a commission template on Sim101 and on Playback;<br>• whether it is filled at the execution event or later;<br>• what `AccountItem.Commission`, `Fee`, `RealizedProfitLoss` and `GrossRealizedProfitLoss` contain (net or gross; fees included?) | new **E14** | Table per connection type. If commission arrives late, measure the delay and the size: the protocol reports a late commission as absent and the floor applies (ADR-0004 §7). Note the effect (QA Security I1): if the real commission exceeds the floor, the day's net realized P&L is understated by the difference; the drawdown stays conservative. If the difference is relevant, the Core reconciles the day with the platform balance at the close |
+| K15 | Executions after a restart (also E4): are the day's earlier executions readable again, so the plugin can rebuild the day's commission adjustment? | **E4** (extended) | Documented; if not readable, the plugin keeps the day's adjustment in its journal (ADR-0004 §7) |
 
 ## 4. Out of scope
 
@@ -220,6 +222,6 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
 
 1. **Day 1:** T-checks (§6.5), then E1 (access and start), E2 (hot loop), E3 (packaging), K12 store basics.
 2. **Day 2:** E4 (orders, events, names, guard), E9 (socket soak), E11 (bracket integrity), E12 (crash).
-3. **Day 3:** E5 (Playback clock), E8 (block timing), E13 (latency), E10 if safe; then the report.
+3. **Day 3:** E5 (Playback clock), E8 (block timing), E13 (latency), E14 (commissions), E10 if safe; then the report.
 
 **Exit gate:** the report is reviewed by the Architect and QA; ADR deltas, if any, are issued; V1-S2 starts.

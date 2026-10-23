@@ -72,6 +72,7 @@ For each target account selected by routing, the Core runs the steps below in or
 | Account flagged out of sync (Q14: stops until the user clears it) | position-increasing actions (`buy`/`sell` with `open`, `reverse`, `modify` of an entry) | `routing.out_of_sync` |
 | Risk block (account reached a limit; also with enforcement off, Q2) | position-increasing actions | `routing.risk_blocked` |
 | Command TTL would be exceeded before delivery | all actions | `routing.expired` (see ADR-0004) |
+| Account limits not yet derived for the current input version (no limits row, or `derived_from_version` < `limits_version`; ADR-0006 §3.3) | position-increasing actions; an action that cannot be classified counts as one | `routing.limits_pending` (audited, no alert) |
 
 > **Decided (P1):** risk and out-of-sync gates do **not** block exits (`close`, `reduce`, `cancel`, `modify` of a protective order). Refusing an exit while at a limit or out of sync would increase exposure, and a flatten is safe regardless of the Core's view of the position. Paused/disabled accounts block everything, because that is an explicit user choice.
 
