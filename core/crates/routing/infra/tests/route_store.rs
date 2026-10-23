@@ -186,7 +186,9 @@ fn route(user: UserId, source: SourceId, account: AccountId) -> (RouteRecord, Ro
     let c = RouteChange {
         route_id: r.id,
         source_id: source,
+        source_name: "TV main".into(),
         account_id: account,
+        account_name: "Apex 50k".into(),
         action: ChangeAction::Created,
         cause: ChangeCause::User,
         previous: None,
@@ -309,7 +311,7 @@ async fn route_lifecycle_with_outbox_events_and_isolation() {
     let ev = events(&owner, a).await;
     assert_eq!(
         ev.iter()
-            .map(|(t, p)| (t.as_str(), p["action"].as_str().unwrap()))
+            .map(|(t, p)| (t.as_str(), p["details"]["action"].as_str().unwrap()))
             .collect::<Vec<_>>(),
         [
             ("routing.subscription_changed", "created"),
@@ -318,7 +320,7 @@ async fn route_lifecycle_with_outbox_events_and_isolation() {
         ]
     );
     assert_eq!(
-        ev[0].1["new"]["signal_types"],
+        ev[0].1["details"]["signal_types"],
         serde_json::json!(["trigger", "nq_trigger"])
     );
     assert_eq!(events(&owner, b).await.len(), 1);

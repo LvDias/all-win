@@ -78,7 +78,10 @@ pub enum ChangeCause {
 pub struct RouteChange {
     pub route_id: RouteId,
     pub source_id: SourceId,
+    /// Snapshots for the audit entry (required with the ids).
+    pub source_name: String,
     pub account_id: AccountId,
+    pub account_name: String,
     pub action: ChangeAction,
     pub cause: ChangeCause,
     pub previous: Option<(SignalTypes, bool)>,
@@ -89,31 +92,34 @@ pub struct RouteChange {
 impl RouteChange {
     pub const EVENT_TYPE: &'static str = "routing.subscription_changed";
 
-    /// Outbox payload (audit shape, s7-routing.md §4).
+    /// Outbox payload: the audit envelope `{actor, details, refs}` with `details` exactly
+    /// `DetailsSubscriptionChanged` (s10 §5: actor `user` for the user's change, `system` for
+    /// the Q67 b switch-off).
     pub fn payload(&self) -> Value {
-        let side = |v: &Option<(SignalTypes, bool)>| {
-            v.as_ref().map(|(types, enabled)| {
-                json!({
-                    "signal_types": types.iter().map(RouteSignalType::as_str).collect::<Vec<_>>(),
-                    "is_enabled": enabled,
-                })
-            })
+        let (actor, cause) = match self.cause {
+            ChangeCause::User => ("user", "user"),
+            ChangeCause::AccountIneligible => ("system", "account_ineligible"),
         };
-        let mut payload = json!({
-            "kind": Self::EVENT_TYPE,
-            "route_id": self.route_id,
-            "source_id": self.source_id,
-            "account_id": self.account_id,
-            "action": self.action.as_str(),
-            "previous": side(&self.previous),
-            "new": side(&self.new),
-        });
-        if self.cause == ChangeCause::AccountIneligible
-            && let Some(map) = payload.as_object_mut()
-        {
-            map.insert("cause".into(), json!("account_ineligible"));
+        let types = |t: &SignalTypes| t.iter().map(RouteSignalType::as_str).collect::<Vec<_>>();
+        let mut details = serde_json::Map::new();
+        details.insert("action".into(), json!(self.action.as_str()));
+        details.insert("route_id".into(), json!(self.route_id));
+        details.insert("source_id".into(), json!(self.source_id));
+        details.insert("source_name".into(), json!(self.source_name));
+        if let Some((t, enabled)) = &self.previous {
+            details.insert("previous_signal_types".into(), json!(types(t)));
+            details.insert("previous_is_enabled".into(), json!(enabled));
         }
-        payload
+        if let Some((t, enabled)) = &self.new {
+            details.insert("signal_types".into(), json!(types(t)));
+            details.insert("is_enabled".into(), json!(enabled));
+        }
+        details.insert("cause".into(), json!(cause));
+        json!({
+            "actor": actor,
+            "details": details,
+            "refs": { "account_id": self.account_id, "account_name": self.account_name },
+        })
     }
 }
 
@@ -190,10 +196,12 @@ pub trait AccountDirectory: Send + Sync {
     async fn accounts(&self, user: UserId) -> Result<Vec<AccountFacts>, PortError>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceFacts {
     pub revoked: bool,
     pub automated: bool,
+    /// The user's name for the source (audit snapshot).
+    pub name: String,
 }
 
 #[async_trait]
@@ -382,7 +390,7 @@ impl RoutingDeps {
 }
 
 impl FactBook {
-    fn facts(&self, account: &AccountFacts, source: SourceFacts) -> RouteFacts {
+    fn facts(&self, account: &AccountFacts, source: &SourceFacts) -> RouteFacts {
         let gates = self.gates.get(&account.id).copied().unwrap_or_default();
         RouteFacts {
             source_revoked: source.revoked,
@@ -430,10 +438,10 @@ impl ListRoutes {
         let mut views = Vec::with_capacity(routes.len());
         for route in routes {
             let source = match sources.get(&route.source_id) {
-                Some(s) => *s,
+                Some(s) => s.clone(),
                 None => {
                     let s = self.deps.sources.source(user, route.source_id).await?;
-                    sources.insert(route.source_id, s);
+                    sources.insert(route.source_id, s.clone());
                     s
                 }
             };
@@ -443,7 +451,7 @@ impl ListRoutes {
             else {
                 continue;
             };
-            let effective = book.facts(account, source).status_of(route.is_enabled);
+            let effective = book.facts(account, &source).status_of(route.is_enabled);
             views.push(RouteView {
                 route,
                 effective,
@@ -508,7 +516,7 @@ impl ListRouteCandidates {
                 manual_only.push((account.id, reason.clone()));
                 continue;
             }
-            let facts = book.facts(account, source);
+            let facts = book.facts(account, &source);
             candidates.push(Candidate {
                 account_id: account.id,
                 blocking_reasons: facts.blocking_reasons(),
@@ -553,7 +561,7 @@ impl CreateRoute {
             .accounts
             .get(&cmd.account_id)
             .ok_or(RouteError::AccountUnknown)?;
-        let facts = book.facts(account, source);
+        let facts = book.facts(account, &source);
         if cmd.is_enabled && facts.enable_needs_step_up() {
             step_up
                 .authorize(cmd.account_id)
@@ -587,7 +595,9 @@ impl CreateRoute {
         let change = RouteChange {
             route_id: route.id,
             source_id: route.source_id,
+            source_name: source.name.clone(),
             account_id: route.account_id,
+            account_name: account.display_name.clone(),
             action: ChangeAction::Created,
             cause: ChangeCause::User,
             previous: None,
@@ -640,7 +650,7 @@ impl UpdateRoute {
             .accounts
             .get(&current.account_id)
             .ok_or(RouteError::NotFound)?;
-        let facts = book.facts(account, source);
+        let facts = book.facts(account, &source);
         let switching_on = cmd.is_enabled && !current.is_enabled;
         if switching_on && facts.enable_needs_step_up() {
             step_up
@@ -670,7 +680,9 @@ impl UpdateRoute {
         let change = action.map(|action| RouteChange {
             route_id: id,
             source_id: current.source_id,
+            source_name: source.name.clone(),
             account_id: current.account_id,
+            account_name: account.display_name.clone(),
             action,
             cause: ChangeCause::User,
             previous: Some((current.signal_types.clone(), current.is_enabled)),
@@ -730,13 +742,24 @@ impl DeleteRoute {
             .await?
             .ok_or(RouteError::NotFound)?;
         let source = self.deps.sources.source(user, current.source_id).await?;
-        if source.is_none_or(|s| s.revoked) {
+        let Some(source) = source.filter(|s| !s.revoked) else {
             return Err(RouteError::SourceRevoked { on_create: false });
-        }
+        };
+        let account_name = self
+            .deps
+            .accounts
+            .accounts(user)
+            .await?
+            .into_iter()
+            .find(|a| a.id == current.account_id)
+            .map(|a| a.display_name)
+            .ok_or(RouteError::NotFound)?;
         let change = RouteChange {
             route_id: id,
             source_id: current.source_id,
+            source_name: source.name,
             account_id: current.account_id,
+            account_name,
             action: ChangeAction::Removed,
             cause: ChangeCause::User,
             previous: Some((current.signal_types, current.is_enabled)),
@@ -788,14 +811,16 @@ impl SwitchOffIneligibleRoutes {
             let Some(source) = self.deps.sources.source(user, route.source_id).await? else {
                 continue;
             };
-            if !book.facts(account, source).must_switch_off() {
+            if !book.facts(account, &source).must_switch_off() {
                 continue;
             }
             let now = self.deps.clock.now();
             let change = RouteChange {
                 route_id: route.id,
                 source_id: route.source_id,
+                source_name: source.name.clone(),
                 account_id,
+                account_name: account.display_name.clone(),
                 action: ChangeAction::Disabled,
                 cause: ChangeCause::AccountIneligible,
                 previous: Some((route.signal_types.clone(), true)),

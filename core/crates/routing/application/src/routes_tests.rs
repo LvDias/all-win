@@ -119,7 +119,7 @@ impl AccountDirectory for Directory {
 #[async_trait]
 impl SourceDirectory for Directory {
     async fn source(&self, user: UserId, id: SourceId) -> Result<Option<SourceFacts>, PortError> {
-        Ok(self.sources.lock().unwrap().get(&(user, id)).copied())
+        Ok(self.sources.lock().unwrap().get(&(user, id)).cloned())
     }
 }
 
@@ -193,6 +193,7 @@ fn world() -> World {
         SourceFacts {
             revoked: false,
             automated: true,
+            name: "TV main".into(),
         },
     );
     let clock = FixedClock(Utc.with_ymd_and_hms(2026, 10, 23, 12, 0, 0).unwrap());
@@ -225,11 +226,14 @@ impl World {
     }
 
     fn set_source(&self, revoked: bool, automated: bool) {
-        self.dir
-            .sources
-            .lock()
-            .unwrap()
-            .insert((self.user, self.source), SourceFacts { revoked, automated });
+        self.dir.sources.lock().unwrap().insert(
+            (self.user, self.source),
+            SourceFacts {
+                revoked,
+                automated,
+                name: "TV main".into(),
+            },
+        );
     }
 
     fn create_cmd(&self, enabled: bool) -> CreateRouteCommand {
@@ -275,9 +279,16 @@ async fn create_is_audited_and_returns_the_effective_status() {
     assert_eq!(v.route.row_version, 1);
     assert_eq!(w.actions(), [("created", ChangeCause::User)]);
     let payload = w.routes.changes.lock().unwrap()[0].payload();
-    assert_eq!(payload["kind"], "routing.subscription_changed");
-    assert_eq!(payload["new"]["signal_types"], json!(["trigger"]));
-    assert!(payload.get("cause").is_none());
+    assert_eq!(payload["actor"], "user");
+    let d = &payload["details"];
+    assert_eq!(d["action"], "created");
+    assert_eq!(d["source_name"], "TV main");
+    assert_eq!(d["signal_types"], json!(["trigger"]));
+    assert_eq!(d["is_enabled"], true);
+    assert_eq!(d["cause"], "user");
+    assert!(d.get("previous_signal_types").is_none());
+    assert!(d.get("account_id").is_none());
+    assert_eq!(payload["refs"]["account_name"], "Apex 50k");
 }
 
 #[tokio::test]
@@ -598,7 +609,11 @@ async fn ineligible_account_routes_are_switched_off_once_and_stay_off() {
     let changes = w.routes.changes.lock().unwrap();
     let last = changes.last().unwrap();
     assert_eq!(last.action, ChangeAction::Disabled);
-    assert_eq!(last.payload()["cause"], "account_ineligible");
+    let p = last.payload();
+    assert_eq!(p["actor"], "system");
+    assert_eq!(p["details"]["cause"], "account_ineligible");
+    assert_eq!(p["details"]["previous_is_enabled"], true);
+    assert_eq!(p["details"]["is_enabled"], false);
 }
 
 #[tokio::test]
