@@ -51,6 +51,41 @@
 - Waiting for the user: VPS Phase 2 (policy + tag, dev server join, Tailnet Lock, scripts); later 061300 (brought when due). Q75 (b) and Q76 (a) decided. 196a30a merge gated on latency explanation + QA PG tests in Docker.
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.
 
+## Team assignments (2026-10-23 ~22:40) — idle rule: nobody idle >15 min without a reason here
+
+| Agent | Now | Waiting reason (if any) |
+|---|---|---|
+| Forja (DevOps, Dev2) | qa-db hardening (Esmeril findings); integrate de98e86 to main | — |
+| Rebite (DevOps, Dev2, Sonnet, new) | routine queue: QA envs/worktrees (Agulha, Sonda), WIP commits (Mosaico, Lupa, Aquarela), Vitral commits on hash match | — |
+| Brasa | S3 core (critical path) | — |
+| Malha @ Dev3 | S5 core ready SHA; ReadAccounts::binding_of for S7 | — |
+| Torno | S6 core to ready SHA on 5.1.1 | — |
+| Ferro @ Dev3 | S7 decision use case; rebase on 4939133+196a30a+7872ca9 | Q75/Q76 code waits ADR-0003 r4 |
+| Elo @ Dev3 | plugin L-a/L-b delta, then protocol 1.3 | — |
+| Vitral | S3 web passwordless rebuild + findings | — |
+| Mosaico | S5 web: profile_size tie (5.0.0 fields) | — |
+| Esquadro @ Dev3 | ADR-0003 r4 (Pêndulo M-Q75) | user answer on Q75 flatten scope |
+| Compasso | HTTP 5.2.0 draft (freeze after r4) | — |
+| Lastro @ Dev3 | S5/S6 migrations review; 061300 brief | — |
+| Rumo @ Dev3 | Q81 recommendation; wave-2 diff 91358f8f24f471ca in review | — |
+| Aquarela | specs S8/S11/S13/S17 fixes (Esmeril lows); S16 + S5 next | S16/S5 wait Bisturi verdict on a37d36ba45e3 |
+| Lupa | dismissed 2026-10-23 after R4 + questions-to-firms.md (re-recruit for new research) | — |
+| Crivo @ Dev3 | Code Review 196a30a, ADR r4 | — |
+| Bisturi @ Dev3 | Code Review Rumo 91358f8f24f471ca | — |
+| Esmeril @ Dev3 (new) | Code Review Aquarela C§9; next qa-db re-review, HTTP 5.2.0 | — |
+| Vigia | QA Security 196a30a, ADR r4, C3/U13 re-checks | — |
+| Guarita @ Dev3 (new) | QA Security S5 web 2ab3173; qa-db 3c37f2b re-check | — |
+| Pêndulo | NT8 Windows checklist for untested items | — |
+| Sentinela | cargo PG tests on 196a30a; latency A/B with Pulso | — |
+| Pulso (SRE, new) | latency A/B judgement; ingress histogram + perf method proposal | — |
+| Prisma @ Dev3 | QA plans S5 core / S3 core | — |
+| Sonda @ Dev3 (new) | QA crate core/tests/qa + S7 engine tests | — |
+| Agulha (new, Sonnet) | QA tests core/tests/qa s3_identity.rs (S3 3f23c81) | — |
+| Lente @ Dev3 | QA plan S5 web; re-verify S3 web | — |
+| Traço @ Dev3 | not reconnected; specs split Aquarela / Nanquim | — |
+| Nanquim @ Dev3 (new, Sonnet) | specs S21/S22/S10/S15/plugin-panels (4fad5e69d5be in review); S18 next | S18 frozen inside a37d36ba45e3 until Bisturi verdict |
+| Grosa @ Dev3 (new) | Code Review S5 web 2ab3173 | — |
+
 ## Environment notes
 
 - Workspaces Dev1, Dev2, Dev3 share `/srv/www/allwin`, one Claude Max account each. **Dev1 is NOT to be used until Saturday 2026-10-24 04:00** (usage limit; user instruction 2026-10-23). Before recruiting in any workspace, confirm the account has limit (the new agent responds); a new agent blocked by a limit is moved to another account. If Dev2/Dev3 get overloaded, prioritize the critical path (S1, S2, S3) and let other work wait.
