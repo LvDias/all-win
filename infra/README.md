@@ -15,6 +15,8 @@ Log capture for QA: `scripts/dev-stack.sh logs caddy core` (container stdout; no
 
 - The Core port is never published (dev compose, E2E, production). The Core trusts the last `X-Forwarded-For` hop (`INGRESS_TRUST_FORWARDED_FOR=true`), so it must be reachable only through Caddy. A debug overlay that publishes it must set `INGRESS_TRUST_FORWARDED_FOR=false` and leave `tradingview_source_ranges` empty.
 - Caddy proxies only `/ingress*` (ingress-like paths) and `/api/*` (and `/adapter` when it exists) to the Core. `/metrics` and `/healthz` live on the same Core listener and must never be proxied or exposed publicly.
+- `/metrics` is never routed on the public edge (only reachable inside the compose network, e.g. `docker compose exec caddy wget -qO- http://core:<port>/metrics`).
+- Configuration review rejects (or at least raises an alert for) overly broad TradingView source ranges, for example `0.0.0.0/0` or `::/0` in `INGRESS_TRADINGVIEW_SOURCE_RANGES`: the list must be the published TradingView addresses only. The Core refuses to start with a non-empty list while `INGRESS_TRUST_FORWARDED_FOR=false`.
 - Caddy never records the request URI or the Referer; `log_credentials` stays off; `resp_headers>Location` is deleted from the logs.
 
 ## Gates to wire in `make check` / CI (no Makefile or CI exists yet)
