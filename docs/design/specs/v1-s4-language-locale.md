@@ -42,7 +42,7 @@ No flags (languages are not countries). Adding a locale later is a configuration
 | App: Settings → Preferences `/[locale]/settings/preferences` | `Select` "Idioma da interface" / "Interface language" + help text (below) | Canonical place; also holds Time zone (§4) and Theme (F§4) |
 
 ### Behavior
-1. The user picks a language. If signed in, the web calls `me.update_preferences { locale }` (**proposal for the contract**) and waits for success.
+1. The user picks a language. If signed in, the web calls `updateMe { locale }` and waits for success.
 2. On success: set the cookie, navigate to the same path with the new prefix (`router.replace`, query string and hash kept, scroll position kept when the page structure allows).
 3. While saving: the menu item shows a spinner; further picks are ignored.
 4. On failure (signed in): stay in the current language; toast (in the current language) "Não foi possível salvar o idioma. Tente de novo." + error code. Nothing changes.
@@ -117,6 +117,6 @@ The user never sees a key name (AC-4: "no silent fallback to the key name").
 
 | ID | Question | Owner | Spec default |
 |---|---|---|---|
-| — | `me.update_preferences` with `locale`, `time_zone` in the profile contract | Architect | Proposed |
+| — | `updateMe` with `locale`, `time_zone` in the profile contract | Architect | Published (HTTP 3.4.1) |
 | — | Live language update to the plugin (not in ADR-0004 v1) | Architect | Next connection; a future minor version may add it |
 | — | Production behavior for a missing key | Frontend / Architect | pt-BR text + error report |
