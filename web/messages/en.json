@@ -75,9 +75,21 @@
   "errors": {
     "unknown": "Unexpected error (code: {code})",
     "accounts": {
-      "opt_in_not_applicable": "This option does not apply to this account.",
+      "binding_open_position": "There is an open position. Close the position to change the linked account.",
+      "delete_open_position": "This account has an open position and cannot be deleted.",
+      "firm_platform_required": "Choose the firm account platform.",
+      "firm_platform_unknown": "This platform is not available for the preset.",
+      "idempotency_key_reused": "This submission was already used with different data. Reload the form.",
+      "lifecycle_transition_invalid": "This change is not allowed from the current state.",
+      "max_position_exceeds_preset": "The maximum for this account at the firm is lower than the value entered.",
+      "name_taken": "An account with this name already exists.",
+      "opt_in_not_applicable": "No choice is needed for this account.",
       "opt_in_required": "Choose whether this account accepts automated orders.",
-      "rule_version_changed": "The rules changed while you were reviewing. Review the current version and confirm again."
+      "platform_account_kind_not_allowed": "Live accounts are not allowed in this environment.",
+      "platform_account_taken": "This platform account is already linked to another account.",
+      "platform_account_unknown": "This platform account was not found on your connections.",
+      "preset_version_unknown": "This firm preset version is no longer available.",
+      "rule_version_changed": "The firm's rule was updated while you were filling this in. Read it again and choose."
     },
     "auth": {
       "forbidden": "You do not have access to this page.",
@@ -98,9 +110,10 @@
     },
     "common": {
       "forbidden_origin": "The request was blocked by the origin check.",
-      "not_found": "Not found.",
       "internal": "Unexpected server error. Try again.",
-      "invalid_request": "The request was not accepted. Check the data and try again."
+      "invalid_request": "The request was not accepted. Check the data and try again.",
+      "not_found": "Not found.",
+      "version_conflict": "This was changed somewhere else. Reload to see the current values."
     },
     "connections": {
       "name_taken": "You already have a connection with this name.",
@@ -142,6 +155,269 @@
     },
     "sync": {
       "account_not_found_after_repair": "Not found in the new instance."
+    }
+  },
+  "accounts": {
+    "nav": "Accounts",
+    "list": {
+      "title": "Accounts",
+      "new": "New account",
+      "loadError": "Could not load your accounts.",
+      "search": "Search by name",
+      "filters": {
+        "type": "Type",
+        "state": "State",
+        "all": "All",
+        "prop": "Prop",
+        "real": "Real",
+        "active": "Active",
+        "paused": "Paused",
+        "disabled": "Disabled",
+        "choicePending": "Choice pending",
+        "clear": "Clear filters"
+      },
+      "empty": {
+        "title": "You haven't added any accounts yet.",
+        "body": "Accounts receive the routed orders. Add at least one to get started.",
+        "pair": "Pair NinjaTrader to link accounts."
+      },
+      "emptyFiltered": "No accounts match these filters.",
+      "columns": {
+        "name": "Name",
+        "type": "Type",
+        "details": "Firm · plan · phase · size",
+        "platformAccount": "Platform account",
+        "multiplier": "Mult.",
+        "maxPosition": "Max position",
+        "state": "State",
+        "actions": "Actions"
+      },
+      "unbound": "Not linked",
+      "contracts": "{count, plural, one {# contract} other {# contracts}}",
+      "saving": "Saving…",
+      "moreStates": "+{count} more"
+    },
+    "type": {
+      "prop": "Prop",
+      "real": "Real"
+    },
+    "state": {
+      "active": "Active",
+      "paused": "Paused",
+      "disabled": "Disabled",
+      "choicePending": "Choice pending",
+      "acceptsAutomation": "Accepts automation",
+      "noAutomation": "No automation",
+      "acceptsCopy": "Accepts replication",
+      "noCopy": "No replication"
+    },
+    "platformKind": {
+      "simulation": "Simulation",
+      "playback": "Playback",
+      "live": "Live",
+      "unknown": "Unknown"
+    },
+    "actions": {
+      "view": "View",
+      "edit": "Edit",
+      "pause": "Pause",
+      "resume": "Resume",
+      "disable": "Disable",
+      "enable": "Enable",
+      "delete": "Delete",
+      "reload": "Reload",
+      "understood": "Got it"
+    },
+    "form": {
+      "titleNew": "New account",
+      "titleEdit": "Edit account",
+      "save": "Save account",
+      "cancel": "Cancel",
+      "sections": {
+        "type": "Type",
+        "data": "Account details",
+        "platform": "Platform account"
+      },
+      "kind": {
+        "prop": "Prop firm account",
+        "real": "Real brokerage account",
+        "fixed": "Type: {kind}"
+      },
+      "fields": {
+        "name": "Name",
+        "firm": "Firm",
+        "plan": "Plan",
+        "phase": "Phase",
+        "size": "Size (USD)",
+        "maxPosition": "Maximum contracts",
+        "maxPositionHelp": "Contract limit All Win sends to this account. Instructions above it are cut and logged.",
+        "maxPositionShrink": "Open positions are not changed.",
+        "multiplier": "Multiplier",
+        "multiplierHelp": "Executed quantity = instruction quantity × multiplier."
+      },
+      "binding": {
+        "label": "NinjaTrader account",
+        "none": "Not linked yet",
+        "noConnections": "No paired connection. You can save the account now and link it later.",
+        "pair": "Pair NinjaTrader",
+        "taken": "Already linked to {name}.",
+        "liveBlocked": "Live accounts are not allowed in this environment.",
+        "disconnected": "Connection disconnected: data from the last time.",
+        "openPosition": "There is an open position. Close the position to change the linked account.",
+        "oco": "This account's stops and targets depend on NinjaTrader staying open."
+      },
+      "discard": {
+        "title": "Discard changes?",
+        "keep": "Keep editing",
+        "confirm": "Discard"
+      },
+      "errors": {
+        "required": "Required.",
+        "nameTooLong": "Use at most 80 characters.",
+        "sizeInvalid": "Enter an amount greater than zero with at most 2 decimals.",
+        "integerMin1": "Use a whole number greater than or equal to 1.",
+        "maxPositionInvalid": "Enter a whole number of contracts, 1 or more.",
+        "optInRequired": "Choose whether this account accepts automated orders.",
+        "ackRequired": "Confirm that you read the rule to accept.",
+        "summary": "Fix the highlighted fields."
+      },
+      "success": {
+        "created": "Account created.",
+        "saved": "Account saved."
+      },
+      "versionConflict": "This account was changed somewhere else. Reload to see the current values."
+    },
+    "optIn": {
+      "automation": {
+        "legend": "Automated orders on this account",
+        "help": "Automated sources: TradingView alerts (webhook) and, in the future, the All Win signal engine. Master replication has its own choice.",
+        "allowed": "{firm} allows automated trading.",
+        "decline": {
+          "label": "Don't accept automated orders",
+          "description": "TradingView alerts are never sent to this account. If one arrives, it is ignored and logged in the audit."
+        },
+        "accept": {
+          "label": "Accept automated orders, aware of the risk",
+          "description": "TradingView alerts may be executed on this account according to your routes."
+        },
+        "ack": "I read the official rule above and understand I may lose this account.",
+        "required": "Choose whether this account accepts automated orders.",
+        "stance": {
+          "forbidden": "{firm} prohibits automated trading in its official rules.",
+          "conditional": "{firm} only allows automated trading under conditions. Read the rule.",
+          "unknown": "We found no official {firm} rule about automation.",
+          "not_confirmed": "{firm}'s official pages disagree about automation."
+        },
+        "stanceSecond": "TradingView alerts executed automatically may be considered automation.",
+        "genericFirm": "this firm"
+      },
+      "copy": {
+        "legend": "Master replication on this account",
+        "allowed": "{firm} allows copying trades between accounts.",
+        "decline": {
+          "label": "Don't accept master replication",
+          "description": "This account cannot be a follower of a master account."
+        },
+        "accept": {
+          "label": "Accept replication, aware of the risk",
+          "description": "Master account trades may be replicated on this account."
+        },
+        "ack": "I read the official rule above and understand I may lose this account.",
+        "required": "Choose whether this account accepts master replication.",
+        "stance": {
+          "forbidden": "{firm} prohibits copying trades between accounts in its official rules.",
+          "conditional": "{firm} only allows copying under conditions. Read the rule.",
+          "unknown": "We found no official {firm} rule about copying.",
+          "not_confirmed": "{firm}'s official pages disagree about copying."
+        },
+        "stanceSecond": "Replicating the master account to this account may be considered trade copying by the firm."
+      },
+      "summaryLabel": "All Win summary (not legal advice):",
+      "risk": "Risk: if the firm considers this a violation, you may lose this account. The decision is yours; All Win doesn't make it for you.",
+      "conflicting": "The official pages differ:",
+      "researched": "We searched the official pages on {date} and found no rule about automation.",
+      "quote": {
+        "source": "{title} · accessed on {date}",
+        "open": "View official page ({firm}, opens in a new tab)",
+        "show": "Show full text",
+        "hide": "Hide full text",
+        "view": "View official rule"
+      },
+      "ruleChanged": "The rule changed with your selection. Choose again.",
+      "ruleStale": "The firm's rule was updated while you were filling this in. Read it again and choose.",
+      "rulesError": "Could not load the firm's rule.",
+      "review": {
+        "title": "Review automation choice",
+        "previousChoice": "Your previous choice: {choice}",
+        "accepted": "Accept",
+        "declined": "Don't accept",
+        "previousText": "Previous text (version {n})",
+        "now": "Review now",
+        "change": "Change choice"
+      }
+    },
+    "detail": {
+      "notFound": "Account not found.",
+      "backToList": "Back to accounts",
+      "loadError": "Could not load this account.",
+      "cards": {
+        "data": "Details",
+        "platform": "Platform account",
+        "automation": "Automation",
+        "copy": "Replication",
+        "position": "Open position"
+      },
+      "firmPlatform": "Platform at the firm: {value}",
+      "createdAt": "Created {date}",
+      "chosenBy": "Chosen by you on {date} · {firm} rule, version {n}",
+      "openPosition": {
+        "yes": "Open position: yes",
+        "no": "Open position: no"
+      },
+      "link": "Link account",
+      "pendingAutomation": "The {firm} rule about automation changed on {date} (version {n}). Automated orders are suspended on this account until you review.",
+      "pendingCopy": "The {firm} rule about copying changed on {date} (version {n}). Replication to this account is suspended until you review.",
+      "pendingNoPrevious": "This account has no choice about automated orders yet. They stay suspended until you choose.",
+      "whatChanged": {
+        "stance": "What changed: the firm's position went from {old} to {new}.",
+        "text": "What changed: the official rule text was edited. Reason given: {reason}."
+      },
+      "pausedNote": "This account is paused and receives no instructions.",
+      "disabledNote": "This account is disabled and receives no instructions.",
+      "noConsistency": "Consistency rule not confirmed — not tracked"
+    },
+    "stance": {
+      "allowed": "allowed",
+      "forbidden": "forbidden",
+      "conditional": "conditional",
+      "unknown": "unknown",
+      "not_confirmed": "not confirmed"
+    },
+    "lifecycle": {
+      "pauseTitle": "Pause {name}?",
+      "disableTitle": "Disable {name}?",
+      "pauseConfirm": "Pause account",
+      "disableConfirm": "Disable account",
+      "pauseHelp": "Pause = temporary stop that keeps all configuration.",
+      "disableHelp": "Disable = account off until you enable it again.",
+      "body": "While {state}, this account receives no instruction, including exits (close). Open positions and orders are not changed.",
+      "statePaused": "paused",
+      "stateDisabled": "disabled",
+      "openPosition": "This account has an open position. It stays open and All Win won't close it.",
+      "paused": "Account paused.",
+      "resumed": "Account resumed.",
+      "disabled": "Account disabled.",
+      "enabled": "Account enabled.",
+      "conflict": "The account changed somewhere else."
+    },
+    "delete": {
+      "title": "Delete account {name}?",
+      "body": "The account stops appearing and no longer receives instructions. The audit log and history remain. This action cannot be undone.",
+      "removes": "Will be removed: {routes, plural, =0 {} one {# route} other {# routes}}{both, select, yes { and } other {}}{links, plural, =0 {} one {# replication link} other {# replication links}}.",
+      "confirm": "Delete account",
+      "blockedTitle": "Can't delete {name}",
+      "blocked": "Can't delete {name}: it has an open position. Close it in NinjaTrader and try again.",
+      "done": "Account deleted."
     }
   }
 }

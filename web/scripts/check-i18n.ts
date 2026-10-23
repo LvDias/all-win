@@ -13,9 +13,44 @@ export function flatten(tree: Tree, prefix = ""): Map<string, string> {
   return out;
 }
 
-/** ICU argument names in a message, including those inside plural/select arms. */
+/** Index of the `}` that closes the `{` at `open`, or -1. */
+function closing(message: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < message.length; i++) {
+    if (message[i] === "{") depth++;
+    else if (message[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function collect(message: string, found: Set<string>): void {
+  for (let i = 0; i < message.length; i++) {
+    if (message[i] !== "{") continue;
+    const end = closing(message, i);
+    if (end < 0) return;
+    const body = message.slice(i + 1, end);
+    const comma = body.indexOf(",");
+    const name = (comma < 0 ? body : body.slice(0, comma)).trim();
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) found.add(name);
+    if (comma >= 0) {
+      // plural/select arms: `selector {text}`; the text may hold more arguments.
+      const rest = body.slice(comma + 1);
+      for (let j = rest.indexOf("{"); j >= 0; j = rest.indexOf("{", j + 1)) {
+        const armEnd = closing(rest, j);
+        if (armEnd < 0) break;
+        collect(rest.slice(j + 1, armEnd), found);
+        j = armEnd;
+      }
+    }
+    i = end;
+  }
+}
+
+/** ICU argument names in a message, including those inside plural/select arms (arm text is not an argument). */
 export function placeholders(message: string): string[] {
-  return [...new Set([...message.matchAll(/\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,}]/g)].map((m) => m[1] ?? ""))].sort();
+  const found = new Set<string>();
+  collect(message, found);
+  return [...found].sort();
 }
 
 export function compareCatalogs(a: Map<string, string>, b: Map<string, string>, nameA: string, nameB: string): string[] {

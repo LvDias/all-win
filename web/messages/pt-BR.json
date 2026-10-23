@@ -75,9 +75,21 @@
   "errors": {
     "unknown": "Erro inesperado (código: {code})",
     "accounts": {
-      "opt_in_not_applicable": "Esta opção não se aplica a esta conta.",
+      "binding_open_position": "Há posição aberta. Feche a posição para trocar a conta vinculada.",
+      "delete_open_position": "Esta conta tem posição aberta e não pode ser excluída.",
+      "firm_platform_required": "Escolha a plataforma da conta na firma.",
+      "firm_platform_unknown": "Esta plataforma não está disponível para o preset.",
+      "idempotency_key_reused": "Este envio já foi usado com outros dados. Recarregue o formulário.",
+      "lifecycle_transition_invalid": "Esta mudança não é permitida a partir do estado atual.",
+      "max_position_exceeds_preset": "O máximo desta conta na firma é menor que o valor informado.",
+      "name_taken": "Já existe uma conta com este nome.",
+      "opt_in_not_applicable": "Nenhuma escolha é necessária nesta conta.",
       "opt_in_required": "Escolha se esta conta aceita ordens automatizadas.",
-      "rule_version_changed": "As regras mudaram enquanto você revisava. Revise a versão atual e confirme de novo."
+      "platform_account_kind_not_allowed": "Contas live não são permitidas neste ambiente.",
+      "platform_account_taken": "Esta conta da plataforma já está vinculada a outra conta.",
+      "platform_account_unknown": "Esta conta da plataforma não foi encontrada nas suas conexões.",
+      "preset_version_unknown": "Esta versão do preset da firma não está mais disponível.",
+      "rule_version_changed": "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha."
     },
     "auth": {
       "forbidden": "Você não tem acesso a esta página.",
@@ -98,9 +110,10 @@
     },
     "common": {
       "forbidden_origin": "A requisição foi bloqueada pela verificação de origem.",
-      "not_found": "Não encontrado.",
       "internal": "Erro inesperado no servidor. Tente de novo.",
-      "invalid_request": "A requisição não foi aceita. Confira os dados e tente de novo."
+      "invalid_request": "A requisição não foi aceita. Confira os dados e tente de novo.",
+      "not_found": "Não encontrado.",
+      "version_conflict": "Isto foi alterado em outro lugar. Recarregue para ver os valores atuais."
     },
     "connections": {
       "name_taken": "Você já tem uma conexão com este nome.",
@@ -142,6 +155,269 @@
     },
     "sync": {
       "account_not_found_after_repair": "Não encontrada na nova instância."
+    }
+  },
+  "accounts": {
+    "nav": "Contas",
+    "list": {
+      "title": "Contas",
+      "new": "Nova conta",
+      "loadError": "Não foi possível carregar suas contas.",
+      "search": "Buscar por nome",
+      "filters": {
+        "type": "Tipo",
+        "state": "Estado",
+        "all": "Todas",
+        "prop": "Prop",
+        "real": "Real",
+        "active": "Ativa",
+        "paused": "Pausada",
+        "disabled": "Desativada",
+        "choicePending": "Escolha pendente",
+        "clear": "Limpar filtros"
+      },
+      "empty": {
+        "title": "Você ainda não cadastrou contas.",
+        "body": "Contas recebem as ordens roteadas. Cadastre ao menos uma para começar.",
+        "pair": "Pareie o NinjaTrader para vincular contas."
+      },
+      "emptyFiltered": "Nenhuma conta com esses filtros.",
+      "columns": {
+        "name": "Nome",
+        "type": "Tipo",
+        "details": "Firma · plano · fase · tamanho",
+        "platformAccount": "Conta na plataforma",
+        "multiplier": "Mult.",
+        "maxPosition": "Máx. posição",
+        "state": "Estado",
+        "actions": "Ações"
+      },
+      "unbound": "Sem vínculo",
+      "contracts": "{count, plural, one {# contrato} other {# contratos}}",
+      "saving": "Salvando…",
+      "moreStates": "+{count}"
+    },
+    "type": {
+      "prop": "Prop",
+      "real": "Real"
+    },
+    "state": {
+      "active": "Ativa",
+      "paused": "Pausada",
+      "disabled": "Desativada",
+      "choicePending": "Escolha pendente",
+      "acceptsAutomation": "Aceita automação",
+      "noAutomation": "Sem automação",
+      "acceptsCopy": "Aceita replicação",
+      "noCopy": "Sem replicação"
+    },
+    "platformKind": {
+      "simulation": "Simulação",
+      "playback": "Playback",
+      "live": "Live",
+      "unknown": "Desconhecida"
+    },
+    "actions": {
+      "view": "Ver",
+      "edit": "Editar",
+      "pause": "Pausar",
+      "resume": "Retomar",
+      "disable": "Desativar",
+      "enable": "Ativar",
+      "delete": "Excluir",
+      "reload": "Recarregar",
+      "understood": "Entendi"
+    },
+    "form": {
+      "titleNew": "Nova conta",
+      "titleEdit": "Editar conta",
+      "save": "Salvar conta",
+      "cancel": "Cancelar",
+      "sections": {
+        "type": "Tipo",
+        "data": "Dados da conta",
+        "platform": "Conta na plataforma"
+      },
+      "kind": {
+        "prop": "Conta de prop firm",
+        "real": "Conta real em corretora",
+        "fixed": "Tipo: {kind}"
+      },
+      "fields": {
+        "name": "Nome",
+        "firm": "Firma",
+        "plan": "Plano",
+        "phase": "Fase",
+        "size": "Tamanho (USD)",
+        "maxPosition": "Máximo de contratos",
+        "maxPositionHelp": "Limite de contratos que o All Win envia a esta conta. Instruções acima disso são cortadas e registradas.",
+        "maxPositionShrink": "Posições abertas não são alteradas.",
+        "multiplier": "Multiplicador",
+        "multiplierHelp": "Quantidade executada = quantidade da instrução × multiplicador."
+      },
+      "binding": {
+        "label": "Conta no NinjaTrader",
+        "none": "Ainda sem vínculo",
+        "noConnections": "Nenhuma conexão pareada. Você pode salvar a conta agora e vincular depois.",
+        "pair": "Parear o NinjaTrader",
+        "taken": "Já vinculada a {name}.",
+        "liveBlocked": "Contas live não são permitidas neste ambiente.",
+        "disconnected": "Conexão desconectada: dados da última vez.",
+        "openPosition": "Há posição aberta. Feche a posição para trocar a conta vinculada.",
+        "oco": "Os stops e alvos desta conta dependem do NinjaTrader aberto."
+      },
+      "discard": {
+        "title": "Descartar alterações?",
+        "keep": "Continuar editando",
+        "confirm": "Descartar"
+      },
+      "errors": {
+        "required": "Obrigatório.",
+        "nameTooLong": "Use no máximo 80 caracteres.",
+        "sizeInvalid": "Informe um valor maior que zero com no máximo 2 casas decimais.",
+        "integerMin1": "Use um número inteiro maior ou igual a 1.",
+        "maxPositionInvalid": "Informe um número inteiro de contratos, 1 ou mais.",
+        "optInRequired": "Escolha se esta conta aceita ordens automatizadas.",
+        "ackRequired": "Confirme que leu a regra para aceitar.",
+        "summary": "Corrija os campos destacados."
+      },
+      "success": {
+        "created": "Conta criada.",
+        "saved": "Conta salva."
+      },
+      "versionConflict": "Esta conta foi alterada em outro lugar. Recarregue para ver os valores atuais."
+    },
+    "optIn": {
+      "automation": {
+        "legend": "Ordens automatizadas nesta conta",
+        "help": "Fontes automatizadas: alertas do TradingView (webhook) e, no futuro, o motor de sinais do All Win. A replicação da conta master tem uma escolha própria.",
+        "allowed": "A {firm} permite negociação automatizada.",
+        "decline": {
+          "label": "Não aceitar ordens automatizadas",
+          "description": "Alertas do TradingView nunca serão enviados para esta conta. Se algum chegar, ele é ignorado e registrado na auditoria."
+        },
+        "accept": {
+          "label": "Aceitar ordens automatizadas, ciente do risco",
+          "description": "Alertas do TradingView poderão ser executados nesta conta conforme suas rotas."
+        },
+        "ack": "Li a regra oficial acima e entendo que posso perder esta conta.",
+        "required": "Escolha se esta conta aceita ordens automatizadas.",
+        "stance": {
+          "forbidden": "A {firm} proíbe negociação automatizada nas regras oficiais.",
+          "conditional": "A {firm} só permite negociação automatizada sob condições. Leia a regra.",
+          "unknown": "Não encontramos uma regra oficial da {firm} sobre automação.",
+          "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre automação."
+        },
+        "stanceSecond": "Alertas do TradingView executados automaticamente podem ser considerados automação.",
+        "genericFirm": "esta firma"
+      },
+      "copy": {
+        "legend": "Replicação da conta master nesta conta",
+        "allowed": "A {firm} permite a replicação de operações entre contas.",
+        "decline": {
+          "label": "Não aceitar replicação da conta master",
+          "description": "Esta conta não poderá ser seguidora de uma conta master."
+        },
+        "accept": {
+          "label": "Aceitar replicação, ciente do risco",
+          "description": "Operações da conta master poderão ser replicadas nesta conta."
+        },
+        "ack": "Li a regra oficial acima e entendo que posso perder esta conta.",
+        "required": "Escolha se esta conta aceita a replicação da conta master.",
+        "stance": {
+          "forbidden": "A {firm} proíbe a replicação de operações entre contas nas regras oficiais.",
+          "conditional": "A {firm} só permite a replicação sob condições. Leia a regra.",
+          "unknown": "Não encontramos uma regra oficial da {firm} sobre replicação.",
+          "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre replicação."
+        },
+        "stanceSecond": "A replicação da conta master para esta conta pode ser considerada cópia de operações pela firma."
+      },
+      "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",
+      "risk": "Risco: se a firma considerar isso uma violação, você pode perder esta conta. A decisão é sua; o All Win não decide isso por você.",
+      "conflicting": "As páginas oficiais divergem:",
+      "researched": "Pesquisamos as páginas oficiais em {date} e não encontramos uma regra sobre automação.",
+      "quote": {
+        "source": "{title} · acessado em {date}",
+        "open": "Ver página oficial da {firm} (abre em nova aba)",
+        "show": "Mostrar texto completo",
+        "hide": "Ocultar texto completo",
+        "view": "Ver regra oficial"
+      },
+      "ruleChanged": "A regra mudou com a sua seleção. Escolha de novo.",
+      "ruleStale": "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha.",
+      "rulesError": "Não foi possível carregar a regra da firma.",
+      "review": {
+        "title": "Revisar escolha de automação",
+        "previousChoice": "Sua escolha anterior: {choice}",
+        "accepted": "Aceitar",
+        "declined": "Não aceitar",
+        "previousText": "Texto anterior (versão {n})",
+        "now": "Revisar agora",
+        "change": "Alterar escolha"
+      }
+    },
+    "detail": {
+      "notFound": "Conta não encontrada.",
+      "backToList": "Voltar para as contas",
+      "loadError": "Não foi possível carregar esta conta.",
+      "cards": {
+        "data": "Dados",
+        "platform": "Conta na plataforma",
+        "automation": "Automação",
+        "copy": "Replicação",
+        "position": "Posição aberta"
+      },
+      "firmPlatform": "Plataforma na firma: {value}",
+      "createdAt": "Criada em {date}",
+      "chosenBy": "Escolhido por você em {date} · regra da {firm} versão {n}",
+      "openPosition": {
+        "yes": "Posição aberta: sim",
+        "no": "Posição aberta: não"
+      },
+      "link": "Vincular conta",
+      "pendingAutomation": "A regra da {firm} sobre automação mudou em {date} (versão {n}). Ordens automatizadas estão suspensas nesta conta até você revisar.",
+      "pendingCopy": "A regra da {firm} sobre replicação mudou em {date} (versão {n}). A replicação para esta conta está suspensa até você revisar.",
+      "pendingNoPrevious": "Esta conta ainda não tem escolha sobre ordens automatizadas. Elas ficam suspensas até você escolher.",
+      "whatChanged": {
+        "stance": "O que mudou: a posição da firma passou de {old} para {new}.",
+        "text": "O que mudou: o texto da regra oficial foi alterado. Motivo informado: {reason}."
+      },
+      "pausedNote": "Esta conta está pausada e não recebe instruções.",
+      "disabledNote": "Esta conta está desativada e não recebe instruções.",
+      "noConsistency": "Regra de consistência não confirmada — não acompanhada"
+    },
+    "stance": {
+      "allowed": "permitido",
+      "forbidden": "proibido",
+      "conditional": "condicional",
+      "unknown": "desconhecido",
+      "not_confirmed": "não confirmado"
+    },
+    "lifecycle": {
+      "pauseTitle": "Pausar {name}?",
+      "disableTitle": "Desativar {name}?",
+      "pauseConfirm": "Pausar conta",
+      "disableConfirm": "Desativar conta",
+      "pauseHelp": "Pausar = parada temporária que mantém toda a configuração.",
+      "disableHelp": "Desativar = conta desligada até ser reativada.",
+      "body": "Enquanto estiver {state}, esta conta não recebe nenhuma instrução nova, nem de saída (fechar). Posições e ordens abertas não são alteradas.",
+      "statePaused": "pausada",
+      "stateDisabled": "desativada",
+      "openPosition": "Esta conta tem posição aberta. Ela continuará aberta e sem o All Win para fechá-la.",
+      "paused": "Conta pausada.",
+      "resumed": "Conta retomada.",
+      "disabled": "Conta desativada.",
+      "enabled": "Conta ativada.",
+      "conflict": "A conta mudou em outro lugar."
+    },
+    "delete": {
+      "title": "Excluir conta {name}?",
+      "body": "A conta deixa de aparecer e não recebe mais instruções. O registro de auditoria e o histórico permanecem. Esta ação não pode ser desfeita.",
+      "removes": "Serão removidos: {routes, plural, =0 {} one {# rota} other {# rotas}}{both, select, yes { e } other {}}{links, plural, =0 {} one {# relação de replicação} other {# relações de replicação}}.",
+      "confirm": "Excluir conta",
+      "blockedTitle": "Não é possível excluir {name}",
+      "blocked": "Não é possível excluir {name}: há posição aberta. Feche a posição no NinjaTrader e tente de novo.",
+      "done": "Conta excluída."
     }
   }
 }
