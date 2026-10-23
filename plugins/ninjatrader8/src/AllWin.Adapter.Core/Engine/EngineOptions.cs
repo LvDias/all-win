@@ -13,6 +13,15 @@ namespace AllWin.Adapter.Core.Engine
 
         public string? PlatformVersion { get; set; }
 
+        /// <summary>
+        /// U19 (ADR-0005 §N11, [Proposed]): what a confirmed live account may still do after "off". Build/server
+        /// configuration only; <see cref="LiveAccountTable.ParseOffPolicy"/> maps missing/invalid to the recommended (a).
+        /// </summary>
+        public LiveOffPolicy LiveOffPolicy { get; set; } = LiveOffPolicy.CancelEntriesKeepExits;
+
+        /// <summary>U19.1 (ADR-0005 §N11 row 11, [Proposed]); default the recommended (b).</summary>
+        public ProtectiveCancelPolicy ProtectiveCancelPolicy { get; set; } = ProtectiveCancelPolicy.Refuse;
+
         /// <summary>Retention of msg_id and command_id dedupe records (Architect answer 8: at least 7 days).</summary>
         public TimeSpan DedupeRetention { get; set; } = TimeSpan.FromDays(7);
 

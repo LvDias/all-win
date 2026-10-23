@@ -20,10 +20,10 @@ namespace AllWin.Adapter.Core.Tests.Engine
             h.Connect();
             // An exit (no expires_at) is the case only dedupe protects.
             h.Deliver(Place("0192b3c4-0000-7000-8000-000000000500", Side.Buy, 1));
-            var exit = Place(C1, Side.Sell, 1, PositionEffect.Reduce);
+            var exit = Place(C1, Side.Sell, 1, PositionEffect.Reduce, positionRef: "0192b3c4-0000-7000-8000-000000000500");
             var msgId = Ids.New();
             var sentAt = h.Clock.UtcNow;
-            var frame = ProtocolCodec.Encode(exit, msgId, sentAt);
+            var frame = ProtocolCodec.Encode(exit, msgId, sentAt, CoreVersion);
             h.DeliverRaw(frame); // executed; our ack is "lost"
             Assert.Equal(0, h.Platform.Position(Sim101, "MNQ"));
 
