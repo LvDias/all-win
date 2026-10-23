@@ -8,6 +8,9 @@ namespace AllWin.Adapter.Core.Protocol
     public static class ReasonCodes
     {
         public const string CommandDuplicate = "command.duplicate";
+
+        /// <summary>Envelope sent_at older than the staleness limit: rejected, recorded, never executed.</summary>
+        public const string CommandStale = "command.stale";
         public const string CommandExpired = "command.expired";
         public const string CommandPrerequisiteFailed = "command.prerequisite_failed";
         public const string CommandAccountNotMapped = "command.account_not_mapped";
@@ -17,6 +20,12 @@ namespace AllWin.Adapter.Core.Protocol
         public const string CommandTargetNotFound = "command.target_not_found";
         public const string CommandAlreadyFlat = "command.already_flat";
         public const string CommandPlatformDisconnected = "command.platform_disconnected";
+
+        /// <summary>Reduce found nothing to reduce (flat or same side): status cancelled, not a success (answer 11).</summary>
+        public const string CommandNothingToReduce = "command.nothing_to_reduce";
+
+        /// <summary>Informational: a reduce was capped to the current position (answer 11).</summary>
+        public const string OrderQuantityCapped = "order.quantity_capped";
         public const string OrderPlatformRejected = "order.platform_rejected";
         public const string OrderOrphanCancelled = "order.orphan_cancelled";
         public const string OrderProtectionFailed = "order.protection_failed";

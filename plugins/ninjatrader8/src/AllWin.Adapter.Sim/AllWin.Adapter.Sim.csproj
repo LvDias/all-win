@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Deterministic simulated broker implementing ITradingPlatform, for unit tests and the Linux harness.
+       Never deployed into NinjaTrader. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>AllWin.Adapter.Sim</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AllWin.Adapter.Core\AllWin.Adapter.Core.csproj" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+</Project>
