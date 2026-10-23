@@ -116,3 +116,8 @@ They are written in the same transaction as the change, through `app.outbox`. Th
 - `accounts.evaluation_restarted` details: `DetailsEvaluationRestarted` (no `achieved`).
 - `getOptInRules`: `firm_platform` without `preset_version_id` → 400 `/query/firm_platform`.
 - Implementation notes (Malha): a missing `Idempotency-Key` → 400 `common.invalid_request`, pointer `/header/Idempotency-Key`. `rule_values` before S16: 400 without a preset (schema), or 422 `accounts.preset_version_unknown` with one; never a 500.
+
+## 9. 5.1.0
+
+- Filling a missing `evaluation_start` when an account gains a target is a rule-input change. It bumps `account.limits_version` and emits `account.limits_changed` in the same transaction (ADR-0006 §3.1).
+- A missing `Idempotency-Key` has pointer `/header/Idempotency-Key`, which the root pointer rule now names.
