@@ -23,7 +23,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "i18n:check": "node scripts/check-i18n.ts",
-    "gen:api": "openapi-typescript \"${ALLWIN_OPENAPI:-../contracts/http/openapi.yaml}\" -o src/shared/api/schema.gen.ts",
+    "gen:api": "openapi-typescript \"${ALLWIN_OPENAPI:-../contracts/http/openapi.bundled.yaml}\" -o src/shared/api/schema.gen.ts",
     "gen:api:check": "sh scripts/check-api-drift.sh",
     "check": "pnpm lint && pnpm typecheck && pnpm i18n:check && pnpm gen:api:check && pnpm test"
   },
