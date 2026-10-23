@@ -26,11 +26,6 @@ const connection = {
   ],
 };
 const connectionsHandler = http.get("/api/v1/connections", () => HttpResponse.json([connection]));
-// Keys requested from the catalog owner (profile size on a tie); remove with the `extra` argument once merged.
-const profileSizeMessages = {
-  accounts: { form: { profileSize: { label: "Perfil inicial", help: "Escolha o tamanho padrão de onde copiar o perfil." } } },
-  errors: { accounts: { profile_size_required: "Escolha o tamanho padrão de onde copiar o perfil." } },
-};
 type User = ReturnType<typeof userEvent.setup>;
 
 const next = (user: User) => user.click(screen.getByRole("button", { name: "Continuar" }));
@@ -332,7 +327,7 @@ describe("AccountCreateStepper", () => {
       ...handlers,
     );
     const user = userEvent.setup();
-    renderAccounts(<AccountCreateStepper />, "pt-BR", profileSizeMessages);
+    renderAccounts(<AccountCreateStepper />);
     await pick(user, "Conta real em corretora");
     await next(user);
     await fillData(user, "Between", "75000");

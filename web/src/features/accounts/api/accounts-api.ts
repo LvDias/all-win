@@ -1,4 +1,5 @@
 import { apiFetch } from "@/shared/api/client";
+import { accountKeys as sharedAccountKeys } from "@/shared/api/account-keys";
 import { segment } from "@/shared/api/ids";
 import type {
   Account,
@@ -16,11 +17,10 @@ import type {
 
 const base = "/api/v1/accounts";
 
+/** The shared account keys (list, detail) plus this feature's own, all under `accountKeys.all` where they belong to an account. */
 export const accountKeys = {
-  all: ["accounts"] as const,
-  list: () => [...accountKeys.all, "list"] as const,
-  detail: (id: string) => [...accountKeys.all, "detail", id] as const,
-  impact: (id: string) => [...accountKeys.all, "impact", id] as const,
+  ...sharedAccountKeys,
+  impact: (id: string) => [...sharedAccountKeys.all, "impact", id] as const,
   rules: (presetVersionId: string | null, firmPlatform: string | null) => ["opt-in-rules", presetVersionId, firmPlatform] as const,
   ruleVersion: (id: string) => ["rule-version", id] as const,
 };

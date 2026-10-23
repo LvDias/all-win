@@ -4,7 +4,6 @@ import { NextIntlClientProvider } from "next-intl";
 import type { ReactElement } from "react";
 import en from "../../../../messages/en.json";
 import ptBR from "../../../../messages/pt-BR.json";
-import { mergeMessages, type Messages } from "@/shared/i18n/messages";
 import { LocaleSwitchProvider } from "@/shared/i18n/locale-switch";
 import { StepUpProvider } from "@/shared/session/step-up";
 import { server } from "@/test/server";
@@ -24,14 +23,13 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(nav.search),
 }));
 
-/** `extra` holds catalog keys requested from the catalog owner and not merged yet; drop it once they are. */
-export function renderAccounts(ui: ReactElement, locale: keyof typeof catalogs = "pt-BR", extra?: Messages) {
+export function renderAccounts(ui: ReactElement, locale: keyof typeof catalogs = "pt-BR") {
   // The step-up provider reads the profile; keep a fallback behind any handler a test registers.
   server.use(http.get("/api/v1/me", () => HttpResponse.json(me)));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <NextIntlClientProvider locale={locale} messages={extra ? mergeMessages(catalogs[locale] as Messages, extra) : catalogs[locale]} timeZone="UTC">
+      <NextIntlClientProvider locale={locale} messages={catalogs[locale]} timeZone="UTC">
         <TooltipProvider>
           <LocaleSwitchProvider>
             <StepUpProvider>{ui}</StepUpProvider>
