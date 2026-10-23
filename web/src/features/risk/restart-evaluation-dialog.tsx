@@ -45,7 +45,7 @@ export function RestartEvaluationDialog({ accountId, currentStart, currentEarned
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) errors.start = t("errors.startRequired");
     if (earned.trim() !== "") {
       const parsed = parseDecimalInput(earned, locale, { scale: 4 });
-      if (!parsed.ok) errors.earned = t("errors.earnedInvalid");
+      if (!parsed.ok) errors.earned = parsed.reason === "ambiguous" ? t("errors.earnedAmbiguous") : t("errors.earnedInvalid");
     }
     setFieldErrors(errors);
     setFailure(null);
@@ -57,7 +57,9 @@ export function RestartEvaluationDialog({ accountId, currentStart, currentEarned
     submitting.current = true;
     const parsed = earned.trim() === "" ? null : parseDecimalInput(earned, locale, { scale: 4 });
     try {
-      await restart.mutateAsync({ evaluation_start: start, ...(parsed?.ok ? { evaluation_earned_before: parsed.value } : {}), row_version: version.data.row_version });
+      // Clearing a non-zero amount means "none earned before": send 0 explicitly, the contract does not say what omission keeps.
+      const earnedBefore = parsed?.ok ? parsed.value : !isZeroAmount(currentEarnedBefore) ? "0" : undefined;
+      await restart.mutateAsync({ evaluation_start: start, ...(earnedBefore !== undefined ? { evaluation_earned_before: earnedBefore } : {}), row_version: version.data.row_version });
       toast.success(t("done"));
       onClose();
     } catch (error) {

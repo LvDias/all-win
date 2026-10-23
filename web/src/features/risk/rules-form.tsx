@@ -3,13 +3,14 @@
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/shared/api/client";
 import { errorMessage } from "@/shared/api/error-message";
 import type { Account, AccountRiskRules, RiskRules, RiskRulesRequest } from "@/shared/api/types";
 import { PageHeader } from "@/shared/components/page-header";
-import { parseDecimalInput } from "@/shared/format";
+import { formatMoney, parseDecimalInput } from "@/shared/format";
+import { useUnsavedChanges } from "@/shared/i18n/locale-switch";
 import { useLocalePath } from "@/shared/i18n/navigation";
 import { useDisplay } from "@/shared/session/display";
 import { Alert } from "@/shared/ui/alert";
@@ -33,6 +34,9 @@ type DrawdownType = "trailing_intraday" | "trailing_eod" | "static" | "other";
 const chosenTypes: DrawdownType[] = ["trailing_intraday", "trailing_eod", "static"];
 
 /** JSON pointers the Core answers under `/rules/...` (contract `RiskRulesRejected`) → the field that owns them. */
+/** Visual order of the fields, for "focus the first invalid one". */
+const fieldOrder: Field[] = ["drawdownAmount", "drawdownType", "dailyLoss", "profitTarget", "profitTargetOnReach", "consistency", "commission", "resetTime"];
+
 const pointerField: Record<string, Field> = {
   "/rules/daily_loss_limit": "dailyLoss",
   "/rules/daily_loss_limit/amount": "dailyLoss",
@@ -66,6 +70,14 @@ export function RulesForm({ accountId }: { accountId: string }) {
     );
   if (rules.isError || account.isError) {
     const failure = errorMessage(root, rules.error ?? account.error);
+    const notFound = [rules.error, account.error].some((error) => error instanceof ApiError && error.status === 404);
+    if (notFound)
+      return (
+        <div className="grid gap-4">
+          {header}
+          <ErrorState title={root("errors.common.not_found")} code={failure.code} />
+        </div>
+      );
     return (
       <div className="grid gap-4">
         {header}
@@ -98,7 +110,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
   const submitting = useRef(false);
   /** The rules call may succeed and the commission call fail: a retry then only repeats the commission. */
   const rulesSaved = useRef(false);
-  const ids = { drawdownAmount: useId(), drawdownType: useId(), dailyLoss: useId(), profitTarget: useId(), consistency: useId(), commission: useId(), resetTime: useId() };
+  const ids = { drawdownAmount: useId(), drawdownType: useId(), dailyLoss: useId(), profitTarget: useId(), profitTargetOnReach: useId(), consistency: useId(), commission: useId(), resetTime: useId() };
   const rules = current.rules;
   const dailyLossNone = rules.daily_loss_limit?.kind === "none";
   const drawdownOther = rules.drawdown?.type === "other";
@@ -116,6 +128,38 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
   const [failure, setFailure] = useState<{ message: string; reload: boolean } | null>(null);
   const [confirmReached, setConfirmReached] = useState<Pending | null>(null);
   const [pending, setPending] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [focusRequest, setFocusRequest] = useState<{ field: Field; n: number } | null>(null);
+  const fieldIds = useRef(ids);
+  useEffect(() => {
+    fieldIds.current = ids;
+  });
+  // Focus moves from an effect, once the error text is on screen (F§10: first invalid field).
+  useEffect(() => {
+    if (focusRequest) document.getElementById(fieldIds.current[focusRequest.field])?.focus();
+  }, [focusRequest]);
+
+  const dirty =
+    drawdownAmount !== (rules.drawdown?.amount ?? "") ||
+    drawdownType !== (rules.drawdown?.type ?? "") ||
+    dailyLoss !== (rules.daily_loss_limit?.amount ?? "") ||
+    profitTarget !== (rules.daily_profit_target?.amount ?? "") ||
+    onReach !== rules.profit_target_on_reach ||
+    consistency !== (rules.consistency_threshold_pct ?? "") ||
+    commission !== (account.commission_per_contract_side ?? "") ||
+    resetTime !== (reset?.local_time ?? "");
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (!dirty) return;
+    const guard = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [dirty]);
+
+  function focusFirst(found: Errors) {
+    const first = fieldOrder.find((field) => found[field]);
+    if (first) setFocusRequest((previous) => ({ field: first, n: (previous?.n ?? 0) + 1 }));
+  }
 
   const backHref = path(`/accounts/${accountId}/risk`);
   const hasConsistency = rules.consistency_threshold_pct !== undefined;
@@ -124,7 +168,15 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
   function money(text: string, scale = 2): { value?: string; error?: string } {
     if (text.trim() === "") return {};
     const parsed = parseDecimalInput(text, locale, { scale });
-    return parsed.ok ? { value: parsed.value } : { error: t("errors.amountInvalid") };
+    if (parsed.ok) return { value: parsed.value };
+    return { error: parsed.reason === "ambiguous" ? t("errors.amountAmbiguous") : t("errors.amountInvalid") };
+  }
+
+  /** What the Core will receive, shown before saving ("understood as US$ 2.500,00"), so a misread separator is caught by the user. */
+  function understood(text: string, scale: number): string | undefined {
+    if (text.trim() === "") return undefined;
+    const parsed = parseDecimalInput(text, locale, { scale });
+    return parsed.ok ? t("understood", { value: formatMoney(parsed.value, locale) }) : undefined;
   }
 
   function build(): { pending?: Pending; errors: Errors } {
@@ -138,7 +190,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
     if (dd.error) found.drawdownAmount = dd.error;
     if (dl.error) found.dailyLoss = dl.error;
     if (pt.error) found.profitTarget = pt.error;
-    if (fee.error) found.commission = t("errors.commissionInvalid");
+    if (fee.error) found.commission = fee.error === t("errors.amountAmbiguous") ? fee.error : t("errors.commissionInvalid");
     // Type and amount are one object: both set or both empty.
     if (dd.value && !drawdownType) found.drawdownType = t("errors.drawdownTypeRequired");
     if (!dd.value && drawdownType && !dd.error) found.drawdownAmount = t("errors.drawdownAmountRequired");
@@ -172,7 +224,10 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
     if (error instanceof ApiError && error.status === 409 && error.code === "common.version_conflict") return setFailure({ message: t("errors.conflict"), reload: true });
     const field = error instanceof ApiError && error.pointer ? pointerField[error.pointer] : undefined;
     const message = errorMessage(root, error).message;
-    if (field) setErrors({ [field]: message });
+    if (field) {
+      setErrors({ [field]: message });
+      focusFirst({ [field]: message });
+    }
     if (rulesSaved.current) setFailure({ message: field ? t("errors.rulesSavedCommissionFailed") : t("errors.rulesSavedCommissionFailedWith", { message }), reload: false });
     else if (!field) setFailure({ message, reload: false });
   }
@@ -183,6 +238,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
     const built = build();
     setErrors(built.errors);
     setFailure(null);
+    focusFirst(built.errors);
     if (!built.pending) return;
     submitting.current = true;
     setPending(true);
@@ -258,7 +314,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
           <CardTitle className="text-base">{t("sections.loss")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <FieldRow id={ids.drawdownAmount} label={t("fields.drawdownAmount")} error={errors.drawdownAmount} help={t("tighterNow")}>
+          <FieldRow id={ids.drawdownAmount} label={t("fields.drawdownAmount")} error={errors.drawdownAmount} help={t("tighterNow")} parsed={understood(drawdownAmount, 2)}>
             <Input id={ids.drawdownAmount} inputMode="decimal" value={drawdownAmount} onChange={(event) => setDrawdownAmount(event.target.value)} autoComplete="off" aria-invalid={errors.drawdownAmount ? true : undefined} aria-describedby={describedBy(ids.drawdownAmount, errors.drawdownAmount)} />
           </FieldRow>
           <FieldRow id={ids.drawdownType} label={t("fields.drawdownType")} error={errors.drawdownType}>
@@ -282,7 +338,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
               <p className="text-sm text-muted-foreground">{t("dailyLossNone")}</p>
             </div>
           ) : (
-            <FieldRow id={ids.dailyLoss} label={t("fields.dailyLoss")} error={errors.dailyLoss} help={t("looserLater")}>
+            <FieldRow id={ids.dailyLoss} label={t("fields.dailyLoss")} error={errors.dailyLoss} help={t("looserLater")} parsed={understood(dailyLoss, 2)}>
               <Input id={ids.dailyLoss} inputMode="decimal" value={dailyLoss} onChange={(event) => setDailyLoss(event.target.value)} autoComplete="off" aria-invalid={errors.dailyLoss ? true : undefined} aria-describedby={describedBy(ids.dailyLoss, errors.dailyLoss)} />
             </FieldRow>
           )}
@@ -294,7 +350,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
           <CardTitle className="text-base">{t("sections.target")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <FieldRow id={ids.profitTarget} label={t("fields.profitTarget")} error={errors.profitTarget}>
+          <FieldRow id={ids.profitTarget} label={t("fields.profitTarget")} error={errors.profitTarget} parsed={understood(profitTarget, 2)}>
             <Input id={ids.profitTarget} inputMode="decimal" value={profitTarget} onChange={(event) => setProfitTarget(event.target.value)} autoComplete="off" aria-invalid={errors.profitTarget ? true : undefined} aria-describedby={describedBy(ids.profitTarget, errors.profitTarget)} />
           </FieldRow>
           <fieldset className="grid gap-2">
@@ -330,7 +386,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
           <CardTitle className="text-base">{t("sections.commission")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <FieldRow id={ids.commission} label={t("fields.commission")} error={errors.commission} help={t("commission.help")}>
+          <FieldRow id={ids.commission} label={t("fields.commission")} error={errors.commission} help={t("commission.help")} parsed={understood(commission, 4)}>
             <Input id={ids.commission} inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} autoComplete="off" aria-invalid={errors.commission ? true : undefined} aria-describedby={describedBy(ids.commission, errors.commission)} />
           </FieldRow>
           {commission.trim() === "" ? <Alert tone="warning">{t("commission.empty")}</Alert> : null}
@@ -369,14 +425,33 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
       <p className="text-sm text-muted-foreground">{current.enforcement_enabled ? t("enforcement.on") : t("enforcement.off")}</p>
 
       <div className="sticky bottom-0 -mx-1 flex flex-wrap justify-end gap-2 border-t bg-background p-3">
-        <Button asChild variant="outline">
-          <Link href={backHref}>{root("common.actions.cancel")}</Link>
-        </Button>
+        {dirty ? (
+          <Button type="button" variant="outline" onClick={() => setDiscarding(true)}>
+            {root("common.actions.cancel")}
+          </Button>
+        ) : (
+          <Button asChild variant="outline">
+            <Link href={backHref}>{root("common.actions.cancel")}</Link>
+          </Button>
+        )}
         <Button type="submit" disabled={pending}>
           {pending ? <Spinner /> : null}
           {t("save")}
         </Button>
       </div>
+
+      <AlertDialog open={discarding} onOpenChange={setDiscarding}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("discard.title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("discard.body")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel autoFocus>{t("discard.stay")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => router.push(backHref)}>{t("discard.confirm")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmReached !== null} onOpenChange={(open) => !open && !pending && setConfirmReached(null)}>
         <AlertDialogContent>
@@ -414,11 +489,12 @@ function stable(value: unknown): string {
 
 const describedBy = (id: string, error?: string) => (error ? `${id}-error` : undefined);
 
-function FieldRow({ id, label, error, help, children }: { id: string; label: string; error?: string; help?: string; children: ReactNode }) {
+function FieldRow({ id, label, error, help, parsed, children }: { id: string; label: string; error?: string; help?: string; parsed?: string; children: ReactNode }) {
   return (
     <div className="grid gap-2">
       <Label htmlFor={id}>{label}</Label>
       {children}
+      {parsed ? <p className="text-xs text-muted-foreground">{parsed}</p> : null}
       {help ? <p className="text-xs text-muted-foreground">{help}</p> : null}
       {error ? (
         <p id={`${id}-error`} className="text-sm text-status-danger">

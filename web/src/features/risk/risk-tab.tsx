@@ -25,6 +25,7 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import { riskQueryKey, useAccountRisk } from "./api";
 import { EvaluationCard } from "./evaluation-card";
 
+const knownStates: readonly RiskState[] = ["normal", "warning", "reached", "target_reached"];
 const severity: Record<RiskState, number> = { normal: 0, target_reached: 1, warning: 2, reached: 3 };
 
 /** S13-01: live risk state of one account. Every figure and state is the Core's; this component only formats and places them. */
@@ -40,7 +41,8 @@ export function RiskTab({ accountId }: { accountId: string }) {
   useEvents((event) => {
     if (event.type !== "risk.state_changed" || event.account_id !== accountId) return;
     void queryClient.invalidateQueries({ queryKey: riskQueryKey });
-    if (event.reason === "state" || event.reason === undefined) setAnnouncement(t(`announce.${event.state}`));
+    // The state comes from the stream: an unknown value is ignored rather than shown as a raw key.
+    if ((event.reason === "state" || event.reason === undefined) && knownStates.includes(event.state)) setAnnouncement(t(`announce.${event.state}`));
   });
 
   const editHref = path(`/accounts/${accountId}/risk/edit`);
@@ -49,7 +51,7 @@ export function RiskTab({ accountId }: { accountId: string }) {
       title={t("title")}
       actions={
         <Button asChild variant="outline">
-          <Link href={editHref}>{t("edit")}</Link>
+          <Link href={editHref}>{t("editAction")}</Link>
         </Button>
       }
     />

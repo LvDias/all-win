@@ -62,6 +62,12 @@ describe("FirmRuleQuote", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
+  it("renders only an https source as a link", () => {
+    renderApp(<FirmRuleQuote {...props} url="javascript:alert(1)" text="Rule." />);
+    expect(screen.queryByRole("link", { name: /Ver página oficial/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Rule.")).not.toHaveAttribute("cite");
+  });
+
   it("keeps the whole text in the DOM and expands a long quote", async () => {
     const long = Array.from({ length: 12 }, (_, line) => `Line ${line + 1} of the rule.`).join("\n");
     renderApp(<FirmRuleQuote {...props} text={long} />);
@@ -111,6 +117,20 @@ describe("Combobox", () => {
     await person.keyboard("{Enter}");
     expect(picked).toHaveBeenCalledWith("topstep");
     expect(screen.getByRole("combobox", { name: "Firma: Topstep" })).toBeInTheDocument();
+  });
+
+  it("builds option ids from the position, so values with spaces still make valid ids", async () => {
+    function Spaced() {
+      const [value, setValue] = useState<string | null>(null);
+      return <Combobox id="firm" options={[{ value: "take profit", label: "Take Profit" }, { value: "top step", label: "Top Step" }]} value={value} label="Firma" onChange={setValue} />;
+    }
+    renderApp(<Spaced />);
+    const person = userEvent.setup();
+    await person.click(screen.getByRole("combobox", { name: "Firma: Escolher" }));
+    const search = await screen.findByRole("combobox", { name: "Buscar: Firma" });
+    const active = search.getAttribute("aria-activedescendant") ?? "";
+    expect(active).not.toMatch(/\s/);
+    expect(document.getElementById(active)).toHaveAttribute("role", "option");
   });
 
   it("says when nothing matches", async () => {

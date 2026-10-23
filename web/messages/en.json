@@ -980,7 +980,8 @@
         "commissionInvalid": "Use a dollar amount with up to 4 decimals.",
         "resetInvalid": "Use a valid time (hh:mm).",
         "rulesSavedCommissionFailed": "The rules were saved, but the commission was not. Fix the field and save again.",
-        "rulesSavedCommissionFailedWith": "The rules were saved, but the commission was not: {message}"
+        "rulesSavedCommissionFailedWith": "The rules were saved, but the commission was not: {message}",
+        "amountAmbiguous": "Type the decimal part explicitly, for example 2500.00 or 2.5."
       },
       "commission": {
         "help": "For each fill, All Win uses the greater of the platform-reported commission and this value × quantity. Limits use the net result.",
@@ -992,7 +993,14 @@
         "editLater": "A change of time applies from the next trading day."
       },
       "dailyLossNone": "The firm states there is no daily loss limit.",
-      "drawdownOther": "Firm rule: {description}"
+      "drawdownOther": "Firm rule: {description}",
+      "discard": {
+        "title": "Discard changes?",
+        "body": "What you filled in will be lost.",
+        "stay": "Keep editing",
+        "confirm": "Discard"
+      },
+      "understood": "Understood as {value}"
     },
     "loadError": "Could not load this account's risk.",
     "limits": "Limits",
@@ -1103,7 +1111,8 @@
         "errors": {
           "startRequired": "Enter the start date.",
           "earnedInvalid": "Invalid amount. Use up to 4 decimals.",
-          "conflict": "The account changed. Reload."
+          "conflict": "The account changed. Reload.",
+          "earnedAmbiguous": "Type the decimal part explicitly, for example 250.00 or 2.5."
         },
         "confirm": {
           "title": "Restart the evaluation count?",
@@ -1114,6 +1123,7 @@
       },
       "commissionNone": "Commission not provided: the total may be higher than the real figure.",
       "commissionEstimated": "Commission estimated from the configured minimum: the total may be higher than the real figure."
-    }
+    },
+    "editAction": "Edit rules"
   }
 }

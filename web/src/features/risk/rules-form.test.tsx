@@ -271,4 +271,55 @@ describe("RulesForm", () => {
     expect(await screen.findByText(/fechamento da sessão CME/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Horário do reset do dia/)).not.toBeInTheDocument();
   });
+
+  it("focuses the first invalid field and shows the value it understood before saving (F4)", async () => {
+    serve();
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    const loss = await screen.findByLabelText("Limite de perda diária, em dólares");
+    await person.clear(loss);
+    await person.type(loss, "1000,5");
+    expect(screen.getByText("Entendido como US$ 1.000,50")).toBeInTheDocument();
+    const target = screen.getByLabelText("Valor da meta, em dólares");
+    await person.type(target, "abc");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(target).toHaveFocus());
+    expect(target).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("refuses an ambiguous thousands separator in a money field instead of guessing (Q1)", async () => {
+    serve();
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    const loss = await screen.findByLabelText("Limite de perda diária, em dólares");
+    await person.clear(loss);
+    await person.type(loss, "2.500");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    expect(await screen.findByText("Digite a parte decimal explicitamente, por exemplo 2500,00 ou 2,5.")).toBeInTheDocument();
+    expect(screen.queryByText("Entendido como US$ 2,50")).not.toBeInTheDocument();
+  });
+
+  it("asks before discarding unsaved changes (F5)", async () => {
+    serve();
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    expect(await screen.findByRole("link", { name: "Cancelar" })).toBeInTheDocument();
+    const loss = screen.getByLabelText("Limite de perda diária, em dólares");
+    await person.type(loss, "1");
+    await person.click(screen.getByRole("button", { name: "Cancelar" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Descartar alterações?");
+    await person.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(navigation.push).not.toHaveBeenCalled();
+    await person.click(screen.getByRole("button", { name: "Cancelar" }));
+    await person.click(await screen.findByRole("button", { name: "Descartar" }));
+    expect(navigation.push).toHaveBeenCalledWith(`/pt-BR/accounts/${accountId}/risk`);
+  });
+
+  it("shows not-found, without retry, when the rules of another user's account answer 404 (F6)", async () => {
+    server.use(http.get(`*/api/v1/accounts/${accountId}/risk-rules`, () => HttpResponse.json({ error: { code: "common.not_found" } }, { status: 404 })));
+    renderApp(<RulesForm accountId={accountId} />);
+    expect(await screen.findByText("Não encontrado.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument();
+  });
 });

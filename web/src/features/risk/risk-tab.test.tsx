@@ -199,4 +199,38 @@ describe("evaluation card (S13b)", () => {
     expect(await screen.findByText("Esta conta não tem meta de avaliação.")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
+
+  it("renders the edit entry point with its label, not a translation error (F1)", async () => {
+    serve(risk());
+    renderApp(<RiskTab accountId={accountId} />);
+    expect(await screen.findByRole("link", { name: "Editar regras" })).toHaveAttribute("href", `/pt-BR/accounts/${accountId}/risk/edit`);
+  });
+
+  it("ignores a state it does not know instead of announcing a raw key (n1)", async () => {
+    serve(risk());
+    renderApp(<RiskTab accountId={accountId} />);
+    await screen.findByRole("meter", { name: "Perda diária" });
+    const events = await stream();
+    act(() => events.emit("risk.state_changed", { type: "risk.state_changed", at: "2026-10-23T14:32:00Z", account_id: accountId, state: "mystery", stale: false, reason: "state" }));
+    expect(screen.queryByText(/announce/)).not.toBeInTheDocument();
+  });
+
+  it("sends 0 when the user clears a non-zero amount earned before (L2)", async () => {
+    serve(risk({ evaluation: evaluation({ earned_before: "250.0000" }) }));
+    server.use(http.get(`*/api/v1/accounts/${accountId}`, () => HttpResponse.json({ id: accountId, row_version: 7 })));
+    const bodies: unknown[] = [];
+    server.use(http.post(`*/api/v1/accounts/${accountId}/evaluation/restart`, async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ id: accountId, row_version: 8 });
+    }));
+    renderApp(<RiskTab accountId={accountId} />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("button", { name: "Ajustar contagem" }));
+    const dialog = await screen.findByRole("dialog");
+    await person.clear(within(dialog).getByLabelText("Já ganho antes do início (líquido)"));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Reiniciar contagem" })).toBeEnabled());
+    await person.click(within(dialog).getByRole("button", { name: "Reiniciar contagem" }));
+    await person.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Reiniciar contagem" }));
+    await waitFor(() => expect(bodies).toEqual([{ evaluation_start: "2026-10-01", evaluation_earned_before: "0", row_version: 7 }]));
+  });
 });

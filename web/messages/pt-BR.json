@@ -980,7 +980,8 @@
         "commissionInvalid": "Use um valor em dólares, com até 4 casas.",
         "resetInvalid": "Use um horário válido (hh:mm).",
         "rulesSavedCommissionFailed": "As regras foram salvas, mas a comissão não. Corrija o campo e salve de novo.",
-        "rulesSavedCommissionFailedWith": "As regras foram salvas, mas a comissão não: {message}"
+        "rulesSavedCommissionFailedWith": "As regras foram salvas, mas a comissão não: {message}",
+        "amountAmbiguous": "Digite a parte decimal explicitamente, por exemplo 2500,00 ou 2,5."
       },
       "commission": {
         "help": "O All Win usa, em cada execução, o maior valor entre a comissão informada pela plataforma e este valor × quantidade. Os limites usam o resultado líquido.",
@@ -992,7 +993,14 @@
         "editLater": "Uma mudança no horário vale a partir do próximo dia de trading."
       },
       "dailyLossNone": "A firma informa que não há limite de perda diária.",
-      "drawdownOther": "Regra da firma: {description}"
+      "drawdownOther": "Regra da firma: {description}",
+      "discard": {
+        "title": "Descartar alterações?",
+        "body": "O que você preencheu será perdido.",
+        "stay": "Continuar editando",
+        "confirm": "Descartar"
+      },
+      "understood": "Entendido como {value}"
     },
     "loadError": "Não foi possível carregar o risco desta conta.",
     "limits": "Limites",
@@ -1103,7 +1111,8 @@
         "errors": {
           "startRequired": "Informe a data de início.",
           "earnedInvalid": "Valor inválido. Use até 4 casas decimais.",
-          "conflict": "A conta mudou. Recarregue."
+          "conflict": "A conta mudou. Recarregue.",
+          "earnedAmbiguous": "Digite a parte decimal explicitamente, por exemplo 250,00 ou 2,5."
         },
         "confirm": {
           "title": "Reiniciar a contagem da avaliação?",
@@ -1114,6 +1123,7 @@
       },
       "commissionNone": "Comissão não informada: o acumulado pode estar acima do real.",
       "commissionEstimated": "Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real."
-    }
+    },
+    "editAction": "Editar regras"
   }
 }
