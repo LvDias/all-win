@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.8.1 (4fbbda5); **rev. 16.9 proposed** (Brasa #14 early review, Esquadro B5): the `outbox_notify` statement trigger and its LISTEN rule; worker grants narrowed (no `UPDATE` on `outbox_consumer`, column `UPDATE` on `outbox_delivery`), §6.4 and §8.
+- **Status:** Accepted (2026-10-24), rev. 16.9 (1f15a0f); **rev. 16.10 proposed**: `gateway.deferred_inbound` (#9b `…061610`, Bigorna; Esquadro decision) in §6.3, §6.5 and §8; §6.4 retirement re-check at the next worker startup (Esmeril note on 16.9).
+- Rev. 16.9 (1f15a0f) (Brasa #14 early review, Esquadro B5): the `outbox_notify` statement trigger and its LISTEN rule; worker grants narrowed (no `UPDATE` on `outbox_consumer`, column `UPDATE` on `outbox_delivery`), §6.4 and §8.
 - Rev. 16.8.1 (4fbbda5) (Esmeril L1/L2/N3/N4, Cinzel): body hash without `sent_at` (§6.1); admin self-recovery is always and only break-glass, admin step-up without a session (`admin_recovery` action) (§4); two-key advisory publish lock (§5.7); `routing_decision` `ON CONFLICT` target (§6.2).
 - Rev. 16.8 (208e920): S16 publication (Esquadro (B): `publish_seq`, advisory publish lock, `allwin_publisher`, release-file deltas, cursor table #11c) in §5.7; two-step reverse `leg` on `routing_decision` (§6.2); duplicate-with-different-body hash `…061250` (§6.1); S3 AC-12 admin recovery `…061800` (§4); §8 rows.
 - Rev. 16.7 (1c93eb2; Bigorna): the `gateway.execution_report` `child_role` and `reason_code` `CHECK`s match the adapter protocol schema (`exit`, `flatten`; codes with one or more dots), §6.3.
@@ -1493,7 +1494,35 @@ CREATE TABLE gateway.inbound_receipt (                   -- msg_id dedupe ≥ 24
   received_at   timestamptz NOT NULL,
   PRIMARY KEY (connection_id, msg_id)
 );
+
+-- rev. 16.10, migration #9b `…061610` gateway_create_deferred_inbound (Bigorna; Esquadro decision): reliable A→C
+-- frames whose Core consumer belongs to a later slice are schema-validated, stored and acked in one transaction
+-- (ack = durably received); the later slice consumes them with backfill and marks them processed.
+CREATE TABLE gateway.deferred_inbound (
+  connection_id    uuid NOT NULL,
+  msg_id           uuid NOT NULL,
+  seq              bigint GENERATED ALWAYS AS IDENTITY (CACHE 1) UNIQUE,   -- arrival order (intake is serialized per connection)
+  user_id          uuid NOT NULL,
+  account_id       uuid,                                 -- from the payload when the type has one (cross-module id)
+  type             text NOT NULL CHECK (type IN ('risk_event','instruction','trade_completed','notification_read')),
+  protocol_version text NOT NULL CHECK (protocol_version ~ '^1\.(0|[1-9][0-9]*)$'),
+  payload          jsonb NOT NULL,                       -- the validated payload
+  received_at      timestamptz NOT NULL,
+  processed_at     timestamptz,
+  PRIMARY KEY (connection_id, msg_id),                   -- same key as inbound_receipt; outlives its 48-h purge
+  CONSTRAINT deferred_inbound_no_token CHECK (payload::text !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
+);
+CREATE INDEX deferred_inbound_pending_idx ON gateway.deferred_inbound (type, seq) WHERE processed_at IS NULL;
+-- RLS owner policy. allwin_app: INSERT, SELECT, UPDATE (processed_at), no DELETE; allwin_worker: SELECT (finds
+-- pending rows; the item's work runs on allwin_app with app.user_id set); allwin_maint: SELECT, DELETE (purge).
 ```
+
+- **Deferred inbound frames (rev. 16.10, #9b `…061610`):**
+  - Intake inserts `inbound_receipt` and `deferred_inbound` in the same transaction, then acks. The primary key is the same `(connection_id, msg_id)`, so it stays a dedupe barrier after the receipt's 48-h purge, and one user's adapter can never collide with another's.
+  - **One consumer per type.** `processed_at` is set by that consumer's slice, in its user-scoped transaction, in `seq` order. A second consumer of a type needs a per-consumer table first (a data model change).
+  - **Retention:** processed rows are purged 7 days after `processed_at` (`allwin_maint`). Unprocessed rows are kept, because their consumer slice has not shipped yet. An alert fires on unprocessed rows older than 24 h only for types whose consumer is deployed (the Core's list).
+  - A new deferred type widens the `type` `CHECK` in a forward migration.
+  - Tests: a retransmitted frame is a no-op (receipt and PK); the app cannot `UPDATE payload` or `DELETE`; cross-user reads return 0 rows; the worker reads pending rows and cannot write.
 
 - **Rev. 16.6 (migration #9 `…061600`, Bigorna; S11 storage, Compasso; Esquadro B4 = b):**
   - **G1, byte-identical retransmission:** `command` and `outbound_message` store the exact envelope as `frame text` (`jsonb` does not keep bytes), with its `msg_id` and `protocol_version`. `created_at` is the envelope `sent_at`. A retransmission sends `frame` unchanged; `payload` is a queryable copy and is never re-serialized for the wire.
@@ -1701,7 +1730,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
        - A row committed later with `seq < start_seq` (a transaction in flight at registration) is never delivered to that consumer. That is accepted for `from_now` (rule 1, order rule). `nextval` would not close that window either, because the in-flight row already holds its lower `seq`.
        - In the same transaction, the dispatcher sets `published_at` on the rows of that type with `seq < start_seq` that are now done for every registered consumer (rule 1). This is what releases rows from the allowlist period. It is bounded by the 7-day window of one type.
        - **A new `backfill` consumer** (rev. 16.5, Esmeril M1): when the `INSERT` actually inserts a `backfill` pair, the same transaction runs `UPDATE app.outbox SET published_at = NULL WHERE event_type = $t AND published_at IS NOT NULL AND dead_lettered_at IS NULL`. Rows that other consumers had completed are not done for the new consumer, so they go back to the fetch (one fetch shape, `outbox_pending_idx`). Only retained rows come back: purged rows are gone, which X-5 already rules out for audit types because they are never allowlisted. `published_at` is set again when the new consumer's delivery completes the row. Until it catches up, the old-unpublished alert may fire for that type; that is expected, and the alert names the consumer that is behind (rev. 16.6, Esmeril note b). Registration of a consumer runs under that consumer's advisory lock, before its dispatcher loop starts; the purge `DELETE` re-checks `published_at IS NOT NULL` on the locked row, so a reset row is never purged.
-       - **Retirement:** a pair present in the table but not registered by the code fails startup. Removing a consumer is an explicit operator step that sets `retired_at`. A retired consumer no longer counts in "every registered consumer", and its rows are then re-checked as above. So a consumer that is dropped by mistake can never make its events count as done silently.
+       - **Retirement:** a pair present in the table but not registered by the code fails startup. Removing a consumer is an explicit operator step that sets `retired_at`. A retired consumer no longer counts in "every registered consumer", and its rows are then re-checked as above. The worker does that re-check at its next startup/registration, since only it has `UPDATE (published_at)`, so a retirement needs no further manual step (rev. 16.10, Esmeril note on 16.9; test). So a consumer that is dropped by mistake can never make its events count as done silently.
      - **Fetch per consumer C**, in batches of 100, ordered by `seq`: `o.event_type = ANY(<C's types>) AND o.seq >= c.start_seq AND o.published_at IS NULL`, joined to `outbox_delivery d` (C, `o.id`) with `d IS NULL OR (d.delivered_at IS NULL AND d.dead_lettered_at IS NULL AND d.next_attempt_at <= now())`.
        - Also `o.dead_lettered_at IS NULL` (rev. 16.5, reverses 16.4): after `…061400` nothing writes `app.outbox.dead_lettered_at`. It only carries rows dead-lettered under #1b, which stay out of the fetch and the purge, visible to the alert and to replay. A per-consumer dead letter lives only in `outbox_delivery`, so it never stops the other consumers (for example the `backfill` audit consumer, X-5).
        - Do not use `FOR UPDATE … SKIP LOCKED` on `app.outbox`: it would make consumers block or skip each other on the same row. One dispatcher loop per consumer holds `pg_try_advisory_xact_lock` on the consumer name, and the delivery row (PK) carries the state.
@@ -1731,6 +1760,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
 | `app.outbox` (done for every registered consumer, or of an allowlisted no-consumer type; §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
 | `risk.applied_fill` (rev. 16.6) | `(account_id, fill_id)` | no | 30 days after its `trading_date` (`allwin_maint`) |
+| `gateway.deferred_inbound` (processed; rev. 16.10) | `(connection_id, msg_id)` | no | 7 days after `processed_at`; unprocessed rows are kept |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 | `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
 | `identity.channel_change` (completed, cancelled or expired) | `id` | no | 30 days after its end, after its codes; it holds the new value (the audit keeps the masked values) |
@@ -1921,6 +1951,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 10 | `risk_create_account_limits` (`…061500`, rev. 13/16.6): `account_limits`, `scheduled_limit` (derived), `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block`, with RLS; the rev. 16.6 grants (§5.6) | S13 (Malha) |
 | 10b | `risk_create_applied_fill` (`…061510`, rev. 16.6): `risk.applied_fill` + maint grants (§5.6) | S13 (Malha); after #10 |
 | 6d | `routing_message_receipt_body_hash` (`…061250`, rev. 16.8): `body_sha256` + `NOT VALID` presence `CHECK` (§6.1) | Ferro; expand-only |
+| 9b | `gateway_create_deferred_inbound` (`…061610`, rev. 16.10): `gateway.deferred_inbound` (§6.3) | Bigorna; after #9 |
 | 9 | `gateway_create_delivery` (`…061600`, rev. 16.6): `venue_account` (without the binding, rev. 16), `command` (with `frame`, `position_effect`, contract), `execution_report` (with `seq`, contract), `account_sync` (with `version`), `account_sync_reason` (per occurrence), `outbound_message` (with `frame`), `inbound_receipt` | Bigorna (gateway); S2 / M1 |
 | 11 | `catalog_create_presets` (`…061700`, rev. 10/16.8): the §5.7 catalog tables, `publish_seq`, `allwin_publisher` grants; #11b `catalog_opt_in_rule_version_release` (`…061710`) is the forward change on `opt_in_rule_version` | S16 (Torno); after S5 (#5a) |
 | 11c | `accounts_create_catalog_release_cursor` (`…061720`, rev. 16.8): `accounts.catalog_release_cursor` (§5.7) | S16 (Torno); after #11 |
@@ -1936,7 +1967,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
