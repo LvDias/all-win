@@ -97,7 +97,9 @@
     },
     "common": {
       "forbidden_origin": "The request was blocked by the origin check.",
-      "not_found": "Not found."
+      "not_found": "Not found.",
+      "internal": "Unexpected server error. Try again.",
+      "invalid_request": "The request was not accepted. Check the data and try again."
     },
     "connections": {
       "name_taken": "You already have a connection with this name.",

@@ -24,7 +24,8 @@
     "test:e2e": "playwright test",
     "i18n:check": "node scripts/check-i18n.ts",
     "gen:api": "openapi-typescript \"${ALLWIN_OPENAPI:-../contracts/http/openapi.yaml}\" -o src/shared/api/schema.gen.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm i18n:check && pnpm test"
+    "gen:api:check": "sh scripts/check-api-drift.sh",
+    "check": "pnpm lint && pnpm typecheck && pnpm i18n:check && pnpm gen:api:check && pnpm test"
   },
   "dependencies": {
     "@hookform/resolvers": "6.0.0",

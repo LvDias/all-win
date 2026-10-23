@@ -97,7 +97,9 @@
     },
     "common": {
       "forbidden_origin": "A requisição foi bloqueada pela verificação de origem.",
-      "not_found": "Não encontrado."
+      "not_found": "Não encontrado.",
+      "internal": "Erro inesperado no servidor. Tente de novo.",
+      "invalid_request": "A requisição não foi aceita. Confira os dados e tente de novo."
     },
     "connections": {
       "name_taken": "Você já tem uma conexão com este nome.",
