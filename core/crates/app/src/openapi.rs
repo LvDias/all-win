@@ -34,6 +34,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     doc.merge(identity_infra::http::IdentityApi::openapi());
     doc.merge(accounts_infra::http::AccountsApi::openapi());
     doc.merge(catalog_infra::rule_version_http::RuleVersionApi::openapi());
+    doc.merge(accounts_infra::profiles::http::ProfilesApi::openapi());
+    doc.merge(catalog_infra::instrument_http::InstrumentsApi::openapi());
     add_security_schemes(&mut doc);
     mark_public_operations(&mut doc);
     doc
@@ -49,10 +51,13 @@ pub fn document() -> Result<Value, serde_json::Error> {
         .and_then(Value::as_object_mut)
     {
         schemas.insert(INSTRUCTION_COMPONENT.to_owned(), instruction);
-        // Contract components with if/then/not rules utoipa cannot model (accounts, S5).
+        // Contract components with if/then/not rules utoipa cannot model (accounts S5,
+        // profiles S6).
         for (name, schema) in accounts_infra::http::schemas::raw_components()
             .into_iter()
             .chain(catalog_infra::rule_version_http::raw_components())
+            .chain(accounts_infra::profiles::schemas::raw_components())
+            .chain(catalog_infra::instrument_http::raw_components())
         {
             schemas.insert(name.to_owned(), schema);
         }

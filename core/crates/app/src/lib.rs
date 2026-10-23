@@ -1,5 +1,6 @@
 //! Composition root: configuration, telemetry, HTTP server and wiring of module ports.
 
+pub mod accounts;
 pub mod config;
 pub mod dev;
 pub mod http;
@@ -43,9 +44,10 @@ pub struct AppState {
     /// Outbox event types with a registered consumer (for the unconsumed-events metric).
     pub consumed_event_types: Arc<[String]>,
     pub ingress: Arc<IngressState>,
-    /// The identity routes (`/api/v1/auth`, `/me`, `/admin`, `/sources`, `/connections`,
-    /// `/adapter/v1/pairings`, `/events`); `None` without `IDENTITY_PEPPERS`.
-    pub identity: Option<axum::Router>,
+    /// The routes behind the session authenticator: identity (`/api/v1/auth`, `/me`, `/admin`,
+    /// `/sources`, `/connections`, `/adapter/v1/pairings`, `/events`), accounts and profiles,
+    /// opt-in rules and instruments; `None` without `IDENTITY_PEPPERS`.
+    pub sessions: Option<axum::Router>,
 }
 
 /// The wired application plus its background workers.
@@ -128,20 +130,49 @@ impl App {
             consumers.register(event_type, audit.clone());
         }
         consumers.require(&IngressEvent::TYPES, unconsumed::UNCONSUMED)?;
-        let identity = match &config.identity {
-            Some(cfg) => Some(identity::wire(
-                config,
-                cfg,
-                &db,
-                &worker,
-                clock,
-                ingress.clone(),
-                audit,
-                &mut consumers,
-            )?),
+        let account_store = accounts::store(&db);
+        let (identity, sessions) = match &config.identity {
+            Some(cfg) => {
+                let wired = identity::wire(
+                    config,
+                    cfg,
+                    &db,
+                    &worker,
+                    clock.clone(),
+                    ingress.clone(),
+                    Arc::new(accounts::AccountTargetsAdapter(account_store.clone())),
+                    audit.clone(),
+                    &mut consumers,
+                )?;
+                let modules = accounts::wire(
+                    &db,
+                    account_store,
+                    clock,
+                    accounts::SessionPorts {
+                        authenticator: wired.authenticator.clone(),
+                        step_up: wired.step_up.clone(),
+                        identity_store: wired.deps.store.clone(),
+                    },
+                    wired.public_origin.clone(),
+                    config.trust_forwarded_for,
+                    config.app_env.is_production(),
+                    audit,
+                    &mut consumers,
+                );
+                let emitted: Vec<&str> = accounts_application::EMITTED_EVENT_TYPES
+                    .iter()
+                    .chain(accounts_application::profiles::PROFILE_EVENT_TYPES.iter())
+                    .copied()
+                    .collect();
+                consumers.require(&emitted, unconsumed::UNCONSUMED)?;
+                let sessions = wired.router.clone().merge(modules.router);
+                (Some(wired), Some(sessions))
+            }
             None => {
-                tracing::warn!("IDENTITY_PEPPERS is not set: the identity routes are not mounted");
-                None
+                tracing::warn!(
+                    "IDENTITY_PEPPERS is not set: the identity, accounts and profile routes are not mounted"
+                );
+                (None, None)
             }
         };
         unconsumed::check(&consumers, unconsumed::UNCONSUMED)?;
@@ -151,7 +182,7 @@ impl App {
                 worker: worker.clone(),
                 consumed_event_types: consumers.types().into(),
                 ingress,
-                identity: identity.as_ref().map(|w| w.router.clone()),
+                sessions,
             },
             dispatcher: outbox::OutboxDispatcher::new(worker, consumers, wake),
             identity,

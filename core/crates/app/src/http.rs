@@ -17,14 +17,14 @@ pub const UNMATCHED_INGRESS: &str = "<unmatched-ingress>";
 
 pub fn router(state: AppState) -> Router {
     let ingress = adapter_tradingview::router(state.ingress.clone());
-    let identity = state.identity.clone().unwrap_or_default();
+    let sessions = state.sessions.clone().unwrap_or_default();
     Router::new()
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
         .fallback(fallback)
         .with_state(state)
         .merge(ingress)
-        .merge(identity)
+        .merge(sessions)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(make_span)

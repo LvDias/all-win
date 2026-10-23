@@ -144,6 +144,7 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "access",
+ "accounts-application",
  "accounts-infra",
  "adapter-tradingview",
  "anyhow",
@@ -155,6 +156,7 @@ dependencies = [
  "catalog-application",
  "catalog-infra",
  "chrono",
+ "chrono-tz",
  "contracts",
  "http-body-util",
  "identity-application",
