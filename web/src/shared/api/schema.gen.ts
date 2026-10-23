@@ -2525,7 +2525,7 @@ export interface components {
          *     notified, never a flatten). The same holds when the open leg of a reverse with an opposite
          *     position expires at routing (gate `expired`, TTL; 5.1.0): the close leg runs (no expiry; audited as
          *     late if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty` = 0 for
-         *     the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies to the command as it stands (`expired`, audited as `execution.expired`, account flagged out of sync). Whether that case keeps the out-of-sync flag and gets `routing.reverse_close_only` is Esquadro's next ADR-0004 delta; the contract will follow it.
+         *     the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening leg of a reverse", 5.1.1): the open is held until the flatten it depends on is terminal; if it then expires it is `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left the Core, (2) the flatten succeeded with a proven flat position (`already_flat`, or for `filled` the latest report with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
          */
         DetailsRoutingDecision: {
             sizing?: components["schemas"]["DetailsSizing"];
@@ -3008,7 +3008,7 @@ export interface components {
          */
         ParamsReverseCloseOnly: {
             /**
-             * @description The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL exceeded (5.1.0; an expiry later in the gateway queue follows ADR-0004 §5).
+             * @description The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL exceeded (5.1.0), or when the open leg expired in the gateway queue under the ADR-0004 §5 reverse exception (5.1.1).
              * @enum {string}
              */
             reason_code: "routing.out_of_sync" | "routing.risk_blocked" | "routing.limits_pending" | "routing.no_bracket_profile" | "routing.max_position_reached" | "routing.expired";
