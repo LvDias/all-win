@@ -1,6 +1,6 @@
 # V1-S3 — Access, signal sources and NinjaTrader pairing — Screen spec
 
-> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** final for implementation, pending PO review of rev. 2 · **Revision:** 2 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** final for implementation · **Revision:** 3 · **Date:** 2026-10-23
 > **Slice:** [V1-S3](../../product/release-1/slice-plan.md) (ready) · AC-1, AC-1b, AC-2, AC-3, AC-4, AC-5 · cross-cutting X-2, X-4, X-5, X-6, X-8.
 > **Foundations:** [foundations.md](../foundations.md). Section numbers like "F§8" point there.
 > **Decided:**
@@ -11,6 +11,14 @@
 > - [ADR-0004 §8](../../architecture/adr/0004-adapter-protocol-v1.md): pairing code format, lifetime and re-pairing.
 >
 > **Contract:** no OpenAPI exists yet. Operation names and error codes in §3 are **design proposals** for the Architect to adopt or rename in `contracts/` (spec-first). The Frontend implements against the contract, not this table.
+> **Contract:** [contracts/http/openapi.yaml](../../../contracts/http/openapi.yaml) and [s3 contract notes](../../architecture/contracts/s3-access-sources-pairing.md) (Architect). Where this spec and the contract differ, **the contract wins**; tell the Designer.
+> **Rev. 3 changes (contract alignment, 2026-10-23):**
+> - Invitation and reset links now carry the token in the URL **fragment** (`#t=`) and send it in the POST body.
+> - The pairing state "invalidated after 5 wrong attempts" is removed. `pairing_code_invalidated` now has reason `superseded` or `pairing_locked`, and the plugin maps `pairing.temporarily_locked` to its rate-limited state.
+> - TOTP enrolment step 1 is replaced by step-up.
+> - The time zone is sent at sign-up, and `session.ended` reasons are mapped.
+> - Account bindings follow re-pairing by account name.
+> - Operation names now come from the OpenAPI.
 > **Rev. 2 changes:** Q17–Q22 applied (alternative branches removed). Added "keep me signed in", step-up (F§8.2), admin Users tab (reset link and TOTP reset), reset-success page, re-pairing, and the `outdated` state. Final password, recovery-code and pairing-code formats.
 > **Surfaces:** Web (Frontend), NinjaTrader plugin pairing panel (Plugin Engineer, §S3-11). **QA:** QA owner for `tests/e2e/`.
 
@@ -22,9 +30,9 @@
 Public (no session)                     App (session) — shadcn Sidebar
 /[locale]/login                          Conexões / Connections
 /[locale]/login/verify      (TOTP)         ├─ Fontes de sinal      /[locale]/connections/sources
-/[locale]/invite/[token]    (sign-up)      └─ NinjaTrader          /[locale]/connections/ninjatrader
+/[locale]/invite#t=…       (sign-up)      └─ NinjaTrader          /[locale]/connections/ninjatrader
 /[locale]/forgot-password                Configurações / Settings
-/[locale]/reset-password/[token]           ├─ Segurança            /[locale]/settings/security
+/[locale]/reset-password#t=…               ├─ Segurança            /[locale]/settings/security
                                            └─ Preferências         /[locale]/settings/preferences  (S4)
                                          Administração (platform admin only, Q19)
                                            ├─ Convites             /[locale]/admin/invites
@@ -39,9 +47,16 @@ Public (no session)                     App (session) — shadcn Sidebar
 ## 1. Global rules for this slice
 
 - **Isolation (AC-2, X-2):** every list and detail shows only the signed-in user's objects. An id of another user's object (in the URL or a request) yields the same "not found" screen as a non-existent id (`ErrorState`, code `common.not_found`). The UI never distinguishes "exists but not yours".
-- **Secrets (AC-3, X-4):** F§8. No secret, token or code appears in a URL, query string, toast, page title or error message. Invite and reset tokens arrive in the URL path by necessity: those pages call `history.replaceState` to drop the token from the visible URL after reading it, set `Referrer-Policy: no-referrer`, and load no third-party resources.
+- **Secrets (AC-3, X-4):** F§8. No secret, token or code appears in a URL path, query string, toast, page title or error message. **Invite and reset tokens travel only in the URL fragment** (`#t=<token>`), which browsers never send to the server or in `Referer`. Those pages:
+  - read `location.hash` on the client;
+  - immediately remove the fragment with `history.replaceState` (so it is not in history, bookmarks or screenshots of the address bar);
+  - send the token **in the POST body** (`lookupInvitation`/`acceptInvitation`, `confirmPasswordReset`);
+  - set `Referrer-Policy: no-referrer` and load no third-party resources.
+
+  A page opened without a `t` fragment shows the generic invalid state.
 - **Audit (X-5):** the user actions below (create/rotate/revoke source, create/pair/unpair connection, enable/disable TOTP) are expected to produce audit entries. The audit view is S10; this slice only needs the events emitted (Core).
 - **Duplicate submits:** F§10 "Submitting" applies to every form and confirm button.
+- **Session ended elsewhere:** the SSE stream sends `session.ended` with a reason before closing. Open tabs redirect to login with the mapped message: `expired` → `session_expired`; `password_reset`, `password_changed`, `totp_changed`, `admin_totp_reset` → `sessions_ended`; `logout` → `signed_out` (S3-01).
 - **Step-up (Q21, auth policy §1):** these actions open the step-up dialog (F§8.2) first when the last authentication is older than 15 minutes: create or rotate a source URL, create a pairing code or unpair, enable/disable TOTP or regenerate recovery codes, and change the password. The Core is the authority. The web opens the dialog when the Core answers `auth.step_up_required`, then retries the original action once.
 - **Text:** all strings shown are examples in pt-BR / en. Frontend creates the keys (S4 spec §5 naming); final copy review is with the PO.
 
@@ -100,10 +115,10 @@ Public (no session)                     App (session) — shadcn Sidebar
 
 **AC mapping:** AC-1b (sign-in requires the code once enabled).
 
-## S3-03 Accept invitation / create account — `/[locale]/invite/[token]`
+## S3-03 Accept invitation / create account — `/[locale]/invite#t=<token>`
 
 **Purpose:** an invited person creates their account (AC-1, Q6). The locale of the link is the one chosen when the invite was created (S3-08).
-**Entry:** link from the invitation (copied by the admin or e-mailed, Q20). The page validates the token on load.
+**Entry:** link from the invitation (copied by the admin or e-mailed, Q20), `https://<host>/<locale>/invite#t=<token>`. On load the page reads the token from the fragment, removes the fragment (§1), and validates it with `lookupInvitation` (token in the body). The token stays in memory only until `acceptInvitation`.
 
 | State | UI |
 |---|---|
@@ -114,9 +129,10 @@ Public (no session)                     App (session) — shadcn Sidebar
 
 | Field | Component | Validation | API |
 |---|---|---|---|
-| E-mail | `Input` read-only, prefilled from the invite (Q19: bound to one e-mail) | — | from `auth.get_invitation` |
+| E-mail | `Input` read-only, prefilled from the invite (Q19: bound to one e-mail) | — | from `lookupInvitation` |
 | Senha / Password | `Input type=password` + show/hide, `autocomplete=new-password` | Auth policy §2: 12 to 128 characters (any characters, spaces allowed), no composition rules. The Core rejects common/breached passwords and passwords containing the e-mail name or "allwin". Live hint under the field: "De 12 a 128 caracteres. Uma frase longa é mais fácil de lembrar." Length counter, no strength meter. Client checks only length; the rest is the Core's | `auth.accept_invitation` → `password` |
 | Idioma / Language | `Select` pt-BR / English, prefilled with the current locale | required | → `locale` (profile, S4) |
+| Fuso horário / Time zone | Read-only line "Fuso horário: {zone} (GMT-03:00) · `Alterar`", prefilled from the browser (`Intl.DateTimeFormat().resolvedOptions().timeZone`). `Alterar` expands the S4 §4 time-zone `Select` | required by the contract; `me.invalid_time_zone` → inline error | → `time_zone` |
 
 No password-confirmation field: the show/hide toggle is the typo check (NIST 800-63B practice), and password reset exists (AC-5). No display-name field: no requirement asks for one. **Terms of use / privacy acceptance:** **[Open]**, vision §12: required before launch, not before dev. A checkbox slot is reserved above the button.
 
@@ -139,9 +155,9 @@ Q20 decided: transactional e-mail for reset (and invitations) only; an admin-gen
 - Rate limited: same generic message (no different response).
 - **E-mail template** (Frontend/Core, both languages, in the profile language): subject "Redefinir sua senha do All Win" / "Reset your All Win password"; body: one sentence, the button link, validity "30 minutos", and "Se você não pediu, ignore este e-mail. Sua senha continua a mesma." No other links, no tracking pixels.
 
-## S3-05 Reset password — `/[locale]/reset-password/[token]` (AC-5)
+## S3-05 Reset password — `/[locale]/reset-password#t=<token>` (AC-5)
 
-- Same token handling as S3-03 (validating / invalid-generic / valid). Validity: 30 minutes, single use.
+- Same fragment handling as S3-03 (§1). There is no lookup call: the form is shown directly, and an invalid, used, expired or superseded token is reported on submit with one generic message (`auth.reset_token_invalid`): "Este link de redefinição não é válido. Ele pode ter expirado (vale 30 minutos) ou já ter sido usado. Peça um novo link." + `Pedir novo link` → S3-04. Validity: 30 minutes, single use.
 - Field: Nova senha / New password (rules as S3-03). Action `Redefinir senha` / `Reset password`.
 - **Success page** (not a redirect: auth policy §3 asks for review links). Success `Card`:
   - "Senha redefinida. Por segurança, todas as suas sessões foram encerradas, inclusive neste navegador." / "Password reset. For security, all your sessions were ended, including this browser."
@@ -159,18 +175,17 @@ Q20 decided: transactional e-mail for reset (and invitations) only; an admin-gen
 - Action: `Ativar` / `Enable` or `Desativar` / `Disable`.
 - Note under the actions: "Ativar ou desativar encerra suas sessões em outros dispositivos." / "Turning this on or off signs you out on other devices." (auth policy §3).
 
-**Enable flow:** `ResponsiveDialog`, 4 steps with a step indicator ("Etapa 2 de 4"). Closing at any step before step 3 succeeds = nothing changes.
+**Enable flow:** `ResponsiveDialog`, 3 steps with a step indicator ("Etapa 2 de 3"). `startTotpSetup` is a step-up operation, so re-authentication is the F§8.2 step-up dialog, shown before step 1 when the last authentication is older than 15 minutes. Closing at any step before step 2 succeeds = nothing changes. The enrolment secret expires after 10 minutes (`auth.totp_setup_expired` → "A configuração expirou. Comece de novo." + `Recomeçar`).
 
 | Step | Content | Validation / API |
 |---|---|---|
-| 1 Confirm it's you | Senha / Password (`current-password`) | `auth.totp_setup_start` → `password` (re-auth, AC-1b). Wrong password: "Senha incorreta." (`auth.reauth_failed`, same throttling as login) |
-| 2 Scan | QR code (`img` with `alt` "QR code para o app autenticador") + "Não consegue escanear? Digite a chave:" + setup key in a `SecretField` (F§8; grouped in blocks of 4 when revealed) | Response carries the otpauth URI / key; never cached |
-| 3 Confirm code | `InputOTP` 6 digits | `auth.totp_setup_confirm` → `code`. Wrong: "Código inválido. Confira se o relógio do celular está certo e tente de novo." |
-| 4 Recovery codes (Q22) | 10 codes, each shown `XXXXX-XXXXX` (10 Crockford Base32 characters), in a 2-column mono list; actions `Copiar todos` / `Baixar .txt` (client-side file from the response, filename `all-win-recovery-codes.txt`, one code per line plus the generation date); warning `Alert`: "Guarde estes códigos em um lugar seguro. Cada um funciona uma vez. Eles não serão mostrados de novo." Required checkbox "Guardei meus códigos" enables `Concluir` / `Done` | Codes shown once; cleared from state on close. Closing (Esc, overlay, back) before the checkbox opens the guard "Você ainda não confirmou que guardou os códigos. Fechar mesmo assim?" (TOTP is already on at this point) |
+| 1 Scan | QR code (`img` with `alt` "QR code para o app autenticador") + "Não consegue escanear? Digite a chave:" + setup key in a `SecretField` (F§8; grouped in blocks of 4 when revealed) | `startTotpSetup` returns `otpauth_uri`, `secret`, `expires_at`; never cached |
+| 2 Confirm code | `InputOTP` 6 digits | `confirmTotpSetup` → `code`. Wrong: "Código inválido. Confira se o relógio do celular está certo e tente de novo." |
+| 3 Recovery codes (Q22) | 10 codes, each shown `XXXXX-XXXXX` (10 Crockford Base32 characters), in a 2-column mono list; actions `Copiar todos` / `Baixar .txt` (client-side file from the response, filename `all-win-recovery-codes.txt`, one code per line plus the generation date); warning `Alert`: "Guarde estes códigos em um lugar seguro. Cada um funciona uma vez. Eles não serão mostrados de novo." Required checkbox "Guardei meus códigos" enables `Concluir` / `Done` | Codes shown once; cleared from state on close. Closing (Esc, overlay, back) before the checkbox opens the guard "Você ainda não confirmou que guardou os códigos. Fechar mesmo assim?" (TOTP is already on at this point) |
 
 Success toast: "Verificação em duas etapas ativada." The TOTP banner (S3-07) disappears.
 
-**Regenerate recovery codes** (auth policy §2, step-up): dialog with Senha + Código atual (`InputOTP`) → `auth.recovery_codes_regenerate`. The warning says "Os códigos anteriores deixam de funcionar." Then the same step-4 view. *(Regeneration comes from the Architect's policy; PO to confirm that it is in the V1 scope, §4.)*
+**Regenerate recovery codes** (auth policy §2, step-up): dialog with Senha + Código atual (`InputOTP`) → `auth.recovery_codes_regenerate`. The warning says "Os códigos anteriores deixam de funcionar." Then the same step-3 view. *(Regeneration comes from the Architect's policy; PO to confirm that it is in the V1 scope, §4.)*
 
 **Disable flow:** `AlertDialog`: title "Desativar a verificação em duas etapas?"; body: "Sua conta ficará protegida só pela senha, e suas sessões em outros dispositivos serão encerradas." Fields: Senha + Código atual (`InputOTP`, with a link to use a recovery code instead). Confirm `Desativar` (destructive). Errors as above. AC-1b: requires re-authentication (Q22: password + code).
 
@@ -304,12 +319,15 @@ Both admin actions require step-up (F§8.2). **[Architect: add them to the polic
    - Waiting indicator: "Aguardando o plugin…" with a spinner (static text under reduced motion).
    - **Paired** (SSE `connection.paired`): success state with `CircleCheck`: "“{name}” conectada. {n} contas encontradas: Sim101, …" + `Vincular contas` (→ S5) and `Concluir`. Focus moves to the success heading.
    - **Expired:** "O código expirou." + `Gerar novo código` (→ `connections.new_pairing_code { id }`).
-   - **Invalidated after 5 wrong attempts** (ADR-0004 §8; SSE `connection.pairing_code_invalidated`): warning `Alert` "O código foi invalidado depois de várias tentativas erradas. Gere um novo código." + `Gerar novo código`. Wrong attempts themselves are shown in the plugin (S3-11).
+   - **Code invalidated** (SSE `connection.pairing_code_invalidated`, by `reason`):
+     - `superseded`: a newer code was generated for this connection (e.g. in another tab or by "Mover para outra máquina"). Info `Alert`: "Um código mais novo foi gerado para esta conexão. Este não vale mais." + `Gerar novo código`. The displayed code is replaced by "—" and the countdown stops.
+     - `pairing_locked`: pairing is temporarily locked for everyone after too many wrong codes (global protection, contract notes §2). Warning `Alert`: "O pareamento está temporariamente bloqueado por excesso de tentativas erradas. Aguarde alguns minutos e gere um novo código." + `Gerar novo código` (if the Core still refuses, the button shows the returned error).
+   - Wrong codes typed in the plugin are **not** reported to the web: the Core cannot tie a wrong code to a connection. The plugin shows them (S3-11).
    - **Closing while waiting:** allowed without a guard (no secret is lost: a new code can be generated). The connection stays in the list as `Aguardando pareamento`.
 
 ### Move to another machine (re-pairing, ADR-0004 §8)
 - `AlertDialog`: "Mover “{name}” para outra máquina?"; body: "Você vai receber um novo código. Quando ele for usado, a instância atual será desconectada e não receberá mais ordens." Confirm `Gerar código` → step-up if needed → same pairing step 2 as above.
-- Until the new code is used, the current instance keeps working. On success: toast "“{name}” agora está em outra máquina." The account bindings move with the connection only if the new instance reports the same account names. Accounts that are not reported show as "Não encontrada na nova instância" **[Dependency: S5/S11 behavior, Architect to confirm]**.
+- Until the new code is used, the current instance keeps working. On success: toast "“{name}” agora está em outra máquina." Account bindings **follow the connection by platform account name** (contract notes §2). Bound accounts the new instance does not report become out of sync (`sync.account_not_found_after_repair`). The connection row then lists them as "Não encontrada na nova instância" (danger) with `Vincular de novo` (→ S5) and a link to the out-of-sync view (S11).
 
 ### Unpair (`Desparear`): Q18 decided
 Allowed after a confirmation that lists the affected accounts; the accounts become out of sync; nothing is closed automatically.
@@ -330,8 +348,9 @@ The plugin UI follows NinjaTrader 8 conventions (NTWindow/WPF, NinjaTrader skin 
 |---|---|---|
 | Not paired | "Não pareado. Gere um código em All Win → Conexões → NinjaTrader." | Code field (accepts 8 characters, case-insensitive, ignores spaces and hyphens, displays as `XXXX-XXXX`) + `Parear` |
 | Pairing | "Pareando…" | Disabled |
-| Invalid / expired / used / invalidated code | "Código inválido ou expirado. Confira o código ou gere um novo no All Win." (one message for all causes) | Field kept for correction |
-| Rate limited | "Muitas tentativas. Aguarde um minuto e tente de novo." | Disabled with countdown |
+| Invalid / expired / used / superseded code (`pairing.invalid_code`) | "Código inválido ou expirado. Confira o código ou gere um novo no All Win." (one message for all causes) | Field kept for correction |
+| Rate limited (`pairing.rate_limited`) or pairing temporarily locked (`pairing.temporarily_locked`) | "Muitas tentativas. Aguarde {time} e tente de novo." (`Retry-After` when present; otherwise "alguns minutos") | Disabled with countdown |
+| Plugin version unsupported at pairing (`pairing.adapter_version_unsupported`) | Same as "Update required" below | — |
 | Paired + connected | Connection name (from Core), "Conectado", account count | `Desparear` (local: forgets the token after confirmation) |
 | Disconnected / reconnecting | "Sem conexão com o All Win. Tentando reconectar…" + last connected time | — |
 | Revoked (unpaired in the web, or re-paired on another machine; close code 4002) | "Esta instância foi despareada ou movida para outra máquina no All Win. Gere um novo código para conectar." | Back to Not paired |
@@ -354,21 +373,28 @@ The device token is never displayed or logged by the plugin (DPAPI storage, ADR-
 | X-4 secrets | F§8, S3-03/05 token handling, S3-06, S3-08, S3-09, S3-10 |
 | X-6 bilingual | all strings keyed; e-mails in the recipient's language; S4 spec |
 
-## 3. Proposed operations and error codes (for the Architect / OpenAPI)
+## 3. Operations and error codes (contract)
 
-| Operation (proposal) | Used by | Notes |
+The design operation names of rev. 2 map 1:1 to OpenAPI `operationId`s; the table is in [contract notes §1](../../architecture/contracts/s3-access-sources-pairing.md). The Frontend uses the generated client and the `operationId`s only.
+
+**How the web shows error codes that the contract added:**
+
+| Code | Where | UI |
 |---|---|---|
-| `auth.login` (`email`, `password`, `remember_me`), `auth.verify_totp`, `auth.verify_recovery_code`, `auth.logout` | S3-01/02 | Login returns `session` or `pending_2fa` |
-| `auth.step_up` (`password`, `code?`) | §1, F§8.2 | Error `auth.step_up_required` on sensitive actions |
-| `auth.get_invitation`, `auth.accept_invitation` | S3-03 | Get returns only `email`, `locale`, validity |
-| `auth.request_password_reset`, `auth.reset_password` | S3-04/05 | Request always 202 |
-| `auth.totp_setup_start`, `auth.totp_setup_confirm`, `auth.totp_disable`, `auth.recovery_codes_regenerate`, `auth.change_password`, `me.security` | S3-06 | `me.security` returns `totp_enabled`, `recovery_codes_remaining`, session timeouts |
-| `invites.list/create/revoke` | S3-08a | Admin only; `create` returns the link once and `email_sent` |
-| `admin.users.list`, `admin.users.create_reset_link`, `admin.users.reset_totp` | S3-08b | Admin only; identity fields only |
-| `sources.list/create/rotate/revoke/update` | S3-09 | `create`/`rotate` return `webhook_url` **once**; `list` returns `key_id` + masked URL only |
-| `connections.list/create/new_pairing_code/unpair/update` + SSE `connection.status_changed`, `connection.paired`, `connection.pairing_code_invalidated` | S3-10 | `create`/`new_pairing_code` return `pairing_code`, `expires_at` |
+| `auth.unauthenticated` | any call | Session-expired pattern (F§10) |
+| `auth.forbidden` | admin routes for a non-admin | Generic not-found screen (does not reveal the route) |
+| `auth.totp_already_enabled` | S3-06 enable | Refetch security state; toast "A verificação já está ativada." |
+| `auth.totp_setup_expired` | S3-06 step 2 | "A configuração expirou. Comece de novo." + `Recomeçar` |
+| `auth.reset_token_invalid` | S3-05 submit | Generic invalid-link message + `Pedir novo link` |
+| `connections.name_taken` | S3-10 create/rename | Inline "Você já tem uma conexão com este nome." |
+| `connections.unpaired` | S3-10 actions on an unpaired row (stale list) | Refetch; toast "Esta conexão já foi despareada." |
+| `connections.open_positions_not_acknowledged` | S3-10 unpair | Show the open-position `Alert` + required checkbox (the list may be newer than the dialog); keep the dialog open |
+| `sources.revoked` | S3-09 rotate/rename a revoked source (stale list) | Refetch; toast "Esta fonte já foi revogada." |
+| `pairing.invalid_code`, `pairing.rate_limited`, `pairing.temporarily_locked`, `pairing.adapter_version_unsupported` | plugin only | S3-11 |
+| `me.invalid_time_zone` | S3-03, S4 preferences | Inline "Fuso horário inválido. Escolha outro." |
+| `common.forbidden_origin` | any write | Generic error with the code (indicates a misconfiguration, not a user error) |
 
-Error codes the web translates (proposal): `auth.invalid_credentials`, `auth.rate_limited`, `auth.invalid_code`, `auth.pending_expired`, `auth.step_up_required`, `auth.reauth_failed`, `auth.password_too_short`, `auth.password_too_long`, `auth.password_breached`, `auth.invitation_invalid`, `auth.reset_token_invalid`, `invites.email_taken`, `invites.email_send_failed`, `sources.name_taken`, `connections.pairing_code_expired`, `common.not_found`, `common.rate_limited`, `common.unexpected`.
+`connections.pairing_code_expired` is not returned; the web derives expiry from `expires_at` (S3-10).
 
 ## 4. Open questions (owner)
 
@@ -378,6 +404,6 @@ Error codes the web translates (proposal): `auth.invalid_credentials`, `auth.rat
 | Is "change password" (auth policy §1 step-up list) in V1 scope? | PO | Included |
 | Are source names unique among active sources? | PO | Yes |
 | Is showing "an account or pending invite exists" OK on the admin-only invite screen? | PO | Yes |
-| Add the admin actions (reset link, TOTP reset) and the S5 automation opt-in "accepts" to the step-up list | Architect | Step-up applied |
-| Do account bindings follow a re-paired connection when the account names match? | Architect | Yes, by account name |
 | Terms/privacy acceptance at sign-up | User (vision §12) | Slot reserved |
+
+Architect items from rev. 2 are resolved in [contract notes §2](../../architecture/contracts/s3-access-sources-pairing.md): the step-up list now includes accepting automation and the admin actions, and account bindings follow re-pairing by name.

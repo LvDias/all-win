@@ -1,8 +1,10 @@
 # V1-S5 — Per-account automation opt-in and preset provenance — Screen spec
 
-> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 2 · **Date:** 2026-10-23
 > **Slices:** [V1-S5](../../product/release-1/slice-plan.md) (account registration and lifecycle), with touch points in S7 (routing), S10 (audit) and S16 (presets). The PO is adding the opt-in rules to S5/S7/S16 in the slice plan.
 > **Foundations:** [foundations.md](../foundations.md): F§7.2 states, F§7.4 provenance and `FirmRuleQuote`, F§8.2 step-up.
+> **Contract:** `setAccountAutomationChoice` (`PUT /api/v1/accounts/{account_id}/automation`) in [openapi.yaml](../../../contracts/http/openapi.yaml); [S3 contract notes §2](../../architecture/contracts/s3-access-sources-pairing.md). Where they differ, the contract wins.
+> **Rev. 2 (2026-10-23):** aligned with the contract. The choice is saved by its own operation, and step-up applies only to `accepted` (now in the auth policy). Mapped the 409/422 responses. Added the create-flow sequencing.
 > **Basis:**
 > - User decision of 2026-10-23, option A ([decisions.md](../../delivery/decisions.md)): for a firm that forbids automation, the user must explicitly choose, per account, whether the account accepts automated sources. There is **no default**. The choice is made after a warning that shows the firm's rule text and the risk of losing the account, and it is audited with date and user. Items that conflict across official pages ship as "not confirmed" without blocking the rest. Presets store the platform.
 > - PO answers of 2026-10-23 (Bússola): O2, O4, O6, O7, O8 and O9 confirmed. O1 is the PO's interpretation, to be confirmed by the user.
@@ -96,12 +98,21 @@ The section appears only after firm, plan, phase, size and (when relevant) firm 
 |---|---|
 | Save with no choice | Inline error under the legend: "Escolha se esta conta aceita ordens automatizadas." Focus moves to the radio group. Included in the form's error summary |
 | `accepted` without the checkbox | Inline error on the checkbox: "Confirme que leu a regra para aceitar." |
-| Save with `accepted` | Step-up (F§8.2) if the last authentication is older than 15 min (O4; **Architect to add this action to the policy list**). Then save |
+| Save with `accepted` | Step-up (F§8.2) if the last authentication is older than 15 min (O4; the operation has `x-step-up` when `automation_choice = accepted`). Then save |
 | Save with `declined` | No step-up, no extra dialog |
-| The preset version changed between loading and saving (Core returns `accounts.rule_version_changed`) | The section reloads with the new quote, the choice is cleared, and an `Alert` explains it: "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha." Other form fields keep their values |
+| The preset version changed between loading and saving (409 `accounts.rule_version_changed`, body carries the current `automation_rule_version_id`) | The section reloads with the new quote, the choice is cleared, and an `Alert` explains it: "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha." Other form fields keep their values |
 | Success | Toast "Conta salva." The audit entry is written by the Core (§7) |
 
-**Contract (proposal for the Architect):** the save sends `automation_choice: "accepted" | "declined"` **and** `automation_rule_version_id`, the preset version whose text the user saw. The Core rejects a stale version, so the audit always records exactly what was displayed (O6). The account returns `automation_choice`, `automation_state: "chosen" | "pending_review" | "not_required"`, `automation_chosen_at`, `automation_rule_version_id`.
+**Contract:** `setAccountAutomationChoice` sends `automation_choice: "accepted" | "declined"` **and** `automation_rule_version_id`, the preset version whose text the user saw. The Core rejects a stale version with 409 and saves nothing, so the audit always records exactly what was displayed (O6). The response `AutomationState` has `automation_state: "chosen" | "pending_review" | "not_required"`, `automation_choice`, `automation_chosen_at` and `automation_rule_version_id`. Routing treats `pending_review` as not accepted.
+
+- **422 `accounts.automation_choice_not_applicable`** (the firm does not forbid automation): the section disappears after a refetch, with no error shown to the user. This only happens with stale data.
+- **Create flow sequencing:** the choice is a separate operation from creating the account. The form submits in this order:
+  1. Create the account.
+  2. Run the step-up if needed (only for `accepted`).
+  3. Call `setAccountAutomationChoice`.
+
+  If step 2 is cancelled or step 3 fails, the account **is saved without a choice**. The user then lands on the account detail page with the warning `Alert` "Conta salva, mas a escolha de automação não foi registrada. Ordens automatizadas não serão enviadas até você escolher." + `Escolher agora` (opens §4). Routing treats the account as not accepting. **[Architect: confirm the state of a prop account that never had a choice: `pending_review`, or a distinct value; the UI shows `Escolha pendente` either way.]**
+- The contract currently applies the choice when the firm **forbids** automation (`no`). The Q25 cases (`conditional`, `unknown`, not confirmed) need a contract change if the user approves them.
 
 ## 4. Account detail: "Automação" card and changing the choice (O4)
 
@@ -210,4 +221,5 @@ Audit entries are read-only (S10 AC-3). Source links in entries open the officia
 | — | Prop accounts created before S16 become `Escolha pendente` | PO | Yes |
 | — | An unresolved not-confirmed consistency rule gives no warnings | PO | Yes |
 | — | Existing route to an account that becomes declined: kept inactive vs removed | PO (S7) | Kept inactive |
-| — | Add "accept automation" to the step-up list; `automation_rule_version_id` in the account contract; `accounts.rule_version_changed` error | Architect | Proposed |
+| — | State of a prop account that never had a choice (`pending_review` vs. a new value), or an atomic create-with-choice | Architect | `Escolha pendente`, not accepted |
+| Q25 | If approved, extend `setAccountAutomationChoice` applicability beyond `no` | Architect (after user) | — |
