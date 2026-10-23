@@ -322,7 +322,13 @@
         "created": "Account created.",
         "saved": "Account saved."
       },
-      "versionConflict": "This account was changed somewhere else. Reload to see the current values."
+      "versionConflict": "This account was changed somewhere else. Reload to see the current values.",
+      "steps": {
+        "firm": "Firm and plan",
+        "optIn": "Automated orders"
+      },
+      "stepUpDescription": "accept automated orders on account “{name}”",
+      "stepUpDescriptionEdit": "accept automated orders on this account"
     },
     "optIn": {
       "automation": {

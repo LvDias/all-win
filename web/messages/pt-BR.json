@@ -322,7 +322,13 @@
         "created": "Conta criada.",
         "saved": "Conta salva."
       },
-      "versionConflict": "Esta conta foi alterada em outro lugar. Recarregue para ver os valores atuais."
+      "versionConflict": "Esta conta foi alterada em outro lugar. Recarregue para ver os valores atuais.",
+      "steps": {
+        "firm": "Firma e plano",
+        "optIn": "Ordens automatizadas"
+      },
+      "stepUpDescription": "aceitar ordens automatizadas na conta “{name}”",
+      "stepUpDescriptionEdit": "aceitar ordens automatizadas nesta conta"
     },
     "optIn": {
       "automation": {

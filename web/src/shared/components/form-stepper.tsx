@@ -38,7 +38,10 @@ export type SubmitError = { pointer?: string; message: string };
 type FormStepperProps<V extends FieldValues> = {
   form: UseFormReturn<V>;
   steps: FormStep<V>[];
-  /** Called once from the review. Returns the errors the Core refused the request with, or nothing on success. */
+  /**
+   * Called once from the review. Returns the errors the Core refused the request with, or nothing on success.
+   * The double-submit guard is released afterwards, so on success the caller must navigate or close the flow.
+   */
   onSubmit: (values: V) => Promise<SubmitError[] | void>;
   submitLabel: string;
   onCancel: () => void;
