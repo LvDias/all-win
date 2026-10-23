@@ -10,7 +10,8 @@
 	# Internal CA for local TLS only; never a public certificate in dev.
 	local_certs
 	log default {
-		level INFO
+		# CADDY_LOG_LEVEL=DEBUG enables debug output (M1 coverage); the same URI/header deletion applies.
+		level {$CADDY_LOG_LEVEL:INFO}
 		output stdout
 		format filter {
 			wrap json
