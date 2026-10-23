@@ -28,8 +28,8 @@
 | 3 | Per-key rate limit | 429 `ingress.rate_limited` + `Retry-After` | "rejected" + code |
 | 4 | Content type allowed (`application/json`, `text/plain`); body ≤ 16 KiB (`Content-Length` checked first, then enforced while streaming). The token is already known, so these rejections are audited without a second lookup | 415 `ingress.unsupported_media_type` / 413 `ingress.payload_too_large` | "rejected" + code |
 | 5 | Parse JSON (decimal fields are strings; no `f64` anywhere) | 400 `ingress.invalid_json` | "rejected" + code |
-| 6 | Validate against instruction schema v1. Unsupported `schema_version` → `ingress.unsupported_version` | 400 `ingress.schema_violation` + JSON `pointer` | "rejected" + code + pointer |
-| 7 | Source policy (ADR-0003 §6):<br>• `source.type` must equal `tradingview` → `ingress.source_mismatch`;<br>• actions `modify`/`cancel` or `position_effect: reduce` → `ingress.action_not_allowed_for_source`;<br>• non-market `order.type` → `ingress.order_type_not_allowed_for_source`;<br>• `instrument.symbol` not enabled in the instrument catalog → `ingress.unsupported_instrument` (AC-3, AC-7: catalog configuration, no code change to add NQ/ES/MES) | 422 + code | "rejected" + code |
+| 6 | Validate against instruction schema v1. A `schema_version` whose minor is newer than the Core supports (S1 supports `1.0`), or an unknown major → `ingress.unsupported_version` with `pointer` `/schema_version` (ADR-0003 §8) | 400 `ingress.schema_violation` / `ingress.unsupported_version` + JSON `pointer` | "rejected" + code + pointer |
+| 7 | Source policy (ADR-0003 §6):<br>• `source.type` must equal `tradingview` → `ingress.source_mismatch`;<br>• actions `modify`/`cancel` or `position_effect: reduce` → `ingress.action_not_allowed_for_source`;<br>• non-market `order.type` → `ingress.order_type_not_allowed_for_source`;<br>• `signal_type` not in `trigger`/`trade_plan`/`nq_trigger` (e.g. `master_account`) → `ingress.signal_type_not_allowed_for_source`, `pointer` `/signal_type`;<br>• `instrument.symbol` not enabled in the instrument catalog → `ingress.unsupported_instrument` (AC-3, AC-7: catalog configuration, no code change to add NQ/ES/MES) | 422 + code | "rejected" + code |
 | 8 | Insert the instruction with `UNIQUE (user_id, message_id)`, `received_at`, `sent_at`, `expiry_base = min(sent_at, received_at)` | Conflict → **200 `duplicate`** with the original `instruction_id`; nothing is routed (AC-4) | "duplicate ignored" |
 | 9 | Commit, then respond **200 `accepted`**. Routing starts asynchronously after commit | — | "received" (AC-1) |
 
@@ -96,7 +96,7 @@
 ## 5. Other acceptance checks (beyond masking)
 
 - AC-1–AC-5 and AC-7 are each covered by an integration test using the fixtures in `contracts/instruction/v1/examples/`:
-  - every valid fixture is accepted (non-TradingView sources excepted, which get `ingress.source_mismatch` because the token is bound to `tradingview`);
+  - every valid fixture is accepted, with two exceptions: non-TradingView sources get 422 `ingress.source_mismatch` (the token is bound to `tradingview`), and `future-minor-version.json` (`1.3`) gets 400 `ingress.unsupported_version` while the Core supports only `1.0`. The schema-conformance tests in the contracts crate still accept it, because it is valid against the schema;
   - every invalid fixture gets 400;
   - policy cases get 422.
 - **Concurrency:** 20 parallel posts of the same body give exactly 1 `accepted` and 19 `duplicate`, and exactly one instruction row.

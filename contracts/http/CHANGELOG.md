@@ -1,5 +1,8 @@
 # HTTP API — changelog
 
+## 1.1.1 — 2026-10-23 (clarifications for S1 implementation)
+- Ingress 422 adds `ingress.signal_type_not_allowed_for_source` (ADR-0003 §6 policy had no code). Ingress 400 `ingress.unsupported_version` documented with pointer `/schema_version` for a minor newer than the Core supports.
+
 ## 1.1.0 — 2026-10-23 (Code Review 1 fixes; additive except where noted)
 - Root `security: [{session: []}]`; public operations keep `security: []`; `logout` accepts any session state; 401 `auth.unauthenticated` on every session operation.
 - Common errors: 400 `common.invalid_request` (+ `pointer`) on every `/api/v1` and `/adapter/v1` operation with input; 500 `common.internal` everywhere. Ingress path/method violations stay the empty 404.

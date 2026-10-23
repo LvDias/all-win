@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 1.1.0
+  version: 1.1.1
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (auth, invitations, sessions, sources,
@@ -113,7 +113,7 @@ paths:
                 duplicate:
                   value: { status: duplicate, instruction_id: 0192b3c4-0000-7000-8000-000000000006 }
         '400':
-          description: '`ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version`.'
+          description: '`ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version` (pointer `/schema_version`; a minor newer than the Core supports).'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IngressRejected' }
@@ -137,7 +137,8 @@ paths:
         '422':
           description: |
             Source policy or catalog: `ingress.action_not_allowed_for_source` (modify/cancel/reduce from
-            TradingView), `ingress.order_type_not_allowed_for_source`, `ingress.source_mismatch`,
+            TradingView), `ingress.order_type_not_allowed_for_source`, `ingress.signal_type_not_allowed_for_source`
+            (`signal_type` not allowed for TradingView, e.g. `master_account`), `ingress.source_mismatch`,
             `ingress.unsupported_instrument` (symbol not enabled in the instrument catalog, S1 AC-7).
           content:
             application/json:
