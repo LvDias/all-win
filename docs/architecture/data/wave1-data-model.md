@@ -1,6 +1,9 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 15.1; **rev. 15.2 proposed** (protocol 1.3 shared fills): the trade's fill references become `trades.trade_fill` rows with the quantity and the allocated commission. Trade commission = Σ allocated shares (pro rata, 4 decimals half away from zero, remainder to the trade allocated last).
+- **Status:** Accepted (2026-10-23), rev. 15.2; **rev. 16 proposed**:
+  - **Binding (Esquadro, ADR-0008):** `accounts` owns the account ↔ platform-account binding. `accounts.account` gains `venue_account_id` and `bound_at`, and `gateway.venue_account` loses `account_id`, `bound_at` and `venue_account_bound_key` (§5.2, §5.3).
+  - **Wave 1 versions assigned (§8):** old #5 split into a catalog file and an accounts file; `account_rule_value` (old #12) moves to S5; bracket profiles get their own file (S6).
+- Rev. 15.2 (e39d83b): protocol 1.3 shared fills. The trade's fill references become `trades.trade_fill` rows with the quantity and the allocated commission. Trade commission = Σ allocated shares (pro rata, 4 decimals half away from zero, remainder to the trade allocated last).
 - Rev. 15.1 (65d257e): a lower `commission_per_contract_side` is scheduled like other looser inputs (Esquadro, ADR-0006 §3.7), and the adjusted-balance window is stated.
 - Rev. 15 (8101a15) — user decisions of 2026-10-23: net P&L as the main value, risk on net, V1 evaluation target, U20 (a) commission floor. Rev. 15 (§5.6, §5.7, §6.3, §6.6):
   - per-fill effective commission with its source;
@@ -624,11 +627,15 @@ CREATE TABLE accounts.account (
   limits_changed_at timestamptz NOT NULL DEFAULT now(),  -- ADR-0006 §3.5: age of a version gap (60-s alert)
   evaluation_start  date,                                -- rev. 15 (S13b): user-given; Core default = registration date (user's time zone); limits input
   evaluation_earned_before NUMERIC(18,4) CHECK (evaluation_earned_before >= 0),  -- rev. 15 (S13b): optional profit already earned before evaluation_start
+  venue_account_id  uuid,                                -- rev. 16 (ADR-0008): bound gateway.venue_account (cross-module id, no FK); limits input
+  bound_at          timestamptz,                         -- rev. 16: time of the current binding
   create_idempotency_key uuid,                           -- Idempotency-Key of the create (rev. 8)
   create_request_hash    bytea CHECK (octet_length(create_request_hash) = 32),  -- SHA-256 of the canonical body, step_up excluded
   UNIQUE (user_id, id),
   CONSTRAINT account_create_key UNIQUE (user_id, create_idempotency_key),
   CHECK ((create_idempotency_key IS NULL) = (create_request_hash IS NULL)),
+  CHECK ((venue_account_id IS NULL) = (bound_at IS NULL)),                 -- rev. 16
+  CHECK (archived_at IS NULL OR venue_account_id IS NULL),                 -- rev. 16: archiving releases the binding (§5.3)
   CHECK (kind = 'prop' OR (firm_id IS NULL AND firm_name IS NULL AND plan_name IS NULL AND phase IS NULL
                            AND preset_version_id IS NULL AND firm_platform IS NULL)),
   -- prop: a preset XOR the three manual fields (S5 contract §2.4); with a preset they come from the catalog
@@ -652,6 +659,7 @@ CREATE TABLE accounts.account (
 );
 CREATE UNIQUE INDEX account_user_name_key ON accounts.account (user_id, lower(display_name)) WHERE archived_at IS NULL;
 CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX account_venue_account_key ON accounts.account (venue_account_id) WHERE venue_account_id IS NOT NULL;  -- rev. 16
 ```
 
 - The bounds `multiplier ≤ 1000` and `max_position_qty ≤ 10000` mirror the structural caps in the contracts (instruction `quantity` ≤ 1000, command `quantity` ≤ 10000). The business limit is the user's value.
@@ -684,6 +692,8 @@ CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_
 
 Platform accounts arrive in `hello.accounts` (ADR-0004 §3) and belong to `gateway`. The `accounts` module never sees platform names (X-1).
 
+**Ownership (rev. 16, Esquadro, ADR-0008):** `gateway` owns the platform facts, and `accounts` owns the binding (`account.venue_account_id`, §5.2). #9 is unwritten, so nothing is migrated.
+
 ```sql
 CREATE TABLE gateway.venue_account (
   id               uuid PRIMARY KEY,
@@ -695,16 +705,28 @@ CREATE TABLE gateway.venue_account (
   oco_location     text NOT NULL CHECK (oco_location IN ('local','server','unknown')),  -- hello.accounts[], refreshed on each hello
   first_seen_at    timestamptz NOT NULL DEFAULT now(),
   last_seen_at     timestamptz NOT NULL DEFAULT now(),
-  account_id       uuid,                                 -- bound accounts.account id
-  is_master        boolean NOT NULL DEFAULT false,       -- welcome roles; S19 (V1.1)
-  bound_at         timestamptz,
   UNIQUE (user_id, id),
   UNIQUE (connection_id, platform_account)
 );
-CREATE UNIQUE INDEX venue_account_bound_key ON gateway.venue_account (account_id) WHERE account_id IS NOT NULL;
--- 1 platform account ↔ at most 1 All Win account. Outside production the Core refuses
--- to bind kind IN ('live','unknown') (ADR-0004 §8 environment guard).
+-- rev. 16: account_id, bound_at, is_master and venue_account_bound_key removed (the binding is in accounts).
+-- is_master (S19, V1.1) is decided when S19 opens; it is probably an account role in accounts (Esquadro).
 ```
+
+- **Binding in `createAccount` / `updateAccount`**, all in the `accounts` transaction:
+  - `VenueAccounts::resolve(user_id, connection_id, platform_account) → Option<{venue_account_id, kind}>` is a `gateway` query port, scoped by `user_id`.
+    - `None` → 422 `accounts.platform_account_unknown`.
+    - `kind IN ('live','unknown')` outside production → 422 (ADR-0004 §8 environment guard).
+    - The gateway still refuses commands to a `live`/`unknown` venue account outside production at delivery, because `kind` is refreshed on each `hello`.
+  - **1 platform account ↔ at most 1 All Win account** is the unique index `account_venue_account_key`. A violation → 409 `accounts.platform_account_taken`.
+    - The index is not scoped by RLS, so it also sees another user's rows. They cannot collide, because `resolve` returns only the user's own venue accounts.
+    - Two concurrent binds of the same platform account serialize on the index: one wins and the other gets 409.
+  - Changing or removing a binding first checks `Positions::has_open_position(venue_account_id)` → 409 `accounts.binding_open_position`.
+  - The same transaction writes `account.binding_changed {account_id, venue_account_id|null, limits_version}` to `app.outbox`. It bumps `limits_version` (the binding is a limits input, ADR-0006 §3.1).
+- **Archiving releases the binding** (`CHECK`): the archive transaction sets `venue_account_id` and `bound_at` to `NULL` and writes `account.binding_changed`. Otherwise an archived account would keep the platform account taken forever.
+- **No FK across schemas** (§1): `gateway` must keep a `venue_account` row as long as an account may name it.
+  - Rows are never deleted at runtime. A revoked connection keeps its rows.
+  - Readers treat an id with no row as unbound (`routing.platform_unbound`).
+- **Readers:** `gateway` and `routing` use the `accounts` query ports `binding_of(account_id)` and `account_for_venue(venue_account_id)`, read at the decision; there is no derived copy. `account_for_venue` uses `account_venue_account_key`. Gateway fills `VisibleAccount.account_id` this way; a batch variant for a `welcome` list is a port detail, with no schema impact.
 
 - `oco_location` is stored on `venue_account`, not on `accounts.account`, for two reasons:
   - `hello` reports it per platform account;
@@ -1090,6 +1112,7 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   - `max_position_qty`;
   - any `account_rule_value` write: an edit, a `chosen_from_conflict` resolution, `restorePresetValue` (rev. 15: including `commission_per_contract_side`, sent in plugin `limits`);
   - `evaluation_start` / `evaluation_earned_before`, including "reiniciar contagem" (rev. 15);
+  - a binding change or release (`venue_account_id`, rev. 16, ADR-0008);
   - a preset apply;
   - a newly adopted rule version.
 
@@ -1635,17 +1658,20 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 2b | `identity_passwordless` (rev. 6): drops the password/TOTP/recovery/reset objects and adds channels, `known_device`, `signup_code`, `channel_change`, `one_time_code`, `code_send_counter` and the new session columns; see below | S3 (Brasa); version stamped after the latest merged migration |
 | 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
-| 5 | `accounts_create_account`: `catalog.opt_in_rule_version` + the 2 generic seed rows, `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6). Rev. 8 columns go in directly, since #5 is not written yet. The generic rows use fixed literal UUIDs in the migration (no DB default, §1), so the Core and tests can name them | before M1, so seeds use real tables |
+| 5a | `catalog_create_opt_in_rule_version` (`…060900`, rev. 16): `catalog.opt_in_rule_version` + the 2 generic seed rows, with fixed literal UUIDs (no DB default, §1) so the Core and tests can name them | S5 (Malha) |
+| 5 | `accounts_create_account` (`…061000`, rev. 16): `account` with every rev. 8–16 column, including `limits_version` / `limits_changed_at`, `evaluation_*` and `venue_account_id` / `bound_at` | S5 (Malha) |
+| 5b | `accounts_create_rule_values` (`…061050`, rev. 16; was #12): `account_rule_value` (§5.7); no FK to the catalog, so it does not wait for #11 | S5 (Malha); after #5 |
+| 5c | `accounts_create_bracket_profiles` (`…061100`, rev. 16): `default_bracket_profile`, `account_bracket_profile` | S6 (Torno); after #5 |
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
-| 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` (with `row_version`, rev. 8) | M1 / S7 |
+| 6b | `routing_create_decision_subscription` (`…061200`): `routing_decision`, `subscription` (with `row_version`, rev. 8) | S7 (Ferro); after #6 |
+| 6c | `routing_message_id_no_token_check` (`…061300`, reserved): the §6.4 no-token `CHECK` on `routing.message_receipt` / `routing.instruction`; narrowing, so it needs explicit user authorization first | Ferro |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
 | 7b | `audit_entry_activity_columns` (rev. 9): the S10 columns and constraints on the partitioned table (see below) | S10 (or whichever slice first emits them); version stamped after the latest merged migration |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
-| 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
+| 9 | `gateway_create_delivery`: `venue_account` (without the binding, rev. 16), `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
 | 10 | `risk_create_account_limits` (rev. 13): `account_limits`, `scheduled_limit` (derived), `trading_day`, `drawdown_tracker`, `account_block`, with RLS | S13; unwritten, so it takes the rev. 13 shape directly |
 | 11 | `catalog_create_presets` (rev. 10): the §5.7 catalog tables + the forward change on `opt_in_rule_version` | S16; version stamped after the latest merged migration |
 | 13 | `trades_create_trade` (rev. 14/15.2): `CREATE SCHEMA trades` + its grants, `trades.trade`, `trades.trade_fill`, indexes, RLS, immutability triggers | S21; version stamped after the latest merged migration |
-| 12 | `accounts_create_rule_values` (rev. 10): `account_rule_value`; `account.limits_version` / `limits_changed_at` go into #5 directly if it is still unwritten, else they are added here | S16; after #5 and #11 |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
 
 **Dependencies across branches:**
@@ -1653,7 +1679,10 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - S1 authenticates the webhook through `identity.source_key` / `resolve_source_key` (#3).
 - So #2 and #3 (S3, Brasa) merge before #6 and #7. Until then the S1 branch builds on the S3 branch.
 - No branch writes its own copy of another module's table.
-- Provisional versions: `20261023060000` #1, `…060100`/`…060200` #2/#3, `…060300` #4, `…060400` #5, `…060500` #6, `…060600` #7. Final versions are assigned at integration.
+- Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
+- **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, and `…061300` #6c (reserved).
+  - From `…061400` on, numbers are assigned on request (#7b, #9, #10, #11, #13, `app.outbox.seq`); no branch picks its own.
+  - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
 - Plan:
@@ -1727,6 +1756,12 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
      - `pending_review` without `*_pending_reason`, and a reason with `chosen`, fail;
      - the same `create_idempotency_key` twice for one user fails, and for two users passes;
      - a key without a hash fails;
+   - rev. 16, binding (`account.venue_account_id`):
+     - a second account of the same user with the same `venue_account_id` fails (`account_venue_account_key` → 409 `accounts.platform_account_taken`); two concurrent binds of one platform account leave exactly one bound;
+     - `venue_account_id` without `bound_at` fails, and an archived account that is still bound fails;
+     - archiving releases the binding, and the same platform account can then be bound to another account;
+     - a bind, rebind or release bumps `limits_version` and writes `account.binding_changed` in the same transaction;
+     - `resolve` with another user's `connection_id` returns `None` (422), so no cross-user binding is possible;
    - rev. 8, `opt_in_rule_version`:
      - a generic row with quotes, a firm or a non-`unknown` stance fails;
      - a second generic version 1 of the same kind fails;
