@@ -120,6 +120,20 @@ pub fn evaluate(
         return f;
     }
 
+    if !observed.connected {
+        // The broker connection is lost: the adapter cannot see positions or orders, so nothing
+        // is compared (Agulha); only the integrity of local-OCO brackets becomes unknown (§6.1).
+        let protective_working = expected.orders.has_protective()
+            || observed.working_orders.iter().any(|o| {
+                o.origin == Origin::AllWin
+                    && o.reference.is_some_and(|r| r.child_role.is_protective())
+            });
+        if protective_working && oco_local_or_unknown {
+            f.raise.insert(SyncReason::BracketIntegrityUnknown);
+        }
+        return f;
+    }
+
     let instruments: BTreeSet<&Instrument> = expected
         .positions
         .keys()
@@ -185,15 +199,7 @@ pub fn evaluate(
         }
     }
 
-    let protective_working = expected.orders.has_protective()
-        || observed.working_orders.iter().any(|o| {
-            o.origin == Origin::AllWin && o.reference.is_some_and(|r| r.child_role.is_protective())
-        });
-    if !observed.connected {
-        if protective_working && oco_local_or_unknown {
-            f.raise.insert(SyncReason::BracketIntegrityUnknown);
-        }
-    } else if f.raise.is_empty() {
+    if f.raise.is_empty() {
         // Observable again and everything matches.
         f.resolve.insert(SyncReason::BracketIntegrityUnknown);
     }
@@ -318,6 +324,26 @@ mod tests {
         let f = evaluate(SnapshotTrigger::Periodic, &bracketed(), &o, false);
         assert!(!f.raise.contains(&SyncReason::BracketIntegrityUnknown));
         assert!(f.resolve.is_empty());
+    }
+
+    #[test]
+    fn disconnected_broker_is_not_compared() {
+        // The adapter cannot see positions: an empty snapshot is not a mismatch.
+        let o = ObservedAccount {
+            connected: false,
+            positions: BTreeMap::new(),
+            working_orders: vec![],
+        };
+        let f = evaluate(SnapshotTrigger::Periodic, &bracketed(), &o, true);
+        assert_eq!(
+            f.raise,
+            BTreeSet::from([SyncReason::BracketIntegrityUnknown])
+        );
+        assert!(
+            f.position_differences.is_empty()
+                && f.missing_orders.is_empty()
+                && f.resolve.is_empty()
+        );
     }
 
     #[test]

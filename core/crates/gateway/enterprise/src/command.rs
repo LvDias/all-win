@@ -116,6 +116,9 @@ pub struct DeliveryContext {
     pub prerequisite: Prerequisite,
     /// The account has an open sync reason other than one this command would raise.
     pub other_sync_reason_open: bool,
+    /// Outside production the bound platform account is now `live`/`unknown` (ADR-0008 §3.6;
+    /// Esquadro C-c): a pending command is refused at once, exits included.
+    pub refused_by_environment: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +145,8 @@ pub enum Delivery {
     },
     /// 72-h horizon: `undelivered`, removed from the outbox, `sync.command_undelivered`.
     Undeliver,
+    /// Environment guard: `rejected` + `command.account_not_simulation`, `sync.command_rejected`.
+    Refuse,
     /// Acked or final: nothing to deliver.
     Done,
 }
@@ -234,6 +239,9 @@ impl Command {
     }
 
     fn pending_delivery(&self, now: DateTime<Utc>, ctx: &DeliveryContext) -> Delivery {
+        if ctx.refused_by_environment {
+            return Delivery::Refuse;
+        }
         if self.expired_at(now) {
             if !self.is_reverse_opening_leg() {
                 return Delivery::Expire {
@@ -347,6 +355,7 @@ mod tests {
             snapshot_evaluated: true,
             prerequisite: Prerequisite::None,
             other_sync_reason_open: false,
+            refused_by_environment: false,
         }
     }
 
@@ -573,6 +582,25 @@ mod tests {
             ..ready()
         };
         assert_eq!(c.delivery(t(6_000), &ok), Delivery::Send);
+    }
+
+    #[test]
+    fn environment_guard_refuses_pending_commands_at_once() {
+        let refused = DeliveryContext {
+            refused_by_environment: true,
+            ..ready()
+        };
+        assert_eq!(entry().delivery(t(1), &refused), Delivery::Refuse);
+        assert_eq!(flatten().delivery(t(1), &refused), Delivery::Refuse);
+        // Before expiry and session checks: refused even when expired or without the account.
+        let refused_no_map = DeliveryContext {
+            account_in_welcome: false,
+            ..refused
+        };
+        assert_eq!(
+            entry().delivery(t(9_000), &refused_no_map),
+            Delivery::Refuse
+        );
     }
 
     #[test]
