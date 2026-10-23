@@ -33,13 +33,18 @@
 	// Checked by the admin console before the policy is saved.
 	"tests": [
 		{
+			"src":    "autogroup:member",
+			"accept": ["tag:allwin-nt8:3389", "tag:allwin-nt8:22"],
+			"deny":   ["tag:allwin-nt8:445", "tag:allwin-dev:22"],
+		},
+		{
 			"src":    "tag:allwin-dev",
 			"accept": ["tag:allwin-nt8:22"],
 			"deny":   ["tag:allwin-nt8:3389", "tag:allwin-nt8:80", "tag:allwin-nt8:445"],
 		},
 		{
 			"src":  "tag:allwin-nt8",
-			"deny": ["tag:allwin-dev:22", "tag:allwin-dev:443", "tag:allwin-nt8:22"],
+			"deny": ["tag:allwin-dev:22", "tag:allwin-dev:443"],
 		},
 	],
 }
