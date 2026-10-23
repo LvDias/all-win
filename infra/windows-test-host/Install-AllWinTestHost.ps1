@@ -3,7 +3,7 @@
     Sets up the All Win Windows test host for the agents: hardened sshd, folders, logs, and on-demand NT8 tasks.
 
 .DESCRIPTION
-    nt8-spike-plan §6.3 / §6.5 step 10. Run as Administrator on the VPS, after Lock-Firewall.ps1 (run
+    nt8-spike-plan section 6.3 / section 6.5 step 10. Run as Administrator on the VPS, after Lock-Firewall.ps1 (run
     AFTER the OpenSSH Server install) and after the standard user `allwin-agent`, Git for Windows and NinjaTrader 8
     are installed. Lock-Firewall.ps1 must sit in the same folder: its -CheckOnly audit runs twice (before the sshd
     config is touched and right before sshd starts) and the script stops if 22/3389 is exposed.
@@ -98,7 +98,7 @@ try {
     if (-not $user) { throw "Local user '$AgentUser' does not exist (checklist step 9)." }
     if (-not $user.Enabled) { throw "Local user '$AgentUser' is disabled." }
     $isAdmin = Get-LocalGroupMember -SID 'S-1-5-32-544' -ErrorAction SilentlyContinue | Where-Object { $_.SID -eq $user.SID }
-    if ($isAdmin) { throw "'$AgentUser' is an administrator. It must be a standard user (nt8-spike-plan §6)." }
+    if ($isAdmin) { throw "'$AgentUser' is an administrator. It must be a standard user (nt8-spike-plan section 6)." }
     $rdpMember = Get-LocalGroupMember -SID 'S-1-5-32-555' -ErrorAction SilentlyContinue | Where-Object { $_.SID -eq $user.SID }
     if (-not $rdpMember) { Write-Warning "'$AgentUser' is not in 'Remote Desktop Users' (needed for the one-time NT8 login in step 11)." }
 
@@ -129,14 +129,18 @@ try {
         if ($PSCmdlet.ShouldProcess($path, "Create and set ACL (SYSTEM/Administrators full; $AgentUser $($folders[$name]))")) {
             if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
             & icacls.exe $path /setowner $sidAdmins /T /C | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "icacls /setowner failed on $path" }
             & icacls.exe $path /reset /T /C | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "icacls /reset failed on $path" }
             & icacls.exe $path /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" "${AgentUser}:(OI)(CI)$($folders[$name])" | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "icacls failed on $path" }
         }
     }
     if ($PSCmdlet.ShouldProcess($Root, 'Set ACL on the root folder')) {
         & icacls.exe $Root /setowner $sidAdmins | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "icacls /setowner failed on $Root" }
         & icacls.exe $Root /reset | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "icacls /reset failed on $Root" }
         & icacls.exe $Root /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" "${AgentUser}:(RX)" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "icacls failed on $Root" }
     }
@@ -210,6 +214,9 @@ try {
     )
     if ($PSCmdlet.ShouldProcess($sshdConfig, 'Create sshd_config and host keys if missing (without starting sshd)')) {
         if (-not (Test-Path -LiteralPath $sshDir)) { New-Item -ItemType Directory -Path $sshDir -Force | Out-Null }
+        # ProgramData\ssh may not exist yet (sshd never started): do not keep the inherited ACL (Users can create files).
+        & icacls.exe $sshDir /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" '*S-1-5-11:(OI)(CI)RX' | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "icacls failed on $sshDir" }
         if (-not (Test-Path -LiteralPath $sshdConfig)) {
             $default = Join-Path $env:WINDIR 'System32\OpenSSH\sshd_config_default'
             if (-not (Test-Path -LiteralPath $default)) { throw "$default not found; cannot create $sshdConfig." }
@@ -217,6 +224,16 @@ try {
         }
         & (Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe') -A
         if ($LASTEXITCODE -ne 0) { throw 'ssh-keygen -A failed.' }
+        # Host PRIVATE keys: SYSTEM and Administrators only. Verified, not assumed.
+        foreach ($k in @(Get-ChildItem -LiteralPath $sshDir -Filter 'ssh_host_*_key' -File)) {
+            & icacls.exe $k.FullName /inheritance:r /grant:r "${sidSystem}:F" "${sidAdmins}:F" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "icacls failed on $($k.FullName)" }
+            $allowed = @('S-1-5-18', 'S-1-5-32-544')
+            foreach ($ace in (Get-Acl -LiteralPath $k.FullName).Access) {
+                $aceSid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                if ($allowed -notcontains $aceSid) { throw "Host key $($k.Name) is accessible to $($ace.IdentityReference). Fix its ACL, then rerun." }
+            }
+        }
     }
     if ($PSCmdlet.ShouldProcess($sshdConfig, 'Apply the AllWin sshd block (backup, validate with sshd -t; sshd is started only after the firewall audit)')) {
         $backup = "$sshdConfig.allwin-backup-{0:yyyyMMdd-HHmmss}" -f (Get-Date)
@@ -295,6 +312,12 @@ try {
                 $ace = New-Object System.Security.AccessControl.CommonAce([System.Security.AccessControl.AceFlags]::None, [System.Security.AccessControl.AceQualifier]::AccessAllowed, 0x1200A9, $sidObj, $false, $null)
                 $rsd.DiscretionaryAcl.InsertAce($rsd.DiscretionaryAcl.Count, $ace)
                 $task.SetSecurityDescriptor($rsd.GetSddlForm([System.Security.AccessControl.AccessControlSections]::Access), 0)
+            }
+            # The agent must be able to run the task, never to change it: no write/delete/WRITE_DAC/WRITE_OWNER bits.
+            $writeBits = 0x2 -bor 0x4 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000
+            $now = New-Object System.Security.AccessControl.RawSecurityDescriptor($svc.GetFolder('\').GetTask($t.Name).GetSecurityDescriptor(4))
+            foreach ($a in @($now.DiscretionaryAcl | Where-Object { $_.SecurityIdentifier -eq $sidObj -and $_.AceQualifier -eq 'AccessAllowed' })) {
+                if ($a.AccessMask -band $writeBits) { throw "Task $($t.Name) grants $AgentUser write access (mask 0x{0:X}). Remove it." -f $a.AccessMask }
             }
             $check = New-Object System.Security.AccessControl.RawSecurityDescriptor($svc.GetFolder('\').GetTask($t.Name).GetSecurityDescriptor(4))
             if (-not (@($check.DiscretionaryAcl | Where-Object { $_.SecurityIdentifier -eq $sidObj -and $_.AceQualifier -eq 'AccessAllowed' }).Count)) { throw "Task ACL for $($t.Name) does not contain $AgentUser after the update." }

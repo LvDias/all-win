@@ -3,7 +3,7 @@
     Locks RDP (3389) and SSH (22) on the All Win Windows test host to the Tailscale network only.
 
 .DESCRIPTION
-    nt8-spike-plan §6.3 / §6.5 step 5. Run as Administrator on the VPS, AFTER the host has joined the tailnet
+    nt8-spike-plan section 6.3 / section 6.5 step 5. Run as Administrator on the VPS, AFTER the host has joined the tailnet
     (the "Tailscale" network adapter must be up and hold a 100.64.0.0/10 address).
 
     What it does, in this order (it never removes access before the replacement exists):
@@ -17,7 +17,7 @@
 
     It then audits the ACTIVE policy store and FAILS LOUDLY if any enabled inbound allow rule still exposes 3389 or 22
     outside the tailnet range, including rules with port Any or a port range that covers them (those are reported, not
-    auto-disabled; a rule scoped to a specific program or service is only a warning).
+    auto-disabled; a BROAD rule scoped to one program or service is only a warning, a rule that names 22/3389 always fails).
 
     Run it AGAIN after installing the OpenSSH Server capability (that install creates OpenSSH-Server-In-TCP for any remote
     address) and before sshd is ever started. It is idempotent: existing AllWin rules are updated in place.
@@ -26,7 +26,7 @@
     It does not touch Tailscale, sshd, users, or any other rule. It stores and prints no secret.
     Run with -WhatIf first to see every change without making it.
 
-    Break-glass if everyone is locked out: the Contabo panel VNC console (nt8-spike-plan §6.3).
+    Break-glass if everyone is locked out: the Contabo panel VNC console (nt8-spike-plan section 6.3).
 
     STATUS: DRAFT. Do not run before Code Review (Crivo) and QA Security (Vigia) approved this exact commit.
 
@@ -85,6 +85,7 @@ function Get-Cidr([string]$Text) {
 function Test-RemoteInsideTailnet($Addresses) {
     # True only if EVERY remote address entry lies inside $TailnetRange. Any / * / LocalSubnet / names => false.
     $tail = Get-Cidr $TailnetRange
+    if (@($Addresses).Count -eq 0) { return $false }   # fail closed: no address list is not "inside the tailnet"
     foreach ($a in @($Addresses)) {
         $c = Get-Cidr ([string]$a)
         if (-not $c -or $c.Lo -lt $tail.Lo -or $c.Hi -gt $tail.Hi) { return $false }
@@ -142,10 +143,12 @@ function Assert-NoPublicExposure {
         }
     }
     $exposed = @(Get-ExposedRule)
-    foreach ($e in ($exposed | Where-Object { $_.Scoped })) {
-        Write-Warning ("Program/service-scoped rule '{0}' (ports={1}, remote={2}) may cover 22/3389. Review it by hand." -f $e.Name, $e.Ports, $e.Remote)
+    # Only a BROAD rule (port Any or a range) limited to one program/service is downgraded to a warning. A rule that
+    # lists 22/3389 explicitly, or is named RemoteDesktop-* / OpenSSH-Server-*, always fails, scoped or not.
+    foreach ($e in ($exposed | Where-Object { $_.Scoped -and $_.Kind -eq 'broad' })) {
+        Write-Warning ("Program/service-scoped broad rule '{0}' (ports={1}, remote={2}) may cover 22/3389. Review it by hand." -f $e.Name, $e.Ports, $e.Remote)
     }
-    $bad = @($exposed | Where-Object { -not $_.Scoped })
+    $bad = @($exposed | Where-Object { -not ($_.Scoped -and $_.Kind -eq 'broad') })
     if ($bad.Count -gt 0) {
         $bad | ForEach-Object { Write-Host ("  EXPOSED: {0}  ports={1}  remote={2}  ({3})" -f $_.Name, $_.Ports, $_.Remote, $_.Kind) }
         throw 'Inbound allow rules still expose TCP/UDP 22 or 3389 outside the tailnet range (listed above). Fix them, then rerun.'

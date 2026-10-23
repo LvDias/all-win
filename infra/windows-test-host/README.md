@@ -16,7 +16,7 @@ Agents' **public** key (the private half stays on the dev server, mode 600; fing
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAciPbXwf2lko6zYMDdDKlO+hpJFWiw9GtJRlrUks02k allwin-agents-nt8@dev2
 ```
 
-Rules: no live accounts on this host; no auth key or login URL is ever pasted in a chat, a file or an agent terminal. Placeholders look like `<THIS>`.
+Rules: no live accounts on this host; no auth key is ever pasted in a chat, a file or an agent terminal. The dev-server login URL (step 8) is relayed by Forja only to you, who opens it at once. Placeholders look like `<THIS>`.
 
 **Current state (user, before this README):** Tailscale is installed on the VPS and on the Mac; the VPS joined **without a tag and without an auth key**. So there is no auth key to create or pre-sign: the VPS is tagged in the admin console and the existing nodes are signed once Tailnet Lock is on.
 
@@ -70,11 +70,17 @@ The repository is private. Pick one:
   ```
 - **B**: RDP from the Mac to `allwin-nt8-01` (tailnet) with *Devices & Audio → Drives* shared and copy the two files into the same admin-only folder.
 
-**Before EVERY run** (the scripts run as Administrator), compare the hashes with the ones the Maestro gives you for the approved commit:
+**Before EVERY run** (the scripts run as Administrator), compare the hash with the one the Maestro gives you for the approved commit. The scripts are ASCII-only and the check ignores line endings, so Notepad (LF or CRLF) does not change the result:
 
 ```powershell
-Get-FileHash C:\AllWin-setup\*.ps1 -Algorithm SHA256 | Format-Table Hash, Path
+Get-ChildItem C:\AllWin-setup\*.ps1 | ForEach-Object {
+  $t = [IO.File]::ReadAllText($_.FullName) -replace "`r`n", "`n"
+  $h = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($t))).Replace('-', '').ToLower()
+  '{0}  {1}' -f $h.Substring(0, 16), $_.Name
+}
 ```
+
+If a hash does not match, stop and tell the Maestro. Do not run the script.
 
 Both scripts must stay in the same folder (the installer calls `Lock-Firewall.ps1 -CheckOnly`).
 
@@ -121,7 +127,7 @@ Forja runs, on the dev server (no key anywhere):
 sudo tailscale up --advertise-tags=tag:allwin-dev --accept-dns=false --accept-routes=false
 ```
 
-The command prints a **login URL**. Treat it as a one-use capability: it goes only to you (not to any agent, chat or file).
+The command prints a **login URL**. Forja sees it in the terminal, so treat it as a one-use capability: Forja relays it only to you, and you open it at once (or run the command yourself in your own session).
 
 1. Open the URL on the Mac, signed in as the admin who owns the tag, and **before approving** check in the admin console that the pending node is the dev server (hostname and OS Linux) and that its node key matches the one Forja reads from `tailscale lock status` on the dev server.
 2. Approve it. Forja sends you only the **node key** (public value).
@@ -168,4 +174,5 @@ Sign in to NT8 with the **dedicated development login**; keep only Sim101/Playba
 ## Break-glass and rollback
 
 - Locked out: use the Contabo VNC console. Check `Get-NetFirewallRule -Name AllWin-Tailnet-*` and `tailscale status`; fix Tailscale first. Re-enabling a public RDP rule is a firewall change that needs the user's explicit decision, and must be undone by re-running `Lock-Firewall.ps1`.
-- `sshd_config` is backed up next to itself (`sshd_config.allwin-backup-<timestamp>`) before each change and restored automatically if `sshd -t` fails or if `sshd` fails to start (the service is then set to Disabled).
+- `sshd_config` is backed up next to itself (`sshd_config.allwin-backup-<timestamp>`) before each change and restored automatically if `sshd -t` fails or if `sshd` fails to start (the service is then set to Disabled and the config goes back to the default, which accepts passwords). After such a failure never start `sshd` by hand: fix the cause and rerun `Install-AllWinTestHost.ps1`.
+- The first run of the scripts on Windows is experiment E1. Check that `Lock-Firewall.ps1` runs its audit without an exception (an error there stops the setup, which is the safe direction).
