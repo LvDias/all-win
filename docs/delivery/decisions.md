@@ -58,3 +58,16 @@
 - **Options rejected:** Topstep excluded from V1 presets (b).
 - **Decision (Windows VPS access):** the team may configure the VPS's remote access under one rule: RDP must never be open to the internet. The user's proposal is Tailscale between the user's Mac, the Linux server and the Windows VPS, with RDP allowed only over the tailnet. If there is a reason not to use Tailscale, the team brings the alternative to the user before applying it. The user's home IP may change, so IP allow-lists are not suitable.
 - **Canonical docs:** slice-plan.md / presets research (PO); nt8-spike-plan.md (Architect).
+
+## 2026-10-23 — Working rules after the night audit
+- **Decision:** no agent writes directly in the main checkout; every change goes through a worktree and the verification gates. Scripts that run with sudo get code review and security review before running.
+- **Standing authorization:** the Maestro may have DevOps merge locally into `main` any slice whose required gates are approved for the exact revision, always without push, recording each merge in `docs/delivery/log/`.
+- **Models:** use the Sonnet preset ("Claude Sonnet") for routine tasks from now on.
+- **Git:** the initial commit's author stays as the user's name. The user set system `safe.directory = *` because worktrees live outside `/srv/www/allwin`.
+- **Delivery record:** keep `board.md` updated at every status change.
+- **Canonical doc:** this log.
+
+## 2026-10-23 — Overnight protocol and model economy
+- **Decision (overnight):** do not wait for the user. User decisions go to `board.md` as open questions with options and a recommendation, and all independent work continues. Reversible, low-risk decisions proceed with the recommendation, marked "decided provisionally, awaiting user confirmation". Irreversible, security or money decisions stay open. "Trust this folder" and permission prompts inside the project and worktrees may be accepted by the team. If Dev2 or Dev3 hits its usage limit, move work to the other account; if both do, save state in the board and stop in an orderly way. Morning summary: done, provisional decisions, waiting for the user.
+- **Decision (model economy):** Sonnet for routine work (research, DevOps, routine QA, frontend with ready spec); Opus only for architecture, risk/order logic, security and code review. Dismiss idle agents and recruit again with a short brief when needed; prefer a fresh agent per new slice; `/compact` long sessions; normal effort for Architect/DBA after architecture decisions; summarized test/build output showing only failures.
+- **Canonical doc:** this log.
