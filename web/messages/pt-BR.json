@@ -558,7 +558,8 @@
     "notFound": "Não encontrado.",
     "signOutFailed": "Não foi possível sair. Sua sessão pode continuar ativa.",
     "accounts": "Contas",
-    "userMenuName": "{email}, menu do usuário"
+    "userMenuName": "{email}, menu do usuário",
+    "presets": "Presets"
   },
   "security": {
     "title": "Segurança",
