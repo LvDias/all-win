@@ -20,7 +20,8 @@ import { PasswordField } from "@/shared/ui/password-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Spinner } from "@/shared/ui/spinner";
-import { useAcceptInvitation, useLogout, useLookupInvitation } from "./api";
+import { useLogout } from "@/shared/session/logout";
+import { useAcceptInvitation, useLookupInvitation } from "./api";
 import { AuthCard } from "./auth-card";
 import { passwordMax, passwordMin } from "./password-rules";
 import { useFragmentToken } from "./use-fragment-token";
@@ -69,6 +70,7 @@ export function InviteForm() {
       const result = await accept.mutateAsync({ token, password, locale, time_zone: timeZone });
       setPassword("");
       if (result.user) {
+        queryClient.clear();
         queryClient.setQueryData(meQueryKey, result.user);
         router.replace(landingPath(result.user.locale, null));
       }
@@ -93,7 +95,7 @@ export function InviteForm() {
         <Button
           variant="outline"
           disabled={logout.isPending}
-          onClick={() => logout.mutate(undefined, { onSettled: () => queryClient.setQueryData(meQueryKey, null) })}
+          onClick={() => logout.mutate()}
         >
           {t("auth.invite.signOut")}
         </Button>

@@ -35,7 +35,11 @@ export async function apiFetch<T>(path: string, init?: { method?: string; body?:
     throw new ApiError({ code: networkErrorCode, status: 0 });
   }
 
-  if (response.ok) return (response.status === 204 ? undefined : await response.json()) as T;
+  if (response.ok) {
+    // 202/204 answers carry no body (for example the always-202 password-reset request).
+    const text = response.status === 204 ? "" : await response.text();
+    return (text === "" ? undefined : JSON.parse(text)) as T;
+  }
 
   let body: ErrorBody = {};
   try {

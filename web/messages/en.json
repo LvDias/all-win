@@ -61,7 +61,22 @@
   "home": {
     "title": "All Win",
     "intro": "Order execution with safety and transparency.",
-    "preferences": "Preferences"
+    "preferences": "Preferences",
+    "gettingStarted": {
+      "title": "Getting started",
+      "description": "Two steps to start receiving signals.",
+      "source": {
+        "label": "Create a signal source"
+      },
+      "pairing": {
+        "label": "Pair NinjaTrader"
+      },
+      "done": "Done",
+      "todo": "To do",
+      "alertGuide": "TradingView alert guide",
+      "installGuide": "How to install the plugin",
+      "soon": "coming soon"
+    }
   },
   "settings": {
     "preferences": {
@@ -110,7 +125,7 @@
       "invalid_code": "Invalid code. Check it and try again.",
       "invalid_credentials": "Incorrect email or password.",
       "invitation_invalid": "This invitation is invalid or has expired.",
-      "password_breached": "This password appeared in known data breaches. Choose another one.",
+      "password_breached": "This password is common, appears in known data breaches or contains your email. Choose another one.",
       "password_too_long": "The password is too long. Use at most 128 characters.",
       "password_too_short": "The password is too short. Use at least 12 characters.",
       "pending_expired": "The verification expired. Sign in again.",
@@ -275,7 +290,8 @@
     "userMenu": "User menu",
     "signOut": "Sign out",
     "main": "Main navigation",
-    "notFound": "Not found."
+    "notFound": "Not found.",
+    "signOutFailed": "Could not sign out. Your session may still be active."
   },
   "security": {
     "title": "Security",

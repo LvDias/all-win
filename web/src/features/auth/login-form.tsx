@@ -24,6 +24,7 @@ import { PasswordField } from "@/shared/ui/password-field";
 import { Spinner } from "@/shared/ui/spinner";
 import { useLogin } from "./api";
 import { AuthCard } from "./auth-card";
+import { rememberPendingEmail, takePendingEmail } from "./pending-email";
 
 const schema = z.object({
   email: z.string().trim().min(1, "emailRequired").regex(/^\S+@\S+\.\S+$/, "emailInvalid"),
@@ -48,9 +49,9 @@ export function LoginForm() {
   const [deadline, setDeadline] = useState<number | null>(null);
   const waiting = useCountdown(deadline);
 
-  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { email: "", password: "", remember: false } });
-  const returnTo = safeReturnTo(search.get("returnTo"));
   const reasonParam = search.get("reason");
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { email: reasonParam === "pending_expired" ? takePendingEmail() : "", password: "", remember: false } });
+  const returnTo = safeReturnTo(search.get("returnTo"));
   const reason = reasons.find((candidate) => candidate === reasonParam);
 
   useEffect(() => {
@@ -63,10 +64,12 @@ export function LoginForm() {
     try {
       const result = await login.mutateAsync({ email: values.email, password: values.password, remember_me: values.remember });
       if (result.state === "pending_2fa") {
+        rememberPendingEmail(values.email);
         router.push(`${path("/login/verify")}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`);
         return;
       }
       if (result.user) {
+        queryClient.clear();
         queryClient.setQueryData(meQueryKey, result.user);
         router.replace(landingPath(result.user.locale, returnTo));
       }

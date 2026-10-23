@@ -7,8 +7,9 @@ import type { AdminUser, Invitation } from "@/shared/api/types";
 export const invitationsKey = ["admin", "invitations"] as const;
 export const usersKey = ["admin", "users"] as const;
 
-export type InvitationCreated = { invitation: Invitation; invite_url: string; email_sent: boolean };
-export type ResetLink = { reset_url: string; expires_at: string };
+import type { InvitationCreated, ResetLink } from "@/shared/api/types";
+
+export type { InvitationCreated, ResetLink };
 
 /** `auth.forbidden` on an admin call is shown as the generic not-found screen (the route is not revealed). */
 export function isForbidden(error: unknown): boolean {

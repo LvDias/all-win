@@ -167,3 +167,45 @@ describe("SourcesPage", () => {
     expect(await screen.findByText("Esta fonte já foi revogada.")).toBeInTheDocument();
   });
 });
+
+describe("SourcesPage focus and rename", () => {
+  it("returns focus to the button that opened the dialog when it closes with Esc", async () => {
+    list([]);
+    renderApp(<SourcesPage />);
+    const person = userEvent.setup();
+    const open = (await screen.findAllByRole("button", { name: "Nova fonte" }))[0] as HTMLElement;
+    await person.click(open);
+    await screen.findByRole("dialog");
+    await person.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(open).toHaveFocus());
+  });
+
+  it("returns focus to the row's actions button after a menu-opened confirmation closes", async () => {
+    list([source()]);
+    renderApp(<SourcesPage />);
+    const person = userEvent.setup();
+    const kebab = await screen.findByRole("button", { name: "Ações para Strikes MNQ" });
+    await person.click(kebab);
+    await person.click(await screen.findByRole("menuitem", { name: "Revogar" }));
+    await screen.findByRole("alertdialog");
+    await person.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(kebab).toHaveFocus());
+  });
+
+  it("renames a source", async () => {
+    list([source()]);
+    const bodies: unknown[] = [];
+    server.use(http.patch("*/api/v1/sources/:id", async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json(source({ name: "Renamed" })); }));
+    renderApp(<SourcesPage />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("button", { name: "Ações para Strikes MNQ" }));
+    await person.click(await screen.findByRole("menuitem", { name: "Renomear" }));
+    const input = await screen.findByLabelText("Nome da fonte");
+    await person.clear(input);
+    await person.type(input, "Renamed");
+    await person.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(bodies).toEqual([{ name: "Renamed" }]));
+  });
+});

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
-import type { Connection, PairingCode } from "@/shared/api/types";
+import type { Connection, CreatedConnection, PairingCode } from "@/shared/api/types";
 
 export const connectionsQueryKey = ["connections"] as const;
 
@@ -13,7 +13,7 @@ export function useConnections(includeUnpaired: boolean) {
   });
 }
 
-export type CreatedConnection = { connection: Connection; pairing: PairingCode };
+export type { CreatedConnection };
 
 /** Create and new-code answers carry the pairing code: returned to the caller only, never cached. */
 export const useCreateConnection = () => useMutation({ mutationFn: (name: string) => apiFetch<CreatedConnection>("/api/v1/connections", { method: "POST", body: { name } }), gcTime: 0 });

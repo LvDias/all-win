@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "@/shared/lib/utils";
+import { ReturnFocus } from "@/shared/ui/return-focus";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -27,6 +28,7 @@ export function DialogContent({ className, children, hideClose = false, ...props
         )}
         {...props}
       >
+        <ReturnFocus />
         {children}
         {hideClose ? null : (
           <DialogPrimitive.Close className="absolute top-2 right-2 inline-flex size-11 items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">

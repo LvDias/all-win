@@ -61,7 +61,22 @@
   "home": {
     "title": "All Win",
     "intro": "Execução de ordens com segurança e transparência.",
-    "preferences": "Preferências"
+    "preferences": "Preferências",
+    "gettingStarted": {
+      "title": "Primeiros passos",
+      "description": "Duas etapas para começar a receber sinais.",
+      "source": {
+        "label": "Crie uma fonte de sinal"
+      },
+      "pairing": {
+        "label": "Pareie o NinjaTrader"
+      },
+      "done": "Concluído",
+      "todo": "Pendente",
+      "alertGuide": "Guia de alertas do TradingView",
+      "installGuide": "Como instalar o plugin",
+      "soon": "em breve"
+    }
   },
   "settings": {
     "preferences": {
@@ -110,7 +125,7 @@
       "invalid_code": "Código inválido. Confira e tente de novo.",
       "invalid_credentials": "E-mail ou senha incorretos.",
       "invitation_invalid": "Este convite é inválido ou expirou.",
-      "password_breached": "Esta senha apareceu em vazamentos conhecidos. Escolha outra.",
+      "password_breached": "Esta senha é comum, aparece em vazamentos conhecidos ou contém seu e-mail. Escolha outra.",
       "password_too_long": "A senha é longa demais. Use no máximo 128 caracteres.",
       "password_too_short": "A senha é curta demais. Use pelo menos 12 caracteres.",
       "pending_expired": "A verificação expirou. Entre de novo.",
@@ -275,7 +290,8 @@
     "userMenu": "Menu do usuário",
     "signOut": "Sair",
     "main": "Navegação principal",
-    "notFound": "Não encontrado."
+    "notFound": "Não encontrado.",
+    "signOutFailed": "Não foi possível sair. Sua sessão pode continuar ativa."
   },
   "security": {
     "title": "Segurança",

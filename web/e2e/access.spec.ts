@@ -123,12 +123,17 @@ test.describe("signed in", () => {
   });
 
   test("session.ended on the stream sends the user to login with the mapped reason", async ({ page }) => {
-    await page.route("**/api/v1/events", (route) =>
-      route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: session.ended\ndata: {"type":"session.ended","at":"2026-10-23T12:00:00Z","reason":"password_changed"}\n\n' }),
-    );
+    // Once the Core ends the session, /me answers 401 too (as the real server does).
+    let ended = false;
+    await page.route("**/api/v1/me", (route) => (ended ? route.fulfill({ status: 401, json: { error: { code: "auth.unauthenticated" } } }) : route.fallback()));
+    await page.route("**/api/v1/events", (route) => {
+      ended = true;
+      return route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: session.ended\ndata: {"type":"session.ended","at":"2026-10-23T12:00:00Z","reason":"password_changed"}\n\n' });
+    });
     await page.route("**/api/v1/sources", (route) => route.fulfill({ json: [] }));
     await page.goto("/pt-BR/connections/sources");
     await expect(page).toHaveURL(/\/pt-BR\/login\?reason=sessions_ended/);
+    await expect(page.getByRole("heading", { level: 1, name: "Entrar" })).toBeVisible();
   });
 
   for (const path of ["connections/sources", "connections/ninjatrader", "settings/security"]) {
@@ -141,4 +146,48 @@ test.describe("signed in", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     });
   }
+
+  test("Esc returns focus to the control that opened the dialog (WCAG 2.4.3)", async ({ page }) => {
+    await page.route("**/api/v1/sources", (route) => route.fulfill({ json: [source] }));
+    await page.route("**/api/v1/connections", (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({ status: 201, json: { connection, pairing: { pairing_code: "K7QM-4D2P", expires_at: new Date(Date.now() + 600_000).toISOString() } } })
+        : route.fulfill({ json: [] }),
+    );
+    await page.route("**/api/v1/me/totp/setup", (route) => route.fulfill({ json: { otpauth_uri: "otpauth://totp/x?secret=AAAA", secret: "AAAA", expires_at: "2026-10-23T12:10:00Z" } }));
+
+    await page.goto("/pt-BR/connections/sources");
+    const create = page.getByRole("button", { name: "Nova fonte" });
+    await create.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(create).toBeFocused();
+
+    const kebab = page.getByRole("button", { name: "Ações para Strikes MNQ" });
+    await kebab.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("menuitem", { name: "Revogar" }).click();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(kebab).toBeFocused();
+
+    await page.goto("/pt-BR/connections/ninjatrader");
+    const pair = page.getByRole("button", { name: "Nova conexão" }).first();
+    await pair.focus();
+    await page.keyboard.press("Enter");
+    await page.getByLabel("Nome da conexão").fill("VPS");
+    await page.keyboard.press("Enter");
+    await expect(page.getByLabel("Código de pareamento")).toHaveText("K7QM-4D2P");
+    await page.keyboard.press("Escape");
+    await expect(pair).toBeFocused();
+
+    await page.goto("/pt-BR/settings/security");
+    const enable = page.getByRole("button", { name: "Ativar", exact: true });
+    await enable.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("img", { name: "QR code para o app autenticador" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(enable).toBeFocused();
+  });
 });

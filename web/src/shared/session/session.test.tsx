@@ -100,6 +100,23 @@ describe("step-up", () => {
     expect(await screen.findByText("Senha ou código incorretos.")).toBeInTheDocument();
   });
 
+  it("keeps Confirm disabled until the security state is known, so a TOTP user never sends the password alone", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(
+      http.get("*/api/v1/me/security", async () => { await gate; return HttpResponse.json({ totp_enabled: true, recovery_codes_remaining: 10, session: {} }); }),
+      http.post("*/api/v1/sources", stepUpRequired),
+    );
+    renderApp(<Action onResult={() => {}} />);
+    const person = userEvent.setup();
+    await person.click(screen.getByRole("button", { name: "go" }));
+    await person.type(await screen.findByLabelText("Senha"), "pw");
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
+    release();
+    expect(await screen.findByLabelText("Código do app autenticador")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
+  });
+
   it("asks for the authenticator code when TOTP is on", async () => {
     server.use(
       http.get("*/api/v1/me/security", () => HttpResponse.json({ totp_enabled: true, recovery_codes_remaining: 10, session: {} })),

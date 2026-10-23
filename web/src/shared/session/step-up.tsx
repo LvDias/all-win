@@ -118,7 +118,8 @@ function StepUpForm({ onSettled }: { onSettled: (ok: boolean) => void }) {
     }
   }
 
-  const ready = password.length > 0 && (!totp || code.length === 6);
+  // Wait for the security state: a TOTP user who submits before it loads would send the password alone.
+  const ready = (security.isSuccess || security.isError) && password.length > 0 && (!totp || code.length === 6);
 
   return (
     <form onSubmit={(event) => void submit(event)} className="grid gap-4">

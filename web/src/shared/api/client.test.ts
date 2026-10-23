@@ -44,3 +44,10 @@ describe("errorMessage", () => {
     expect(errorMessage(t, new Error("boom")).message).toBe("Failed");
   });
 });
+
+describe("apiFetch empty bodies", () => {
+  it("returns undefined for a 202 without a body", async () => {
+    server.use(http.post("*/api/v1/x", () => new HttpResponse(null, { status: 202 })));
+    await expect(apiFetch("/api/v1/x", { method: "POST", body: {} })).resolves.toBeUndefined();
+  });
+});

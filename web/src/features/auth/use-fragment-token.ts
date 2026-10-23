@@ -15,7 +15,12 @@ export function useFragmentToken(): FragmentToken {
     /* eslint-disable react-hooks/set-state-in-effect */
     const match = /^#t=([^&]+)/.exec(window.location.hash);
     if (match?.[1]) {
-      const token = decodeURIComponent(match[1]);
+      let token: string | null = null;
+      try {
+        token = decodeURIComponent(match[1]);
+      } catch {
+        // A malformed fragment is an invalid link; it is still removed from the address bar.
+      }
       window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}`);
       setState({ checked: true, token });
     } else {

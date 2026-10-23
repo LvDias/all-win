@@ -21,8 +21,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 /** Renders inside the same providers as the app, with MSW-backed API calls. */
-export function renderApp(ui: ReactElement, locale: keyof typeof catalogs = "pt-BR") {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+export function renderApp(ui: ReactElement, locale: keyof typeof catalogs = "pt-BR", queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })) {
   return render(
     <QueryClientProvider client={queryClient}>
       <NextIntlClientProvider locale={locale} messages={catalogs[locale]} timeZone="UTC">

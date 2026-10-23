@@ -206,3 +206,54 @@ describe("ConnectionsPage", () => {
     expect(await screen.findByText("Desconectada")).toBeInTheDocument();
   });
 });
+
+describe("ConnectionsPage rename and unpaired history", () => {
+  it("renames a connection", async () => {
+    list([connection()]);
+    const bodies: unknown[] = [];
+    server.use(http.patch("*/api/v1/connections/:id", async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json(connection({ name: "Home PC" })); }));
+    renderApp(<ConnectionsPage />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("button", { name: "Ações para VPS Chicago" }));
+    await person.click(await screen.findByRole("menuitem", { name: "Renomear" }));
+    const input = await screen.findByLabelText("Nome da conexão");
+    await person.clear(input);
+    await person.type(input, "Home PC");
+    await person.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(bodies).toEqual([{ name: "Home PC" }]));
+  });
+
+  it("'Mostrar despareadas' lists unpaired connections as read-only history", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.get("*/api/v1/connections", ({ request }) => {
+        const include = new URL(request.url).searchParams.get("include_unpaired") === "true";
+        asked.push(String(include));
+        return HttpResponse.json(include ? [connection(), connection({ id: "00000000-0000-4000-8000-0000000000c9", name: "Old PC", status: "unpaired", unpaired_at: "2026-10-22T12:00:00Z" })] : [connection()]);
+      }),
+    );
+    renderApp(<ConnectionsPage />);
+    await screen.findByText("VPS Chicago");
+    expect(screen.queryByText("Old PC")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("switch", { name: "Mostrar despareadas" }));
+    expect(await screen.findByText("Old PC")).toBeInTheDocument();
+    expect(screen.getByText("Despareada")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ações para Old PC" })).not.toBeInTheDocument();
+    expect(asked).toContain("true");
+  });
+
+  it("returns focus to 'Nova conexão' after the pairing dialog closes with Esc", async () => {
+    list([]);
+    server.use(http.post("*/api/v1/connections", () => HttpResponse.json({ connection: connection({ status: "awaiting_pairing" }), pairing }, { status: 201 })));
+    renderApp(<ConnectionsPage />);
+    const person = userEvent.setup();
+    const open = (await screen.findAllByRole("button", { name: "Nova conexão" }))[0] as HTMLElement;
+    await person.click(open);
+    await person.type(await screen.findByLabelText("Nome da conexão"), "X");
+    await person.click(screen.getByRole("button", { name: "Criar" }));
+    await screen.findByLabelText("Código de pareamento");
+    await person.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(open).toHaveFocus());
+  });
+});

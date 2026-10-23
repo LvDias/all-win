@@ -2,12 +2,12 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
-import type { RecoveryCodes } from "@/shared/api/types";
+import type { RecoveryCodes, TotpSetup } from "@/shared/api/types";
 import { securityQueryKey } from "@/shared/session/security";
 
 const post = <T>(path: string, body?: unknown) => apiFetch<T>(path, { method: "POST", body });
 
-export type TotpSetup = { otpauth_uri: string; secret: string; expires_at: string };
+export type { TotpSetup } from "@/shared/api/types";
 
 export const useStartTotpSetup = () => useMutation({ mutationFn: () => post<TotpSetup>("/api/v1/me/totp/setup") });
 

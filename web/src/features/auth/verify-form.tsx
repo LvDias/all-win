@@ -20,6 +20,7 @@ import { OtpInput } from "@/shared/ui/otp-input";
 import { Spinner } from "@/shared/ui/spinner";
 import { useVerifyRecoveryCode, useVerifyTotp } from "./api";
 import { AuthCard } from "./auth-card";
+import { forgetPendingEmail } from "./pending-email";
 
 export const recoveryRemainingKey = "aw.recovery-remaining";
 
@@ -53,6 +54,8 @@ export function VerifyForm() {
     try {
       const result = mode === "app" ? await totp.mutateAsync(value) : await recovery.mutateAsync(value);
       if (!result.user) return;
+      forgetPendingEmail();
+      queryClient.clear();
       queryClient.setQueryData(meQueryKey, result.user);
       if (mode === "recovery" && result.recovery_codes_remaining !== undefined) {
         try {

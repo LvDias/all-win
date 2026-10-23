@@ -46,7 +46,7 @@ export function ResetPasswordForm() {
 
   if (state === "done") {
     return (
-      <AuthCard title={t("auth.reset.doneTitle")} titleId="reset-title">
+      <AuthCard title={t("auth.reset.doneTitle")} titleId="reset-title" focusTitle>
         <p className="text-sm">{t("auth.reset.done")}</p>
         <Link href={path("/login")} className={buttonVariants()}>
           {t("auth.reset.signIn")}
