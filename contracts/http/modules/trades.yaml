@@ -1,0 +1,426 @@
+# Module `trades` — V1-S21 (completed trades: captured by the plugin or entered manually; list, summary, detail).
+# Owner: Compasso (Software Architect). Notes: docs/architecture/contracts/s21-trades.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/trades:
+    get:
+      tags: [trades]
+      operationId: listTrades
+      summary: The caller's completed trades, filtered and sorted, with a cursor
+      description: |
+        Filters combine with AND, values in one array with OR (repeat the parameter). `from` / `to` filter
+        on the **exit time** (provisional, Q53); both are instants and optional (absent = unbounded);
+        `from` after `to` gets 400 (pointer `/query/from`). `origin` selects routed / master / manual /
+        platform trades; `source_id` selects routed trades of those sources. Trades of archived accounts
+        stay listed (`account_deleted`); trades are kept for the life of the user account (S10 AC-3).
+        `next_cursor` is opaque, authenticated by the Core (MAC) and bound to the filters and the sort
+        (tamper or mismatch → 400, pointer `/query/cursor`). Ties are broken by `trade_id`.
+        `getTradesSummary` with the same filters gives the count and total P&L of the whole set.
+      parameters:
+        - $ref: '#/components/parameters/TradeFrom'
+        - $ref: '#/components/parameters/TradeTo'
+        - $ref: '#/components/parameters/TradeAccountIds'
+        - $ref: '#/components/parameters/TradeSourceIds'
+        - $ref: '#/components/parameters/TradeOrigins'
+        - $ref: '#/components/parameters/TradeSignalTypes'
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [exit_time, pnl, duration], default: exit_time }
+        - name: order
+          in: query
+          required: false
+          schema: { type: string, enum: [desc, asc], default: desc }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$' }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TradePage' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+    post:
+      tags: [trades]
+      operationId: createManualTrade
+      summary: Record a trade the platform did not capture (origin `manual`, S21 AC-3)
+      description: |
+        Idempotent by `Idempotency-Key` (same rules as `createAccount`: same key and body within 24 h →
+        200 with the trade created first; different body or after 24 h → 409
+        `trades.idempotency_key_reused`; never a second trade). Duration and P&L are computed by the
+        Core (gross, no commissions; provisional Q54); MAE / MFE are optional (provisional Q55). The
+        account may be active, paused or disabled, not archived. Audited as `trades.manual_created`.
+      parameters:
+        - { $ref: 'accounts.yaml#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualTradeRequest' }
+            examples:
+              buy:
+                value:
+                  account_id: 0b9f4c1e-7d2a-4e7b-9a52-3c1d8e6f2a10
+                  instrument_id: 7c8d9e0f-1a2b-4c3d-8e4f-5a6b7c8d9e0f
+                  direction: long
+                  quantity: 2
+                  entry_time: '2026-10-23T13:30:05Z'
+                  entry_price: '21234.50'
+                  exit_time: '2026-10-23T13:42:35Z'
+                  exit_price: '21240.25'
+      responses:
+        '200':
+          description: Replay of a create already done with this key; the trade, unchanged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trade' }
+        '201':
+          description: Created and audited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trade' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '409':
+          description: '`trades.idempotency_key_reused` — nothing created.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ManualTradeRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/trades/summary:
+    get:
+      tags: [trades]
+      operationId: getTradesSummary
+      summary: Count and total P&L of the whole filtered set (the same figures S22 uses)
+      parameters:
+        - $ref: '#/components/parameters/TradeFrom'
+        - $ref: '#/components/parameters/TradeTo'
+        - $ref: '#/components/parameters/TradeAccountIds'
+        - $ref: '#/components/parameters/TradeSourceIds'
+        - $ref: '#/components/parameters/TradeOrigins'
+        - $ref: '#/components/parameters/TradeSignalTypes'
+      responses:
+        '200':
+          description: The summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TradesSummary' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/trades/{trade_id}:
+    get:
+      tags: [trades]
+      operationId: getTrade
+      summary: One trade (detail panel)
+      parameters:
+        - { $ref: '#/components/parameters/TradeId' }
+      responses:
+        '200':
+          description: The trade.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trade' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+    put:
+      tags: [trades]
+      operationId: updateManualTrade
+      summary: Correct a manual trade (provisional, Q56); captured trades are never editable
+      description: |
+        Full replacement of the manual fields, with `row_version` (stale → 409 `common.version_conflict`).
+        A captured trade (`origin` ≠ `manual`) gets 409 `trades.not_editable`. Audited as
+        `trades.manual_changed` with previous and new values. Check order after authentication, Origin and
+        schema: 404 → 409 → 422.
+      parameters:
+        - { $ref: '#/components/parameters/TradeId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualTradeUpdateRequest' }
+      responses:
+        '200':
+          description: Saved and audited (no change → 200, not audited).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trade' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`trades.not_editable` or `common.version_conflict`; nothing saved.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ManualTradeRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+    delete:
+      tags: [trades]
+      operationId: deleteManualTrade
+      summary: Delete a manual trade (provisional, Q56)
+      description: |
+        The trade leaves the list and the metrics; the audit entry `trades.manual_deleted` keeps its
+        values. `row_version` is required (stale → 409 `common.version_conflict`); a captured trade gets
+        409 `trades.not_editable`.
+      parameters:
+        - { $ref: '#/components/parameters/TradeId' }
+        - name: row_version
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '204': { description: Deleted and audited. }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`trades.not_editable` or `common.version_conflict`; nothing deleted.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/trade-preview:
+    get:
+      tags: [trades]
+      operationId: previewManualTrade
+      summary: Duration and P&L of a manual trade before saving (stateless, Core arithmetic)
+      description: Stores nothing, audits nothing. Same validation and same 422 codes as `createManualTrade`.
+      parameters:
+        - { name: account_id, in: query, required: true, schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+        - { name: instrument_id, in: query, required: true, schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+        - { name: direction, in: query, required: true, schema: { $ref: '#/components/schemas/TradeDirection' } }
+        - { name: quantity, in: query, required: true, schema: { type: integer, minimum: 1, maximum: 10000 } }
+        - { name: entry_time, in: query, required: true, schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' } }
+        - { name: entry_price, in: query, required: true, schema: { $ref: 'audit.yaml#/components/schemas/Price' } }
+        - { name: exit_time, in: query, required: true, schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' } }
+        - { name: exit_price, in: query, required: true, schema: { $ref: 'audit.yaml#/components/schemas/Price' } }
+      responses:
+        '200':
+          description: The computed values.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManualTradePreview' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ManualTradeRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  parameters:
+    TradeId:
+      name: trade_id
+      in: path
+      required: true
+      schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+    TradeFrom:
+      name: from
+      in: query
+      required: false
+      description: Exit time at or after this instant (Q53, provisional).
+      schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    TradeTo:
+      name: to
+      in: query
+      required: false
+      description: Exit time before this instant.
+      schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    TradeAccountIds:
+      name: account_id
+      in: query
+      required: false
+      explode: true
+      schema: { type: array, maxItems: 50, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+    TradeSourceIds:
+      name: source_id
+      in: query
+      required: false
+      explode: true
+      schema: { type: array, maxItems: 50, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+    TradeOrigins:
+      name: origin
+      in: query
+      required: false
+      explode: true
+      schema: { type: array, maxItems: 4, items: { $ref: '#/components/schemas/TradeOrigin' } }
+    TradeSignalTypes:
+      name: signal_type
+      in: query
+      required: false
+      explode: true
+      schema: { type: array, maxItems: 4, items: { $ref: 'audit.yaml#/components/schemas/AuditSignalType' } }
+
+  responses:
+    ManualTradeRejected:
+      description: |
+        Valid shape, refused by a rule; nothing saved. Codes and pointers:
+        - `trades.exit_before_entry` — `/exit_time` (exit not after entry);
+        - `trades.in_future` — `/entry_time` or `/exit_time`;
+        - `trades.not_tick_multiple` — `/entry_price` or `/exit_price` (prices must be whole ticks of the
+          instrument; unlike profile distances they are never rounded);
+        - `trades.account_unknown` — `/account_id` (unknown, archived or another user's; identical);
+        - `trades.instrument_unknown` — `/instrument_id` (not enabled).
+        On the preview the pointers are `/query/<name>`.
+      content:
+        application/json:
+          schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+          examples:
+            exit_before_entry:
+              value: { error: { code: trades.exit_before_entry, pointer: /exit_time } }
+
+  schemas:
+    TradeDirection:
+      type: string
+      enum: [long, short]
+      description: Direction of the position (UI `Compra` = long, `Venda` = short).
+    TradeOrigin:
+      type: string
+      enum: [routed, master, manual, platform]
+      description: |
+        `routed` = created by a routed instruction (source + signal type); `master` = master replication
+        (S19, V1.1); `manual` = entered by the user (S21 AC-3); `platform` = placed by the user directly in
+        the platform and captured (UI "Plataforma (sem sinal)", PO).
+    Trade:
+      type: object
+      additionalProperties: false
+      required: [trade_id, account_id, account_name, account_deleted, instrument_id, instrument_symbol, direction, quantity, entry_time, entry_price, exit_time, exit_price, duration_seconds, pnl, pnl_basis, origin, editable, created_at]
+      description: |
+        One completed trade as the Core defines it (provisional, Q57: one trade per entry with FIFO exits
+        in individual mode; flat-to-flat in shared mode). Captured trades carry the numbers the plugin
+        computed (S21 AC-2; no raw price data is stored); manual ones carry the Core's computation. Money
+        and prices are decimal strings (X-3).
+      properties:
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_name: { type: string, maxLength: 80, description: Snapshot. }
+        account_deleted: { type: boolean }
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$' }
+        contract_month: { type: string, pattern: '^[0-9]{4}-[0-9]{2}$' }
+        direction: { $ref: '#/components/schemas/TradeDirection' }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        entry_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        entry_price: { $ref: 'audit.yaml#/components/schemas/Price' }
+        exit_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        exit_price: { $ref: 'audit.yaml#/components/schemas/Price' }
+        duration_seconds: { type: integer, minimum: 0, description: exit − entry (PO). }
+        pnl: { $ref: 'audit.yaml#/components/schemas/Money' }
+        pnl_basis:
+          type: string
+          enum: [gross]
+          description: Gross, without commissions (provisional, Q54); a later `net` would be an added value.
+        mae:
+          description: Maximum adverse excursion in USD, ≥ 0 (provisional, Q52). Absent when not provided (manual, Q55).
+          $ref: 'profiles.yaml#/components/schemas/MoneyString'
+        mfe:
+          description: Maximum favourable excursion in USD, ≥ 0 (as `mae`).
+          $ref: 'profiles.yaml#/components/schemas/MoneyString'
+        origin: { $ref: '#/components/schemas/TradeOrigin' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_name: { type: string, maxLength: 60 }
+        signal_type: { $ref: 'audit.yaml#/components/schemas/AuditSignalType' }
+        instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        command_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        master_account_id:
+          description: With `master` (S19).
+          $ref: '../openapi.yaml#/components/schemas/Uuid'
+        master_account_name: { type: string, maxLength: 80 }
+        editable: { type: boolean, description: 'True only for manual trades (Q56, provisional).' }
+        row_version: { type: integer, minimum: 1, description: Manual trades only. }
+        captured_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        created_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+      allOf:
+        - if: { properties: { origin: { const: routed } } }
+          then: { required: [source_id, source_name, signal_type, instruction_id] }
+        - if: { properties: { origin: { const: master } } }
+          then: { required: [master_account_id, master_account_name] }
+        - if: { properties: { origin: { const: manual } } }
+          then:
+            required: [row_version]
+            properties: { editable: { const: true } }
+            not: { anyOf: [{ required: [captured_at] }, { required: [command_id] }] }
+          else:
+            required: [captured_at]
+            properties: { editable: { const: false } }
+            not: { required: [row_version] }
+    TradePage:
+      type: object
+      additionalProperties: false
+      required: [trades]
+      properties:
+        trades: { type: array, items: { $ref: '#/components/schemas/Trade' } }
+        next_cursor: { type: string, description: Absent on the last page. }
+    TradesSummary:
+      type: object
+      additionalProperties: false
+      required: [count, total_pnl, pnl_basis]
+      properties:
+        count: { type: integer, minimum: 0 }
+        total_pnl: { $ref: 'audit.yaml#/components/schemas/Money' }
+        pnl_basis: { type: string, enum: [gross] }
+    ManualTradeFields:
+      type: object
+      required: [account_id, instrument_id, direction, quantity, entry_time, entry_price, exit_time, exit_price]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        direction: { $ref: '#/components/schemas/TradeDirection' }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        entry_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        entry_price: { $ref: 'audit.yaml#/components/schemas/Price' }
+        exit_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        exit_price: { $ref: 'audit.yaml#/components/schemas/Price' }
+        mae: { $ref: '#/components/schemas/ExcursionInput' }
+        mfe: { $ref: '#/components/schemas/ExcursionInput' }
+    ExcursionInput:
+      type: string
+      pattern: '^[0-9]{1,12}(\.[0-9]{1,2})?$'
+      description: USD, ≥ 0, at most 2 decimals (Q52, provisional).
+    ManualTradeRequest:
+      allOf:
+        - $ref: '#/components/schemas/ManualTradeFields'
+      unevaluatedProperties: false
+    ManualTradeUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ManualTradeFields'
+        - type: object
+          required: [row_version]
+          properties:
+            row_version: { type: integer, minimum: 1 }
+      unevaluatedProperties: false
+    ManualTradePreview:
+      type: object
+      additionalProperties: false
+      required: [duration_seconds, pnl, pnl_basis]
+      properties:
+        duration_seconds: { type: integer, minimum: 0 }
+        pnl: { $ref: 'audit.yaml#/components/schemas/Money' }
+        pnl_basis: { type: string, enum: [gross] }
+    TradeCapturedEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, trade_id, account_id]
+      description: A trade was captured or entered (drives the "n new trades" banner); the client refetches.
+      properties:
+        type: { const: trade.captured }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        origin: { $ref: '#/components/schemas/TradeOrigin' }

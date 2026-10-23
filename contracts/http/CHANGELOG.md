@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 3.3.0 — 2026-10-23 (V1-S21 trades; additive) — notes: docs/architecture/contracts/s21-trades.md
+- Module `trades`: `listTrades` (exit-time window, account / source / origin / signal filters, sort by exit time / P&L / duration, MAC cursor), `getTradesSummary`, `getTrade`, `createManualTrade` (`Idempotency-Key`), `updateManualTrade` / `deleteManualTrade` (manual only, Q56 provisional), `previewManualTrade`; SSE `trade.captured`.
+- Audit codes `trades.captured`, `trades.manual_created`, `trades.manual_changed`, `trades.manual_deleted`.
+- `risk.yaml`: `pending_changes[].change` gains `daily_loss_changed` (mixed change, treated as looser; Crivo note on 3.2.1).
+
 ## 3.2.1 — 2026-10-23 (Code Review of 3.2.0; additive)
 - `AccountRisk.pending_reset_change` (a saved reset-time change, always from the next trading day) and `pending_changes[].change: drawdown_type_changed` with `new_drawdown`; `daily_loss_softened` carries `new_daily_loss` (Crivo F1).
 - Notification registry: `reopen_on_occurrence` per `account_trading_day` code, true for `routing.risk_blocked`, `routing.out_of_sync`, `routing.expired` (provisional Q68 b; a / c only flip the flags); checked by `check_openapi.py`.

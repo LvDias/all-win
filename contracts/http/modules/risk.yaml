@@ -328,17 +328,19 @@ components:
                 description: The new limit (money as a decimal string; a percent for consistency). Absent when the change removes the rule or changes only a kind or `profit_target_on_reach`.
               change:
                 type: string
-                enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened, drawdown_type_changed]
+                enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened, drawdown_type_changed, daily_loss_changed]
                 description: |
                   What is pending. `drawdown_type_changed` (a change of type is not comparable, so it waits
-                  for the next trading day) and `daily_loss_softened` carry the new value in
-                  `new_drawdown` / `new_daily_loss`.
+                  for the next trading day), `daily_loss_softened` and `daily_loss_changed` (a mixed change
+                  that is stricter in one part and looser in another, e.g. `soft_pause` → `hard` with a
+                  higher amount: treated as looser, so it waits) carry the new value in `new_drawdown` /
+                  `new_daily_loss`.
               new_drawdown: { $ref: 'presets.yaml#/components/schemas/DrawdownValue' }
               new_daily_loss: { $ref: 'presets.yaml#/components/schemas/DailyLossValue' }
             allOf:
               - if: { properties: { change: { const: drawdown_type_changed } }, required: [change] }
                 then: { required: [new_drawdown], properties: { kind: { const: drawdown } } }
-              - if: { properties: { change: { const: daily_loss_softened } }, required: [change] }
+              - if: { properties: { change: { enum: [daily_loss_softened, daily_loss_changed] } }, required: [change] }
                 then: { required: [new_daily_loss], properties: { kind: { const: daily_loss } } }
         pending_reset_change:
           type: object

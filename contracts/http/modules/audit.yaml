@@ -255,6 +255,10 @@ components:
         - risk.limit_reached
         - risk.target_reached
         - risk.consistency_warning
+        - trades.captured
+        - trades.manual_created
+        - trades.manual_changed
+        - trades.manual_deleted
       description: |
         Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
         auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
@@ -793,6 +797,30 @@ components:
         used: { type: string, pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$', description: 'Money, or a percent string for consistency.' }
         percent: { type: integer, minimum: 0 }
         action: { type: string, enum: [notify, flatten_and_block] }
+    DetailsTrade:
+      type: object
+      additionalProperties: false
+      required: [trade_id, direction, quantity, pnl]
+      description: '`trades.captured` (category `execution`) and `trades.manual_created` / `trades.manual_deleted` (`config`; the deleted trade''s values are kept here).'
+      properties:
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        origin: { $ref: 'trades.yaml#/components/schemas/TradeOrigin' }
+        direction: { $ref: 'trades.yaml#/components/schemas/TradeDirection' }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        entry_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        entry_price: { $ref: '#/components/schemas/Price' }
+        exit_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        exit_price: { $ref: '#/components/schemas/Price' }
+        pnl: { $ref: '#/components/schemas/Money' }
+        mae: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        mfe: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+    DetailsTradeChanged:
+      type: object
+      additionalProperties: false
+      required: [trade_id, changes]
+      properties:
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
     AuditDetailsByCode:
       type: object
       additionalProperties: false
@@ -872,3 +900,7 @@ components:
         risk.limit_reached: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.target_reached: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }
+        trades.captured: { $ref: '#/components/schemas/DetailsTrade' }
+        trades.manual_created: { $ref: '#/components/schemas/DetailsTrade' }
+        trades.manual_changed: { $ref: '#/components/schemas/DetailsTradeChanged' }
+        trades.manual_deleted: { $ref: '#/components/schemas/DetailsTrade' }
