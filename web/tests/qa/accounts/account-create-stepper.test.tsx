@@ -1,18 +1,15 @@
 // QA (Lente) — S5 "Nova conta" stepper, G1–G14 of qa-plan-s5-web-nova-conta.md. Written against contract 5.1.0 and
 // s5-design-deltas D1–D16, NOT against the implementation. Imports use the "@" alias so the file can move to the
 // QA-owned web test path unchanged.
-import { nav, renderAccounts } from "@/features/accounts/testing/render-accounts";
+import { nav, renderAccounts, ids, ruleVersion, accountHandlers, apiError } from "@/../tests/qa/shared/accounts";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/server";
 import { StepUpCancelled } from "@/shared/session/step-up";
-import { AccountCreateStepper } from "@/features/accounts/account-create-stepper";
-import type { StepUpRunner } from "@/features/accounts/lib/use-step-up";
-import { ids, propAccount, ruleVersion } from "@/features/accounts/testing/fixtures";
-import { accountHandlers, apiError } from "@/features/accounts/testing/handlers";
-import type { FirmStance, OptInRules } from "@/features/accounts/api/types";
+import { AccountCreateStepper } from "@/features/accounts";
+import type { FirmStance, OptInRules, StepUpRunner } from "@/../tests/qa/shared/accounts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -141,7 +138,7 @@ describe("QA S5 stepper — opt-in on create (D8–D12)", () => {
     let first = true;
     server.use(
       connections(),
-      http.post("/api/v1/accounts", async ({ request }) => {
+      http.post("/api/v1/accounts", async () => {
         if (first) {
           first = false;
           return apiError(409, "accounts.rule_version_changed", { current_rule_version_id: ids.ruleAuto2 });
@@ -348,7 +345,8 @@ describe("QA S5 stepper — kinds, money, submit, binding, cancel", () => {
     await user.clear(screen.getByLabelText("Multiplicador"));
     await user.type(screen.getByLabelText("Multiplicador"), "0");
     await next(user);
-    expect(await screen.findByText("Informe um valor maior que zero com no máximo 2 casas decimais.")).toBeInTheDocument();
+    // "100,005": refused either as invalid (3 decimals) or, since delta 2, as ambiguous — both are a refusal, nothing sent
+    expect(await screen.findByText(/Informe um valor maior que zero com no máximo 2 casas decimais\.|Digite a parte decimal explicitamente/)).toBeInTheDocument();
     expect(screen.getByText("Use um número inteiro maior ou igual a 1.")).toBeInTheDocument();
     expect(screen.getByLabelText("Nome")).toHaveAttribute("aria-invalid", "true");
   });
@@ -512,8 +510,7 @@ describe("QA S5 stepper — Idempotency-Key (contract s5-accounts §2.2)", () =>
     const nameField = await screen.findByLabelText("Nome");
     await user.clear(nameField);
     await user.type(nameField, "Segunda");
-    await next(user);
-    await next(user);
+    await next(user); // editing from the review returns straight to the review
     await save(user);
     await waitFor(() => expect(keys).toHaveLength(3));
     expect(keys[2]?.name).toBe("Segunda");
