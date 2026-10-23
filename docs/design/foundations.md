@@ -1,6 +1,6 @@
 # Design Foundations — All Win Web
 
-> **Owner:** Product Designer (Aquarela, design-system owner) · **Status:** proposed, pending PO review of rev. 3 · **Revision:** 4 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela, design-system owner) · **Status:** proposed, pending PO review of rev. 4 · **Revision:** 4 · **Date:** 2026-10-23
 > **Inputs:** [product-vision.md](../product/product-vision.md) rev. 3, [slice-plan.md](../product/release-1/slice-plan.md) (X-1..X-8, S3, S4, S5, S16), [ADR-0001](../architecture/adr/0001-technology-stack.md) §8–§9, [ADR-0004](../architecture/adr/0004-adapter-protocol-v1.md) §8–§9, [auth-and-session-policy.md](../architecture/security/auth-and-session-policy.md), PO answers of 2026-10-23 (Bússola), user decisions of 2026-10-23 in [decisions.md](../delivery/decisions.md) (Q17–Q23, firms that forbid automation).
 > **Rev. 4 change (2026-10-23, user UX rule in decisions.md):** long forms become step by step; the limit, the edit rule and the per-step behavior are in §10.1; glossary rows for step, review and skip (§5).
 > **Rev. 3 changes (2026-10-23, slice-plan rev. 7, passwordless S3):** `StepUpDialog` now asks a **new code** instead of a password (§8.2); `SecretField` no longer serves TOTP (§8.1); glossary drops TOTP/recovery codes and adds code, channel and replication terms (§5); AC references renumbered (S3 AC-3 → AC-14); keyboard/autocomplete and accessible-authentication notes updated (§9, §11); new shared components live in [components.md](components.md).
