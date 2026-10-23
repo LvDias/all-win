@@ -64,7 +64,7 @@ No flags (languages are not countries). Adding a locale later is a configuration
 ## 5. Message catalogs and translation rules (for Frontend)
 
 - **Catalogs:** `web/messages/pt-BR.json`, `web/messages/en.json` (path per Frontend scaffold). Keys identical in both, checked in CI (root CLAUDE.md §5).
-- **Key naming:** `<feature>.<screen>.<element>[.<variant>]`, e.g. `sources.create.title`, `sources.rotate.confirm`, `auth.login.error.invalid_credentials`. Shared: `common.actions.cancel`, `common.states.loading`. **Core error codes map 1:1** to `errors.<code>` (e.g. `errors.auth.invalid_credentials`).
+- **Key naming:** `<feature>.<screen>.<element>[.<variant>]`, e.g. `sources.create.title`, `sources.rotate.confirm`, `auth.login.code.error`. Shared: `common.actions.cancel`, `common.states.loading`. **Core error codes map 1:1** to `errors.<code>` (e.g. `errors.auth.code_invalid`).
 - **ICU MessageFormat** for plurals and variables: `{count, plural, one {# contrato} other {# contratos}}`. Never build sentences by concatenation; never embed formatted numbers via string concatenation (use the F§6 formatters as arguments).
 - **Unknown error code** from the Core: `errors.unknown` with the code as a variable ("Erro inesperado (código: {code})").
 - **Text expansion:** layouts tolerate +35 % (en ↔ pt-BR). No fixed widths on buttons, badges or table headers; truncation only with a tooltip and never for status text.

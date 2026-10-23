@@ -10,7 +10,7 @@
 > - **Pending with the user** (marked *provisional* where designed; see §4): Q28 recovery · Q29 session lengths · Q30 step-up window · Q33 limits · Q34 new-device notice and "sign out of all devices" · Q35 step-up list · Q36 · **U16 code format** (the policy recommends Crockford Base32, 8 characters, shown `XXXX-XXXX`).
 > - **Superseded, removed from this spec:** password and its policy (D10), password reset (Q20 reset part, D9), optional TOTP and its banner (A5, D13), recovery codes and admin-assisted TOTP reset (Q22, D12), admin Users page (its only actions were reset link and TOTP reset).
 >
-> **Contract:** [openapi.yaml](../../../contracts/http/openapi.yaml) and the [S3 contract notes](../../architecture/contracts/s3-access-sources-pairing.md) still describe the **password model** for `auth` (the policy announces HTTP contract 2.0.0). Until the Architect publishes the passwordless operations, every auth operation name and error code in §3 is a **[Proposal]**. Sources, connections, pairing and invitation operations are unchanged. Where this spec and the contract differ, **the contract wins**; tell the Designer.
+> **Contract:** HTTP API 3.4.1 (auth/me operations published at 2.0.0): `contracts/http/openapi.yaml` and the [S3 contract notes](../../architecture/contracts/s3-access-sources-pairing.md). Operation names and error codes below are the **published** ones. Where this spec and the contract differ, **the contract wins**; tell the Designer. Not yet in the contract: `Connection.disconnect_reason` (S3-10, pending Q66).
 > **Surfaces:** Web (Frontend), NinjaTrader plugin pairing panel (Plugin Engineer, S3-11, unchanged). **QA:** QA owner for `tests/e2e/`.
 >
 > **Rev. 4 changes (2026-10-23, slice-plan rev. 7):**
@@ -71,7 +71,7 @@ Public (no session)                      App (session) — shadcn Sidebar
   Timing equality is the Core's job; the UI adds no artificial delay and no behavior that depends on the account.
 - **Audit (X-5, AC-16):** sign-ins, failed or rate-limited attempts, new-device notices, step-up results and channel changes are written by the Core to the user's audit log. The audit view is S10; this slice only needs the events emitted.
 - **Duplicate submits:** F§10 "Submitting" applies to every form and confirm button. `Enviar código` and `Reenviar` are also protected by the cooldown (C§1.4).
-- **Session ended elsewhere:** the SSE stream sends `session.ended` with a reason before closing. Open tabs redirect to login: `expired` → `?reason=session_expired`; `logout` → `signed_out`; every security-driven end (`channel_changed`, `device_revoked`, sign out of all devices) → `sessions_ended`. Password/TOTP reasons are removed; the Frontend maps whatever reasons the final contract defines to these three messages.
+- **Session ended elsewhere:** the SSE stream sends `session.ended` with a reason before closing. Open tabs redirect to login: `expired` → `?reason=session_expired`; `logout` → `signed_out`; `signed_out_everywhere`, `device_revoked` and `channel_changed` → `sessions_ended`. Password/TOTP reasons are removed; the Frontend maps whatever reasons the final contract defines to these three messages.
 - **Step-up (AC-10, policy §6):** a **new code for that action**. Decided by the user: (i) accepting automation on an account (S5), (ii) unpairing a NinjaTrader instance (S3-10), (iii) changing the e-mail (S3-05, whose two codes are the step-up). **Provisional (the Architect's "musts", Q35):** creating or rotating a source URL (S3-09), creating a pairing code or moving an instance (S3-10), and issuing an invitation (S3-08a). S3-04 opens for every operation the contract marks `x-step-up`, and the original request is sent **once, with the code**. Adding or removing an action from the list therefore changes no screen.
 - **Text:** all strings shown are examples in pt-BR / en. Frontend creates the keys (S4 spec §5 naming); final copy review is with the PO.
 
@@ -83,11 +83,11 @@ Public (no session)                      App (session) — shadcn Sidebar
 **Layout:** centered `Card` (max 400 px) on `--muted` background. Top: product name "All Win". Top-right of the page: language switcher + theme switcher (S4). Below the card: `Acesso somente por convite.` / `Access by invitation only.` No sign-up link (Q6).
 **Title / text:** "Entrar" / "Sign in" · "Digite seu e-mail. Enviaremos um código para você entrar. Não há senha." / "Enter your e-mail. We'll send you a code to sign in. There is no password."
 
-| Field | Component | Attributes | Validation (client) | API **[Proposal]** |
+| Field | Component | Attributes | Validation (client) | API (operationId) |
 |---|---|---|---|---|
 | E-mail | `Input type=email` | `autocomplete=email`, `inputMode=email`, `autoCapitalize=none`, `spellCheck=false`, `autoFocus` | required; e-mail format only (never existence) | `requestLoginCode` → `email` |
-| Receber código por / Send code by | `RadioGroup` (2 options: E-mail, WhatsApp) | **Only rendered when the Core reports more than one channel available in the deployment** (S3b). Default: the channel last used **on this device** (local storage in try/catch), else e-mail. Never depends on the typed e-mail | — | → `channel` |
-| Manter conectado / Keep me signed in | `Checkbox`, **unchecked by default** | Help text: "Por até {days} dias neste dispositivo. Não use em computador compartilhado." / "For up to {days} days on this device. Don't use on a shared computer." (values from the Core: 7 d idle / 30 d absolute today, AC-8, Q29 open) | — | → `remember_me` |
+| Receber código por / Send code by | `RadioGroup` (2 options: E-mail, WhatsApp) | **Only rendered when the Core reports more than one channel available in the deployment** (S3b). Default: the channel last used **on this device** (local storage in try/catch), else e-mail. Never depends on the typed e-mail | — | → `channel` (**required** by the contract; sent as `email` when the selector is not rendered) |
+| Manter conectado / Keep me signed in | `Checkbox`, **unchecked by default** | Help text: "Por até {days} dias neste dispositivo. Não use em computador compartilhado." / "For up to {days} days on this device. Don't use on a shared computer." (values from the Core: 7 d idle / 30 d absolute today, AC-8, Q29 open) | — | kept in memory and sent with `verifyLoginCode` → `remember_me` (not with the request) |
 
 **Actions:** `Enviar código` / `Send code` (primary, submits on Enter).
 
@@ -110,7 +110,7 @@ Public (no session)                      App (session) — shadcn Sidebar
 **Entry:** only in the pending state (after S3-01). Otherwise redirect to `/login`. The page holds the e-mail in memory; it is shown as typed, so nothing is revealed. Reloading the page keeps the pending state only if the Core's pending challenge (cookie or token, the Architect's choice) is still valid; otherwise it goes to S3-01 with the e-mail empty.
 **Layout:** same card. Title "Digite o código" / "Enter the code". Text (policy §2.3, fixed wording): "Se {email} estiver cadastrado, enviamos um código. Ele vale por {minutes} minutos e só funciona uma vez. Não chegou? Confira o spam ou peça outro em {seconds} s." / "If {email} is registered, we sent a code. It's valid for {minutes} minutes and works once. Didn't arrive? Check spam or request another in {seconds} s."
 
-**Body:** `CodeChallenge` (C§1.3) with `purpose=login`:
+**Body:** `CodeChallenge` (C§1.3) with `purpose=login`. API: `verifyLoginCode { challenge_id, code, remember_me }`; `resendCode { challenge_id }`; the first cooldown is `resend_after_s` from the `requestLoginCode` answer (`ChallengeIssued`). Login never reads the delivery state (`getChallengeDelivery` answers `not_reported`).
 
 | Element | Behavior |
 |---|---|
@@ -128,7 +128,7 @@ Public (no session)                      App (session) — shadcn Sidebar
 | After the 5th failed attempt **made in this challenge** (counted by the UI, policy §3) | Input disabled; info `Alert`: "Peça um novo código para continuar." / "Request a new code to continue." Same for a registered and an unregistered e-mail; the server never tells them apart |
 | Challenge lost (reload, forged or altered token) | The generic message above, or S3-01 with the e-mail empty after a reload. No separate "expired" message |
 | Rate limited (`auth.rate_limited`) | As S3-01, on the resend button or the submit; the countdown replaces the label |
-| Success | Redirect to `returnTo` if it is a **same-origin relative path** (else app home), in the profile locale (S4). Nothing about a new device is shown here: the notice is an e-mail (S3-07) |
+| Success | `LoginResult.new_device = true` → one-time info toast "Este é um dispositivo novo. Enviamos um aviso ao seu e-mail." / "This is a new device. We sent a notice to your e-mail." (never on sign-up). Redirect to `returnTo` if it is a **same-origin relative path** (else app home), in the profile locale (S4). Nothing about a new device is shown here: the notice is an e-mail (S3-07) |
 | Lost access to the e-mail | **No link until Q28 is decided** (AC-12 blocked). A slot below the form is reserved for it. The design does not invent a recovery path |
 | Network error | "Não foi possível conectar. Tente de novo." + code; value kept |
 
@@ -143,7 +143,7 @@ Public (no session)                      App (session) — shadcn Sidebar
 | Load state | UI |
 |---|---|
 | Validating | Card skeleton |
-| Invalid / used / expired / revoked | `ErrorState`: "Este convite não é válido. Ele pode ter expirado ou já ter sido usado. Peça um novo convite." / "This invitation isn't valid. It may have expired or already been used. Ask for a new one." **One message for all causes.** No form |
+| Invalid / used / expired / revoked (`auth.invitation_invalid`) | `ErrorState`: "Este convite não é válido. Ele pode ter expirado ou já ter sido usado. Peça um novo convite." / "This invitation isn't valid. It may have expired or already been used. Ask for a new one." **One message for all causes.** No form |
 | No `t` in the URL (for example after a reload) | Same `ErrorState` plus, below it: "Se você recarregou esta página, abra o link do convite de novo." / "If you reloaded this page, open the invitation link again." The invitation is still usable |
 | Already signed in | `Alert`: "Você está conectado como {email}. Saia para aceitar este convite." with `Sair` |
 | Valid | Two-step flow below, with `Stepper` (C§2, compact): "Etapa 1 de 2 · Seus dados" / "Step 1 of 2 · Your details" |
@@ -152,19 +152,19 @@ Public (no session)                      App (session) — shadcn Sidebar
 
 Text: "Você entra sempre com um código enviado ao seu e-mail. Não é preciso criar senha." / "You always sign in with a code sent to your e-mail. No password needed."
 
-| Field | Component | Validation | API **[Proposal]** |
+| Field | Component | Validation | API (operationId) |
 |---|---|---|---|
 | E-mail | `Input` read-only, prefilled from the invite, with `Lock` icon and help "Este é o e-mail do convite." (Q36 recommends equal; AC-2 assumption) | — | from `lookupInvitation` |
 | Idioma / Language | `Select` pt-BR / English, prefilled with the current locale | required | → `locale` (profile, S4) |
 | Fuso horário / Time zone | Read-only line "Fuso horário: {zone} (GMT-03:00) · `Alterar`", prefilled from the browser. `Alterar` expands the S4 §4 time-zone `Select` | required; `me.invalid_time_zone` → inline error | → `time_zone` |
 | Termos / Terms | Checkbox slot reserved above the button. **[Open]** vision §12: required before launch, not before dev | — | — |
 
-**Action:** `Enviar código` / `Send code` → `requestSignupCode { token, locale, time_zone }`. Invitation unaffected until confirmation.
+**Action:** `Enviar código` / `Send code` → `startSignup { token }` (e-mail only). `locale`, `time_zone` and `remember_me` are held in memory and sent later with `completeSignup`. The invitation is unaffected until confirmation.
 **If Q36 is decided as (b)** (invitee may use another e-mail): the E-mail field becomes editable, with the same non-enumeration behavior, and nothing else changes.
 
 ### Step 2: confirm your e-mail
 
-"Etapa 2 de 2 · Confirmar e-mail". Text: "Enviamos um código para {email}. Digite-o para criar sua conta. Ele vale por {minutes} minutos. Não chegou? Confira o spam ou peça outro em {seconds} s." (the invitee is bound to that address, so it can be shown plainly.) The page may read the challenge's delivery state (`pending`, `sent`, `failed`, policy §2.3): on `failed` it shows "Não foi possível enviar o código. Tente de novo em instantes." + `Reenviar código`. `CodeChallenge` (C§1.3) with `purpose=signup`. Back link `Voltar` / `Back` → step 1 (a new request later invalidates the earlier code, AC-5).
+"Etapa 2 de 2 · Confirmar e-mail". Text: "Enviamos um código para {email}. Digite-o para criar sua conta. Ele vale por {minutes} minutos. Não chegou? Confira o spam ou peça outro em {seconds} s." (the invitee is bound to that address, so it can be shown plainly.) The page may read the challenge's delivery state (`pending`, `sent`, `failed`, policy §2.3): on `failed` it shows "Não foi possível enviar o código. Tente de novo em instantes." + `Reenviar código`. `CodeChallenge` (C§1.3) with `purpose=signup` and a "Manter conectado" `Checkbox` (unchecked; `completeSignup` requires `remember_me`). API: `completeSignup { challenge_id, code, locale, time_zone, remember_me }`; every failure is 401 `auth.code_invalid`. Delivery state: `getChallengeDelivery { challenge_id }`. Back link `Voltar` / `Back` → step 1 (a new request later invalidates the earlier code, AC-5).
 
 | State | UI |
 |---|---|
@@ -185,9 +185,12 @@ Text: "Você entra sempre com um código enviado ao seu e-mail. Não é preciso 
 | (i) Accept automation (opt-in) on an account | decided (AC-10) | S5 opt-in dialog | "ativar ordens automatizadas na conta {name}" / "turn on automated orders on account {name}" |
 | (ii) Unpair an instance | decided (AC-10) | S3-10 Unpair | "desparear a conexão “{name}”" / "unpair connection “{name}”" |
 | (iii) Change e-mail | decided (AC-10, AC-11) | S3-05 | its two codes **are** the step-up (answered by policy §7); no extra dialog |
-| Create or rotate a source URL | **provisional** (Architect "must", Q35) | S3-09 | "criar ou trocar a URL da fonte “{name}”" / "create or rotate the URL of source “{name}”" |
-| Create a pairing code, move an instance | **provisional** (Architect "must", Q35) | S3-10 | "gerar um código de pareamento para “{name}”" / "generate a pairing code for “{name}”" |
-| Issue an invitation | **provisional** (Architect "must", admin) | S3-08a | "convidar {email}" / "invite {email}" |
+| Create or rotate a source URL (`source_create`, `source_rotate`) | **provisional** (Q35, Core setting `step_up.q35_persistence_actions`, default on) | S3-09 | "criar ou trocar a URL da fonte “{name}”" / "create or rotate the URL of source “{name}”" |
+| Create a connection or a pairing code, move an instance (`connection_create`, `pairing_code_new`) | **provisional** (same setting) | S3-10 | "gerar um código de pareamento para “{name}”" / "generate a pairing code for “{name}”" |
+| Issue an invitation (`admin_invitation_create`) | **provisional** (same setting) | S3-08a | "convidar {email}" / "invite {email}" |
+| Enable a route; change an account binding (`route_enable`, `account_binding_change`) | **provisional** (same setting; S7/S5 screens) | S7 / S5 | text supplied by those specs |
+
+API: `requestStepUp { action, channel, target_id? }` → `ChallengeIssued`; the action request then carries `step_up: { challenge_id, code }` (`StepUpProof`). `target_id` is required for source_rotate, pairing_code_new, connection_unpair, account_opt_in_accept, route_enable and account_binding_change, and forbidden for the others. Errors: `auth.channel_unavailable` (no confirmed value on that channel) and `auth.step_up_channel_not_allowed` (the Core requires another channel on this device: the dialog switches to e-mail and says so, M3). Delivery: `getChallengeDelivery`.
 
 Not asked: declining an opt-in, revoking a source, renaming, signing out (they only reduce access, policy §6.2). Enforcement off and max position are a recommendation awaiting Q35; the dialog covers them with no new screen if adopted.
 
@@ -201,20 +204,20 @@ Not asked: declining an opt-in, revoking a source, renaming, signing out (they o
 **Purpose:** replace the sign-in e-mail. One flow, two codes: one to the **current** address and one to the **new** one. The change happens only when both are confirmed within 10 minutes; until then the current value stays in force (policy §7).
 **Entry:** S3-06 Card A, `Alterar e-mail` / `Change e-mail`. `ResponsiveDialog` (Drawer below `md`) with the `Stepper` (C§2): 4 steps.
 
-| Step | Content | API **[Proposal]** |
+| Step | Content | API (operationId) |
 |---|---|---|
-| 1 Novo e-mail / New e-mail | `Input type=email` "Novo e-mail" (`autocomplete=email`). Text: "Vamos enviar um código para o e-mail atual ({masked_old}) e outro para o novo. Os dois são necessários." Action `Enviar códigos` | `requestChannelChange { new_email }` |
-| 2 E-mail atual / Current e-mail | `CodeChallenge` `purpose=channel_old`: "Digite o código enviado para {masked_old}." | `confirmChannelChangeOld { code }` |
-| 3 Novo e-mail / New e-mail | `CodeChallenge` `purpose=channel_new`: "Digite o código enviado para {new_email}." | `confirmChannelChangeNew { code }` |
+| 1 Novo e-mail / New e-mail | `Input type=email` "Novo e-mail" (`autocomplete=email`). Text: "Vamos enviar um código para o e-mail atual ({masked_old}) e outro para o novo. Os dois são necessários." Action `Enviar códigos` | `startChannelChange { channel: "email", new_value }` → `ChannelChange` (`id`, `codes[]` with `role` and `challenge_id`, `expires_at`, `masked_new_value`) |
+| 2 E-mail atual / Current e-mail | `CodeChallenge` `purpose=channel_old`: "Digite o código enviado para {masked_old}." | `verifyChannelChangeCode { challenge_id, code }` on `/me/channel-changes/{change_id}` for the `current_value` code |
+| 3 Novo e-mail / New e-mail | `CodeChallenge` `purpose=channel_new`: "Digite o código enviado para {new_email}." The delivery state comes from `getChallengeDelivery` (a suppressed send reads `sent`) | same operation for the `new_value` code |
 | 4 Pronto / Done | `CircleCheck`: "E-mail alterado para {new_email}. Suas sessões em outros dispositivos foram encerradas. Avisamos o e-mail anterior." Focus on the heading; `Concluir` | — |
 
-- **Always proceeds (policy §3).** Step 1 never refuses a new e-mail because it belongs to another account (or equals the current one): the screen shows step 3 and its delivery state reads "sent" exactly as for a free address. If the address is taken, the final confirmation fails with the generic "Código inválido ou expirado. Confira ou peça um novo." The UI never says that an address is in use. Format errors are the only step-1 refusal.
+- **Always proceeds (policy §3).** Step 1 never refuses a new e-mail because it belongs to another account: the screen shows step 3 and its delivery state reads "sent" exactly as for a free address. The only refusals are format (`me.invalid_channel_value`, pointer `/new_value`) and the address that equals the user's own (422 `me.channel_unchanged`: "Este já é o seu e-mail atual." / "This is already your current e-mail."). If the address is taken, the final confirmation fails with the generic "Código inválido ou expirado. Confira ou peça um novo." The UI never says that an address is in use. Format errors are the only step-1 refusal.
 - **Pending window:** a line under the stepper, "Esta alteração expira em 8:12" / "This change expires in 8:12" from the server's `expires_at` (10 min), `aria-live=off`; polite announcement at 1 min left and at expiry.
 - **Order is free for the Core.** Steps 2 and 3 only collect the codes; each can be resent on its own (60 s cooldown); a resend never touches the other code.
-- **Expired or failed:** the generic code message; after 5 failures in a step, `Pedir novo código` restarts the flow.
+- **Expired or failed:** the generic code message (`auth.code_invalid`); `me.channel_change_closed` (expired, cancelled or completed in another tab) → "Esta alteração não está mais aberta." and a fresh start; after 5 failures in a step, `Pedir novo código` restarts the flow.
 - **Cancel / close at any step:** allowed without a guard. Nothing changes; reopening starts a new flow. Toast on close from steps 2–3: "Alteração cancelada. Seu e-mail continua {masked_old}."
-- **24-hour freeze (policy §7, provisional):** after a successful change no further change is accepted for 24 h. `Alterar e-mail` is then disabled with the reason: "Você trocou o e-mail há pouco. Uma nova troca fica disponível em {date-time zone}." (value from the Core). A refused request shows the same text (`auth.channel_change_frozen`).
-- **Hold for a new device (M2, provisional, user decision; the same hold serves Q28):** if the Core answers that the change takes effect later, step 4 reads "Alteração agendada. Seu e-mail atual continua valendo até {date-time zone}. Avisamos o e-mail atual." and the security page shows the **pending-change banner** (S3-06 Card A) with `Cancelar troca` / `Cancel change`.
+- **24-hour freeze (policy §7):** `getMySecurity.channel_change_allowed_at` in the future → `Alterar e-mail` is disabled with the reason "Você trocou o e-mail há pouco. Uma nova troca fica disponível em {date-time zone}." A refused request (409 `me.channel_change_too_soon`) shows the same text. 409 `me.channel_change_pending` (another change is open or on hold) → refetch and show the pending-change banner (S3-06 Card A).
+- **Hold for a new device (M2, provisional, user decision; the same hold serves Q28):** `verifyChannelChangeCode` answers `completed` or `on_hold` (with `hold_until`). On `on_hold`, step 4 reads "Alteração agendada. Seu e-mail atual continua valendo até {date-time zone}. Avisamos o e-mail atual." and the security page shows the **pending-change banner** (S3-06 Card A) with `Cancelar troca` / `Cancel change`.
 - **Old address unreachable (Q28):** no link until Q28 is decided; a slot under step 2 is reserved (policy §7 and §9 describe the 72 h hold; not designed until the user decides).
 - **Step-up:** the two codes are the AC-10 (iii) step-up; no extra dialog.
 - **After S3b** a change of one channel also needs a code from the **other** confirmed channel (policy §7): a third `CodeChallenge` step is inserted and the stepper grows to 5 steps.
@@ -224,9 +227,10 @@ Not asked: declining an opt-in, revoking a source, renaming, signing out (they o
 
 ## S3-06 Security settings — `/[locale]/settings/security` (AC-8, AC-9, AC-11)
 
-**Layout:** `PageHeader` "Segurança" / "Security"; stacked `Card`s. Above them, when present: **delivery notice** (info `Alert`, from the audit): "Um código de acesso não pôde ser enviado em {date-time zone}. Se você estava tentando entrar, peça outro código." + `Ver auditoria` (S10). It appears after a sign-in when the Core recorded `auth.code_delivery_failed` for the user (policy §2.3); the Frontend also shows it in the app shell once, dismissible per device.
+**Layout:** `PageHeader` "Segurança" / "Security"; stacked `Card`s. Above them, when present: **delivery notice** (info `Alert`, from the audit): "Um código de acesso não pôde ser enviado em {date-time zone}. Se você estava tentando entrar, peça outro código." + `Ver auditoria` (S10). It is driven by the audit entry `security.code_delivery_failed` (details: `channel`, `purpose`; never the code) that the Core records for a registered user (policy §2.3). **[Dependency: how the entry reaches the shell after sign-in (audit read or notification) to be confirmed with the Architect; until then the entry is visible in S10 only.]**
 
 ### Card A: Sign-in channels / Canais de entrada
+- Data: `getMySecurity` (`email`, optional `whatsapp`, `session`, `channel_change_allowed_at`, `pending_channel_change`). Cancel: `cancelChannelChange { change_id }` (any session, idempotent).
 - Text: "Você entra com um código enviado a um destes canais." / "You sign in with a code sent to one of these channels."
 - Row **E-mail**: address in full (the user's own), `Badge` `Confirmado` (success, `CircleCheck`), action `Alterar e-mail` → S3-05 (disabled during the 24 h freeze, with the reason).
 - Row **WhatsApp** (S3b only, hidden until then): see §6.
@@ -240,8 +244,8 @@ Not asked: declining an opt-in, revoking a source, renaming, signing out (they o
 - "Apenas deixar a tela aberta não mantém a sessão ativa." / "Just leaving the page open doesn't keep the session active."
 
 ### Card C: Devices and sessions / Dispositivos e sessões **[provisional, Q34]**
-- A `DataTable` (C§4, cards below `md`) of known devices: Dispositivo ("Chrome no Windows", family only) · Primeiro acesso · Último acesso · badge `Este dispositivo` (info) · Ações. Action `Esquecer dispositivo` / `Forget this device`: `AlertDialog` "Esquecer este dispositivo?" "As sessões dele serão encerradas. No próximo acesso a partir dele, você receberá o aviso de novo dispositivo." (policy §5.2). Not offered for the current device (use `Sair`). **[Dependency: a devices list endpoint, not in the contract yet.]**
-- Button `Sair de todos os dispositivos` / `Sign out of all devices` → `AlertDialog` (destructive), title "Sair de todos os dispositivos?"; body: "Todas as sessões, inclusive esta, serão encerradas e os dispositivos serão esquecidos. Você precisará entrar de novo com um código." Then a block **"Antes de sair, revise o que continua funcionando"**: "Isto **não** revoga as URLs de alertas nem as conexões do NinjaTrader. Se você suspeita de acesso indevido, revogue o que não reconhece." with the counts and links "{n} fontes ativas → Fontes de sinal" and "{m} conexões pareadas → NinjaTrader" (policy §5.3, L3). Confirm `Sair de todos` → `signOutEverywhere` → redirect to login with `?reason=sessions_ended`. No step-up (it only reduces access).
+- A `DataTable` (C§4, cards below `md`) of known devices: Dispositivo ("Chrome no Windows", family only) · Primeiro acesso · Último acesso · badge `Este dispositivo` (info) · Ações. Action `Esquecer dispositivo` / `Forget this device`: `AlertDialog` "Esquecer este dispositivo?" "As sessões dele serão encerradas. No próximo acesso a partir dele, você receberá o aviso de novo dispositivo." (policy §5.2). Not offered for the current device (use `Sair`). API: `listDevices` (`label`, `first_seen_at`, `last_seen_at`, `current`), `forgetDevice` (no step-up; idempotent).
+- Button `Sair de todos os dispositivos` / `Sign out of all devices` → `AlertDialog` (destructive), title "Sair de todos os dispositivos?"; body: "Todas as sessões, inclusive esta, serão encerradas e os dispositivos serão esquecidos. Você precisará entrar de novo com um código." Then a block **"Antes de sair, revise o que continua funcionando"**: "Isto **não** revoga as URLs de alertas nem as conexões do NinjaTrader. Se você suspeita de acesso indevido, revogue o que não reconhece." with the counts and links "{n} fontes ativas → Fontes de sinal" and "{m} conexões pareadas → NinjaTrader" (policy §5.3, L3). Confirm `Sair de todos` → `signOutEverywhere` (no step-up) → redirect to login with `?reason=sessions_ended`. No step-up (it only reduces access).
 
 **AC mapping:** AC-8 (Card B), AC-9 (Card C, notice), AC-11 (Card A), AC-16 (delivery notice).
 
@@ -274,7 +278,7 @@ Q19 decided: only a platform admin (`is_platform_admin`, held by the user) issue
 **Create** (`ResponsiveDialog` "Novo convite"; submitting runs the admin step-up by code, S3-04, provisional):
 | Field | Validation | API |
 |---|---|---|
-| E-mail | required, e-mail format; if an account or pending invite exists for it: "Já existe uma conta ou um convite pendente para este e-mail." (admin-only screen, so this disclosure is acceptable; PO to confirm, §4) | `invites.create` → `email` |
+| E-mail | required, e-mail format; if an account or pending invite exists for it: "Já existe uma conta ou um convite pendente para este e-mail." (admin-only screen, so this disclosure is acceptable; PO to confirm, §4) | `createInvitation` → `email` |
 | Idioma do convite / Invitation language | pt-BR / English, default = admin's locale | → `locale` (link, e-mail and landing-page language, S4) |
 
 Result step:
@@ -282,7 +286,7 @@ Result step:
 - The invite link in a `SecretField` with `Copiar`, for manual delivery (Q19). It is a credential: **view-once**, since the Core stores only its SHA-256 (auth policy §3). Plus "Expira em {date time zone}".
 - Closing without copying shows no guard when the e-mail was sent. When sending failed, it shows the same guard as S3-09 create.
 
-**Revoke:** `AlertDialog` "Revogar o convite para {email}? O link deixará de funcionar." → `invites.revoke`.
+**Revoke:** `AlertDialog` "Revogar o convite para {email}? O link deixará de funcionar." → `revokeInvitation`.
 
 ## S3-09 Signal sources — `/[locale]/connections/sources` (AC-14, S1 AC-2/AC-6, Q17)
 
@@ -305,7 +309,7 @@ Result step:
 **Loading:** 3 skeleton rows. **Error:** `ErrorState` with retry.
 
 ### Create source (`ResponsiveDialog`, 2 steps; compact `Stepper`, C§2; **provisional step-up by code first**, S3-04, Q35)
-1. **Name:** `Input` "Nome da fonte" / "Source name", required, 1–60 chars, trimmed; example placeholder "Ex.: Strikes MNQ". Duplicate name among the user's active sources: inline "Você já tem uma fonte com este nome." **[Proposal: names unique among active sources; PO to confirm, §4]**. Action `Criar` → `sources.create { name }`.
+1. **Name:** `Input` "Nome da fonte" / "Source name", required, 1–60 chars, trimmed; example placeholder "Ex.: Strikes MNQ". Duplicate name among the user's active sources: inline "Você já tem uma fonte com este nome." **[Proposal: names unique among active sources; PO to confirm, §4]**. Action `Criar` → `createSource { name }`.
 2. **Copy the URL (view-once):**
    - Warning `Alert`: "Copie a URL agora. Por segurança, ela não será mostrada de novo. Se perdê-la, gere uma nova." / "Copy the URL now. For security, it won't be shown again. If you lose it, rotate to get a new one."
    - `SecretField` (F§8) with the full `webhook_url` from the response: masked by default, `Revelar`, `Copiar`.
@@ -318,15 +322,15 @@ Result step:
 ### Rotate (`Gerar nova URL`): D2, immediate
 - `AlertDialog`: title "Gerar nova URL para “{name}”?"; body: "A URL atual para de funcionar **imediatamente**. Alertas que chegarem com ela serão rejeitados e registrados na auditoria. Depois, cole a nova URL no alerta do TradingView." Confirm `Gerar nova URL` (destructive) → step-up by code (S3-04, provisional Q35), then the new URL.
 - Then the same step-2 view-once dialog as create. Toast "URL da fonte “{name}” trocada."
-- `sources.rotate { id }` → returns the new `webhook_url` once.
+- `rotateSource` → returns the new `webhook_url` once.
 
 ### Revoke: D4, stays visible
-- `AlertDialog`: "Revogar a fonte “{name}”?"; body: "Alertas com esta URL serão rejeitados. A fonte continua no histórico como revogada. Isso não pode ser desfeito; para voltar a receber sinais, crie uma nova fonte." Confirm `Revogar fonte` (destructive) → `sources.revoke { id }`.
+- `AlertDialog`: "Revogar a fonte “{name}”?"; body: "Alertas com esta URL serão rejeitados. A fonte continua no histórico como revogada. Isso não pode ser desfeito; para voltar a receber sinais, crie uma nova fonte." Confirm `Revogar fonte` (destructive) → `revokeSource`.
 - Row becomes `Revogada`, hidden unless "Mostrar revogadas" is on. Actions on a revoked row: none (name kept for history).
 - **[Dependency S7]:** if routing rules reference the source, the dialog lists them ("Rotas que usam esta fonte deixarão de receber sinais: …"). Until S7 exists, no list.
 
 ### Rename
-- Dialog with the name field (same validation) → `sources.update { id, name }`. Does not change the URL; no step-up.
+- Dialog with the name field (same validation) → `renameSource`. Does not change the URL; no step-up.
 
 **Accessibility:** the masked URL cell has `aria-label` "URL secreta, oculta, identificador {key_id}" (it reads the key id, not the bullets). Row actions button: "Ações para {name}".
 **AC mapping:** AC-14 (generate, view once, revoke; old secret rejected: surfaced by copy and audit), AC-13 (own sources only), X-4 (masking, no secret in toasts/URL/logs), X-5 (actions audited).
@@ -362,14 +366,14 @@ The consequence wording stays the same in every case.
 **Outdated instance:** warning badge + "Atualize o plugin para voltar a conectar." + link to the download page **[Dependency]**.
 
 ### Create connection + pairing (`ResponsiveDialog`, stays open while waiting; **provisional step-up by code first**, S3-04, Q35)
-1. **Name:** `Input` "Nome da conexão" / "Connection name", required, 1–60 chars, placeholder "Ex.: PC de casa, VPS Chicago". → `connections.create { name }`, which returns the connection, the `pairing_code` and `expires_at`.
+1. **Name:** `Input` "Nome da conexão" / "Connection name", required, 1–60 chars, placeholder "Ex.: PC de casa, VPS Chicago". → `createConnection { name }`, which returns the connection, the `pairing_code` and `expires_at`.
 2. **Pairing code** (ADR-0004 §8: 8 Crockford Base32 characters shown `XXXX-XXXX`, 10 minutes, single use, one active code per connection):
    - Shown **visibly** (it must be typed into another app): `text-3xl` mono, letter-spaced, e.g. `K7QM-4D2P`, with a `Copiar` button. It is short-lived and single use, so it is not masked; the dialog says "Não compartilhe este código." / "Don't share this code."
    - Countdown: "Expira em 9:41" from the server's `expires_at` (`aria-live=off`; a polite announcement only at 1 min left and at expiry).
    - Instructions: "No NinjaTrader: abra a janela All Win, clique em Parear e digite o código. Letras maiúsculas ou minúsculas, com ou sem hífen." **[Menu path to validate with the Plugin Engineer after the NT8 spike]**
    - Waiting indicator: "Aguardando o plugin…" with a spinner (static text under reduced motion).
    - **Paired** (SSE `connection.paired`): success state with `CircleCheck`: "“{name}” conectada. {n} contas encontradas: Sim101, …" + `Vincular contas` (→ S5) and `Concluir`. Focus moves to the success heading.
-   - **Expired:** "O código expirou." + `Gerar novo código` (→ `connections.new_pairing_code { id }`).
+   - **Expired:** "O código expirou." + `Gerar novo código` (→ `newPairingCode`).
    - **Code invalidated** (SSE `connection.pairing_code_invalidated`, by `reason`):
      - `superseded`: a newer code was generated for this connection (e.g. in another tab or by "Mover para outra máquina"). Info `Alert`: "Um código mais novo foi gerado para esta conexão. Este não vale mais." + `Gerar novo código`. The displayed code is replaced by "—" and the countdown stops.
      - `pairing_locked`: pairing is temporarily locked for everyone after too many wrong codes (global protection, contract notes §2). Warning `Alert`: "O pareamento está temporariamente bloqueado por excesso de tentativas erradas. Aguarde alguns minutos e gere um novo código." + `Gerar novo código` (if the Core still refuses, the button shows the returned error).
@@ -386,7 +390,7 @@ Allowed after a confirmation that lists the affected accounts; the accounts beco
 - Body (always): "O plugin desta instância será desconectado imediatamente e não receberá mais ordens. Para reconectar, crie uma nova conexão."
 - If any of the instance's accounts is bound to an All Win account **[Dependency S5 data]**: list "Estas contas ficarão fora de sincronia e deixarão de receber ordens: APEX-12345-01, Sim101."
 - If any has an open position **[Dependency S11 position data]**: danger `Alert` inside the dialog: "Há posição aberta em: APEX-12345-01 (2 contratos). **A posição continua aberta no NinjaTrader**, sem monitoramento nem proteção de risco do All Win. Nada será fechado automaticamente." Confirmation requires a checkbox "Entendo que a posição continuará aberta" before `Desparear` enables.
-- Confirm `Desparear` (destructive) → `connections.unpair { id }`. Row → `Despareada`. Other connections are unaffected (AC-4); the dialog says nothing about them.
+- Confirm `Desparear` (destructive) → `unpairConnection`. Row → `Despareada`. Other connections are unaffected (AC-4); the dialog says nothing about them.
 - **Q66 (provisional):** this is the only place a pairing is revoked. If the user disconnected the plugin locally (S3-11 `Desconectar`), the row reads `Desconectada` and still offers `Desparear`; the dialog text tells them that the pairing is still valid until they confirm here.
 - Unpaired connections stay listed (history) under "Mostrar despareadas", like revoked sources. No actions on them.
 
@@ -401,7 +405,7 @@ The plugin UI follows NinjaTrader 8 conventions (NTWindow/WPF, NinjaTrader skin 
 | Not paired | "Não pareado. Gere um código em All Win → Conexões → NinjaTrader." | Code field (accepts 8 characters, case-insensitive, ignores spaces and hyphens, displays as `XXXX-XXXX`) + `Parear` |
 | Pairing | "Pareando…" | Disabled |
 | Invalid / expired / used / superseded code (`pairing.invalid_code`) | "Código inválido ou expirado. Confira o código ou gere um novo no All Win." (one message for all causes) | Field kept for correction |
-| Rate limited (`pairing.rate_limited`) or pairing temporarily locked (`pairing.temporarily_locked`) | "Muitas tentativas. Aguarde {time} e tente de novo." (`Retry-After` when present; otherwise "alguns minutos") | Disabled with countdown |
+| Rate limited (`pairing.rate_limited`, which also covers the temporary lock) | "Muitas tentativas. Aguarde {time} e tente de novo." (`Retry-After` when present; otherwise "alguns minutos") | Disabled with countdown |
 | Plugin version unsupported at pairing (`pairing.adapter_version_unsupported`) | Same as "Update required" below | — |
 | Paired + connected | Connection name (from Core), "Conectado", account count | `Desconectar` / `Disconnect` **[provisional, Q66]**: pauses the connection **on this computer only**, keeps the device token and does not revoke the pairing (protocol 1.3: close code 4100 `user_disconnect`). Confirmation (WPF dialog): "Desconectar o All Win neste computador? O pareamento continua válido; ordens deixam de chegar aqui até você conectar de novo. A proteção local de risco continua ativa. Para revogar o pareamento, use o All Win na web." |
 | Disconnected by the user (after `Desconectar`) **[provisional, Q66]** | "Desconectado neste computador. O pareamento continua válido. Para revogá-lo, use All Win → Conexões → NinjaTrader na web." The plugin stores a persistent "disconnected by user" flag: it **does not reconnect by itself**, not even after NinjaTrader or the plugin restart. Local enforcement (S15) keeps working while disconnected | `Conectar` / `Connect` (uses the stored device token; no new code) |
@@ -441,32 +445,40 @@ The device token is never displayed or logged by the plugin (DPAPI storage, ADR-
 
 ## 3. Operations and error codes
 
-**Unchanged (contract exists):** `lookupInvitation`, `createInvitation`, `listInvitations`, `revokeInvitation`, sources, connections, pairing, `getMe`, `updateMe`, SSE events. Also unchanged: the error codes of sources/connections/pairing in the [contract notes](../../architecture/contracts/s3-access-sources-pairing.md) §2, and their UI (see S3-09/S3-10).
+**Published operations used by this slice** (contract 3.4.1; the Frontend uses the generated client and these `operationId`s only):
 
-**[Proposal] for the Architect, to adopt or rename (spec-first):**
-
-| Operation | Purpose | Screen |
+| Screen | operationId | Notes |
 |---|---|---|
-| `requestLoginCode` | `{ email, channel?, remember_me }`; always 202 with a sealed `challenge_id` (policy §3) | S3-01 |
-| `verifyLoginCode` | `{ challenge_id, code }`; returns a session | S3-02 |
-| `requestSignupCode` / `confirmSignup` | `{ token, locale, time_zone }` / `{ token, code }`; the account is created at confirm | S3-03 |
-| `requestStepUpCode` | `{ channel, action, target }` → `challenge_id`; the **action request itself carries `challenge_id` + `code`** and verifies it in the same transaction (policy §6.1); there is no separate verify call | S3-04 |
-| `requestChannelChange`, `confirmChannelChangeOld`, `confirmChannelChangeNew` | AC-11 | S3-05 |
-| `resendCode` | `{ challenge_id }`; replaces that challenge's code; a closed challenge gets the same 202 and nothing is sent (the UI starts a new challenge) | all code screens |
-| `signOutEverywhere`, `listDevices`, `forgetDevice`, `cancelChannelChange` | provisional (Q34, policy §5.2, §5.3, §9) | S3-06 |
+| S3-01 | `requestLoginCode` | `{ email, channel }`; always 202 with a sealed `challenge_id`, `expires_at`, `resend_after_s` |
+| S3-02 | `verifyLoginCode`, `resendCode`, `getChallengeDelivery` | verify takes `{ challenge_id, code, remember_me }` and returns `LoginResult` (`new_device`); delivery is `not_reported` for login |
+| S3-03 | `lookupInvitation`, `startSignup`, `completeSignup` | token in the body; `completeSignup` takes `locale`, `time_zone`, `remember_me` |
+| S3-04 | `requestStepUp`, `getChallengeDelivery` | proof travels in the action request as `step_up` |
+| S3-05 | `startChannelChange`, `verifyChannelChangeCode`, `cancelChannelChange`, `getChallengeDelivery` | |
+| S3-06 | `getMySecurity`, `listDevices`, `forgetDevice`, `signOutEverywhere`, `logout` | |
+| S3-08a, S3-09, S3-10 | `listInvitations`, `createInvitation`, `revokeInvitation`; sources; connections; `pairAdapter` | unchanged; `createInvitation`, `createSource`, `rotateSource`, `createConnection`, `newPairingCode` are `x-step-up: conditional` |
+| profile | `getMe`, `updateMe` | |
 
-| Error code **[Proposal]** | Where | UI |
+| Error code (published) | Where | UI |
 |---|---|---|
-| `auth.code_invalid` | any code screen, and any step-up action | One message for every verification failure (policy §3): "Código inválido ou expirado. Confira ou peça um novo." |
-| `auth.rate_limited` (with `Retry-After`) | request, resend, verify | "Muitos pedidos. Aguarde {time}…" with countdown (C§1.4) |
-| `auth.channel_change_frozen` | S3-05 | "Você trocou o e-mail há pouco. Uma nova troca fica disponível em {date-time zone}." |
-| `auth.step_up_required` | any `x-step-up` operation sent without a code | Opens S3-04; the action is then sent once with the code |
+| `auth.code_invalid` | any code screen, any step-up action, `completeSignup` | One message for every verification failure: "Código inválido ou expirado. Confira ou peça um novo." |
+| `auth.rate_limited` (429, `Retry-After`) | request, resend, verify | "Muitos pedidos. Aguarde {time}…" with countdown (C§1.4) |
+| `auth.step_up_required` | any `x-step-up` operation sent without proof | Opens S3-04; the action is then sent once with the proof |
+| `auth.channel_unavailable` | `requestStepUp`, `startChannelChange` | Step-up: "Você não tem um canal confirmado para isso." / WhatsApp not offered yet: the option stays hidden |
+| `auth.step_up_channel_not_allowed` | `requestStepUp` | Dialog switches to e-mail: "Neste dispositivo novo, o código precisa ser confirmado no e-mail." |
+| `auth.invitation_invalid` | `lookupInvitation`, `startSignup` | The single invalid-invitation state (S3-03) |
+| `me.channel_change_too_soon` / `me.channel_change_pending` | `startChannelChange` | Freeze text / pending-change banner (S3-05) |
+| `me.channel_unchanged` | `startChannelChange` | "Este já é o seu e-mail atual." |
+| `me.invalid_channel_value` | `startChannelChange` | Inline format error under the field |
+| `me.channel_change_closed` | `verifyChannelChangeCode`, `cancelChannelChange` | "Esta alteração não está mais aberta." |
+| `me.invalid_time_zone` | S3-03, S4 preferences | Inline "Fuso horário inválido. Escolha outro." |
 | `auth.unauthenticated` | any call | Session-expired pattern (F§10) |
 | `auth.forbidden` | admin routes for a non-admin | Generic not-found screen |
-| `me.invalid_time_zone` | S3-03, S4 preferences | Inline "Fuso horário inválido. Escolha outro." |
 | `common.forbidden_origin` | any write | Generic error with the code (misconfiguration, not a user error) |
+| `connections.*`, `sources.*`, `pairing.*` | S3-09 / S3-10 / S3-11 | As in those screens. The plugin uses `pairing.invalid_code`, `pairing.rate_limited` (also for a temporary lock; `pairing.temporarily_locked` does not exist) and `pairing.adapter_version_unsupported` |
 
-Removed with the password model: `auth.password_*`, `auth.totp_*`, `auth.reset_token_invalid`, `auth.recovery_codes_regenerate`, `verifyLoginTotp`, `verifyLoginRecoveryCode`, `requestPasswordReset`, `confirmPasswordReset`, `changePassword`, `adminCreateResetLink`, `adminResetTotp`.
+Not error codes: `security.code_delivery_failed` is an **audit** code (S3-06 notice). `Connection.disconnect_reason` (S3-10) is **not in the contract yet**.
+
+Removed with the password model (no longer in the contract): `auth.password_*`, `auth.totp_*`, `auth.reset_token_invalid`, `auth.recovery_codes_regenerate`, `verifyLoginTotp`, `verifyLoginRecoveryCode`, `requestPasswordReset`, `confirmPasswordReset`, `changePassword`, `adminCreateResetLink`, `adminResetTotp`.
 
 ## 4. Open questions (owner)
 
@@ -483,7 +495,6 @@ Removed with the password model: `auth.password_*`, `auth.totp_*`, `auth.reset_t
 | Q-D | S3-01 channel choice from deployment channels (policy §2/§3): resolved | — | Resolved by the policy |
 | M2 / M3 | 72 h hold for a channel change from a new device; persistence step-up by e-mail on new devices | User | Designed as provisional (S3-05, S3-04) |
 | Q-G | Should the S3-06 delivery notice ("código não enviado") also be a push/notification? | PO | No: account notice only (S18 AC-3) |
-| Q-H | Devices list: new endpoint and device naming (family only, policy §5.3) | Architect | Proposal in S3-06 Card C |
 | — | Terms/privacy acceptance at sign-up | User (vision §12) | Slot reserved |
 
 Resolved by policy rev. 2: step-up for channel change (the two codes), "e-mail in use" never revealed, notice to the old address, where the challenge lives (sealed token, kept in memory), no outage banner on public pages, "sign out of all devices" inside S3 (provisional). Resolved earlier and still valid: Architect items in [contract notes §2](../../architecture/contracts/s3-access-sources-pairing.md) for sources, pairing and re-pairing.
