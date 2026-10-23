@@ -26,3 +26,10 @@ Log capture for QA: `scripts/dev-stack.sh logs caddy core` (container stdout; no
 - Plugin: `dotnet test plugins/ninjatrader8 --nologo -v q`.
 - Web: `pnpm check` (lint, typecheck, i18n parity, API drift, Vitest).
 
+## Migrations and local databases
+
+- Migration `20261023060010` (outbox delivery attempts, "1b") sorts before `060100`-`060600`. A database that already applied the S1/S3 branch versions without it has an out-of-order history: drop and recreate it (the dev and QA PostgreSQL containers are disposable). Do not hand-edit `_sqlx_migrations` to "re-stamp" it, and do not add a compensating migration for a migration that was never released.
+- The same applies whenever a not-yet-released migration changes content (its checksum is recorded): recreate the database.
+- Integration tests use the harness, which creates and alters the `allwin_*` roles in the cluster it is pointed at. Point `TEST_DATABASE_ADMIN_URL` only at a throwaway instance, never at the compose PostgreSQL: running the tests there changes the role attributes and the compose logins stop working (observed on 2026-10-23).
+- sqlx offline data is checked against a freshly migrated database: run the migrations as `allwin_owner`, then `SQLX_OFFLINE=false cargo sqlx prepare --workspace -- --all-targets` and `git diff --exit-code core/.sqlx`.
+
