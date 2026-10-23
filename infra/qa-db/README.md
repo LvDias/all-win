@@ -19,7 +19,7 @@ infra/qa-db/qa-db.sh status
   `TEST_DATABASE_ADMIN_URL=...` to `--env-file` (mode 600; `--owner` hands the file to the QA agent's
   account via `sudo -n chown`). The path must be git-ignored (`core/.env.test` is). The password is never
   printed and never passed on a command line.
-- The Core test harness (`core/crates/app/tests/support`) reads that URL, creates the four roles with
+- The Core test harness (`core/crates/app/tests/support`) reads that URL, creates the five roles (`allwin_owner/app/worker/maint/publisher`) with
   test-only passwords, and one database per test binary from the repo migrations, run as `allwin_owner`.
   Run the tests with `ALLWIN_REQUIRE_DB_TESTS=1 cargo test` so a missing database fails instead of skipping.
 - The env file is written atomically: a new mode-600 file in the target directory, ownership handed over
