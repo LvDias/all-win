@@ -1,43 +1,95 @@
 # OpenAPI drift allowlist (Architect-owned). Rules: core/crates/app/tests/openapi_drift.rs.
+# Checked against contracts/http/openapi.bundled.yaml (HTTP contract 3.4.1, 87 operations).
 # not_implemented: contract operations without a Core handler yet. The check fails when one
-# gains a handler while still listed. The S3 core merge gate removes the S3 operations.
+# gains a handler while still listed, or when it is not in the contract. Each slice's core
+# merge gate removes its own operations.
 not_implemented:
-  - acceptInvitation
-  - adminCreateResetLink
-  - adminResetTotp
-  - changePassword
-  - confirmPasswordReset
-  - confirmTotpSetup
+  - applyPresetVersion
+  - archiveAccount
+  - cancelChannelChange
+  - completeSignup
+  - createAccount
   - createConnection
   - createInvitation
+  - createManualTrade
+  - createRoute
   - createSource
-  - disableTotp
+  - deleteManualTrade
+  - deleteRoute
   - eventStream
+  - forgetDevice
+  - getAccount
+  - getAccountArchiveImpact
+  - getAccountPreset
+  - getAccountPresetDiff
+  - getAccountRisk
+  - getAccountRiskRules
+  - getActivityEntry
+  - getActivityFilterOptions
+  - getChallengeDelivery
+  - getFirm
+  - getInstructionTimeline
   - getMe
   - getMySecurity
+  - getNearestProfileSize
+  - getOptInRules
+  - getPerformance
+  - getPresetVersion
+  - getRuleVersion
+  - getTrade
+  - getTradesSummary
+  - getUnreadCount
+  - listAccountProfiles
+  - listAccounts
+  - listActivity
   - listConnections
+  - listDefaultProfiles
+  - listDevices
+  - listFirmReleases
+  - listFirms
+  - listInstruments
   - listInvitations
+  - listNotifications
+  - listRiskSummaries
+  - listRouteCandidates
+  - listRoutes
   - listSources
+  - listTrades
   - listUsers
-  - login
   - logout
   - lookupInvitation
+  - markNotificationRead
+  - markNotificationsRead
   - newPairingCode
   - pairAdapter
-  - regenerateRecoveryCodes
+  - previewAccountRiskRules
+  - previewManualTrade
+  - previewProfile
+  - putAccountProfile
+  - putAccountRiskRules
+  - putDefaultProfile
   - renameConnection
   - renameSource
-  - requestPasswordReset
+  - requestLoginCode
+  - requestStepUp
+  - resendCode
+  - restoreAccountProfile
+  - restorePresetValue
   - revokeInvitation
   - revokeSource
   - rotateSource
+  - setAccountLifecycle
   - setAccountOptIn
-  - startTotpSetup
-  - stepUp
+  - signOutEverywhere
+  - startChannelChange
+  - startSignup
   - unpairConnection
+  - updateAccount
+  - updateManualTrade
   - updateMe
-  - verifyLoginRecoveryCode
-  - verifyLoginTotp
+  - updateRoute
+  - verifyChannelChangeCode
+  - verifyLoginCode
 
 # Differences utoipa cannot express: {operationId, pointer (in the canonical operation), reason}.
 # `const: X` and the single-value `enum: [X]` are equivalent in JSON Schema; the check normalizes
