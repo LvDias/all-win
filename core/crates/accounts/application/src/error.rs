@@ -55,8 +55,10 @@ pub enum AccountsError {
     UseApplyVersion,
     #[error("accounts.rule_values_without_selection_change")]
     RuleValuesWithoutSelectionChange,
+    /// `field`: the evaluation field sent on create (`/evaluation_start`,
+    /// `/evaluation_earned_before`); `None` on `restartEvaluation`.
     #[error("accounts.evaluation_not_applicable")]
-    EvaluationNotApplicable,
+    EvaluationNotApplicable { field: Option<&'static str> },
     #[error("accounts.evaluation_start_invalid")]
     EvaluationStartInvalid,
     /// 500 `common.internal`; the detail is logged, never returned.
@@ -98,7 +100,7 @@ impl AccountsError {
             Self::RuleValuesWithoutSelectionChange => {
                 "accounts.rule_values_without_selection_change"
             }
-            Self::EvaluationNotApplicable => "accounts.evaluation_not_applicable",
+            Self::EvaluationNotApplicable { .. } => "accounts.evaluation_not_applicable",
             Self::EvaluationStartInvalid => "accounts.evaluation_start_invalid",
             Self::Internal(_) => "common.internal",
         }
@@ -140,6 +142,7 @@ impl AccountsError {
             Self::ProfileSizeRequired | Self::ProfileSizeInvalid => "/profile_size",
             Self::RuleValuesWithoutSelectionChange => "/rule_values",
             Self::EvaluationStartInvalid => "/evaluation_start",
+            Self::EvaluationNotApplicable { field: Some(f) } => f,
             _ => return None,
         };
         Some(p.to_owned())
@@ -167,6 +170,7 @@ impl AccountsError {
             Self::ProfileSizeInvalid => 19,
             Self::UseApplyVersion => 20,
             Self::RuleValuesWithoutSelectionChange => 21,
+            Self::EvaluationNotApplicable { .. } => 22,
             _ => 30,
         };
         (self.http_status(), index)

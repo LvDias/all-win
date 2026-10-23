@@ -1,4 +1,4 @@
--- Wave 1 #12 (moved to S5, Lastro 2026-10-23) — the account's own rule values (wave1-data-model
+-- Wave 1 #5b (formerly #12, moved to S5) — the account's own rule values (wave1-data-model
 -- §5.7, rev. 15.2). Only deviations from the preset are stored; the absence of a row means "from
 -- the preset" (or "unset" without one). Inputs of the derived risk limits (ADR-0006): every write
 -- bumps account.limits_version in the same transaction (Core rule).

@@ -13,11 +13,12 @@ use accounts_enterprise::{AccountId, Choice, OptInError, OptInKind};
 use crate::commands::{RestartEvaluation, SetLifecycle, SetOptIn};
 use crate::deps::AccountsDeps;
 use crate::error::{AccountsError, Refusals};
-use crate::events::AccountsEvent;
+use crate::events::{AccountsEvent, FieldChange};
 use crate::ports::{AccountWrite, CommissionWrite};
 use crate::views::{AccountView, ArchiveImpact, OptInView};
 use support::{
-    applicable, current_rule, port_err, rule_selection_of, store_err, today, view, views,
+    applicable, bound_platform_account, current_rule, port_err, rule_selection_of, store_err,
+    today, view, views,
 };
 
 pub(crate) fn opt_in_error(kind: OptInKind, e: OptInError) -> AccountsError {
@@ -67,6 +68,23 @@ impl ReadAccounts {
             .await
             .map_err(store_err)?
             .is_some())
+    }
+
+    /// Query read for routing's `BindingOf` port (ADR-0008; the trait is the consumer's): the
+    /// platform account bound to this user's live account. Unbound, unknown, archived and other
+    /// users' accounts are all `None`.
+    pub async fn binding_of(
+        &self,
+        user_id: shared_kernel::UserId,
+        id: AccountId,
+    ) -> Result<Option<accounts_enterprise::VenueAccountId>, AccountsError> {
+        Ok(self
+            .deps
+            .store
+            .get(user_id, id)
+            .await
+            .map_err(store_err)?
+            .and_then(|a| a.binding.map(|b| b.venue_account_id)))
     }
 
     pub async fn archive_impact(
@@ -302,12 +320,20 @@ impl ArchiveAccount {
         next.binding = None;
         next.row_version += 1;
         next.updated_at = now;
+        let released = bound_platform_account(d, user, &stored).await?;
         let mut events = vec![AccountsEvent::Archived {
             account_id: next.id,
             account_name: next.display_name.clone(),
             at: now,
+            changes: released
+                .map(|old| FieldChange {
+                    field: "binding",
+                    old: Some(old),
+                    new: None,
+                })
+                .into_iter()
+                .collect(),
             removed_routes,
-            binding_released: stored.binding.is_some(),
         }];
         if stored.binding.is_some() {
             next.limits_version += 1;
@@ -358,14 +384,12 @@ impl RestartAccountEvaluation {
         if cmd.row_version != stored.row_version {
             return Err(AccountsError::VersionConflict);
         }
-        if !d
+        let profit_target = d
             .store
-            .has_evaluation_target(user, stored.id)
+            .evaluation_target(user, stored.id)
             .await
             .map_err(store_err)?
-        {
-            return Err(AccountsError::EvaluationNotApplicable);
-        }
+            .ok_or(AccountsError::EvaluationNotApplicable { field: None })?;
         if cmd.evaluation_start > today(d, user).await? {
             return Err(AccountsError::EvaluationStartInvalid);
         }
@@ -385,6 +409,7 @@ impl RestartAccountEvaluation {
                 new_start: cmd.evaluation_start,
                 old_earned_before: stored.evaluation_earned_before,
                 new_earned_before: cmd.evaluation_earned_before,
+                profit_target,
             },
             AccountsEvent::LimitsChanged {
                 account_id: next.id,

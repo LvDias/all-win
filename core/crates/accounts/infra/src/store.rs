@@ -218,25 +218,32 @@ impl AccountStore for PgAccountStore {
         Ok(taken)
     }
 
-    async fn has_evaluation_target(
+    async fn evaluation_target(
         &self,
         user_id: UserId,
         id: AccountId,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<Option<MoneyAmount>, StoreError> {
         let mut tx = self.begin_for(user_id).await?;
-        let has = sqlx::query_scalar!(
-            r#"SELECT EXISTS (
-                 SELECT 1 FROM accounts.account_rule_value
-                  WHERE user_id = $1 AND account_id = $2 AND field = 'evaluation_profit_target'
-                    AND NOT is_unset) AS "has!""#,
+        let amount = sqlx::query_scalar!(
+            r#"SELECT value->>'amount' AS "amount!"
+                 FROM accounts.account_rule_value
+                WHERE user_id = $1 AND account_id = $2 AND field = 'evaluation_profit_target'
+                  AND NOT is_unset"#,
             user_id.as_uuid(),
             id.as_uuid(),
         )
-        .fetch_one(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(other)?;
         tx.commit().await.map_err(other)?;
-        Ok(has)
+        amount
+            .map(|s| {
+                Decimal::from_str(&s)
+                    .ok()
+                    .and_then(|d| MoneyAmount::new(d).ok())
+                    .ok_or_else(|| corrupt("evaluation_profit_target"))
+            })
+            .transpose()
     }
 
     async fn create(&self, new: NewAccount) -> Result<(), StoreError> {

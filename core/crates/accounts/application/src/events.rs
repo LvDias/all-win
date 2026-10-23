@@ -1,5 +1,7 @@
 //! Events the accounts module writes to `app.outbox` in the same transaction as the change.
-//! - `accounts.*`: the user-visible audit (S5 contract §4, category `config`); money as strings.
+//! - `accounts.*`: the user-visible audit (S5 contract §4, category `config`), in the common
+//!   envelope `{actor, details, refs}`: `details` is exactly `AuditDetailsByCode[code]`, `refs`
+//!   carries `account_id` + `account_name` for the audit entry's columns.
 //! - `account.limits_changed` / `account.binding_changed`: ADR-0006 / ADR-0008 consumers.
 //! - `account.changed` / `account.archived`: the SSE notifications (the client refetches).
 
@@ -13,12 +15,27 @@ use accounts_enterprise::{
 
 use crate::ports::{RouteRef, RuleSource};
 
-/// One changed field of `accounts.updated`; `Value::Null` stands for "absent".
-#[derive(Debug, Clone, PartialEq)]
+/// One changed field (`FieldChange`); `None` stands for "absent". `field` is one of
+/// `AUDITED_FIELDS`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldChange {
     pub field: &'static str,
-    pub old: Value,
-    pub new: Value,
+    pub old: Option<String>,
+    pub new: Option<String>,
+}
+
+impl FieldChange {
+    fn to_json(&self) -> Value {
+        let mut c = Map::new();
+        c.insert("field".into(), json!(self.field));
+        if let Some(old) = &self.old {
+            c.insert("old".into(), json!(old));
+        }
+        if let Some(new) = &self.new {
+            c.insert("new".into(), json!(new));
+        }
+        Value::Object(c)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,8 +57,9 @@ pub enum AccountsEvent {
         account_id: AccountId,
         account_name: AccountName,
         at: DateTime<Utc>,
+        /// The binding it released, if any.
+        changes: Vec<FieldChange>,
         removed_routes: Vec<RouteRef>,
-        binding_released: bool,
     },
     LifecycleChanged {
         account_id: AccountId,
@@ -70,6 +88,7 @@ pub enum AccountsEvent {
         new_start: NaiveDate,
         old_earned_before: Option<MoneyAmount>,
         new_earned_before: Option<MoneyAmount>,
+        profit_target: MoneyAmount,
     },
     LimitsChanged {
         account_id: AccountId,
@@ -104,6 +123,21 @@ pub const AUDIT_EVENT_TYPES: [&str; 6] = [
     "accounts.evaluation_restarted",
 ];
 
+/// Every type this module writes to the outbox (the app's `emitted_event_types()`). The last
+/// four have no consumer in this wave (allowlisted as `from_now`, Esquadro decision (b)).
+pub const EMITTED_EVENT_TYPES: [&str; 10] = [
+    "accounts.created",
+    "accounts.updated",
+    "accounts.archived",
+    "accounts.lifecycle_changed",
+    "accounts.opt_in_chosen",
+    "accounts.evaluation_restarted",
+    "account.limits_changed",
+    "account.binding_changed",
+    "account.changed",
+    "account.archived",
+];
+
 impl AccountsEvent {
     pub const fn event_type(&self) -> &'static str {
         match self {
@@ -135,69 +169,35 @@ impl AccountsEvent {
         }
     }
 
-    /// Outbox payload. Audit events carry `account_id` and the `account_name` snapshot.
+    /// Outbox payload: the audit envelope for `accounts.*`, `{kind, …}` for the others.
     pub fn payload(&self) -> Value {
-        let mut p = Map::new();
-        p.insert("kind".into(), json!(self.event_type()));
-        match self {
-            Self::Created {
-                account_id,
-                account_name,
-                fields,
-                ..
-            } => {
-                audit_head(&mut p, account_id, account_name);
-                let f: Map<String, Value> = fields
-                    .iter()
-                    .map(|c| (c.field.to_owned(), c.new.clone()))
-                    .collect();
-                p.insert("fields".into(), Value::Object(f));
-            }
-            Self::Updated {
-                account_id,
-                account_name,
-                changes,
-                ..
-            } => {
-                audit_head(&mut p, account_id, account_name);
-                let c: Vec<Value> = changes
-                    .iter()
-                    .map(|c| json!({"field": c.field, "old": c.old, "new": c.new}))
-                    .collect();
-                p.insert("changes".into(), Value::Array(c));
-            }
+        let changes =
+            |c: &[FieldChange]| Value::Array(c.iter().map(FieldChange::to_json).collect());
+        let details = match self {
+            Self::Created { fields, .. } => json!({"changes": changes(fields)}),
+            Self::Updated { changes: c, .. } => json!({"changes": changes(c)}),
             Self::Archived {
-                account_id,
-                account_name,
+                changes: c,
                 removed_routes,
-                binding_released,
                 ..
             } => {
-                audit_head(&mut p, account_id, account_name);
                 let r: Vec<Value> = removed_routes
                     .iter()
                     .map(|r| json!({"source_id": r.source_id, "source_name": r.source_name}))
                     .collect();
-                p.insert("removed_routes".into(), Value::Array(r));
-                p.insert("removed_follower_links".into(), json!([]));
-                p.insert("binding_released".into(), json!(binding_released));
+                json!({"changes": changes(c), "removed_routes": r, "removed_follower_links": []})
             }
             Self::LifecycleChanged {
-                account_id,
-                account_name,
                 previous,
                 new,
                 had_open_position,
                 ..
-            } => {
-                audit_head(&mut p, account_id, account_name);
-                p.insert("previous_state".into(), json!(previous.as_str()));
-                p.insert("new_state".into(), json!(new.as_str()));
-                p.insert("had_open_position".into(), json!(had_open_position));
-            }
+            } => json!({
+                "previous_state": previous.as_str(),
+                "new_state": new.as_str(),
+                "had_open_position": had_open_position,
+            }),
             Self::OptInChosen {
-                account_id,
-                account_name,
                 kind,
                 choice,
                 previous_choice,
@@ -206,36 +206,100 @@ impl AccountsEvent {
                 sources,
                 ..
             } => {
-                audit_head(&mut p, account_id, account_name);
-                p.insert("opt_in_kind".into(), json!(kind.as_str()));
-                p.insert("choice".into(), json!(choice.as_str()));
-                p.insert(
-                    "previous_choice".into(),
-                    previous_choice.map_or(Value::Null, |c| json!(c.as_str())),
-                );
-                p.insert("rule_version_id".into(), json!(rule_version_id.as_uuid()));
-                p.insert("firm_stance".into(), json!(firm_stance.as_str()));
                 let s: Vec<Value> = sources
                     .iter()
                     .map(|s| json!({"url": s.url, "accessed_at": s.accessed_at.to_string()}))
                     .collect();
-                p.insert("sources".into(), Value::Array(s));
+                let mut d = json!({
+                    "kind": kind.as_str(),
+                    "choice": choice.as_str(),
+                    "rule_version_id": rule_version_id.as_uuid(),
+                    "firm_stance": firm_stance.as_str(),
+                    "sources": s,
+                });
+                if let (Some(p), Some(d)) = (previous_choice, d.as_object_mut()) {
+                    d.insert("previous_choice".into(), json!(p.as_str()));
+                }
+                d
             }
             Self::EvaluationRestarted {
-                account_id,
-                account_name,
                 old_start,
                 new_start,
                 old_earned_before,
                 new_earned_before,
+                profit_target,
                 ..
             } => {
-                audit_head(&mut p, account_id, account_name);
-                p.insert("old_start".into(), opt_date(*old_start));
-                p.insert("new_start".into(), json!(new_start.to_string()));
-                p.insert("old_earned_before".into(), opt_money(*old_earned_before));
-                p.insert("new_earned_before".into(), opt_money(*new_earned_before));
+                // `DetailsEvaluationRestarted` (contract 4.4.0).
+                let mut d = Map::new();
+                d.insert("start".into(), json!(new_start.to_string()));
+                d.insert("profit_target".into(), json!(profit_target.to_wire()));
+                if let Some(v) = old_start {
+                    d.insert("previous_start".into(), json!(v.to_string()));
+                }
+                if let Some(v) = new_earned_before {
+                    d.insert("earned_before".into(), json!(v.to_wire()));
+                }
+                if let Some(v) = old_earned_before {
+                    d.insert("previous_earned_before".into(), json!(v.to_wire()));
+                }
+                Value::Object(d)
             }
+            _ => return self.notice_payload(),
+        };
+        let (account_id, account_name) = self.audit_refs().unwrap_or_default();
+        json!({
+            // Every S5 audit code answers a request of the account's user.
+            "actor": "user",
+            "details": details,
+            "refs": {"account_id": account_id, "account_name": account_name},
+        })
+    }
+
+    fn audit_refs(&self) -> Option<(String, String)> {
+        match self {
+            Self::Created {
+                account_id,
+                account_name,
+                ..
+            }
+            | Self::Updated {
+                account_id,
+                account_name,
+                ..
+            }
+            | Self::Archived {
+                account_id,
+                account_name,
+                ..
+            }
+            | Self::LifecycleChanged {
+                account_id,
+                account_name,
+                ..
+            }
+            | Self::OptInChosen {
+                account_id,
+                account_name,
+                ..
+            }
+            | Self::EvaluationRestarted {
+                account_id,
+                account_name,
+                ..
+            } => Some((
+                account_id.as_uuid().to_string(),
+                account_name.as_str().to_owned(),
+            )),
+            _ => None,
+        }
+    }
+
+    /// `account.*` notices (ADR-0006/0008, SSE): `{kind, account_id, …}`.
+    fn notice_payload(&self) -> Value {
+        let mut p = Map::new();
+        p.insert("kind".into(), json!(self.event_type()));
+        match self {
             Self::LimitsChanged {
                 account_id,
                 limits_version,
@@ -260,20 +324,9 @@ impl AccountsEvent {
             Self::Changed { account_id, .. } | Self::ArchivedNotice { account_id, .. } => {
                 p.insert("account_id".into(), json!(account_id.as_uuid()));
             }
+            // Audit codes take the envelope (`payload`).
+            _ => {}
         }
         Value::Object(p)
     }
-}
-
-fn audit_head(p: &mut Map<String, Value>, id: &AccountId, name: &AccountName) {
-    p.insert("account_id".into(), json!(id.as_uuid()));
-    p.insert("account_name".into(), json!(name.as_str()));
-}
-
-pub fn opt_money(m: Option<MoneyAmount>) -> Value {
-    m.map_or(Value::Null, |m| json!(m.to_wire()))
-}
-
-pub fn opt_date(d: Option<NaiveDate>) -> Value {
-    d.map_or(Value::Null, |d| json!(d.to_string()))
 }

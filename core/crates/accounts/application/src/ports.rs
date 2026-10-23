@@ -9,8 +9,9 @@ use uuid::Uuid;
 
 use accounts_enterprise::profile::AccountBracketProfile;
 use accounts_enterprise::{
-    Account, AccountId, AccountKind, ConnectionId, FirmId, FirmPlatform, MaxPositionQty, OptInKind,
-    PresetVersionId, RuleOrigin, RuleVersionRef, SizeAmount, VenueAccountId,
+    Account, AccountId, AccountKind, ConnectionId, FirmId, FirmPlatform, MaxPositionQty,
+    MoneyAmount, OptInKind, PresetVersionId, RuleOrigin, RuleVersionRef, SizeAmount,
+    VenueAccountId,
 };
 use shared_kernel::UserId;
 
@@ -108,13 +109,13 @@ pub trait AccountStore: Send + Sync {
         except: Option<AccountId>,
     ) -> Result<bool, StoreError>;
 
-    /// Whether the account has an evaluation target (rule value `evaluation_profit_target`, or
-    /// its preset's; S13b).
-    async fn has_evaluation_target(
+    /// The account's evaluation target, if it has one (rule value `evaluation_profit_target`,
+    /// or its preset's; S13b).
+    async fn evaluation_target(
         &self,
         user_id: UserId,
         id: AccountId,
-    ) -> Result<bool, StoreError>;
+    ) -> Result<Option<MoneyAmount>, StoreError>;
 
     /// Inserts the account, its rule values, its initial profiles and the events in one
     /// transaction.
@@ -177,6 +178,9 @@ pub struct PresetFacts {
     pub is_current: bool,
     /// The preset that this version belongs to (for "same preset, newer version").
     pub preset_id: Uuid,
+    /// Its resolved rules carry an evaluation target (S13b): only then do `evaluation_start` /
+    /// `evaluation_earned_before` apply.
+    pub has_evaluation_target: bool,
 }
 
 #[async_trait]

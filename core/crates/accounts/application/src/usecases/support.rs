@@ -82,8 +82,17 @@ pub(crate) async fn today(
     deps: &AccountsDeps,
     user_id: UserId,
 ) -> Result<NaiveDate, AccountsError> {
+    local_date(deps, user_id, deps.clock.now()).await
+}
+
+/// The date of `at` in the user's time zone.
+pub(crate) async fn local_date(
+    deps: &AccountsDeps,
+    user_id: UserId,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<NaiveDate, AccountsError> {
     let tz = deps.time_zones.time_zone(user_id).await.map_err(port_err)?;
-    Ok(deps.clock.now().with_timezone(&tz).date_naive())
+    Ok(at.with_timezone(&tz).date_naive())
 }
 
 /// The prop selection a request resolves to.
@@ -91,6 +100,8 @@ pub(crate) struct ResolvedSelection {
     pub selection: Option<PropSelection>,
     pub size: SizeAmount,
     pub rules: Option<RuleSelection>,
+    /// The resolved rules carry an evaluation target (only presets, S16).
+    pub has_evaluation_target: bool,
 }
 
 /// Resolves the selection against the catalog, pushing 422s. `None` when the selection cannot
@@ -115,6 +126,7 @@ pub(crate) async fn resolve_selection(
             selection: None,
             size: manual_size()?,
             rules: None,
+            has_evaluation_target: false,
         })),
         (
             AccountKind::Prop,
@@ -131,6 +143,7 @@ pub(crate) async fn resolve_selection(
             }),
             size: manual_size()?,
             rules: Some(RuleSelection::Generic),
+            has_evaluation_target: false,
         })),
         (
             AccountKind::Prop,
@@ -194,6 +207,7 @@ pub(crate) async fn resolve_selection(
                     preset_version_id: *preset_version_id,
                     firm_platform: firm_platform.clone(),
                 }),
+                has_evaluation_target: facts.has_evaluation_target,
             }))
         }
         (AccountKind::Prop, SelectionInput::None) => Err(AccountsError::InvalidRequest {
@@ -362,4 +376,25 @@ pub(crate) const fn kind_index(kind: OptInKind) -> usize {
         OptInKind::Automation => 0,
         OptInKind::Copy => 1,
     }
+}
+
+/// The bound platform account as the user named it, for the audit (`None` when unbound). An
+/// account gateway no longer describes keeps its opaque id, so the change is still visible.
+pub(crate) async fn bound_platform_account(
+    deps: &AccountsDeps,
+    user_id: UserId,
+    account: &Account,
+) -> Result<Option<String>, AccountsError> {
+    let Some(b) = account.binding else {
+        return Ok(None);
+    };
+    let described = deps
+        .venues
+        .describe(user_id, &[b.venue_account_id])
+        .await
+        .map_err(port_err)?;
+    Ok(Some(described.first().map_or_else(
+        || b.venue_account_id.as_uuid().to_string(),
+        |v| v.platform_account.clone(),
+    )))
 }

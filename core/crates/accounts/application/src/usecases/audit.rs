@@ -1,105 +1,103 @@
-//! Field snapshots for `accounts.created` / `accounts.updated` (changed fields with old and new
-//! values, money as strings; S5 contract §4).
-
-use serde_json::{Value, json};
+//! Field snapshots for `accounts.created` / `accounts.updated` / `accounts.archived` (changed
+//! fields with old and new values as strings; S5 contract §4, `FieldChange`).
 
 use accounts_enterprise::{Account, PropSelection};
 
-use crate::events::{FieldChange, opt_date, opt_money};
+use crate::events::FieldChange;
 
-/// `binding` as the user named it: `{connection_id, platform_account}`, or `null`.
-pub(crate) fn binding_value(
-    connection_id: Option<uuid::Uuid>,
-    platform_account: Option<&str>,
-) -> Value {
-    match (connection_id, platform_account) {
-        (Some(c), Some(p)) => json!({"connection_id": c, "platform_account": p}),
-        _ => Value::Null,
-    }
-}
+/// The only fields a `FieldChange` may name (Esquadro, `safe_to_display`): the account form's
+/// fields. A new field is added here only after deciding it is safe to show in the audit log.
+pub const AUDITED_FIELDS: [&str; 14] = [
+    "kind",
+    "display_name",
+    "preset_version_id",
+    "firm_platform",
+    "firm_name",
+    "plan_name",
+    "phase",
+    "size_amount",
+    "multiplier",
+    "max_position_qty",
+    "commission_per_contract_side",
+    "evaluation_start",
+    "evaluation_earned_before",
+    "binding",
+];
 
-/// Audited fields of an account, in a stable order.
-pub(crate) fn fields(account: &Account, binding: Value) -> Vec<(&'static str, Value)> {
-    let text = |s: &str| json!(s);
+/// Audited fields of an account, in `AUDITED_FIELDS` order. `binding`: the platform account
+/// name as the user knows it (`None` when unbound).
+pub(crate) fn fields(account: &Account, binding: Option<String>) -> [Option<String>; 14] {
     let (firm_name, plan_name, phase, preset, platform) = match &account.selection {
-        None => (
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-        ),
+        None => (None, None, None, None, None),
         Some(PropSelection::Manual {
             firm_name,
             plan_name,
             phase,
         }) => (
-            text(firm_name.as_str()),
-            text(plan_name.as_str()),
-            text(phase.as_str()),
-            Value::Null,
-            Value::Null,
+            Some(firm_name.as_str().to_owned()),
+            Some(plan_name.as_str().to_owned()),
+            Some(phase.as_str().to_owned()),
+            None,
+            None,
         ),
         Some(PropSelection::Preset {
             preset_version_id,
             firm_platform,
             ..
         }) => (
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            json!(preset_version_id.as_uuid()),
-            firm_platform
-                .as_ref()
-                .map_or(Value::Null, |p| text(p.as_str())),
+            None,
+            None,
+            None,
+            Some(preset_version_id.as_uuid().to_string()),
+            firm_platform.as_ref().map(|p| p.as_str().to_owned()),
         ),
     };
-    vec![
-        ("kind", text(account.kind.as_str())),
-        ("display_name", text(account.display_name.as_str())),
-        ("preset_version_id", preset),
-        ("firm_platform", platform),
-        ("firm_name", firm_name),
-        ("plan_name", plan_name),
-        ("phase", phase),
-        ("size_amount", json!(account.size_amount.to_wire())),
-        ("multiplier", json!(account.multiplier.value())),
-        ("max_position_qty", json!(account.max_position_qty.value())),
-        (
-            "commission_per_contract_side",
-            opt_money(account.commission_per_contract_side),
-        ),
-        ("evaluation_start", opt_date(account.evaluation_start)),
-        (
-            "evaluation_earned_before",
-            opt_money(account.evaluation_earned_before),
-        ),
-        ("binding", binding),
+    [
+        Some(account.kind.as_str().to_owned()),
+        Some(account.display_name.as_str().to_owned()),
+        preset,
+        platform,
+        firm_name,
+        plan_name,
+        phase,
+        Some(account.size_amount.to_wire()),
+        Some(account.multiplier.value().to_string()),
+        Some(account.max_position_qty.value().to_string()),
+        account.commission_per_contract_side.map(|m| m.to_wire()),
+        account.evaluation_start.map(|d| d.to_string()),
+        account.evaluation_earned_before.map(|m| m.to_wire()),
+        binding,
     ]
 }
 
-pub(crate) fn created(account: &Account, binding: Value) -> Vec<FieldChange> {
-    fields(account, binding)
+pub(crate) fn created(account: &Account, binding: Option<String>) -> Vec<FieldChange> {
+    AUDITED_FIELDS
         .into_iter()
-        .filter(|(_, v)| !v.is_null())
-        .map(|(field, new)| FieldChange {
-            field,
-            old: Value::Null,
-            new,
+        .zip(fields(account, binding))
+        .filter_map(|(field, new)| {
+            new.map(|new| FieldChange {
+                field,
+                old: None,
+                new: Some(new),
+            })
         })
         .collect()
 }
 
 pub(crate) fn changes(
     before: &Account,
-    before_binding: Value,
+    before_binding: Option<String>,
     after: &Account,
-    after_binding: Value,
+    after_binding: Option<String>,
 ) -> Vec<FieldChange> {
-    fields(before, before_binding)
+    AUDITED_FIELDS
         .into_iter()
-        .zip(fields(after, after_binding))
-        .filter(|((_, old), (_, new))| old != new)
-        .map(|((field, old), (_, new))| FieldChange { field, old, new })
+        .zip(
+            fields(before, before_binding)
+                .into_iter()
+                .zip(fields(after, after_binding)),
+        )
+        .filter(|(_, (old, new))| old != new)
+        .map(|(field, (old, new))| FieldChange { field, old, new })
         .collect()
 }

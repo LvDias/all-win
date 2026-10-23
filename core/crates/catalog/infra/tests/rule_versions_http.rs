@@ -104,10 +104,10 @@ async fn generic_rule_versions_are_served() {
     .await;
     assert_eq!(s, StatusCode::NOT_FOUND, "no preset catalog before S16");
     let (s, e) = get(&app, "/api/v1/opt-in-rules?firm_platform=rithmic", true).await;
-    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(s, StatusCode::BAD_REQUEST, "a platform without a preset");
     assert_eq!(
         e["error"],
-        json!({"code": "accounts.firm_platform_unknown", "pointer": "/query/firm_platform"})
+        json!({"code": "common.invalid_request", "pointer": "/query/firm_platform"})
     );
     let (s, e) = get(&app, "/api/v1/opt-in-rules?firm_platform=Bad!", true).await;
     assert_eq!(

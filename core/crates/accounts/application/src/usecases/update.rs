@@ -15,8 +15,8 @@ use crate::ports::{AccountWrite, CommissionWrite, CurrentRule, RuleSelection};
 use crate::usecases::audit;
 use crate::usecases::opt_in_error;
 use crate::usecases::support::{
-    applicable, current_rules, kind_index, port_err, resolve_binding, resolve_selection,
-    rule_selection_of, store_err, view,
+    applicable, bound_platform_account, current_rules, kind_index, local_date, port_err,
+    resolve_binding, resolve_selection, rule_selection_of, store_err, view,
 };
 use crate::views::AccountView;
 
@@ -175,6 +175,11 @@ impl UpdateAccountUseCase {
         let now = d.clock.now();
         let mut next = stored.clone();
         next.display_name = cmd.display_name.clone();
+        if resolved.has_evaluation_target && next.evaluation_start.is_none() {
+            // Invariant: an evaluation target has a start. Gained later, it defaults to the
+            // account's registration date in the user's zone (Q46), never the change date.
+            next.evaluation_start = Some(local_date(d, caller.user_id, stored.created_at).await?);
+        }
         next.selection = resolved.selection;
         next.size_amount = resolved.size;
         next.multiplier = cmd.multiplier;
@@ -200,12 +205,9 @@ impl UpdateAccountUseCase {
             }
         }
 
-        let before_binding = self.binding_audit(caller, &stored).await?;
+        let before_binding = bound_platform_account(d, caller.user_id, &stored).await?;
         let after_binding = if binding_changes {
-            audit::binding_value(
-                cmd.binding.as_ref().map(|b| b.connection_id.as_uuid()),
-                cmd.binding.as_ref().map(|b| b.platform_account.as_str()),
-            )
+            cmd.binding.as_ref().map(|b| b.platform_account.clone())
         } else {
             before_binding.clone()
         };
@@ -350,26 +352,6 @@ impl UpdateAccountUseCase {
                 }
             })
             .collect()
-    }
-
-    async fn binding_audit(
-        &self,
-        caller: &Caller,
-        stored: &Account,
-    ) -> Result<serde_json::Value, AccountsError> {
-        let Some(b) = stored.binding else {
-            return Ok(serde_json::Value::Null);
-        };
-        let described = self
-            .deps
-            .venues
-            .describe(caller.user_id, &[b.venue_account_id])
-            .await
-            .map_err(port_err)?;
-        Ok(described.first().map_or_else(
-            || serde_json::json!({"venue_account_id": b.venue_account_id.as_uuid()}),
-            |v| audit::binding_value(Some(v.connection_id.as_uuid()), Some(&v.platform_account)),
-        ))
     }
 }
 

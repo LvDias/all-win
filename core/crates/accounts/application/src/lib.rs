@@ -11,7 +11,8 @@ pub mod views;
 pub use accounts_enterprise as enterprise;
 pub use deps::AccountsDeps;
 pub use error::AccountsError;
-pub use events::{AUDIT_EVENT_TYPES, AccountsEvent};
+pub use events::{AUDIT_EVENT_TYPES, AccountsEvent, EMITTED_EVENT_TYPES};
+pub use usecases::audit::AUDITED_FIELDS;
 pub use usecases::create::{CreateAccountUseCase, CreateOutcome};
 pub use usecases::update::UpdateAccountUseCase;
 pub use usecases::{

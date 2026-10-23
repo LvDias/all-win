@@ -38,7 +38,7 @@ struct Db {
     keys: HashMap<(UserId, Uuid), (AccountId, [u8; 32])>,
     events: Vec<AccountsEvent>,
     commission_writes: Vec<CommissionWrite>,
-    targets: Vec<AccountId>,
+    targets: HashMap<AccountId, MoneyAmount>,
 }
 
 #[derive(Default, Clone)]
@@ -106,8 +106,12 @@ impl AccountStore for MemStore {
                 && a.binding.map(|b| b.venue_account_id) == Some(venue)
         }))
     }
-    async fn has_evaluation_target(&self, _: UserId, id: AccountId) -> Result<bool, StoreError> {
-        Ok(self.0.lock().unwrap().targets.contains(&id))
+    async fn evaluation_target(
+        &self,
+        _: UserId,
+        id: AccountId,
+    ) -> Result<Option<MoneyAmount>, StoreError> {
+        Ok(self.0.lock().unwrap().targets.get(&id).copied())
     }
     async fn create(&self, new: NewAccount) -> Result<(), StoreError> {
         let mut db = self.0.lock().unwrap();
@@ -369,16 +373,48 @@ async fn prop_without_preset_needs_a_choice_on_the_generic_rule() {
     assert!(matches!(v.automation.state, OptInState::Chosen(c) if c.choice == Choice::Declined));
     assert_eq!(v.copy.state, OptInState::NotRequired);
     assert_eq!(v.copy.firm_stance, Some(FirmStance::Unknown));
-    // Registration date in the user's zone (23 Oct in São Paulo at 01:00 UTC on 24 Oct).
-    assert_eq!(
-        v.account.evaluation_start,
-        NaiveDate::from_ymd_opt(2026, 10, 23)
-    );
+    // Generic rules carry no evaluation target: no default evaluation start.
+    assert_eq!(v.account.evaluation_start, None);
     assert!(
         w.gate.0.lock().unwrap().is_empty(),
         "declined needs no step-up"
     );
     assert!(event_types(&w).contains(&"accounts.opt_in_chosen"));
+}
+
+#[tokio::test]
+async fn evaluation_fields_and_rule_values_need_an_evaluation_preset() {
+    let w = world();
+    let mut cmd = real("Conta real");
+    cmd.evaluation_earned_before = Some(MoneyAmount::new(dec("10")).unwrap());
+    let e = create(&w, cmd).await.unwrap_err();
+    assert_eq!(
+        e,
+        AccountsError::EvaluationNotApplicable {
+            field: Some("/evaluation_earned_before")
+        }
+    );
+    assert_eq!(e.http_status(), 422);
+    assert_eq!(e.pointer().as_deref(), Some("/evaluation_earned_before"));
+
+    let mut cmd = prop("Apex 1", Some(Choice::Declined));
+    cmd.evaluation_start = NaiveDate::from_ymd_opt(2026, 10, 1);
+    cmd.evaluation_earned_before = Some(MoneyAmount::new(dec("10")).unwrap());
+    let e = create(&w, cmd).await.unwrap_err();
+    assert_eq!(e.pointer().as_deref(), Some("/evaluation_start"));
+
+    // A preset is unknown before S16: answered before looking at the rule values.
+    let mut cmd = prop("Apex 2", Some(Choice::Declined));
+    cmd.selection = SelectionInput::Preset {
+        preset_version_id: PresetVersionId::from_uuid(Uuid::now_v7()),
+        firm_platform: None,
+    };
+    cmd.rule_values = Some(serde_json::json!({"daily_loss_limit": "100.00"}));
+    assert_eq!(
+        create(&w, cmd).await.unwrap_err(),
+        AccountsError::PresetVersionUnknown
+    );
+    assert!(w.db.0.lock().unwrap().accounts.is_empty(), "nothing saved");
 }
 
 #[tokio::test]
@@ -635,9 +671,24 @@ async fn binding_change_of_an_automated_account_needs_step_up_and_no_open_positi
         AccountsError::BindingOpenPosition
     );
     w.venues.open.lock().unwrap().clear();
+    let read = ReadAccounts::new(w.deps.clone());
+    assert_eq!(
+        read.binding_of(w.me.user_id, v.account.id).await.unwrap(),
+        Some(venue)
+    );
     let after = update(&w, u).await.unwrap();
+    assert_eq!(
+        read.binding_of(w.me.user_id, v.account.id).await.unwrap(),
+        None
+    );
     assert!(after.account.binding.is_none());
     assert_eq!(after.account.limits_version, 2);
+    // Bind on create and unbind: each writes both account.limits_changed (risk, ADR-0006) and
+    // account.binding_changed (gateway, ADR-0008).
+    let types = event_types(&w);
+    for t in ["account.limits_changed", "account.binding_changed"] {
+        assert_eq!(types.iter().filter(|x| **x == t).count(), 2, "{t}");
+    }
 }
 
 #[tokio::test]
@@ -798,9 +849,13 @@ async fn restart_evaluation_rules() {
     let today = NaiveDate::from_ymd_opt(2026, 10, 23).unwrap();
     assert_eq!(
         uc.handle(&w.me, cmd(today)).await.unwrap_err(),
-        AccountsError::EvaluationNotApplicable
+        AccountsError::EvaluationNotApplicable { field: None }
     );
-    w.db.0.lock().unwrap().targets.push(v.account.id);
+    w.db.0
+        .lock()
+        .unwrap()
+        .targets
+        .insert(v.account.id, MoneyAmount::new(dec("3000")).unwrap());
     assert_eq!(
         uc.handle(&w.me, cmd(today.succ_opt().unwrap()))
             .await
@@ -828,6 +883,8 @@ async fn another_users_account_is_not_found_everywhere() {
         AccountsError::NotFound
     );
     assert!(read.list(them).await.unwrap().is_empty());
+    assert_eq!(read.binding_of(them.user_id, id).await.unwrap(), None);
+    assert!(!read.exists(them.user_id, id).await.unwrap());
     let mut u = update_of(&v);
     u.display_name = AccountName::parse("Theirs").unwrap();
     assert_eq!(
@@ -902,5 +959,163 @@ async fn another_users_account_is_not_found_everywhere() {
     assert!(
         w.gate.0.lock().unwrap().is_empty(),
         "404 comes before the step-up"
+    );
+}
+
+/// A current preset whose rules carry an evaluation target (S16 shape), with `allowed` rules.
+struct TargetPreset(PresetVersionId);
+
+#[async_trait]
+impl PresetCatalog for TargetPreset {
+    async fn version(&self, id: PresetVersionId) -> Result<Option<PresetFacts>, PortError> {
+        Ok((id == self.0).then(|| PresetFacts {
+            preset_version_id: id,
+            firm_id: FirmId::from_uuid(Uuid::now_v7()),
+            firm_name: "Apex".into(),
+            plan_name: "50K".into(),
+            phase: "evaluation".into(),
+            size_amount: SizeAmount::new(dec("50000")).unwrap(),
+            max_position_qty: None,
+            firm_platforms: vec![],
+            is_current: true,
+            preset_id: Uuid::now_v7(),
+            has_evaluation_target: true,
+        }))
+    }
+}
+
+struct AllowedPresetRules;
+
+#[async_trait]
+impl RuleVersions for AllowedPresetRules {
+    async fn current(
+        &self,
+        selection: &RuleSelection,
+        kind: OptInKind,
+    ) -> Result<Option<CurrentRule>, PortError> {
+        match selection {
+            RuleSelection::Generic => GenericRules.current(selection, kind).await,
+            RuleSelection::Preset { .. } => Ok(Some(CurrentRule {
+                rule: RuleVersionRef {
+                    id: RuleVersionId::from_uuid(Uuid::now_v7()),
+                    kind,
+                    stance: FirmStance::Allowed,
+                },
+                sources: vec![],
+            })),
+        }
+    }
+}
+
+#[tokio::test]
+async fn gaining_an_evaluation_target_defaults_the_start_to_the_registration_date() {
+    let mut w = world();
+    let preset = PresetVersionId::from_uuid(Uuid::now_v7());
+    w.deps.presets = Arc::new(TargetPreset(preset));
+    w.deps.rules = Arc::new(AllowedPresetRules);
+    // Registered on 23 Oct (São Paulo); generic rules have no target, so no start.
+    let v = created(&w, prop("Apex 1", Some(Choice::Declined))).await;
+    assert_eq!(v.account.evaluation_start, None);
+
+    *w.now.lock().unwrap() = Utc.with_ymd_and_hms(2026, 11, 5, 15, 0, 0).unwrap();
+    let mut u = update_of(&v);
+    u.selection = SelectionInput::Preset {
+        preset_version_id: preset,
+        firm_platform: None,
+    };
+    u.size_amount = None;
+    u.sent = PropFieldsSent {
+        preset_version_id: true,
+        ..PropFieldsSent::default()
+    };
+    let after = update(&w, u).await.unwrap();
+    assert_eq!(
+        after.account.evaluation_start,
+        NaiveDate::from_ymd_opt(2026, 10, 23),
+        "the registration date, not the change date"
+    );
+    assert!(after.account.limits_version > v.account.limits_version);
+}
+
+#[test]
+fn emitted_types_cover_every_event() {
+    let now = Utc::now();
+    let id = AccountId::new_v7();
+    let name = AccountName::parse("A").unwrap();
+    let events = [
+        AccountsEvent::Created {
+            account_id: id,
+            account_name: name.clone(),
+            at: now,
+            fields: vec![],
+        },
+        AccountsEvent::Updated {
+            account_id: id,
+            account_name: name.clone(),
+            at: now,
+            changes: vec![],
+        },
+        AccountsEvent::Archived {
+            account_id: id,
+            account_name: name.clone(),
+            at: now,
+            changes: vec![],
+            removed_routes: vec![],
+        },
+        AccountsEvent::LifecycleChanged {
+            account_id: id,
+            account_name: name.clone(),
+            at: now,
+            previous: LifecycleState::Active,
+            new: LifecycleState::Paused,
+            had_open_position: false,
+        },
+        AccountsEvent::OptInChosen {
+            account_id: id,
+            account_name: name.clone(),
+            at: now,
+            kind: OptInKind::Automation,
+            choice: Choice::Declined,
+            previous_choice: None,
+            rule_version_id: GENERIC_AUTOMATION_RULE_VERSION_ID,
+            firm_stance: FirmStance::Unknown,
+            sources: vec![],
+        },
+        AccountsEvent::EvaluationRestarted {
+            account_id: id,
+            account_name: name,
+            at: now,
+            old_start: None,
+            new_start: now.date_naive(),
+            old_earned_before: None,
+            new_earned_before: None,
+            profit_target: MoneyAmount::new(dec("1")).unwrap(),
+        },
+        AccountsEvent::LimitsChanged {
+            account_id: id,
+            at: now,
+            limits_version: 1,
+        },
+        AccountsEvent::BindingChanged {
+            account_id: id,
+            at: now,
+            venue_account_id: None,
+            limits_version: 1,
+        },
+        AccountsEvent::Changed {
+            account_id: id,
+            at: now,
+        },
+        AccountsEvent::ArchivedNotice {
+            account_id: id,
+            at: now,
+        },
+    ];
+    let types: Vec<&str> = events.iter().map(AccountsEvent::event_type).collect();
+    assert_eq!(types, crate::EMITTED_EVENT_TYPES);
+    assert!(
+        crate::AUDIT_EVENT_TYPES
+            .iter()
+            .all(|t| crate::EMITTED_EVENT_TYPES.contains(t))
     );
 }

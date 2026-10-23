@@ -1,4 +1,4 @@
--- Wave 1 #5b — trading accounts (wave1-data-model §5.2, rev. 8–15.2; S5 contract 4.3.0).
+-- Wave 1 #5 — trading accounts (wave1-data-model §5.2, rev. 8–15.2; S5 contract 4.3.0).
 -- Binding (ADR-0008, Esquadro 2026-10-23): accounts owns the link; `venue_account_id` is gateway's
 -- opaque id (no cross-schema FK), one platform account ↔ at most one All Win account.
 -- Cross-module ids are plain uuid; the only cross-module FK is identity.app_user (§1, rule 1).

@@ -129,6 +129,21 @@ impl CreateAccountUseCase {
             }
         }
 
+        // Evaluation fields apply only when the resolved rules carry an evaluation target
+        // (S13b); otherwise refused, never stored or dropped.
+        if resolved.as_ref().is_some_and(|r| !r.has_evaluation_target) {
+            let sent = [
+                (cmd.evaluation_start.is_some(), "/evaluation_start"),
+                (
+                    cmd.evaluation_earned_before.is_some(),
+                    "/evaluation_earned_before",
+                ),
+            ];
+            if let Some((_, field)) = sent.into_iter().find(|(s, _)| *s) {
+                refusals.push(AccountsError::EvaluationNotApplicable { field: Some(field) });
+            }
+        }
+
         let venue = match &cmd.binding {
             Some(b) => resolve_binding(d, user, b, None, &mut refusals).await?,
             None => None,
@@ -159,16 +174,16 @@ impl CreateAccountUseCase {
             return Err(AccountsError::Internal("unresolved selection".into()));
         };
         if cmd.rule_values.is_some() {
-            // Rule values come with a preset (S16); presets have no catalog before S16, so this
-            // is unreachable in S5 and must never be silently dropped.
+            // Without a preset the schema refuses them (400); with one, the preset is unknown
+            // before S16 (422 above). Reached only once S16 publishes presets: never dropped.
             return Err(AccountsError::Internal("rule_values need S16".into()));
         }
 
-        let evaluation_start = match (cmd.kind, cmd.evaluation_start) {
+        let evaluation_start = match (resolved.has_evaluation_target, cmd.evaluation_start) {
             (_, Some(date)) => Some(date),
             // Default: the registration date in the user's time zone (S13b, data model §5.2).
-            (AccountKind::Prop, None) => Some(today(d, user).await?),
-            (AccountKind::Real, None) => None,
+            (true, None) => Some(today(d, user).await?),
+            (false, None) => None,
         };
         let account = Account {
             id: AccountId::new_v7(),
@@ -196,10 +211,7 @@ impl CreateAccountUseCase {
             archived_at: None,
         };
 
-        let binding_audit = audit::binding_value(
-            cmd.binding.as_ref().map(|b| b.connection_id.as_uuid()),
-            cmd.binding.as_ref().map(|b| b.platform_account.as_str()),
-        );
+        let binding_audit = cmd.binding.as_ref().map(|b| b.platform_account.clone());
         let mut events = vec![AccountsEvent::Created {
             account_id: account.id,
             account_name: account.display_name.clone(),

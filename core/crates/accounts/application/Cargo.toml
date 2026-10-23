@@ -15,8 +15,7 @@ workspace = true
 testing = []
 
 [dependencies]
-# Internal crates by path until core/Cargo.toml lists them in [workspace.dependencies] (Brasa).
-accounts-enterprise = { path = "../enterprise" }
+accounts-enterprise.workspace = true
 access.workspace = true
 shared-kernel.workspace = true
 async-trait.workspace = true

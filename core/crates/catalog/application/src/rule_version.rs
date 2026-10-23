@@ -68,7 +68,11 @@ pub enum OptInRulesError {
     /// 404: the preset version does not exist (presets come with S16).
     #[error("common.not_found")]
     PresetVersionUnknown,
-    /// 422 `accounts.firm_platform_unknown` (`/query/firm_platform`).
+    /// 400 `common.invalid_request` (`/query/firm_platform`): a platform without a preset is
+    /// an invalid combination, as in `createAccount`.
+    #[error("common.invalid_request")]
+    FirmPlatformWithoutPreset,
+    /// 422 `accounts.firm_platform_unknown` (`/query/firm_platform`): only with a preset (S16).
     #[error("accounts.firm_platform_unknown")]
     FirmPlatformUnknown,
     #[error("{0}")]
@@ -109,12 +113,12 @@ impl RuleVersionQueries {
         preset_version_id: Option<Uuid>,
         firm_platform: Option<&str>,
     ) -> Result<[RuleVersion; 2], OptInRulesError> {
+        // 400 before 404.
+        if preset_version_id.is_none() && firm_platform.is_some() {
+            return Err(OptInRulesError::FirmPlatformWithoutPreset);
+        }
         if preset_version_id.is_some() {
             return Err(OptInRulesError::PresetVersionUnknown);
-        }
-        // Generic rules never vary by platform.
-        if firm_platform.is_some() {
-            return Err(OptInRulesError::FirmPlatformUnknown);
         }
         let get = |kind| async move {
             self.repo
@@ -179,7 +183,7 @@ mod tests {
                 .for_selection(None, Some("rithmic"))
                 .await
                 .unwrap_err(),
-            OptInRulesError::FirmPlatformUnknown
+            OptInRulesError::FirmPlatformWithoutPreset
         );
         // Preset versions have no catalog before S16.
         assert_eq!(

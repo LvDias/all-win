@@ -261,6 +261,11 @@ async fn get_opt_in_rules(
             copy: copy.into(),
         })
         .into_response(),
+        Err(OptInRulesError::FirmPlatformWithoutPreset) => error(
+            StatusCode::BAD_REQUEST,
+            "common.invalid_request",
+            Some("/query/firm_platform"),
+        ),
         Err(OptInRulesError::PresetVersionUnknown) => {
             error(StatusCode::NOT_FOUND, "common.not_found", None)
         }

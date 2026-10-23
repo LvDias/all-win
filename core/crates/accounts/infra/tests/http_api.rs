@@ -7,10 +7,10 @@ mod support;
 
 use std::sync::Arc;
 
-use accounts_application::AccountsDeps;
 use accounts_application::enterprise::{ConnectionId, VenueAccountId};
 use accounts_application::ports::{VenueAccountFacts, VenueKind};
 use accounts_application::testing::*;
+use accounts_application::{AUDITED_FIELDS, AccountsDeps};
 use accounts_infra::PgAccountStore;
 use accounts_infra::http::{AccountsHttpState, router, schemas};
 use axum::body::Body;
@@ -180,6 +180,60 @@ async fn outbox(env: &Env, user: Uuid) -> Vec<(String, Value)> {
     .fetch_all(&env.db.admin)
     .await
     .unwrap()
+}
+
+/// `AuditDetailsByCode[accounts.*]` resolved from the contract bundle (evaluation_restarted:
+/// the 4.4.0 `DetailsEvaluationRestarted` announced by Compasso; regenerate when 4.4.0 lands).
+static AUDIT_DETAILS: &str = include_str!("audit_details.json");
+
+/// Every `accounts.*` row of the user's outbox is in the common audit envelope, its `details`
+/// match the contract and its `FieldChange`s name only `AUDITED_FIELDS`. Returns the codes seen.
+async fn audit_conforms(env: &Env, user: Uuid) -> Vec<String> {
+    let schemas: Value = serde_json::from_str(AUDIT_DETAILS).unwrap();
+    let mut seen = Vec::new();
+    for (code, p) in outbox(env, user).await {
+        if !code.starts_with("accounts.") {
+            continue;
+        }
+        let keys: Vec<&String> = p.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["actor", "details", "refs"], "{code}: {p}");
+        assert_eq!(p["actor"], "user", "{code}");
+        let refs = p["refs"].as_object().unwrap();
+        assert!(
+            refs.len() == 2 && refs["account_id"].is_string() && refs["account_name"].is_string(),
+            "{code}: {p}"
+        );
+        let validator = jsonschema::validator_for(&schemas[&code]).unwrap();
+        let errors: Vec<String> = validator
+            .iter_errors(&p["details"])
+            .map(|e| format!("{e} at {}", e.instance_path()))
+            .collect();
+        assert!(errors.is_empty(), "{code}: {errors:?}\n{p:#}");
+        for change in p["details"]["changes"].as_array().into_iter().flatten() {
+            let field = change["field"].as_str().unwrap();
+            assert!(
+                AUDITED_FIELDS.contains(&field),
+                "{code}: field {field} not in the closed list"
+            );
+        }
+        seen.push(code);
+    }
+    seen
+}
+
+/// Payloads of the account's `account.limits_changed` / `account.binding_changed` rows, in order.
+async fn binding_events(env: &Env, user: Uuid, id: &str) -> Vec<Value> {
+    outbox(env, user)
+        .await
+        .into_iter()
+        .filter(|(t, p)| {
+            matches!(
+                t.as_str(),
+                "account.limits_changed" | "account.binding_changed"
+            ) && p["account_id"] == id
+        })
+        .map(|(_, p)| p)
+        .collect()
 }
 
 #[tokio::test]
@@ -406,9 +460,11 @@ async fn prop_opt_in_flow() {
         .map(|e| &e.1)
         .collect();
     assert_eq!(chosen.len(), 2);
-    assert_eq!(chosen[1]["previous_choice"], "declined");
-    assert_eq!(chosen[1]["rule_version_id"], AUTOMATION_V1);
-    assert_eq!(chosen[1]["account_name"], "P");
+    assert_eq!(chosen[1]["details"]["previous_choice"], "declined");
+    assert_eq!(chosen[1]["details"]["rule_version_id"], AUTOMATION_V1);
+    assert_eq!(chosen[1]["refs"]["account_name"], "P");
+    let codes = audit_conforms(&env, me).await;
+    assert!(codes.iter().any(|c| c == "accounts.opt_in_chosen"));
 }
 
 #[tokio::test]
@@ -453,9 +509,16 @@ async fn update_commission_and_limits_version() {
     let events = outbox(&env, me).await;
     let updated = events.iter().find(|e| e.0 == "accounts.updated").unwrap();
     assert!(
-        updated.1["changes"].as_array().unwrap().contains(
-            &json!({"field": "commission_per_contract_side", "old": "0.37", "new": null})
-        )
+        updated.1["details"]["changes"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({"field": "commission_per_contract_side", "old": "0.37"}))
+    );
+    assert!(
+        audit_conforms(&env, me)
+            .await
+            .iter()
+            .any(|c| c == "accounts.updated")
     );
     assert_eq!(
         events
@@ -499,6 +562,15 @@ async fn binding_lifecycle_and_archive() {
     assert_eq!(s, StatusCode::CREATED, "{acc}");
     conforms(&acc, "Account");
     assert_eq!(acc["binding"]["platform_account"], "Sim101");
+    let id = acc["id"].as_str().unwrap();
+    // Write path (ADR-0006/0008): the create transaction wrote both events.
+    assert_eq!(
+        binding_events(&env, me, id).await,
+        [
+            json!({"kind": "account.limits_changed", "account_id": id, "limits_version": 1}),
+            json!({"kind": "account.binding_changed", "account_id": id, "venue_account_id": venue.as_uuid(), "limits_version": 1}),
+        ]
+    );
     body["display_name"] = json!("Other");
     let (s, e) = create(&env, me, body).await;
     assert_eq!(
@@ -507,7 +579,6 @@ async fn binding_lifecycle_and_archive() {
         "{s}"
     );
 
-    let id = acc["id"].as_str().unwrap();
     let lc = format!("/api/v1/accounts/{id}/lifecycle");
     let (s, paused) = send(
         &env,
@@ -565,6 +636,14 @@ async fn binding_lifecycle_and_archive() {
     )
     .await;
     assert_eq!(s, StatusCode::NO_CONTENT);
+    // Archiving releases the binding: a limits bump and both events again.
+    assert_eq!(
+        binding_events(&env, me, id).await[2..],
+        [
+            json!({"kind": "account.limits_changed", "account_id": id, "limits_version": 2}),
+            json!({"kind": "account.binding_changed", "account_id": id, "venue_account_id": null, "limits_version": 2}),
+        ]
+    );
     let (s, _) = send(&env, Call::new("GET", format!("/api/v1/accounts/{id}"), me)).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
     // The name and the platform account are free again.
@@ -572,6 +651,23 @@ async fn binding_lifecycle_and_archive() {
     again["binding"] = json!({"connection_id": connection.as_uuid(), "platform_account": "Sim101"});
     let (s, e) = create(&env, me, again).await;
     assert_eq!(s, StatusCode::CREATED, "{e}");
+    let archived = outbox(&env, me)
+        .await
+        .into_iter()
+        .find(|e| e.0 == "accounts.archived")
+        .unwrap();
+    assert_eq!(
+        archived.1["details"]["changes"],
+        json!([{"field": "binding", "old": "Sim101"}])
+    );
+    let codes = audit_conforms(&env, me).await;
+    for code in [
+        "accounts.created",
+        "accounts.lifecycle_changed",
+        "accounts.archived",
+    ] {
+        assert!(codes.iter().any(|c| c == code), "{code}");
+    }
 }
 
 #[tokio::test]
@@ -603,6 +699,12 @@ async fn restart_evaluation_needs_a_target() {
     .execute(&env.db.admin)
     .await
     .unwrap();
+    // As if created with an evaluation preset (S16): the start defaults to the creation date.
+    sqlx::query("UPDATE accounts.account SET evaluation_start = '2026-09-01' WHERE id = $1")
+        .bind(Uuid::parse_str(id).unwrap())
+        .execute(&env.db.admin)
+        .await
+        .unwrap();
     let (s, after) = send(
         &env,
         Call::new("POST", &uri, me).body(json!({"evaluation_start": "2026-10-01",
@@ -613,6 +715,22 @@ async fn restart_evaluation_needs_a_target() {
     conforms(&after, "Account");
     assert_eq!(after["evaluation_start"], "2026-10-01");
     assert_eq!(after["evaluation_earned_before"], "120.50");
+    let restarted = outbox(&env, me)
+        .await
+        .into_iter()
+        .find(|e| e.0 == "accounts.evaluation_restarted")
+        .unwrap();
+    assert_eq!(
+        restarted.1["details"],
+        json!({"start": "2026-10-01", "previous_start": "2026-09-01",
+               "profit_target": "3000.00", "earned_before": "120.50"})
+    );
+    assert!(
+        audit_conforms(&env, me)
+            .await
+            .iter()
+            .any(|c| c == "accounts.evaluation_restarted")
+    );
     let (s, e) = send(
         &env,
         Call::new("POST", &uri, me)
@@ -686,4 +804,80 @@ async fn rls_is_fail_closed_without_a_user_context() {
         .execute(&mut *tx)
         .await;
     assert!(denied.is_err(), "allwin_app cannot delete accounts");
+}
+
+#[tokio::test]
+async fn a_refused_write_leaves_no_row_and_no_event() {
+    use accounts_application::enterprise::{AccountId, Binding, MoneyAmount, RuleOrigin};
+    use accounts_application::events::AccountsEvent;
+    use accounts_application::ports::{AccountStore, AccountWrite, CommissionWrite, StoreError};
+
+    let Some(env) = env().await else { return };
+    let me = support::user(&env.db).await;
+    let connection = ConnectionId::from_uuid(Uuid::now_v7());
+    let venue = VenueAccountId::from_uuid(Uuid::now_v7());
+    env.venues.known.lock().unwrap().insert(
+        (UserId::from_uuid(me), connection, "Sim101".into()),
+        VenueAccountFacts {
+            venue_account_id: venue,
+            kind: VenueKind::Simulation,
+        },
+    );
+    let mut bound = real("Bound");
+    bound["binding"] = json!({"connection_id": connection.as_uuid(), "platform_account": "Sim101"});
+    assert_eq!(create(&env, me, bound).await.0, StatusCode::CREATED);
+    let (s, other) = create(&env, me, real("Other")).await;
+    assert_eq!(s, StatusCode::CREATED);
+    let id = AccountId::from_uuid(Uuid::parse_str(other["id"].as_str().unwrap()).unwrap());
+    let before = outbox(&env, me).await.len();
+
+    // A concurrent bind of the same platform account (past the use case's check): the unique
+    // index refuses it and the whole transaction rolls back.
+    let store = PgAccountStore::new(env.db.app.clone());
+    let user = UserId::from_uuid(me);
+    let stored = store.get(user, id).await.unwrap().unwrap();
+    let mut next = stored.clone();
+    let now = chrono::Utc::now();
+    next.binding = Some(Binding {
+        venue_account_id: venue,
+        bound_at: now,
+    });
+    next.commission_per_contract_side = Some(MoneyAmount::new("0.50".parse().unwrap()).unwrap());
+    next.row_version += 1;
+    next.limits_version += 1;
+    let events = vec![
+        AccountsEvent::LimitsChanged {
+            account_id: id,
+            at: now,
+            limits_version: next.limits_version,
+        },
+        AccountsEvent::BindingChanged {
+            account_id: id,
+            at: now,
+            venue_account_id: Some(venue),
+            limits_version: next.limits_version,
+        },
+    ];
+    let refused = store
+        .save(AccountWrite {
+            account: next,
+            expected_row_version: stored.row_version,
+            commission: CommissionWrite::Set(RuleOrigin::SetByUser),
+            events,
+        })
+        .await;
+    assert!(
+        matches!(refused, Err(StoreError::BindingTaken)),
+        "{refused:?}"
+    );
+    assert_eq!(outbox(&env, me).await.len(), before, "no event written");
+    let after = store.get(user, id).await.unwrap().unwrap();
+    assert_eq!(
+        (
+            after.binding,
+            after.limits_version,
+            after.commission_per_contract_side
+        ),
+        (None, 1, None)
+    );
 }

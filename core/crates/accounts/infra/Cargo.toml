@@ -11,7 +11,7 @@ description = "accounts module — infra layer: PostgreSQL store, outbox, HTTP h
 workspace = true
 
 [dependencies]
-accounts-application = { path = "../application" }
+accounts-application.workspace = true
 access = { workspace = true, features = ["axum"] }
 shared-kernel = { workspace = true, features = ["sqlx"] }
 async-trait.workspace = true
@@ -29,7 +29,7 @@ utoipa.workspace = true
 uuid = { workspace = true, features = ["v7", "serde"] }
 
 [dev-dependencies]
-accounts-application = { path = "../application", features = ["testing"] }
+accounts-application = { workspace = true, features = ["testing"] }
 sqlx = { workspace = true, features = ["migrate"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 tower = { workspace = true, features = ["util"] }
