@@ -1,8 +1,9 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
 - **Status:** Accepted (2026-10-23), rev. 15.2; **rev. 16 proposed**:
-  - **Binding (Esquadro, ADR-0008):** `accounts` owns the account ↔ platform-account binding. `accounts.account` gains `venue_account_id` and `bound_at`, and `gateway.venue_account` loses `account_id`, `bound_at` and `venue_account_bound_key` (§5.2, §5.3).
+  - **Binding (Esquadro, ADR-0008, approved by the user):** `accounts` owns the account ↔ platform-account binding. `accounts.account` gains `venue_account_id` and `bound_at`, and `gateway.venue_account` loses `account_id`, `bound_at` and `venue_account_bound_key` (§5.2, §5.3).
   - **Wave 1 versions assigned (§8):** old #5 split into a catalog file and an accounts file; `account_rule_value` (old #12) moves to S5; bracket profiles get their own file (S6).
+  - **From the S5 migration review (Malha):** `display_name` 1..80 and `row_version ≥ 1` `CHECK`s on `account`; `DELETE` on `account` revoked from `allwin_app`; `opt_in_rule_version` is `SELECT`-only until S16; the Q13-b erasure order is stated (§5.2).
 - Rev. 15.2 (e39d83b): protocol 1.3 shared fills. The trade's fill references become `trades.trade_fill` rows with the quantity and the allocated commission. Trade commission = Σ allocated shares (pro rata, 4 decimals half away from zero, remainder to the trade allocated last).
 - Rev. 15.1 (65d257e): a lower `commission_per_contract_side` is scheduled like other looser inputs (Esquadro, ADR-0006 §3.7), and the adjusted-balance window is stated.
 - Rev. 15 (8101a15) — user decisions of 2026-10-23: net P&L as the main value, risk on net, V1 evaluation target, U20 (a) commission floor. Rev. 15 (§5.6, §5.7, §6.3, §6.6):
@@ -578,8 +579,8 @@ CREATE TABLE catalog.opt_in_rule_version (               -- global, no RLS; appe
 );
 CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_version (kind, version_number) WHERE is_generic;
 -- Non-generic: one version per (release, firm_platform, kind), unique index added in S16 (§5.7).
--- Grants: allwin_app SELECT, INSERT (publishing goes through the admin use case); no UPDATE/DELETE for anyone at
--- runtime, so a published text cannot change under a recorded choice. A correction is a new version (change_cause).
+-- Grants: allwin_app SELECT (rev. 16: SELECT only in #5a; INSERT is granted by the S16 migration with the admin
+-- publish use case); no UPDATE/DELETE for anyone at runtime, so a published text cannot change under a recorded choice. A correction is a new version (change_cause).
 -- The current version of a selection is the highest version_number.
 ```
 
@@ -592,7 +593,7 @@ CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_versi
 CREATE TABLE accounts.account (
   id                uuid PRIMARY KEY,
   user_id           uuid NOT NULL REFERENCES identity.app_user(id),
-  display_name      text NOT NULL,
+  display_name      text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 80),  -- rev. 16: AccountName
   kind              text NOT NULL CHECK (kind IN ('prop','real')),
   firm_id           uuid,                                -- prop with a preset; catalog (S16)
   firm_name         text CHECK (char_length(firm_name) BETWEEN 1 AND 80),  -- prop, manual mode (rev. 8)
@@ -622,7 +623,7 @@ CREATE TABLE accounts.account (
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
   archived_at       timestamptz,                         -- "deleted" (S5 AC-6); history keeps the id
-  row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
+  row_version       integer NOT NULL DEFAULT 1 CHECK (row_version >= 1),  -- optimistic concurrency
   limits_version    integer NOT NULL DEFAULT 1 CHECK (limits_version >= 1),  -- ADR-0006: bumped with every limits-relevant change
   limits_changed_at timestamptz NOT NULL DEFAULT now(),  -- ADR-0006 §3.5: age of a version gap (60-s alert)
   evaluation_start  date,                                -- rev. 15 (S13b): user-given; Core default = registration date (user's time zone); limits input
@@ -660,7 +661,10 @@ CREATE TABLE accounts.account (
 CREATE UNIQUE INDEX account_user_name_key ON accounts.account (user_id, lower(display_name)) WHERE archived_at IS NULL;
 CREATE INDEX account_user_live_idx ON accounts.account (user_id) WHERE archived_at IS NULL;
 CREATE UNIQUE INDEX account_venue_account_key ON accounts.account (venue_account_id) WHERE venue_account_id IS NOT NULL;  -- rev. 16
+-- Grants (rev. 16): allwin_app SELECT, INSERT, UPDATE; DELETE revoked, because an account is archived, never deleted at runtime.
 ```
+
+- **Q13-b erasure (rev. 16):** no `ON DELETE CASCADE` reaches `account`, and `routing.subscription` has no FK to it. So the erasure job deletes `account_rule_value`, `account_bracket_profile` and the routing subscriptions (through the routing port) before the account. It runs as `allwin_maint`, with its own grant in a later migration whose number the DBA assigns.
 
 - The bounds `multiplier ≤ 1000` and `max_position_qty ≤ 10000` mirror the structural caps in the contracts (instruction `quantity` ≤ 1000, command `quantity` ≤ 10000). The business limit is the user's value.
 - **Prop selection (rev. 8):** a preset (`preset_version_id`, with `firm_id` and optional `firm_platform`) **or** the manual `firm_name` / `plan_name` / `phase`, never both. Manual mode covers the time before S16 (Q40) and plans excluded from presets (S16 AC-9). With a preset, firm, plan and phase are read from the catalog, not copied. `size_amount` is always stored, since risk reads it.
@@ -722,9 +726,11 @@ CREATE TABLE gateway.venue_account (
     - Two concurrent binds of the same platform account serialize on the index: one wins and the other gets 409.
   - Changing or removing a binding first checks `Positions::has_open_position(venue_account_id)` → 409 `accounts.binding_open_position`.
   - The same transaction writes `account.binding_changed {account_id, venue_account_id|null, limits_version}` to `app.outbox`. It bumps `limits_version` (the binding is a limits input, ADR-0006 §3.1).
-- **Archiving releases the binding** (`CHECK`): the archive transaction sets `venue_account_id` and `bound_at` to `NULL` and writes `account.binding_changed`. Otherwise an archived account would keep the platform account taken forever.
+- **Archiving releases the binding** (`CHECK`; ADR-0008): the archive transaction sets `venue_account_id` and `bound_at` to `NULL`, writes `account.binding_changed` and bumps `limits_version`. Otherwise an archived account would keep the platform account taken forever.
+  - An open position already refuses `archiveAccount` with 409 `accounts.delete_open_position` (S5 AC-6), so there is no new code.
 - **No FK across schemas** (§1): `gateway` must keep a `venue_account` row as long as an account may name it.
   - Rows are never deleted at runtime. A revoked connection keeps its rows.
+  - A re-pair keeps the `connection_id` (`newPairingCode` on the same connection, ADR-0004 §8), so the `(connection_id, platform_account)` rows and their bindings survive it. Only an unpair followed by a new connection yields new ids, and the user rebinds (intended, ADR-0008).
   - Readers treat an id with no row as unbound (`routing.platform_unbound`).
 - **Readers:** `gateway` and `routing` use the `accounts` query ports `binding_of(account_id)` and `account_for_venue(venue_account_id)`, read at the decision; there is no derived copy. `account_for_venue` uses `account_venue_account_key`. Gateway fills `VisibleAccount.account_id` this way; a batch variant for a `welcome` list is a port detail, with no schema impact.
 
@@ -1103,7 +1109,7 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   - A removal is kept as an `is_unset` row (a tombstone), because risk needs its `saved_at` to schedule it.
 - **Accounts without a preset** (real, and manual-mode prop) store each rule they set as `origin = 'set_by_user'` (rev. 13, S13 `putAccountRiskRules`). With a preset, only `edited` / `chosen_from_conflict` occur. These are Core rules, since a cross-table `CHECK` is not possible. A real account has no `trading_day_reset` row (`risk.reset_not_editable`).
 - Applying, restoring and re-selecting rewrite `account` (bumping `row_version`) and its `account_rule_value` rows **in one `accounts` transaction**: same module, so this is atomic by construction.
-- Q13-b erasure deletes the rows with the account. The catalog is reference data and is kept.
+- Q13-b erasure deletes the rows before the account (no `CASCADE`; §5.2). The catalog is reference data and is kept.
 
 **Account ↔ `risk.account_limits` consistency: option (B), [ADR-0006](../adr/0006-derived-state-across-modules.md)** (Esquadro, 2026-10-23):
 - **Producer (`accounts`):** **every write that changes an input of the derived limits** (rev. 13: including `putAccountRiskRules` and pending-only saves) bumps `account.limits_version` and sets `limits_changed_at = now()`, in the same transaction as the change. The inputs are:
