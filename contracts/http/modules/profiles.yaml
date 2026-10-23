@@ -139,7 +139,8 @@ paths:
       description: |
         Copies the current default of the size the profile was copied from (`copied_from_size`, which
         keeps the user's Q60 tie choice). For a profile without one (`set_by_user`) the Core uses the
-        account's size, or the nearest standard size for a real account; on an exact tie (Q60,
+        account's size, or the nearest standard size when the size is not a standard one (real, or prop
+        outside the standard list, Q73 b); on an exact tie (Q60,
         decided) the body must name `profile_size` (one of `getNearestProfileSize`'s candidates),
         else 422 `profiles.profile_size_required` / `profiles.profile_size_invalid`. An account with no
         profile gets its first copy this way (origin `size_default` / `nearest_size_default`). Optional
@@ -158,7 +159,7 @@ paths:
               additionalProperties: false
               properties:
                 profile_size:
-                  description: Only for a `set_by_user` (or missing) profile of a real account whose size is a tie.
+                  description: Only for a `set_by_user` (or missing) profile of an account whose non-standard size is a tie (real, or prop, Q73 b).
                   $ref: 'accounts.yaml#/components/schemas/SizeAmount'
                 row_version: { type: integer, minimum: 1 }
       responses:
@@ -187,7 +188,7 @@ paths:
     get:
       tags: [profiles]
       operationId: getNearestProfileSize
-      summary: The standard size(s) whose default profile a real account of this size starts from
+      summary: The standard size(s) whose default profile an account of this non-standard size starts from
       description: |
         Distance = absolute difference between the account size and each standard size; below the
         smallest standard size the smallest is used, above the largest the largest (PO, Q60). An exact
@@ -422,8 +423,9 @@ components:
           enum: [size_default, nearest_size_default, set_by_user]
           description: |
             Where the values came from when last copied: the default of the account's size, the default of
-            the nearest standard size (real account of another size; on an exact tie the size the user
-            picked, Q60), or typed by the user on an account that had no profile.
+            the nearest standard size (an account of a non-standard size, real or prop, Q73 b; on an exact
+            tie the size the user picked, Q60), or typed by the user on an account that had no profile.
+            The nearest size only picks the profile: risk always uses the account's own size (Q73).
         copied_from_size:
           description: With `size_default` / `nearest_size_default`.
           $ref: 'accounts.yaml#/components/schemas/SizeAmount'

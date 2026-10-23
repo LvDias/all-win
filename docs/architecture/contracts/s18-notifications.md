@@ -48,3 +48,8 @@ SSE: `notification.created` and `notification.updated` (full item + `unread`), a
   - the unread counter is a partial index `(user_id, severity) WHERE read_at IS NULL`;
   - `group_key` is defined by the Core from the registry grouping: `code|account_id|trading_day` for `account_trading_day`, `code|firm_id|release` for `firm_release`, and none for `none`.
 - The producer is the audit consumer (outbox), which applies the registry's grouping and `reopen_on_occurrence`. The 1.3 snapshot and the HTTP list come from the same table.
+
+## 4. 5.0.0: `routing.reverse_close_only` (Q74; registry 1.1.0)
+
+- A notification-only code, `danger`, grouping `none`, target `instruction`. Params: `ParamsReverseCloseOnly` (`reason_code` = the gate or `routing.max_position_reached`, `closed_qty`, `closed_side`).
+- It is always sent, including for `routing.limits_pending`, which is otherwise not notified (Vigia I1). For that occurrence it replaces the gate's own grouped notification, so the user gets one item, not two.
