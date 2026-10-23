@@ -41,7 +41,7 @@
 - Approved, waiting to merge together with S3 core: HTTP contract up to 4.3.0 (+ docs 5cd62d8), API-SPEC 30a34fb (N3 closed, allowlist 4939133), S3 web e63f676/4d34a53.
 - Reviews: ADR-0007/0008 round 2 356e23ba24ae APPROVED by Code Review (QA Security pending); data model rev. 16 1741556b905a APPROVED by Code Review.
 - In progress: S3 core (Brasa); S5 core implemented, gates next (Malha); S5 web stepper (Mosaico); S6 core (Torno, Maestri link down); S7 core WIP 480d355/df7bf23 (Ferro); audit-codes delta s/v1-audit-codes--core (Ferro: app.outbox.seq + #7b + dispatcher change approved by Brasa; S1 ingress details aligned to contract 4.3.0; S1 suite rerun by Sentinela); plugin T1 flake + protocol 1.3 (Elo); R3 research (Lupa).
-- VPS Fase 2: scripts f636050 — QA Security CHANGES REQUESTED (high 1, medium 1, low 6, info 4; all open); Code Review pending; Forja fixing; Architect reorders plan §6.5. The user installed Tailscale on the VPS and the Mac (VPS not yet tagged; Tailnet Lock not yet on).
+- VPS Fase 2: scripts + README 86df87c APPROVED (Code Review, QA Security; across rounds 1 high, 2 medium, 11 low fixed; 3 code-review lows tracked by DevOps). Guide sent to the user; the user is running it (RDP already tailnet-only; allwin-agent and NT8 installed).
 - Waiting for the user: Q75; later 061300 (narrowing CHECK, needs explicit authorization).
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.
 
