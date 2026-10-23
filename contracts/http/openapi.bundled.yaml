@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 5.1.1
+  version: 5.2.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -2265,22 +2265,23 @@ paths:
 
         Copy routes of a follower (S19, V1.1) are not created here.
 
-        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
+        Step-up (Q35 decided 2026-10-23, S3 AC-10; setting `step_up.q35_persistence_actions` on, server
 
-        server configuration only, missing/invalid = on): when the source is automated, the route is
+        configuration only, missing/invalid = on): when the route is enabled by this request
 
-        enabled by this request, and the account''s automation was not accepted with a step-up (a real
+        (`is_enabled` true), whatever the source and the account''s opt-in, the body must carry `step_up`
 
-        account, or an opt-in that is `not_required`), the body must carry `step_up` for action
+        for action `route_enable` (target = the account). The code is fresh, with no reuse window. Missing
 
-        `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
+        → 403 `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). (5.2.0: the
 
-        `auth.code_invalid` (`StepUpFailed`).
+        earlier QA Security M1 narrowing, automated sources only and not after an opt-in accepted with a
+
+        code, is removed; the user confirmed in Q87 (a), 2026-10-24, that every switch-on asks.)
 
         '
       x-step-up: conditional
-      x-step-up-when: source is automated and is_enabled and the account's automation was not accepted with step-up (Q35 decided,
-        setting on)
+      x-step-up-when: is_enabled is true (Q35 decided, setting on)
       requestBody:
         required: true
         content:
@@ -2345,22 +2346,21 @@ paths:
 
         or `disabled`, with previous and new values).
 
-        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
+        Step-up (Q35 decided 2026-10-23, S3 AC-10; setting `step_up.q35_persistence_actions` on, server
 
-        server configuration only, missing/invalid = on): when the source is automated, the route goes
+        configuration only, missing/invalid = on): when the route goes from off to on by this request,
 
-        from off to on by this request, and the account''s automation was not accepted with a step-up (a real
+        whatever the source and the account''s opt-in, the body must carry `step_up` for action
 
-        account, or an opt-in that is `not_required`), the body must carry `step_up` for action
+        `route_enable` (target = the account). The code is fresh, with no reuse window. Missing → 403
 
-        `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
+        `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). Other edits, and
 
-        `auth.code_invalid` (`StepUpFailed`).
+        switching off, need none. (5.2.0: the M1 narrowing is removed; see `createRoute`.)
 
         '
       x-step-up: conditional
-      x-step-up-when: source is automated and is_enabled changes false → true and the account's automation was not accepted
-        with step-up (Q35 decided, setting on)
+      x-step-up-when: is_enabled changes false → true (Q35 decided, setting on)
       parameters:
       - $ref: '#/components/parameters/RouteId'
       requestBody:
@@ -4620,6 +4620,21 @@ components:
       type: string
       minLength: 1
       maxLength: 60
+      description: 'A user-chosen name (sources, connections, and every other field that uses this schema).
+
+        The Core trims leading and trailing white space before validating and storing, and checks the
+
+        1–60 length on the TRIMMED value. The schema''s `minLength` / `maxLength` are the client-side
+
+        form: clients send trimmed names (Crivo R2, the approved S3 implementation). A name that is blank after trimming,
+
+        contains a control character (Unicode Cc) or contains a token-shaped part (`aw[kd]_…`, a source
+
+        or device token, ADR-0003 §7) is refused with 400 `common.invalid_request` and the field''s
+
+        pointer (e.g. `/name`). Nothing is stored (5.2.0, Crivo L1, Esquadro).
+
+        '
     TokenBody:
       type: object
       additionalProperties: false
@@ -4776,9 +4791,9 @@ components:
         \ (target = connection),\n  `connection_unpair` (target = connection), `account_opt_in_accept` (target = account;\
         \ automation or copy,\n  setAccountOptIn, applyPresetVersion and the S5/S7 update operations), `account_create_opt_in_accept`\
         \ (no\n  target; S5 create with an accepted opt-in), `admin_invitation_create`.\n- `route_enable` (target = account;\
-        \ createRoute/updateRoute enabling an automated-source route to an account\n  whose automation was not accepted with\
-        \ step-up: a real account or opt-in not_required).\n- `account_binding_change` (target = account; updateAccount changing\
-        \ the platform binding of an account that\n  receives automation: opt-in accepted or an active automated route).\n"
+        \ createRoute/updateRoute switching any route on, Q35 / S3 AC-10).\n- `account_binding_change` (target = account;\
+        \ updateAccount changing the platform binding of an account that\n  receives automation: opt-in accepted or an active\
+        \ automated route).\n"
       enum:
       - source_create
       - source_rotate
@@ -6031,13 +6046,15 @@ components:
       - info
       description: "Final taxonomy (Q-S10-2), set by the Core on every entry, never derived by the client:\n- `received` —\
         \ instruction accepted at ingress;\n- `routed` — routing decision to send to an account (full quantity);\n- `executed`\
-        \ — an order filled;\n- `partial` — quantity capped at the maximum position, or a partial fill;\n- `skipped` — not\
-        \ sent by a configuration rule (duplicate, signal type not selected, opt-in not\n  accepted, account inactive, no\
-        \ stop/target profile, limits not yet derived, maximum already\n  reached, nothing to close);\n- `refused` — not sent\
-        \ by a protective gate (out of sync, risk block, position conflict);\n- `rejected` — refused by validation (ingress)\
-        \ or by the platform;\n- `expired` — command TTL exceeded, not executed;\n- `unknown` — the order's state could not\
-        \ be determined after a recovery (the account is\n  flagged out of sync);\n- `info` — everything else (configuration,\
-        \ connection, security, order received/working/cancelled,\n  bracket calculation, command sent). No badge in the UI.\n"
+        \ — an order filled;\n- `partial` — quantity capped at the maximum position; a `reverse` that runs only its close\
+        \ leg\n  because a gate skipped the open (Q74/Q75, the entry carries the gate code); or a partial fill;\n- `skipped`\
+        \ — not sent by a configuration rule (duplicate, signal type not selected, opt-in not\n  accepted, account inactive,\
+        \ no stop/target profile, limits not yet derived, maximum already\n  reached, nothing to close, nothing to reduce,\
+        \ no active contract for the instrument);\n- `refused` — not sent by a protective gate (out of sync, risk block, position\
+        \ conflict);\n- `rejected` — refused by validation (ingress) or by the platform;\n- `expired` — command TTL exceeded,\
+        \ not executed;\n- `unknown` — the order's state could not be determined after a recovery (the account is\n  flagged\
+        \ out of sync);\n- `info` — everything else (configuration, connection, security, order received/working/cancelled,\n\
+        \  bracket calculation, command requested, command sent). No badge in the UI.\n"
     AuditSignalType:
       type: string
       enum:
@@ -6079,7 +6096,9 @@ components:
       - routing.nothing_to_close
       - routing.nothing_to_reduce
       - routing.no_correlated_order
+      - routing.instrument_unavailable
       - routing.expired
+      - execution.command_requested
       - execution.command_sent
       - execution.bracket_calculated
       - execution.order_received
@@ -6580,36 +6599,49 @@ components:
     DetailsRoutingDecision:
       type: object
       additionalProperties: false
-      description: 'Every `routing.*` decision code (routed, capped, skipped, refused, expired). Q74: for a `reverse`
-
-        the position check (ADR-0003 §4.2) runs before the entry gates. On an account barred for entries
-
-        (`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`), or with no room
-
-        (`max_position_reached`, derived M = 0): position opposite → only the close leg runs, and the
-
-        entry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0
-
-        for the open, and `reverse_closed_qty`; flat → skipped with the gate code, no
-
-        `reverse_closed_qty`; already on the reverse side → `routing.position_conflict` (rejected and
-
-        notified, never a flatten). The same holds when the open leg of a reverse with an opposite
-
-        position expires at routing (gate `expired`, TTL; 5.1.0): the close leg runs (no expiry; audited as
-
-        late if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty` = 0 for
-
-        the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees
-        the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection
-        is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening
-        leg of a reverse", 5.1.1): the open is held until the flatten it depends on is terminal; if it then expires it is
-        `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left
-        the Core, (2) the flatten succeeded with a proven flat position (`already_flat`, or for `filled` the latest report
-        with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets
-        `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
-
-        '
+      description: "`routing.instrument_unavailable` (5.2.0, Esquadro): the instrument is in the catalog but has no active\n\
+        contract at the decision instant. Outcome `skipped` (a configuration rule), with `instrument_symbol`.\nIt applies\
+        \ only at the decision; an instrument outside the catalog stays `ingress.unsupported_instrument`.\nEvery `routing.*`\
+        \ decision code. A routing decision is `routed` (sent in full), `capped` (sent with\nless than requested: a capped\
+        \ quantity, or a reverse's close leg only; audited with outcome\n`partial`), `skipped`, `refused` or `expired` (AuditOutcome).\
+        \ One routing decision entry per\n(instruction, account). **Close and gate 6** (ADR-0003 §4.1 r4 final, Crivo C1;\
+        \ Esmeril M1):\n- a `close` against a NON-flat expected position is always a flatten, with no gates 6–9;\n- a `close`\
+        \ against a FLAT expected position waits for gate 6. Out of sync gives the Q75 flatten;\n  in sync gives `routing.nothing_to_close`.\
+        \ Without an answer from gate 6, the instruction stays\n  undecided and the consumer retries. As an exit it NEVER\
+        \ expires. It is never sent as a flatten\n  without knowing the sync state, which would cancel manual orders on an\
+        \ in-sync account (Q75-1\n  was accepted only for out-of-sync accounts).\n**Two-step reverse** (ADR-0003 §4.1 r4;\
+        \ its close leg never waits for gates 6–9; a reverse against a FLAT expected position waits for gate 6, like the close):\n\
+        with the expected position opposite, the close leg is committed at once. The same commit writes\n`execution.command_requested`\
+        \ (kind `flatten`, step of the reverse's close leg, same\n`instruction_id`, `is_exit` true, actor system, outcome\
+        \ `info`, `safe_to_display` true), so the\nautomatic flatten is visible immediately, even while the gateway or the\
+        \ connection is down. The\ngateway's `execution.command_sent` follows on the real send. The opening is decided\nin\
+        \ a second, idempotent step when the gates answer, or as `routing.expired` when the TTL runs out,\nso it is bounded\
+        \ by the TTL. Only then is the single routing entry written, with the final outcome:\n`routed`, or close-only `partial`\
+        \ with the gate code. There is no separate routing entry for the\nclose leg (5.2.0, Ferro / Lastro). Q74: for a `reverse`\n\
+        the position check (ADR-0003 §4.2) runs before the entry gates. Q74 has four bars (`out_of_sync`,\n`risk_blocked`,\
+        \ `limits_pending`, `no_bracket_profile`). Two more cases give the same close-only\noutcome by rules that already\
+        \ existed, and they are not Q74 bars: no room, `max_position_reached`\n(ADR-0003 §4.2, open `min(Q, M)` with derived\
+        \ M = 0); and the open leg expired at routing,\n`routing.expired` (T1, below). On a barred account: position opposite\
+        \ → only the close leg runs, and the\nentry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty`\
+        \ = 0\nfor the open, and `reverse_closed_qty`; flat → skipped with the gate code, no\n`reverse_closed_qty`, except\
+        \ for `routing.out_of_sync` (Q75, 5.2.0): the flat position is not\ntrusted, so the close leg is sent as a flatten\
+        \ and the open is never created; decision `capped`,\nthe entry carries `routing.out_of_sync`, outcome `partial`, `executed_qty`\
+        \ = 0, `expected_flat`\ntrue and no `reverse_closed_qty` (the closed quantity is unknown at the decision); already\
+        \ on the\nreverse side → `routing.position_conflict` (rejected and notified, never a flatten, also when out\nof sync).\
+        \ Q75 also applies to a `close`: on an out-of-sync account with a flat expected position it\nis sent as a flatten\
+        \ (decision `routed`, `expected_flat` true), and `routing.nothing_to_close`\nnever applies to an out-of-sync account.\
+        \ A `reduce` is never turned into a flatten (Q76):\n`routing.nothing_to_reduce`, also when out of sync. The same holds\
+        \ when the open leg of a reverse with an opposite\nposition expires at routing (gate `expired`, TTL; 5.1.0): the close\
+        \ leg runs (no expiry; audited as\nlate if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty`\
+        \ = 0 for\nthe open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision\
+        \ itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue\
+        \ while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies (\"\
+        Exception: the opening leg of a reverse\", 5.1.1): an open leg found expired before it was sent is held until the\
+        \ flatten it depends on is terminal; it is then `expired`, audited as `execution.expired`, and it does NOT flag the\
+        \ account out of sync only when (1) it never left the Core, (2) the flatten succeeded with a proven flat position\
+        \ (`already_flat` with no later report for that account and contract, or for `filled` the latest report with `position_after`\
+        \ shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets `routing.reverse_close_only`\
+        \ with `reason_code: routing.expired`. Any other case flags out of sync as before.\n"
       properties:
         sizing:
           $ref: '#/components/schemas/DetailsSizing'
@@ -6653,12 +6685,57 @@ components:
           maximum: 10000
           description: 'Q74: abs(position) read at the decision, i.e. the quantity the close leg of a reverse is sent to flatten
             when its open leg is skipped with this code. The executed result is in the execution entries.'
+        expected_flat:
+          type: boolean
+          description: 'Q75 (5.2.0): true when a flatten was sent while the expected position was flat, because the account
+            is out of sync (a `close`, decision `routed`, or the close leg of a reverse, `routing.out_of_sync` capped). The
+            adapter cancels every working order on the contract (manual ones included) and checks the real position; the result
+            is in the execution entries (`execution.cancelled` + `command.already_flat`, or fills) and is notified once (`routing.out_of_sync_flatten`,
+            or `routing.reverse_close_only` for a reverse that filled). Absent otherwise.'
         ttl_ms:
           type: integer
           minimum: 1
         expiry_base:
           $ref: '#/components/schemas/Timestamp'
+        instrument_symbol:
+          type: string
+          pattern: ^[A-Z0-9]{1,10}$
+          description: The instruction's instrument (required with `routing.instrument_unavailable`).
+        gates_unknown:
+          type: boolean
+          description: '5.2.0 (Esquadro, S7 N1). True when the TTL ran out before the account gates 6–9 (out of sync,
+
+            risk, limits, bracket profile) answered. It applies only to entries, since only entries have a
+
+            TTL. The decision then uses only what is known: the action rules that do not depend on those
+
+            gates (`routing.position_conflict`, `routing.nothing_to_reduce`), or else `routing.expired`. It
+
+            never names a gate that did not answer; the S10 text says "os gates de conta não responderam a
+
+            tempo". `routing.nothing_to_close` is never decided with `gates_unknown` (see the close rule).
+
+            Absent otherwise.
+
+            '
+        contract_month:
+          type: string
+          pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+          description: '5.2.0 (Esquadro, S7 D2): the contract month the decision resolved (YYYY-MM). The instruction''s
+
+            month wins when present; otherwise it is the rollover catalog''s active contract at the decision
+
+            instant (P5). The resolved (symbol, month) is used for the position, the gates, the brackets and
+
+            the commands.
+
+            '
     DetailsCommandSent:
+      description: '`execution.command_sent` (the gateway; committed before the socket write) and `execution.command_requested`
+        (5.2.0, Esquadro: routing committed an EXIT command that the gateway has not sent yet, so it is visible while it waits,
+        even with the gateway or the connection down. Every exit command routing commits gets one: `close`, `reduce`, `cancel`,
+        protective `modify`, and the close leg of a reverse. Audit only, actor system, outcome `info`, `is_exit` true; the
+        gateway''s `execution.command_sent` follows on the real send; `expires_at` absent, since exits carry none).'
       type: object
       additionalProperties: false
       required:
@@ -7467,8 +7544,12 @@ components:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.no_correlated_order:
           $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.instrument_unavailable:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.expired:
           $ref: '#/components/schemas/DetailsRoutingDecision'
+        execution.command_requested:
+          $ref: '#/components/schemas/DetailsCommandSent'
         execution.command_sent:
           $ref: '#/components/schemas/DetailsCommandSent'
         execution.bracket_calculated:
@@ -7812,15 +7893,39 @@ components:
       - reason_code
       - closed_qty
       - closed_side
-      description: 'Q74 (Vigia I1): a `reverse` that closed the position and skipped the open, because the account is
+      description: 'Q74 (Vigia I1): a `reverse` that closed the position and skipped the open. The cause is one of the
 
-        barred for entries or has no room. Always notified, one per occurrence, whatever the gate
+        four Q74 bars, or one of two cases with the same outcome by existing rules: no room (M = 0, ADR-0003
+
+        §4.2) or the open expired at routing (T1). Always notified, one per occurrence, whatever the gate
 
         (including `routing.limits_pending`, which is otherwise not notified). It replaces the gate''s own
 
-        grouped notification for that occurrence. The audit entry carries the gate code
+        grouped notification for that occurrence. Audit entries behind it: at routing (gates, M = 0,
 
-        (`DetailsRoutingDecision.reverse_closed_qty`).
+        `routing.expired`) the routing entry carries the gate code and
+
+        `DetailsRoutingDecision.reverse_closed_qty`; in the gateway-queue exception (5.1.1) the decision
+
+        entry stays `routing.routed`, the open leg''s entry is `execution.expired` and the closed quantity
+
+        is in the flatten''s execution entries; under Q75 the routing entry is `routing.out_of_sync` with
+
+        `expected_flat` and no `reverse_closed_qty`, and the closed quantity is in the flatten''s
+
+        `execution.filled` entries. Q75 (5.2.0, decision 4b A): when the account is
+
+        out of sync and the expected position was flat (`expected_flat`), nothing is notified at the
+
+        decision. When the flatten is terminal: filled → this notification with `reason_code`
+
+        `routing.out_of_sync` and `closed_qty` / `closed_side` from the flatten''s fills (when the real
+
+        position was already the reverse side, `closed_side` is that side); `command.already_flat` → not
+
+        this code but `routing.out_of_sync_flatten` (`ParamsOutOfSyncFlatten`), and the grouped
+
+        `routing.out_of_sync` notification covers the skipped open.
 
         '
       properties:
@@ -7839,13 +7944,72 @@ components:
           type: integer
           minimum: 1
           maximum: 10000
-          description: 'abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`).'
+          description: 'abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`).
+            Q75 (`expected_flat`): the quantity filled by the flatten.'
         closed_side:
           type: string
           enum:
           - long
           - short
-          description: The side of the position that was closed.
+          description: 'The side of the position that was closed (Q75: from the flatten''s fills).'
+    ParamsOutOfSyncFlatten:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - result
+      description: 'Q75 (5.2.0, ADR-0003 r4): a flatten sent on an out-of-sync account whose expected position was
+
+        flat (`DetailsRoutingDecision.expected_flat`) ended in a terminal success. Sent once per such
+
+        flatten, except a `reverse` whose flatten filled, which is `routing.reverse_close_only`. As every
+
+        flatten, it first cancelled every working order on the contract, manual and other All Win orders
+
+        included, even when the position turned out flat; the text says so. The Core does not count the
+
+        cancelled orders (the adapter does not correlate them with the flatten).
+
+        '
+      properties:
+        action:
+          type: string
+          enum:
+          - close
+          - reverse
+          description: The source instruction's action.
+        result:
+          type: string
+          enum:
+          - filled
+          - already_flat
+          description: '`filled`: the account held a position the Core did not expect, now closed; `already_flat`: `command.already_flat`.'
+        closed_qty:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 'Only with `filled`: the quantity filled by the flatten.'
+        closed_side:
+          type: string
+          enum:
+          - long
+          - short
+          description: 'Only with `filled`: the side of the position that was closed.'
+      if:
+        properties:
+          result:
+            const: filled
+      then:
+        required:
+        - closed_qty
+        - closed_side
+      else:
+        not:
+          anyOf:
+          - required:
+            - closed_qty
+          - required:
+            - closed_side
     ParamsPresetNewVersion:
       type: object
       additionalProperties: false
@@ -7895,8 +8059,14 @@ components:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.no_bracket_profile:
           $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.instrument_unavailable:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.nothing_to_reduce:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.reverse_close_only:
           $ref: '#/components/schemas/ParamsReverseCloseOnly'
+        routing.out_of_sync_flatten:
+          $ref: '#/components/schemas/ParamsOutOfSyncFlatten'
         risk.warning:
           $ref: '#/components/schemas/DetailsRiskState'
         risk.limit_reached:
