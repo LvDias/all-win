@@ -1,0 +1,204 @@
+{
+  "schema_version": "1.0",
+  "firm": {
+    "slug": "example-firm",
+    "name": "Example Firm",
+    "domains": [
+      "example-firm.com"
+    ]
+  },
+  "release": {
+    "version_number": 1,
+    "verified_on": "2026-10-20",
+    "research_file": "docs/product/presets/research/example-firm.md",
+    "changes": []
+  },
+  "platforms": [
+    {
+      "code": "rithmic",
+      "label": "Rithmic"
+    },
+    {
+      "code": "tradovate",
+      "label": "Tradovate"
+    }
+  ],
+  "stances": {
+    "automation": [
+      {
+        "kind": "automation",
+        "version": 1,
+        "firm_stance": "allowed",
+        "quotes": [
+          {
+            "text": "Automated trading is permitted.",
+            "language": "en",
+            "page_title": "Rules",
+            "url": "https://example-firm.com/rules",
+            "accessed_at": "2026-10-20"
+          }
+        ]
+      }
+    ],
+    "copy": [
+      {
+        "kind": "copy",
+        "version": 1,
+        "firm_stance": "unknown",
+        "quotes": [],
+        "research": {
+          "searched_on": "2026-10-20",
+          "sources": [
+            {
+              "url": "https://example-firm.com/rules",
+              "accessed_at": "2026-10-20"
+            }
+          ]
+        }
+      }
+    ],
+    "vps": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-20",
+        "sources": [
+          {
+            "url": "https://example-firm.com/rules",
+            "accessed_at": "2026-10-20"
+          }
+        ]
+      }
+    },
+    "personal_device": {
+      "value": "not_required",
+      "quotes": [
+        {
+          "text": "Automated trading is permitted.",
+          "language": "en",
+          "page_title": "Rules",
+          "url": "https://example-firm.com/rules",
+          "accessed_at": "2026-10-20"
+        }
+      ]
+    }
+  },
+  "plans": [
+    {
+      "key": "standard",
+      "name": "Standard",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 50,
+                        "published_text": "5 minis / 50 micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://example-firm.com/rules",
+                          "accessed_at": "2026-10-20"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "2000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://example-firm.com/rules",
+                          "accessed_at": "2026-10-20"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://example-firm.com/rules",
+                          "accessed_at": "2026-10-20"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "17:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "5:00 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://example-firm.com/rules",
+                          "accessed_at": "2026-10-20"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "0.37"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://example-firm.com/rules",
+                          "accessed_at": "2026-10-20"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://example-firm.com/rules",
+                          "accessed_at": "2026-10-20"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "days": 5
+                          },
+                          "sources": [
+                            {
+                              "url": "https://example-firm.com/rules",
+                              "accessed_at": "2026-10-20"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
