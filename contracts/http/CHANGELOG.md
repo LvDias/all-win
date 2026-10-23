@@ -1,5 +1,9 @@
 # HTTP API — changelog
 
+## 4.3.0 — 2026-10-23 (S3 audit codes; additive)
+- Audit codes `security.invitation_issued` (`invitation_id`, `masked_email`, `email_sent`), `security.invitation_revoked`, `security.account_created` (`DetailsSecurityInvitation`), category `security` (Esquadro, from the S3 implementation).
+- `KnownAuditCode` states the category of each code family (e.g. `sources.*` / `connections.*` → config, `connection.status_changed` → connection, `security.*` → security).
+
 ## 4.2.1 — 2026-10-23 (text only)
 - `Trade.commission`: the allocation of a fill shared by several trades (flip, FIFO partial close) follows the exact protocol 1.3 rule: pro rata by quantity, 4 decimals half away from zero, remainder to the trade allocated last. `pnl` = `gross_pnl` − `commission`.
 - Manual trades: the floor used for a blank commission is the EFFECTIVE floor at save time, as derived by risk (data model 15.1); a pending lowered floor is not used early (Crivo note).

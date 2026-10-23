@@ -62,3 +62,11 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
 
 - **Esquadro (S3), done:** the 14 `security.*` codes and their `details` (`DetailsSecurity*`) are in `KnownAuditCode` / `AuditDetailsByCode`. Masked values always contain `*`; no code, challenge, token, cookie, or unmasked e-mail or number.
 - **S11 / S13–S15 / S18 contracts:** `sync.*`, `risk.*`, `notifications.*`, same procedure.
+
+## 5. 4.3.0 additions (Esquadro, from the S3 implementation)
+
+- `security.invitation_issued` (`invitation_id`, `masked_email`, `email_sent`; the admin's trail), `security.invitation_revoked`, and `security.account_created` (the new user's log), all in category `security`.
+- The category of each code family is stated in `KnownAuditCode`:
+  - `sources.*`, `connections.*` → config;
+  - `connection.status_changed` → connection (a plugin restart is a `connection.status_changed` with `previous_status`);
+  - `security.*` → security.
