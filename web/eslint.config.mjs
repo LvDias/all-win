@@ -53,7 +53,22 @@ export default defineConfig([
   },
   ...featureBoundaries,
   {
-    files: ["**/*.test.{ts,tsx}", "e2e/**/*.ts", "src/test/**/*.{ts,tsx}"],
+    // QA-owned tests exercise a feature only through its public index, plus the shared layer.
+    files: ["tests/qa/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            { group: ["@/app/*", "@/features/*/*"], message: "tests/qa imports a feature only through @/features/<feature> (its index) and otherwise @/shared." },
+            { group: ["../*", "./*", "@/test/*"], message: "tests/qa uses @/ aliases only." },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["**/*.test.{ts,tsx}", "e2e/**/*.ts", "src/test/**/*.{ts,tsx}", "tests/qa/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
     },
