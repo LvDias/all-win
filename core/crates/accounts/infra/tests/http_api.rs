@@ -344,6 +344,14 @@ async fn request_errors_follow_the_contract_precedence() {
             "/size_amount",
         ),
         (
+            json!({"kind": "real", "display_name": "x", "size_amount": "1.00"}),
+            "/max_position_qty",
+        ),
+        (
+            json!({"kind": "real", "display_name": "x", "size_amount": "1.00", "max_position_qty": 0}),
+            "/max_position_qty",
+        ),
+        (
             json!({"kind": "prop", "display_name": "x", "firm_name": "A", "plan_name": "B", "phase": "C",
                 "size_amount": "1.00", "max_position_qty": 1, "evaluation_start": "2026-02-30"}),
             "/evaluation_start",

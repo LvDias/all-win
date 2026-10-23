@@ -302,9 +302,15 @@ impl AccountStore for PgAccountStore {
         if a.commission_per_contract_side.is_some() {
             write_commission(&mut tx, a, origin_of(a), a.created_at).await?;
         }
-        crate::profiles::insert_initial_copies(&mut tx, a.user_id, a.id, &new.initial_profiles)
-            .await
-            .map_err(other)?;
+        crate::profiles::insert_initial_copies(
+            &mut tx,
+            a.user_id,
+            a.id,
+            &a.display_name,
+            &new.initial_profiles,
+        )
+        .await
+        .map_err(other)?;
         for e in &new.events {
             outbox::insert(&mut tx, a.user_id, e).await.map_err(other)?;
         }

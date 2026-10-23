@@ -2,7 +2,7 @@
 
 pub mod http;
 mod outbox;
-mod profiles;
+pub mod profiles;
 pub mod store;
 
 pub use store::PgAccountStore;
