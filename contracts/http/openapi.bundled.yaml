@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 4.3.0
+  version: 5.1.1
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -22,31 +22,31 @@ info:
     - Decimals are strings; timestamps are RFC 3339 UTC with `Z`; ids are lowercase UUIDs.\n- Errors: `{\"error\": {\"code\"\
     : \"<stable.code>\", ...}}`. Clients translate codes; never rely on text.\n  - Any `/api/v1` or `/adapter/v1` request\
     \ that does not match its schema (malformed JSON, unknown or\n    missing property, pattern/length/enum violation, malformed\
-    \ path or query parameter) gets\n    400 `common.invalid_request` with `error.pointer` (JSON pointer to the first offending\
-    \ field;\n    `/path/<name>` or `/query/<name>` for parameters). Framework default error bodies are never sent.\n  - Unexpected\
-    \ failures get 500 `common.internal` with no detail (no path, query, stack or SQL).\n  - The ingress is the exception:\
-    \ its token and path-parameter violations are always the empty 404\n    (S1 AC-2), and its body errors use the `ingress.*`\
-    \ codes.\n- CSRF: state-changing `/api/v1` requests (POST, PUT, PATCH, DELETE), public ones included, require\n  `SameSite=Lax`\
-    \ cookies plus a strict `Origin` check (must equal the app origin); a missing or\n  different `Origin` gets 403 `common.forbidden_origin`.\
-    \ The rule does not apply to `/ingress/v1`\n  (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not\
-    \ a browser).\n- Sensitive operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition\n \
-    \ in `x-step-up-when`. Every such operation is POST or PUT, and its JSON body has an optional `step_up`\n  property (`StepUpProof`:\
-    \ `challenge_id` + `code`). The client first calls `requestStepUp` for that\n  action and target; one code authorizes\
-    \ one action (auth policy §6). Missing proof → 403\n  `auth.step_up_required`; a wrong, expired, used or mismatched proof\
-    \ → 403 `auth.code_invalid`.\n  The proof travels in the body, never in a header, so access logs cannot record it.\n-\
-    \ One-time codes: every verification failure is the single `auth.code_invalid` (401 when signing in or up,\n  403 on an\
-    \ authenticated operation); code requests always answer 202 (auth policy §3).\n- Check precedence (first failure wins):\
-    \ 401 `auth.unauthenticated` → 403 `common.forbidden_origin`\n  → 403 `auth.forbidden` (admin operations, non-admin caller)\
-    \ → 400 `common.invalid_request` →\n  404 `common.not_found` → 403 `auth.step_up_required` / `auth.code_invalid` → operation-specific\
-    \ 409/422.\n  A non-admin therefore never sees `auth.step_up_required` on an admin operation.\n- Secrets (session and\
-    \ device cookies, ingress token, invitation tokens, one-time codes, challenge\n  tokens, pairing codes, device tokens)\
-    \ are never logged; e-mail addresses and phone numbers are masked (ADR-0001 §5, auth policy §3). One-time values are\n\
-    \  returned exactly once.\n- Response headers (ADR-0001 §9): every Core response (`/api`, `/ingress`, `/adapter`) carries\n\
-    \  `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`. Responses that carry a one-time\n  secret also declare\
-    \ `Cache-Control` explicitly. HSTS is set by Caddy; page headers (CSP etc.) by Next.js.\n- Rate-limited responses are\
-    \ 429 with a `Retry-After` header (seconds).\n- Audit: every automatic action and every security-relevant change is written\
-    \ to the affected\n  user's visible audit log with its reason. Admin actions on a user are written to **that user's**\n\
-    \  audit log, with the acting admin's id.\n"
+    \ or missing path, query or header\n    parameter) gets 400 `common.invalid_request` with `error.pointer` (JSON pointer\
+    \ to the first\n    offending field; `/path/<name>`, `/query/<name>` or `/header/<name>` for parameters, e.g.\n    `/header/Idempotency-Key`).\
+    \ Framework default error bodies are never sent.\n  - Unexpected failures get 500 `common.internal` with no detail (no\
+    \ path, query, stack or SQL).\n  - The ingress is the exception: its token and path-parameter violations are always the\
+    \ empty 404\n    (S1 AC-2), and its body errors use the `ingress.*` codes.\n- CSRF: state-changing `/api/v1` requests\
+    \ (POST, PUT, PATCH, DELETE), public ones included, require\n  `SameSite=Lax` cookies plus a strict `Origin` check (must\
+    \ equal the app origin); a missing or\n  different `Origin` gets 403 `common.forbidden_origin`. The rule does not apply\
+    \ to `/ingress/v1`\n  (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not a browser).\n- Sensitive\
+    \ operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition\n  in `x-step-up-when`. Every\
+    \ such operation is POST or PUT, and its JSON body has an optional `step_up`\n  property (`StepUpProof`: `challenge_id`\
+    \ + `code`). The client first calls `requestStepUp` for that\n  action and target; one code authorizes one action (auth\
+    \ policy §6). Missing proof → 403\n  `auth.step_up_required`; a wrong, expired, used or mismatched proof → 403 `auth.code_invalid`.\n\
+    \  The proof travels in the body, never in a header, so access logs cannot record it.\n- One-time codes: every verification\
+    \ failure is the single `auth.code_invalid` (401 when signing in or up,\n  403 on an authenticated operation); code requests\
+    \ always answer 202 (auth policy §3).\n- Check precedence (first failure wins): 401 `auth.unauthenticated` → 403 `common.forbidden_origin`\n\
+    \  → 403 `auth.forbidden` (admin operations, non-admin caller) → 400 `common.invalid_request` →\n  404 `common.not_found`\
+    \ → 403 `auth.step_up_required` / `auth.code_invalid` → operation-specific 409/422.\n  A non-admin therefore never sees\
+    \ `auth.step_up_required` on an admin operation.\n- Secrets (session and device cookies, ingress token, invitation tokens,\
+    \ one-time codes, challenge\n  tokens, pairing codes, device tokens) are never logged; e-mail addresses and phone numbers\
+    \ are masked (ADR-0001 §5, auth policy §3). One-time values are\n  returned exactly once.\n- Response headers (ADR-0001\
+    \ §9): every Core response (`/api`, `/ingress`, `/adapter`) carries\n  `X-Content-Type-Options: nosniff` and `Cache-Control:\
+    \ no-store`. Responses that carry a one-time\n  secret also declare `Cache-Control` explicitly. HSTS is set by Caddy;\
+    \ page headers (CSP etc.) by Next.js.\n- Rate-limited responses are 429 with a `Retry-After` header (seconds).\n- Audit:\
+    \ every automatic action and every security-relevant change is written to the affected\n  user's visible audit log with\
+    \ its reason. Admin actions on a user are written to **that user's**\n  audit log, with the acting admin's id.\n"
 servers:
 - url: https://{host}
   variables:
@@ -1626,7 +1626,13 @@ paths:
 
         Account ids are generated by the Core.
 
-        Real accounts copy the default profile of the nearest standard size (S6). When the size is
+        An account whose size is not a standard size (any real account size; a prop size outside the
+
+        standard list, Q73 b) copies the default profile of the nearest standard size (S6). The nearest
+
+        size only picks the stop/target profile: balance, limits and every risk figure always use the
+
+        account''s own `size_amount` (Q73). When the size is
 
         exactly between two standard sizes the user picks one: `profile_size` is then required (422
 
@@ -2125,7 +2131,11 @@ paths:
 
         has platform-specific rules). Without it → the **generic** rule versions used by prop accounts
 
-        without a preset (stance `unknown`, no quotes; Q40). Global catalog data, the same
+        without a preset (stance `unknown`, no quotes; Q40); `firm_platform` without `preset_version_id`
+
+        is an invalid combination: 400 `common.invalid_request`, pointer `/query/firm_platform` (as in
+
+        `createAccount`). Global catalog data, the same
 
         for every user; any signed-in user may read it.
 
@@ -2155,7 +2165,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          description: '`accounts.firm_platform_required` or `accounts.firm_platform_unknown` (pointer `/query/firm_platform`).'
+          description: '`accounts.firm_platform_required` or `accounts.firm_platform_unknown` (pointer `/query/firm_platform`;
+            with `preset_version_id` only).'
           content:
             application/json:
               schema:
@@ -2637,7 +2648,9 @@ paths:
 
         keeps the user''s Q60 tie choice). For a profile without one (`set_by_user`) the Core uses the
 
-        account''s size, or the nearest standard size for a real account; on an exact tie (Q60,
+        account''s size, or the nearest standard size when the size is not a standard one (real, or prop
+
+        outside the standard list, Q73 b); on an exact tie (Q60,
 
         decided) the body must name `profile_size` (one of `getNearestProfileSize`''s candidates),
 
@@ -2664,7 +2677,8 @@ paths:
               additionalProperties: false
               properties:
                 profile_size:
-                  description: Only for a `set_by_user` (or missing) profile of a real account whose size is a tie.
+                  description: Only for a `set_by_user` (or missing) profile of an account whose non-standard size is a tie
+                    (real, or prop, Q73 b).
                   $ref: '#/components/schemas/SizeAmount'
                 row_version:
                   type: integer
@@ -2704,7 +2718,7 @@ paths:
       tags:
       - profiles
       operationId: getNearestProfileSize
-      summary: The standard size(s) whose default profile a real account of this size starts from
+      summary: The standard size(s) whose default profile an account of this non-standard size starts from
       description: 'Distance = absolute difference between the account size and each standard size; below the
 
         smallest standard size the smallest is used, above the largest the largest (PO, Q60). An exact
@@ -4503,11 +4517,13 @@ components:
         - `accounts.platform_account_unknown` — `/binding` (no such platform account on a connection of\n  the caller, or\
         \ the connection is unpaired; identical for another user's connection);\n- `accounts.platform_account_kind_not_allowed`\
         \ — `/binding` (`live` or `unknown` kind outside\n  production; ADR-0004 §8);\n- `accounts.profile_size_required`\
-        \ / `accounts.profile_size_invalid` — `/profile_size` (create of\n  a real account whose size is a tie between two\
-        \ standard sizes; Q60);\n- `presets.required_field_unresolved` — `/rule_values/<field>` or `/max_position_qty` (a\
-        \ required\n  rule field of the preset is not confirmed and the body does not resolve it; S16 AC-6);\n- `presets.use_apply_version`\
-        \ — `/preset_version_id` (update to a newer version of the same\n  preset; use `applyPresetVersion`);\n- `accounts.rule_values_without_selection_change`\
-        \ — `/rule_values` (update with the same preset\n  selection; edit rules with `putAccountRiskRules`).\n"
+        \ / `accounts.profile_size_invalid` — `/profile_size` (create of\n  an account whose size is a tie between two standard\
+        \ sizes; real, or prop outside the standard\n  list, Q60 / Q73 b);\n- `accounts.evaluation_not_applicable` — `/evaluation_start`\
+        \ or `/evaluation_earned_before`, the\n  first one sent (create of an account without an evaluation target);\n- `presets.required_field_unresolved`\
+        \ — `/rule_values/<field>` or `/max_position_qty` (a required\n  rule field of the preset is not confirmed and the\
+        \ body does not resolve it; S16 AC-6);\n- `presets.use_apply_version` — `/preset_version_id` (update to a newer version\
+        \ of the same\n  preset; use `applyPresetVersion`);\n- `accounts.rule_values_without_selection_change` — `/rule_values`\
+        \ (update with the same preset\n  selection; edit rules with `putAccountRiskRules`).\n"
       content:
         application/json:
           schema:
@@ -5533,10 +5549,15 @@ components:
         evaluation_start:
           type: string
           format: date
-          description: Prop accounts in an evaluation phase (Q46, S13b; Q69 a) — the day the evaluation count starts; default
-            the registration date. Later changes only through `restartEvaluation`.
+          description: Accounts with an evaluation target only (Q46, S13b; Q69 a) — the day the evaluation count starts; default
+            the registration date in the user's time zone. Invariant — an account with an evaluation target always has an
+            `evaluation_start`; when an existing account gains a target (selection or preset change, `applyPresetVersion`,
+            a rule edit), the Core sets a missing start to the same default in that transaction; that is a rule-input change,
+            so it bumps `account.limits_version` and emits `account.limits_changed` (ADR-0006 §3.1). Sent for an account without
+            an evaluation target → 422 `accounts.evaluation_not_applicable`. Later changes only through `restartEvaluation`.
         evaluation_earned_before:
           description: Net profit already made in this evaluation before `evaluation_start` (optional; counts toward the target).
+            Accounts with an evaluation target only (else 422 `accounts.evaluation_not_applicable`).
           $ref: '#/components/schemas/MoneyAmount'
         binding:
           $ref: '#/components/schemas/PlatformAccountRef'
@@ -5545,8 +5566,8 @@ components:
             a not-confirmed field (S16 AC-2, AC-6).
           $ref: '#/components/schemas/PresetRuleValues'
         profile_size:
-          description: Real accounts only. The standard size whose default profile is copied, when `size_amount` is a tie
-            (`getNearestProfileSize` returns two candidates). Ignored otherwise.
+          description: The standard size whose default profile is copied, when the account's size (real, or prop outside the
+            standard list, Q73 b) is a tie (`getNearestProfileSize` returns two candidates). Ignored otherwise.
           $ref: '#/components/schemas/SizeAmount'
         opt_ins:
           $ref: '#/components/schemas/OptInChoices'
@@ -5577,10 +5598,6 @@ components:
               - opt_ins
             - required:
               - rule_values
-        else:
-          not:
-            required:
-            - profile_size
       - if:
           properties:
             kind:
@@ -6053,6 +6070,7 @@ components:
       - routing.automation_not_accepted
       - routing.copy_not_accepted
       - routing.account_inactive
+      - routing.platform_unbound
       - routing.no_bracket_profile
       - routing.limits_pending
       - routing.out_of_sync
@@ -6562,7 +6580,36 @@ components:
     DetailsRoutingDecision:
       type: object
       additionalProperties: false
-      description: Every `routing.*` decision code (routed, capped, skipped, refused, expired).
+      description: 'Every `routing.*` decision code (routed, capped, skipped, refused, expired). Q74: for a `reverse`
+
+        the position check (ADR-0003 §4.2) runs before the entry gates. On an account barred for entries
+
+        (`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`), or with no room
+
+        (`max_position_reached`, derived M = 0): position opposite → only the close leg runs, and the
+
+        entry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0
+
+        for the open, and `reverse_closed_qty`; flat → skipped with the gate code, no
+
+        `reverse_closed_qty`; already on the reverse side → `routing.position_conflict` (rejected and
+
+        notified, never a flatten). The same holds when the open leg of a reverse with an opposite
+
+        position expires at routing (gate `expired`, TTL; 5.1.0): the close leg runs (no expiry; audited as
+
+        late if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty` = 0 for
+
+        the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees
+        the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection
+        is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening
+        leg of a reverse", 5.1.1): the open is held until the flatten it depends on is terminal; if it then expires it is
+        `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left
+        the Core, (2) the flatten succeeded with a proven flat position (`already_flat`, or for `filled` the latest report
+        with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets
+        `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
+
+        '
       properties:
         sizing:
           $ref: '#/components/schemas/DetailsSizing'
@@ -6600,6 +6647,12 @@ components:
           type: integer
           minimum: 1
           description: With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006).
+        reverse_closed_qty:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 'Q74: abs(position) read at the decision, i.e. the quantity the close leg of a reverse is sent to flatten
+            when its open leg is skipped with this code. The executed result is in the execution entries.'
         ttl_ms:
           type: integer
           minimum: 1
@@ -7307,8 +7360,7 @@ components:
       - profit_target
       - achieved
       - start
-      description: '`risk.evaluation_target_reached` (notify only, Q70) and `accounts.evaluation_restarted` (with the previous
-        start and earned-before).'
+      description: '`risk.evaluation_target_reached` (notify only, Q70).'
       properties:
         start:
           type: string
@@ -7323,6 +7375,28 @@ components:
         profit_target:
           $ref: '#/components/schemas/Money'
         achieved:
+          $ref: '#/components/schemas/Money'
+    DetailsEvaluationRestarted:
+      type: object
+      additionalProperties: false
+      required:
+      - start
+      - previous_start
+      - profit_target
+      description: '`accounts.evaluation_restarted`: old and new start and earned-before, and the target in force. No progress
+        figure (that is risk data, S13b).'
+      properties:
+        start:
+          type: string
+          format: date
+        previous_start:
+          type: string
+          format: date
+        earned_before:
+          $ref: '#/components/schemas/Money'
+        previous_earned_before:
+          $ref: '#/components/schemas/Money'
+        profit_target:
           $ref: '#/components/schemas/Money'
     DetailsSecurityInvitation:
       type: object
@@ -7374,6 +7448,8 @@ components:
         routing.copy_not_accepted:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.account_inactive:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.platform_unbound:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.no_bracket_profile:
           $ref: '#/components/schemas/DetailsRoutingDecision'
@@ -7506,7 +7582,7 @@ components:
         risk.evaluation_target_reached:
           $ref: '#/components/schemas/DetailsEvaluation'
         accounts.evaluation_restarted:
-          $ref: '#/components/schemas/DetailsEvaluation'
+          $ref: '#/components/schemas/DetailsEvaluationRestarted'
         trades.captured:
           $ref: '#/components/schemas/DetailsTrade'
         trades.manual_created:
@@ -7729,6 +7805,47 @@ components:
           - stance_changed
           - text_changed
           - preset_attached
+    ParamsReverseCloseOnly:
+      type: object
+      additionalProperties: false
+      required:
+      - reason_code
+      - closed_qty
+      - closed_side
+      description: 'Q74 (Vigia I1): a `reverse` that closed the position and skipped the open, because the account is
+
+        barred for entries or has no room. Always notified, one per occurrence, whatever the gate
+
+        (including `routing.limits_pending`, which is otherwise not notified). It replaces the gate''s own
+
+        grouped notification for that occurrence. The audit entry carries the gate code
+
+        (`DetailsRoutingDecision.reverse_closed_qty`).
+
+        '
+      properties:
+        reason_code:
+          type: string
+          enum:
+          - routing.out_of_sync
+          - routing.risk_blocked
+          - routing.limits_pending
+          - routing.no_bracket_profile
+          - routing.max_position_reached
+          - routing.expired
+          description: The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL
+            exceeded (5.1.0), or when the open leg expired in the gateway queue under the ADR-0004 §5 reverse exception (5.1.1).
+        closed_qty:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 'abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`).'
+        closed_side:
+          type: string
+          enum:
+          - long
+          - short
+          description: The side of the position that was closed.
     ParamsPresetNewVersion:
       type: object
       additionalProperties: false
@@ -7778,6 +7895,8 @@ components:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.no_bracket_profile:
           $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.reverse_close_only:
+          $ref: '#/components/schemas/ParamsReverseCloseOnly'
         risk.warning:
           $ref: '#/components/schemas/DetailsRiskState'
         risk.limit_reached:
@@ -9807,9 +9926,11 @@ components:
           - set_by_user
           description: 'Where the values came from when last copied: the default of the account''s size, the default of
 
-            the nearest standard size (real account of another size; on an exact tie the size the user
+            the nearest standard size (an account of a non-standard size, real or prop, Q73 b; on an exact
 
-            picked, Q60), or typed by the user on an account that had no profile.
+            tie the size the user picked, Q60), or typed by the user on an account that had no profile.
+
+            The nearest size only picks the profile: risk always uses the account''s own size (Q73).
 
             '
         copied_from_size:
@@ -10411,19 +10532,41 @@ components:
       - routing.no_bracket_profile
       - routing.limits_pending
       - routing.route_disabled
-      description: 'Why a route does not (fully) receive now. The gate codes of ADR-0003 §4.1 (`account_inactive`,
+      description: 'Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,
 
-        `automation_not_accepted`, `copy_not_accepted`, `out_of_sync`, `risk_blocked`) are also the audit
+        in this order (F§7.2 extended with the route-level states): `source_revoked`, `route_disabled`,
 
-        codes of each skipped instruction; `no_bracket_profile` (S6, Q43) and
+        `platform_unbound`, `out_of_sync`, `connection_disconnected`, `risk_blocked`, `limits_pending`,
 
-        `limits_pending` (ADR-0006: the account''s limits are not yet derived) are skip codes added by this
+        `no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.
 
-        contract (ADR-0003 delta pending, Esquadro). `source_revoked`, `platform_unbound`,
+        This is a display order only. The instruction gates and their order are ADR-0003 §4.1 (Esquadro''s
 
-        `connection_disconnected` (every connection status other than `connected`: disconnected, outdated,
+        S7 delta, with ADR-0008): `account_inactive` → `platform_unbound` → `automation_not_accepted` →
 
-        awaiting pairing, unpaired) and `route_disabled` describe configuration or connection state.
+        `copy_not_accepted` → `signal_type_not_selected` → `out_of_sync` → `risk_blocked` →
+
+        `limits_pending` → `no_bracket_profile` → action rules → `expired` (entries only). The audit code of a skipped
+
+        instruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and
+
+        `no_bracket_profile` block entries only. For a `reverse` the §4.2 position check runs before the
+
+        entry gates (Q74): position opposite → the close leg runs and the open is skipped with the gate
+
+        code; flat → skipped with the gate code; already on the reverse side → `routing.position_conflict`
+
+        (rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction
+
+        reaches the gates); `connection_disconnected` (every connection status other than `connected`:
+
+        disconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an
+
+        entry''s command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a
+
+        protective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as
+
+        late (ADR-0003 §4.1, ADR-0004 T1).
 
         New codes may be added in a minor version; clients show a generic text for an unknown code.
 

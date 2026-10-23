@@ -889,3 +889,51 @@ async fn a_refused_write_leaves_no_row_and_no_event() {
         (None, 1, None)
     );
 }
+
+/// F-S6-1 (Q73 b, S6 AC-8): a size between two standard sizes needs `profile_size` for prop
+/// accounts too, not only real ones.
+#[tokio::test]
+async fn a_size_tie_needs_a_profile_size_for_prop_and_real() {
+    let Some(env) = env().await else { return };
+    let me = support::user(&env.db).await;
+    for kind in ["prop", "real"] {
+        let body = |name: &str, pick: Option<&str>| {
+            let mut b = if kind == "prop" {
+                prop(name, Some("declined"))
+            } else {
+                real(name)
+            };
+            b["size_amount"] = json!("75000.00");
+            if let Some(p) = pick {
+                b["profile_size"] = json!(p);
+            }
+            b
+        };
+        let (s, e) = create(&env, me, body(&format!("{kind} tie a"), None)).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{kind}: {e}");
+        assert_eq!(
+            e["error"],
+            json!({"code": "accounts.profile_size_required", "pointer": "/profile_size"}),
+            "{kind}"
+        );
+        let (s, e) = create(&env, me, body(&format!("{kind} tie b"), Some("60000.00"))).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{kind}: {e}");
+        assert_eq!(
+            e["error"]["code"], "accounts.profile_size_invalid",
+            "{kind}"
+        );
+        let (s, e) = create(&env, me, body(&format!("{kind} tie c"), Some("100000.00"))).await;
+        assert_eq!(s, StatusCode::CREATED, "{kind}: {e}");
+        assert_eq!(
+            e["size_amount"], "75000.00",
+            "{kind}: the account keeps its own size"
+        );
+    }
+    let accounts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM accounts.account WHERE user_id = $1")
+            .bind(me)
+            .fetch_one(&env.db.admin)
+            .await
+            .unwrap();
+    assert_eq!(accounts, 2, "refused creates write nothing");
+}

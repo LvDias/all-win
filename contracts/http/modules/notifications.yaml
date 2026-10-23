@@ -243,6 +243,23 @@ components:
         account_count: { type: integer, minimum: 1 }
         rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         cause: { type: string, enum: [stance_changed, text_changed, preset_attached] }
+    ParamsReverseCloseOnly:
+      type: object
+      additionalProperties: false
+      required: [reason_code, closed_qty, closed_side]
+      description: |
+        Q74 (Vigia I1): a `reverse` that closed the position and skipped the open, because the account is
+        barred for entries or has no room. Always notified, one per occurrence, whatever the gate
+        (including `routing.limits_pending`, which is otherwise not notified). It replaces the gate's own
+        grouped notification for that occurrence. The audit entry carries the gate code
+        (`DetailsRoutingDecision.reverse_closed_qty`).
+      properties:
+        reason_code:
+          type: string
+          enum: [routing.out_of_sync, routing.risk_blocked, routing.limits_pending, routing.no_bracket_profile, routing.max_position_reached, routing.expired]
+          description: The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL exceeded (5.1.0), or when the open leg expired in the gateway queue under the ADR-0004 §5 reverse exception (5.1.1).
+        closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`).' }
+        closed_side: { type: string, enum: [long, short], description: The side of the position that was closed. }
     ParamsPresetNewVersion:
       type: object
       additionalProperties: false
@@ -269,6 +286,7 @@ components:
         routing.out_of_sync: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.expired: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.no_bracket_profile: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.reverse_close_only: { $ref: '#/components/schemas/ParamsReverseCloseOnly' }
         risk.warning: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.limit_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }

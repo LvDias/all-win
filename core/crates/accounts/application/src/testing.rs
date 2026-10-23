@@ -143,15 +143,17 @@ impl InitialProfilePlanner for NoProfiles {
         profile_size: Option<&SizeAmount>,
         _: DateTime<Utc>,
     ) -> Result<Vec<AccountBracketProfile>, InitialProfileError> {
-        // 37 500 is a tie between 25k and 50k in these tests.
-        if size.value() == Decimal::from(37_500) {
-            return match profile_size.map(|s| s.value()) {
-                None => Err(InitialProfileError::ProfileSizeRequired),
-                Some(v) if v == Decimal::from(25_000) || v == Decimal::from(50_000) => Ok(vec![]),
-                Some(_) => Err(InitialProfileError::ProfileSizeInvalid),
-            };
+        // Ties in these tests, for every kind (Q73 b): 37 500 (25k / 50k) and 75 000 (50k / 100k).
+        let candidates = match size.value() {
+            v if v == Decimal::from(37_500) => [25_000, 50_000],
+            v if v == Decimal::from(75_000) => [50_000, 100_000],
+            _ => return Ok(vec![]),
+        };
+        match profile_size.map(|s| s.value()) {
+            None => Err(InitialProfileError::ProfileSizeRequired),
+            Some(v) if candidates.iter().any(|c| v == Decimal::from(*c)) => Ok(vec![]),
+            Some(_) => Err(InitialProfileError::ProfileSizeInvalid),
         }
-        Ok(vec![])
     }
 }
 
