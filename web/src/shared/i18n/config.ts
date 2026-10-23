@@ -15,8 +15,8 @@ export const localeNames: Record<Locale, { name: string; short: string }> = {
   en: { name: "English", short: "EN" },
 };
 
-/** Pages that open in the locale embedded in the link (invitation and password reset). */
-export const localeExemptSegments = ["invite", "reset-password"] as const;
+/** Pages that open in the locale embedded in the link (invitation). */
+export const localeExemptSegments = ["invite"] as const;
 
 export function isLocale(value: unknown): value is Locale {
   return typeof value === "string" && (locales as readonly string[]).includes(value);

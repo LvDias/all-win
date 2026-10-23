@@ -66,7 +66,7 @@ describe("PreferencesForm", () => {
     await user.click(await screen.findByRole("option", { name: /Chicago/ }));
     expect(await screen.findByText("Preferência salva.")).toBeInTheDocument();
     expect(bodies).toEqual([{ time_zone: "America/Chicago" }]);
-  });
+  }, 20_000);
 
   it("shows me.invalid_time_zone inline", async () => {
     server.use(

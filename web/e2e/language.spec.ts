@@ -37,13 +37,13 @@ test("the NEXT_LOCALE cookie wins over the browser", async ({ page, api, context
 
 test("signed-out visitor switches language: URL, lang, heading focus and cookie", async ({ page, api, context }) => {
   await api.signedOut();
-  await page.goto("/pt-BR");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("All Win");
+  await page.goto("/pt-BR/login");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Entrar");
   await page.getByRole("button", { name: /Idioma: Português/ }).click();
   await page.getByRole("menuitemradio", { name: "English" }).click();
-  await expect(page).toHaveURL(/\/en$/);
+  await expect(page).toHaveURL(/\/en\/login$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expect(page.getByRole("link", { name: "Preferences" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in");
   await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
   expect((await context.cookies()).find((c) => c.name === "NEXT_LOCALE")?.value).toBe("en");
 });

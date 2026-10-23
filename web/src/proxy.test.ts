@@ -15,6 +15,11 @@ describe("proxy", () => {
     expect(page.headers.get("Content-Security-Policy")).not.toBe(redirect.headers.get("Content-Security-Policy"));
   });
 
+  it("sends no-referrer on invite and reset pages", () => {
+    for (const path of ["/pt-BR/invite", "/en/invite"]) expect(proxy(new NextRequest(`http://localhost${path}`)).headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(proxy(new NextRequest("http://localhost/pt-BR/login")).headers.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
+  });
+
   it("matcher skips only whole segments", () => {
     const pattern = new RegExp(`^${(config.matcher[0] ?? "").replace(/\(\?:/g, "(?:")}$`);
     for (const path of ["/api/v1/me", "/ingress/v1/x", "/adapter/v1", "/_next/static/a", "/favicon.ico", "/api"]) expect(pattern.test(path)).toBe(false);

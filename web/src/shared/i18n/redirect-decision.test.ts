@@ -29,7 +29,7 @@ describe("decideRedirect", () => {
     expect(decideRedirect({ ...base, pathname: "/pt-BR/sources", cookieLocale: "pt-BR", hasSession: true })).toBeNull();
   });
 
-  it.each(["/en/invite", "/en/reset-password"])("keeps the locale embedded in %s", (pathname) => {
+  it.each(["/en/invite", "/pt-BR/invite"])("keeps the locale embedded in %s", (pathname) => {
     expect(decideRedirect({ ...base, pathname, cookieLocale: "pt-BR", hasSession: true })).toBeNull();
   });
 });
