@@ -104,7 +104,7 @@ Draft fields (final contract to be defined by the Software Architect):
 - `quantity` is the base size; each target account applies its own **multiplier** (§8). **[Decision]**
 - **Stop and target come from the target account's profile**, not from the instruction. **[Decision]**
 - **Authentication:** every source uses its own secret so no one else can send instructions to the user's accounts. For the TradingView webhook the secret travels **in the webhook URL** (not in the message, so the indicator holds no secret), and it is **masked in every log** (proxy, Core, audit). **[Decision 2026-10-23]**
-- **Conflicting instructions:** an entry opposite to the current position (e.g., `buy` while short) is rejected for that account and the user is notified; `close` always flattens the whole position; `reverse` while flat opens the position. **[Decision 2026-10-23]**
+- **Conflicting instructions:** an entry opposite to the current position (e.g., `buy` while short) is rejected for that account and the user is notified; `close` always flattens the whole position; `reverse` while flat opens the position. A `reverse` on an account barred from entries (out of sync, risk-blocked, limits pending, no stop/target profile) runs only the closing leg (flatten and cancel protections) and skips the opening leg, audited and notified (extension of P1). **[Decision 2026-10-23]** **[Decision 2026-10-23g]**
 - `modify`/`cancel` are not accepted from TradingView in release 1; they are used for master-account replication. **[Decision 2026-10-23]**
 - `modify`/`cancel` and master-account replication need identifiers that link instructions to the same position/order; the Software Architect defines them. **[Open]**
 
@@ -181,7 +181,7 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 
 ### Accounts
 - Manual registration. Types: **prop firm account** (firm, plan, size, phase) and **real brokerage account**, on any supported platform. **[Decision]**
-- Real accounts may have any size; they start from the default profile of the nearest standard size. **Pause** = temporary stop keeping all configuration; **disable** = off until re-enabled; both leave open positions untouched. **[Decision 2026-10-23]**
+- Real accounts may have any size; they start from the default profile of the nearest standard size. A manually entered prop account with a non-standard size follows the same rule; the nearest standard size selects only the stop/target profile, while balance and limits use the account's real values. **[Decision 2026-10-23g]** **Pause** = temporary stop keeping all configuration; **disable** = off until re-enabled; both leave open positions untouched. **[Decision 2026-10-23]**
 
 ### Rules per account
 - Drawdown (with its type, e.g., trailing intraday, end-of-day trailing, static), daily profit target, daily loss limit, and firm-specific rules such as consistency rules. **[Decision]**
@@ -297,3 +297,4 @@ The user's Pine Script indicator ("NQ/ES Strikes Futuros", QuanticoCap levels) r
 - **Details 2026-10-23f:** risk on net P&L; evaluation target start = user-given date (default registration), notice + notification only on reaching it; **U20 (a)** commission floor per account, prefilled by the preset, editable, warning when no commission exists.
 - **Q71 decided 2026-10-23f:** a manual trade with the commission left blank is filled automatically with the account's configured commission per contract per side (× quantity × 2 sides), labeled as estimated; with no configured commission it counts as zero, labeled "comissões não informadas". Manual trades never feed risk.
 - **UX rule (2026-10-23):** long forms become step-by-step flows (see §11); the threshold and the pattern belong to the design system.
+- **Decisions 2026-10-23g:** Q74 (b) — a `reverse` on an entry-barred account runs only the closing leg (extension of P1); Q73 (b) — non-standard manual prop uses the nearest standard size for the stop/target profile only; balance and limits stay real.
