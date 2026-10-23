@@ -48,7 +48,7 @@
   - plugin delta acc038806e60 (Elo; Code Review approved, QA Plugins re-check pending) and protocol 1.3 next;
   - outbox purge + per-consumer tracking (Brasa, after S3).
 - VPS Phase 2: 86df87c APPROVED; guide sent; the user is running it (RDP tailnet-only; allwin-agent and NT8 installed). Dev server joins at step 7 (Forja relays the login URL to the user only).
-- Waiting for the user: VPS Phase 2 (policy + tag, dev server join, Tailnet Lock, scripts); later 061300 (brought when due). Q75 (b) and Q76 (a) decided. 196a30a merge gated on latency explanation + QA PG tests in Docker.
+- Waiting for the user: VPS Phase 2 (applying Passo 1 now); S17 answers a–d. All Q75–Q90 + migrations A/B + S-R3 DECIDED 2026-10-24 (see decisions.md). Previously waiting: (policy + tag, dev server join, Tailnet Lock, scripts); later 061300 (brought when due). Q75 (b) and Q76 (a) decided. 196a30a merge gated on latency explanation + QA PG tests in Docker.
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.
 
 ## Team assignments (2026-10-23 ~22:40) — idle rule: nobody idle >15 min without a reason here
