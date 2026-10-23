@@ -1,5 +1,5 @@
 # All Win — dev stack (PostgreSQL 16 + Core + Caddy). Simulation/dev only.
-# Every published port is bound to 127.0.0.1; nothing is exposed to the network.
+# Every published port is bound to 127.0.0.1; nothing is exposed to the network. The Core publishes none.
 # Usage: infra/scripts/dev-stack.sh up   (needs infra/compose/.env, see .env.example)
 name: allwin-dev
 
@@ -46,9 +46,9 @@ services:
       ALLWIN_ENABLE_DEV_COMMANDS: "true"
       CORE_BIND: 0.0.0.0:${CORE_PORT:-8080}
       RUST_LOG: ${RUST_LOG:-info}
-    # Reachable only through Caddy (and 127.0.0.1 for local debugging).
-    ports:
-      - "127.0.0.1:${CORE_HOST_PORT:-8080}:${CORE_PORT:-8080}"
+    # No published port: with INGRESS_TRUST_FORWARDED_FOR=true anything that reaches the Core directly
+    # (even from loopback) could forge X-Forwarded-For. Reachable only through Caddy on the compose network.
+    # A debug/E2E overlay that publishes it must set INGRESS_TRUST_FORWARDED_FOR=false (contract 1.1.2).
     profiles: ["core"]
 
   caddy:

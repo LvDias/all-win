@@ -10,3 +10,17 @@ Dev host and local stack (owner: DevOps).
 - `compose/postgres-init/01-roles.sh` — creates `allwin_owner/app/worker/maint` and the `allwin` database on first start (passwords from `.env`).
 
 Log capture for QA: `scripts/dev-stack.sh logs caddy core` (container stdout; no secret reaches it).
+
+## Deployment requirements (Core behind Caddy)
+
+- The Core port is never published (dev compose, E2E, production). The Core trusts the last `X-Forwarded-For` hop (`INGRESS_TRUST_FORWARDED_FOR=true`), so it must be reachable only through Caddy. A debug overlay that publishes it must set `INGRESS_TRUST_FORWARDED_FOR=false` and leave `tradingview_source_ranges` empty.
+- Caddy proxies only `/ingress*` (ingress-like paths) and `/api/*` (and `/adapter` when it exists) to the Core. `/metrics` and `/healthz` live on the same Core listener and must never be proxied or exposed publicly.
+- Caddy never records the request URI or the Referer; `log_credentials` stays off; `resp_headers>Location` is deleted from the logs.
+
+## Gates to wire in `make check` / CI (no Makefile or CI exists yet)
+
+- Core: `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features -D warnings`, `ALLWIN_REQUIRE_DB_TESTS=1 cargo test --workspace` (includes the OpenAPI drift test, no database needed for it).
+- sqlx offline data: against a freshly migrated PostgreSQL 16, `.sqlx` must match the queries. With sqlx-cli 0.9.0 `cargo sqlx prepare --workspace --check` fails under `SQLX_OFFLINE=true` (set in `core/.cargo/config.toml`), so run `cargo sqlx prepare --workspace -- --all-targets` and then `git diff --exit-code core/.sqlx`.
+- Plugin: `dotnet test plugins/ninjatrader8 --nologo -v q`.
+- Web: `pnpm check` (lint, typecheck, i18n parity, API drift, Vitest).
+
