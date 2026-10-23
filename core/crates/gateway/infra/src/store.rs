@@ -814,6 +814,31 @@ impl GatewayStore for PgGatewayStore {
             }
         }
 
+        if let Some(d) = &work.deferred {
+            // Behind the receipt; the primary key (connection_id, msg_id) is the second barrier.
+            let done = sqlx::query(
+                "INSERT INTO gateway.deferred_inbound (connection_id, msg_id, user_id, account_id, type, protocol_version,
+                   payload, received_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(d.connection_id.as_uuid())
+            .bind(d.msg_id)
+            .bind(user)
+            .bind(d.account_id.map(|a| a.as_uuid()))
+            .bind(&d.kind)
+            .bind(d.protocol_version.to_string())
+            .bind(&d.payload)
+            .bind(d.received_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+            if done.rows_affected() == 0 {
+                tx.rollback().await.map_err(db)?;
+                return Ok(CommitOutcome::Duplicate);
+            }
+        }
+
         for t in &work.commands {
             let finished = t.to.is_final().then_some(t.at);
             let done = sqlx::query(

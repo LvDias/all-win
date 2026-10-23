@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::intake::{HandleExecutionReport, IntakeError};
-use crate::ports::GatewayStore;
+use gateway_enterprise::ids::AccountId;
+
+use crate::ports::{DeferredInbound, GatewayStore, UnitOfWork};
 use crate::session::Session;
 use crate::snapshot::{HandlePositionSnapshot, SnapshotError};
 use crate::wire::{self, Ack, Envelope, ExecutionReport, PositionSnapshot};
@@ -220,11 +222,42 @@ impl HandleFrame {
                     Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
                 }
             }
-            // Reliable A→C messages whose Core consumer belongs to a later slice (S13/S15 risk,
-            // S18 notifications, S19 master input, S21 trades): not acked, so they stay in the
-            // adapter's durable outbox until a Core version that stores them is deployed.
+            // Reliable A→C messages whose Core consumer is a later slice (S13/S15 risk, S18
+            // notifications, S19 master input, S21 trades): stored and acked in one transaction
+            // (ack = durably received, Esquadro). The owning slice consumes them later; a stored
+            // `instruction` is never routed late (its consumer expires it by TTL).
             "risk_event" | "instruction" | "trade_completed" | "notification_read" => {
-                FrameOutcome::default()
+                let account_id = env
+                    .payload
+                    .get("account_id")
+                    .and_then(Value::as_str)
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .map(AccountId::from_uuid);
+                let Ok(version) = ProtocolVersion::parse(&env.protocol_version) else {
+                    return FrameOutcome::reply(error_frame(
+                        v,
+                        "protocol.invalid_message",
+                        Some(env.msg_id),
+                        now,
+                    ));
+                };
+                let work = UnitOfWork {
+                    receipt: Some((session.connection_id, env.msg_id)),
+                    deferred: Some(DeferredInbound {
+                        msg_id: env.msg_id,
+                        connection_id: session.connection_id,
+                        account_id,
+                        kind: env.kind.clone(),
+                        protocol_version: version,
+                        payload: env.payload,
+                        received_at: now,
+                    }),
+                    ..UnitOfWork::default()
+                };
+                match self.store.commit(session.user_id, work).await {
+                    Ok(_) => FrameOutcome::reply(ack_frame(v, &[env.msg_id], now)),
+                    Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
+                }
             }
             // Latest-value-wins display data: nothing to store in S2.
             "risk_state" => FrameOutcome::default(),

@@ -643,3 +643,106 @@ async fn constraints_and_grants() {
     assert_eq!(stored, n);
     db.teardown().await;
 }
+
+#[tokio::test]
+async fn deferred_inbound_is_stored_once_and_read_only() {
+    let Some(db) = setup().await else { return };
+    let store = PgGatewayStore::new(db.app.clone());
+    let user = db.user().await;
+    let other = db.user().await;
+    let conn = ConnectionId::from_uuid(Uuid::now_v7());
+    let msg = Uuid::now_v7();
+    let work = |m: Uuid| UnitOfWork {
+        receipt: Some((conn, m)),
+        deferred: Some(gateway_application::ports::DeferredInbound {
+            msg_id: m,
+            connection_id: conn,
+            account_id: Some(AccountId::from_uuid(Uuid::now_v7())),
+            kind: "risk_event".into(),
+            protocol_version: ProtocolVersion::V1_3,
+            payload: json!({"kind": "warning"}),
+            received_at: t(0),
+        }),
+        ..UnitOfWork::default()
+    };
+    assert_eq!(
+        store.commit(user, work(msg)).await.unwrap(),
+        CommitOutcome::Committed
+    );
+    assert_eq!(
+        store.commit(user, work(msg)).await.unwrap(),
+        CommitOutcome::Duplicate,
+        "retransmission"
+    );
+    // After the receipt purge (48 h), the primary key still dedupes.
+    sqlx::query("DELETE FROM gateway.inbound_receipt")
+        .execute(&db.inspect)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.commit(user, work(msg)).await.unwrap(),
+        CommitOutcome::Duplicate,
+        "after receipt purge"
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM gateway.deferred_inbound")
+        .fetch_one(&db.inspect)
+        .await
+        .unwrap();
+    assert_eq!(rows, 1);
+
+    // The app role marks processed_at only; never edits the payload or deletes.
+    let mut tx = db.app.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(user.as_uuid().to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query("UPDATE gateway.deferred_inbound SET processed_at = now()")
+            .execute(&mut *tx)
+            .await
+            .unwrap()
+            .rows_affected(),
+        1
+    );
+    tx.commit().await.unwrap();
+    for sql in [
+        "UPDATE gateway.deferred_inbound SET payload = '{}'",
+        "DELETE FROM gateway.deferred_inbound",
+    ] {
+        let err = sqlx::raw_sql(AssertSqlSafe(sql))
+            .execute(&db.app)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err.as_database_error().and_then(|e| e.code()).as_deref(),
+            Some("42501"),
+            "{sql}"
+        );
+    }
+    // The worker reads pending rows and cannot write; another user sees nothing.
+    let seen: i64 = sqlx::query_scalar("SELECT count(*) FROM gateway.deferred_inbound")
+        .fetch_one(&db.worker)
+        .await
+        .unwrap();
+    assert_eq!(seen, 1);
+    assert!(
+        sqlx::query("UPDATE gateway.deferred_inbound SET processed_at = now()")
+            .execute(&db.worker)
+            .await
+            .is_err()
+    );
+    let mut tx = db.app.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(other.as_uuid().to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let cross: i64 = sqlx::query_scalar("SELECT count(*) FROM gateway.deferred_inbound")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(cross, 0, "cross-user read");
+    tx.commit().await.unwrap();
+    db.teardown().await;
+}

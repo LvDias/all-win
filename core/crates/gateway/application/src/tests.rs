@@ -670,3 +670,128 @@ async fn disconnect_in_trade_flags_and_supersede_records_nothing() {
         (SyncState::OutOfSync, vec![SyncReason::DisconnectedByUser])
     );
 }
+
+// ---- frames --------------------------------------------------------------------------------
+
+struct AcceptAll;
+
+impl crate::frames::FrameValidator for AcceptAll {
+    fn validate(&self, _frame: &Value) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+struct RejectAll;
+
+impl crate::frames::FrameValidator for RejectAll {
+    fn validate(&self, _frame: &Value) -> Result<(), String> {
+        Err("schema violation at /payload".into())
+    }
+}
+
+fn frames_uc(
+    w: &World,
+    validator: Arc<dyn crate::frames::FrameValidator>,
+) -> crate::frames::HandleFrame {
+    crate::frames::HandleFrame::new(validator, w.store.clone(), w.intake_uc(), w.snapshot_uc())
+}
+
+fn frame(kind: &str, version: &str, msg_id: Uuid, payload: Value) -> String {
+    json!({"protocol_version": version, "msg_id": msg_id, "type": kind,
+           "sent_at": crate::wire::timestamp(t(0)), "payload": payload})
+    .to_string()
+}
+
+#[tokio::test]
+async fn deferred_frames_are_stored_once_and_acked() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.3"], "simulation", t(0)).await.unwrap();
+    let uc = frames_uc(&w, Arc::new(AcceptAll));
+    let msg = Uuid::now_v7();
+    let text = frame(
+        "risk_event",
+        "1.3",
+        msg,
+        json!({"account_id": w.account, "kind": "warning"}),
+    );
+    for _ in 0..2 {
+        let out = uc.handle(&session, &text, t(1)).await;
+        assert_eq!(out.close, None);
+        let ack: Value = serde_json::from_str(&out.replies[0]).unwrap();
+        assert_eq!(
+            (ack["type"].as_str(), ack["payload"]["msg_ids"][0].as_str()),
+            (Some("ack"), Some(msg.to_string().as_str()))
+        );
+    }
+    let s = w.store.state();
+    assert_eq!(s.deferred.len(), 1, "same msg_id is not stored twice");
+    assert_eq!(s.deferred[0].account_id, Some(w.account));
+    assert_eq!(s.deferred[0].kind, "risk_event");
+}
+
+#[tokio::test]
+async fn invalid_or_newer_frames_are_not_acked() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    let msg = Uuid::now_v7();
+    let out = frames_uc(&w, Arc::new(RejectAll))
+        .handle(&session, &frame("risk_event", "1.2", msg, json!({})), t(1))
+        .await;
+    let err: Value = serde_json::from_str(&out.replies[0]).unwrap();
+    assert_eq!(
+        (err["type"].as_str(), err["payload"]["code"].as_str()),
+        (Some("error"), Some("protocol.invalid_message"))
+    );
+    assert!(w.store.state().deferred.is_empty());
+    let out = frames_uc(&w, Arc::new(AcceptAll))
+        .handle(
+            &session,
+            &frame("trade_completed", "1.3", msg, json!({})),
+            t(1),
+        )
+        .await;
+    let err: Value = serde_json::from_str(&out.replies[0]).unwrap();
+    assert_eq!(err["payload"]["code"], "protocol.unsupported_value");
+    assert_eq!(err["payload"]["ref_msg_id"], json!(msg));
+}
+
+#[tokio::test]
+async fn unexpected_types_close_with_4006_and_store_failures_with_4000() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    let uc = frames_uc(&w, Arc::new(AcceptAll));
+    let out = uc
+        .handle(
+            &session,
+            &frame("hello", "1.2", Uuid::now_v7(), json!({})),
+            t(1),
+        )
+        .await;
+    assert_eq!(
+        out.close,
+        Some((
+            crate::frames::CloseCode::ProtocolViolation,
+            "unexpected_type"
+        ))
+    );
+    assert_eq!(
+        uc.handle(&session, "not json", t(1))
+            .await
+            .close
+            .map(|c| c.0),
+        Some(crate::frames::CloseCode::ProtocolViolation)
+    );
+    *w.store.fail_commits.lock().unwrap() = true;
+    let out = uc
+        .handle(
+            &session,
+            &frame("risk_event", "1.2", Uuid::now_v7(), json!({})),
+            t(1),
+        )
+        .await;
+    assert_eq!(
+        out.close,
+        Some((crate::frames::CloseCode::Normal, "intake_retry"))
+    );
+    assert!(out.replies.is_empty(), "no ack when nothing was stored");
+}

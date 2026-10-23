@@ -221,12 +221,26 @@ pub struct CommandTransition {
     pub at: DateTime<Utc>,
 }
 
+/// A reliable A→C frame whose consumer is a later slice (Esquadro): stored durably and acked;
+/// the owning slice consumes it later. An `instruction` stored this way is never routed late.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeferredInbound {
+    pub msg_id: Uuid,
+    pub connection_id: ConnectionId,
+    pub account_id: Option<AccountId>,
+    pub kind: String,
+    pub protocol_version: ProtocolVersion,
+    pub payload: Value,
+    pub received_at: DateTime<Utc>,
+}
+
 /// One atomic write: optional inbound receipt (msg_id dedupe), report, command transitions,
 /// sync CAS writes and outbox events. All or nothing.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct UnitOfWork {
     pub receipt: Option<(ConnectionId, Uuid)>,
     pub report: Option<ReportRow>,
+    pub deferred: Option<DeferredInbound>,
     pub commands: Vec<CommandTransition>,
     pub sync: Vec<SyncWrite>,
     pub events: Vec<GatewayEvent>,

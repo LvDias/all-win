@@ -37,6 +37,7 @@ pub struct StoreState {
     pub fills: HashSet<(AccountId, String)>,
     pub sync: HashMap<AccountId, AccountSync>,
     pub events: Vec<GatewayEvent>,
+    pub deferred: Vec<DeferredInbound>,
     pub seq: i64,
 }
 
@@ -381,6 +382,9 @@ impl GatewayStore for FakeStore {
         }
         for w in work.sync {
             s.sync.insert(w.account_id, w.next);
+        }
+        if let Some(d) = work.deferred {
+            s.deferred.push(d);
         }
         s.events.extend(work.events);
         Ok(CommitOutcome::Committed)

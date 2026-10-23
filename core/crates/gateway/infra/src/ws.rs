@@ -121,15 +121,21 @@ fn bearer(headers: &HeaderMap) -> Option<PresentedToken> {
     Some(PresentedToken::new(token.to_owned()))
 }
 
+/// The device is authenticated BEFORE the upgrade (Guarita I2). A refused peer still gets the
+/// upgrade, only to receive close 4001 (the code the plugin acts on, ADR-0004 §2); nothing is
+/// read from it, and frames are capped at the protocol's 256 KiB either way.
 async fn upgrade(
     State(rt): State<Arc<GatewayRuntime>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let token = bearer(&headers);
+    let auth = match bearer(&headers) {
+        Some(t) => rt.tokens.authenticate(&t).await,
+        None => Ok(None),
+    };
     ws.max_frame_size(MAX_FRAME)
         .max_message_size(MAX_FRAME)
-        .on_upgrade(move |socket| run(rt, socket, token))
+        .on_upgrade(move |socket| run(rt, socket, auth))
 }
 
 async fn close(socket: &mut WebSocket, code: CloseCode, reason: &'static str) {
@@ -145,12 +151,15 @@ async fn send(socket: &mut WebSocket, frame: String) -> bool {
     socket.send(Message::Text(frame.into())).await.is_ok()
 }
 
-async fn run(rt: Arc<GatewayRuntime>, mut socket: WebSocket, token: Option<PresentedToken>) {
-    let principal = match token {
-        Some(t) => rt.tokens.authenticate(&t).await,
-        None => Ok(None),
-    };
-    let principal = match principal {
+async fn run(
+    rt: Arc<GatewayRuntime>,
+    mut socket: WebSocket,
+    auth: Result<
+        Option<gateway_application::ports::AdapterPrincipal>,
+        gateway_application::ports::PortError,
+    >,
+) {
+    let principal = match auth {
         Ok(Some(p)) => p,
         Ok(None) => return close(&mut socket, CloseCode::InvalidToken, "invalid_token").await,
         Err(_) => return close(&mut socket, CloseCode::Normal, "unavailable").await,
