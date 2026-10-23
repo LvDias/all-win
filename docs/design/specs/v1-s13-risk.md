@@ -44,7 +44,8 @@
    - "Dia de trading: 22/10/2026 17:00 → 23/10/2026 17:00 (GMT-3)" and "Próximo reset: 23/10/2026 17:00 (GMT-3)". Source line: "Reset da firma: 17:00 CT" (tooltip: `17:00 CT (19:00 GMT-3)`, F§6.4) or "Reset: fechamento da sessão CME" for real accounts.
    - Freshness: "Atualizado às 14:31:05 (GMT-3)" (absolute time, `<time>`). If the Core flags the data stale or the account's connection is down: badge `Sem dados recentes` (F§7.2) and the line "NinjaTrader desconectado: os valores abaixo podem estar desatualizados." The UI never shows stale data as current.
 2. **Account risk status** (one line, `StatusBadge`): the worst current state (`Alerta (80 %)`, `Limite atingido`, `Bloqueada até {time}` with reason, `Meta atingida`) or nothing when all is `normal`. Reasons follow F§7.1: a block caused by the profit target uses success color and says "motivo: meta de lucro diária atingida".
-3. **Limits** — one `RiskMeter` (F§7.3) per rule that exists, in this order:
+3. **Banners:** a limit that is not `normal` shows a `RiskBanner` (C§5) above the meters, with the same wording as the notification (S18) and the shell aggregate.
+4. **Limits** — one `RiskMeter` (F§7.3) per rule that exists, in this order:
 
 | Meter | Label pt-BR / en | Value shown | Notes |
 |---|---|---|---|
@@ -56,13 +57,13 @@
    - Percent uses truncation (F§6.2): `80 %` is never shown while the Core state is `normal`. Color and badge come from the Core `state` field.
    - A rule that is **not set** is shown as a plain row, not a meter: "Perda diária: sem limite definido. O All Win não avisa nem recusa entradas por esta regra." with `Definir` (opens S13-02).
    - A rule that is **not confirmed** in the preset and unresolved: "Regra de consistência não confirmada — não acompanhada." with `Resolver` (S16 conflict picker). Nothing is warned from it (PO).
-4. **What happens at the limit** (`Collapsible` "O que acontece quando eu atingir um limite?", closed): fixed text:
+5. **What happens at the limit** (`Collapsible` "O que acontece quando eu atingir um limite?", closed): fixed text:
    - "O All Win recusa novas entradas nesta conta até o próximo reset, mesmo com a aplicação automática desligada. Saídas continuam permitidas."
    - "Com a aplicação automática ligada, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset. Não há desbloqueio antecipado." / (link to the S15 screen or setting once it exists).
    - "A meta de lucro diária só avisa, a menos que você escolha fechar e bloquear."
    - "Regras de consistência só avisam; nunca bloqueiam."
    - Last line: link `Ver no registro de atividade` → `/activity?account={id}&category=risk` (S10).
-5. **Recent risk events** (last 5 entries of category `risk` for this account, from S10 data): time with seconds, text, link to S10. Empty: "Nenhum evento de risco hoje."
+6. **Recent risk events** (last 5 entries of category `risk` for this account, from S10 data): time with seconds, text, link to S10. Empty: "Nenhum evento de risco hoje."
 
 **Live updates (SSE):** values refresh in place without layout shift. Only a **change of state** (normal → warning → reached, or target reached) is announced through a polite live region, and each state change also becomes a notification (S18). Ticks are not announced (F§7.3).
 
@@ -93,7 +94,7 @@
 | Limite de perda diária / Daily loss limit | money `Input` | ≥ 0 | `daily_loss_limit` |
 
 - Help for the daily loss limit on prop accounts whose firm states it as **none**: "A firma informa que não há limite de perda diária." (field read-only, source popover).
-- **Required fields [Provisional, Q-S13-1]:** for prop accounts, drawdown and the daily loss limit are required unless the preset says "none" (S16 AC-6: a required field cannot be saved while not confirmed). For real accounts all are optional; an empty field means "sem limite definido" and the Risk tab says so (§3).
+- **Required fields [Provisional, Q47 rec. (a); user decides]:** for prop accounts the daily loss limit is required unless the preset says "none" explicitly (drawdown and maximum position are already required, S16 AC-6: a required field cannot be saved while not confirmed). For real accounts all are optional; an empty field means "não definido" / "not set" and the Risk tab says so (§3).
 
 ### 4.2 Section "Meta de lucro diária"
 
@@ -103,7 +104,7 @@
 | Ao atingir / When reached | `RadioGroup` of two cards, **"Só avisar" preselected** | `profit_target_on_reach`: `notify` (default, Q3 decided) / `flatten_and_block` |
 
 - "Só avisar": "Você recebe um aviso uma vez quando a meta for atingida. A conta continua operando."
-- "Fechar posições e bloquear até o reset": "Ao atingir a meta, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset, como em um limite de perda. **Exige a aplicação automática ligada (S15).**" **[Whether this option can be saved with enforcement off is an S15/Architect question, Q-S13-4; the spec shows the sentence and does not block saving.]**
+- "Fechar posições e bloquear até o reset": "Ao atingir a meta, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset, como em um limite de perda." **[Provisional, Q49 rec. (a)]** The option is **unavailable while enforcement is off** on this account: `aria-disabled` (focusable, not removed) with the reason inline and in `aria-describedby`: "Disponível quando a aplicação automática estiver ligada nesta conta." / "Available when automatic enforcement is on for this account." + link `Ligar aplicação automática` (S15 control). If enforcement is later turned off while this option is saved, what happens is **Q-S13-8** (S15/Architect).
 - The radio group is the one place in this spec where a default is preselected, because Q3 decided a default; the opt-ins of S5 are different (no default).
 
 ### 4.3 Section "Regra de consistência" (prop accounts only)
@@ -114,7 +115,7 @@
 
 ### 4.4 Section "Dia de trading"
 
-Read-only block: "Reset do dia: {time} ({zone})" with source. Prop: from the preset (value shown with the provenance mark; **editing the preset's reset time is allowed only as an edited copy**, like any preset value **[Q-S13-2]**). Real: "Fechamento da sessão CME" (no editing). The display zone follows the user's profile (F§6.4); the firm's zone appears in the tooltip.
+Read-only block: "Reset do dia: {time} ({zone})" with source. Prop: from the preset (value shown with the provenance mark; **the prop account may edit the reset time of its own copy, marked `Editado` (PO, S16 AC-2, S13 AC-4)**). Real: "Fechamento da sessão CME" (**no editing**, PO). The display zone follows the user's profile (F§6.4); the firm's zone appears in the tooltip.
 
 ### 4.5 Aplicação automática (read-only line)
 
@@ -127,7 +128,9 @@ Read-only block: "Reset do dia: {time} ({zone})" with source. Prop: from the pre
 | Client-side invalid | Inline errors, focus first invalid, summary at ≥ 3 |
 | Server 422 with `pointer` | Map to the field (`/daily_loss_limit`, `/drawdown_type`, `/profit_target_on_reach`, …) and focus it |
 | Unresolved not-confirmed required value | "Resolva este valor para salvar." on the field |
-| New value makes the limit already reached today (the Core returns `would_be_reached`) | `AlertDialog` before saving: "Com este limite, a conta já estaria no limite hoje. Novas entradas serão recusadas até o reset{; com a aplicação automática ligada, posições serão fechadas e a conta bloqueada}. Posições abertas não são alteradas por esta edição." Buttons `Voltar` (focused) / `Salvar mesmo assim`. **[Provisional, Q-S13-3: PO to confirm when a limit edit takes effect and whether it can trigger enforcement immediately]** |
+| Tightening (a stricter value) | **Applies at once** **[Provisional, Q48 rec. (a)]**. The form says so under the field: "Um limite mais apertado vale na hora." |
+| Loosening (a looser value) | **Applies only from the next trading day.** Under the field: "Um limite mais folgado vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the current limit and a line "Novo limite {value} a partir de {date-time zone}" (`pending_changes` from the Core) |
+| New value already exceeded today (the Core returns `would_be_reached`) | `AlertDialog` before saving: "Com este limite a conta já passou do limite hoje. O All Win vai parar de aceitar novas entradas agora{; com a aplicação automática ligada, o plugin fecha as posições e bloqueia a conta até o reset}. Saídas continuam permitidas." Buttons `Voltar` (focused) / `Salvar e aplicar agora`. The dialog is shown only when the Core says the change would be effective now (tightening) |
 | Conflict (`common.version_conflict`) | "Estas regras mudaram em outro lugar." + `Recarregar` |
 | Success | Toast "Regras de risco salvas." → Risk tab. The Core publishes a new limits version to the plugin; the audit entry records previous and new values |
 | Network or 5xx | destructive `Alert` with code; values kept |
@@ -197,7 +200,7 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 | Rules and provenance per field (verified / not confirmed with published values / edited with preset value) | same shape as the S16 preview |
 | Risk summary per account for the list (worst state, limit name, percent) | Same call as the S5 list where possible |
 | Last events of category `risk` per account | from S10 |
-| `would_be_reached` preview for a proposed edit | needed by §4.6; can be part of a validate-only call |
+| `would_be_reached` and `effective_from` (now / next trading day) per changed field for a proposed edit; `pending_changes` (value, `effective_from`) in `getAccountRisk` | needed by §4.6 (Q48); can be a validate-only call |
 
 **Writes**
 
@@ -212,17 +215,21 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 
 ---
 
-## 10. Open questions
+## 10. Decisions and open questions
 
-| ID | Question | Owner | Spec default (provisional) |
-|---|---|---|---|
-| Q-S13-1 | Which rules are required for prop and for real accounts? | PO | Prop: drawdown and daily loss required unless the preset says "none"; real: all optional, unset shown explicitly |
-| Q-S13-2 | May a prop account edit the reset time of its preset copy? | PO | Yes, as an `Editado` copy; real accounts cannot |
-| Q-S13-3 | When does a limit edit take effect, and can lowering a limit below today's used amount trigger enforcement at once? | PO / Architect | Immediately; the user is warned before saving (§4.6) |
-| Q-S13-4 | Can "flatten and block at the profit target" be saved while enforcement is off? | PO / S15 | Allowed, with the text warning |
-| Q-S13-5 | Display of the current trailing floor | Architect | Shown when the Core sends it |
-| Q-S13-6 | Does the user get a notification for a consistency warning on every day, or once per state change? | PO | Once per state change (S18) |
-| Q-S13-7 | Percent precision for consistency threshold | Architect | Integer or one decimal as the preset publishes |
+**Closed by the PO (Rumo, 2026-10-23):** Q-S13-2 a prop account may edit the reset time of its own copy, marked `Editado`; a real account cannot (it uses the CME session close). Q-S13-6 one notification per state change.
+
+**Architect (Compasso):** Q-S13-5 display of the trailing floor; Q-S13-7 percent precision of the consistency threshold.
+
+**User questions drawn as recommendation (a), provisional:**
+
+| ID | Question | Spec default (provisional) |
+|---|---|---|
+| Q47 | Daily loss limit required? | Prop: required unless the preset says "none" explicitly (drawdown and max position already are); real: all optional, shown as "não definido" |
+| Q48 | When does a limit edit take effect? | Tightening at once; loosening from the next trading day; if the new value is already exceeded: warn before saving, the Core stops routing entries, and with enforcement on the plugin flattens at once |
+| Q49 | "Flatten and block" at the profit target | Unavailable while enforcement is off, with the reason |
+
+**Still open (S15/Architect):** Q-S13-8 what happens to a saved "flatten and block" profit-target choice if enforcement is turned off later.
 
 ## 11. AC traceability
 
