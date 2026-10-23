@@ -340,7 +340,8 @@
       "profileSize": {
         "label": "Starting profile",
         "help": "The account size is exactly between two standard sizes. Choose which one to copy stops and targets from; balance and limits use the account size."
-      }
+      },
+      "stepUpDescriptionBinding": "change the platform account linked to this account"
     },
     "optIn": {
       "automation": {

@@ -340,7 +340,8 @@
       "profileSize": {
         "label": "Perfil inicial",
         "help": "O tamanho da conta fica exatamente entre dois tamanhos padrão. Escolha de qual copiar os stops e alvos; o saldo e os limites usam o tamanho da conta."
-      }
+      },
+      "stepUpDescriptionBinding": "alterar a conta da plataforma vinculada a esta conta"
     },
     "optIn": {
       "automation": {
