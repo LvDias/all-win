@@ -57,11 +57,11 @@ So the id must be (1) identical when the *same event* re-fires (protection again
 **Recommendation (deterministic event key):**
 
 ```
-tv-<instrument>-<signal_type>-<setup>-<action[_side]>-<chartTicker>-<timeframe>-<barTimeMs>
-e.g. tv-MNQ-trigger-s6-buy-QQQ-5-1792679400000      (≈45 chars, limit 128)
+tv-<sourceName>-<instrument>-<signal_type>-<setup>-<action[_side]>-<chartTicker>-<timeframe>-<barTimeMs>
+e.g. tv-nq-es-strikes-MNQ-trigger-s6-buy-QQQ-5-1792679400000      (≈60 chars, limit 128)
 ```
 
-Extends the ADR-0003 §7 guidance (`tv-<symbol>-<kind>-<setup>-<bar time ms>`) with action, chart ticker and timeframe; no contract change.
+Extends the ADR-0003 §7 guidance (`tv-<symbol>-<kind>-<setup>-<bar time ms>`) with source name (ids are unique per user, across sources), action, chart ticker and timeframe; no contract change. Source name (1–24) and setup (1–16) are validated, never stripped, so two distinct values can never collapse into one id (review Esmeril LOW-2/3).
 
 Plus, in Pine: `alert()` with `freq_all` guarded by a `varip` set of ids already sent in this script run, so each event is posted once per run (no per-tick spam against the per-key limit of 60/min and no audit noise), while the Core dedupes across reloads and duplicate alert instances. TradingView's `freq_once_per_bar` is tracked per `alert()` call site; a shared helper would have one call site and could suppress a *second distinct* signal on the same bar — the explicit guard avoids depending on that.
 

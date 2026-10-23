@@ -36,7 +36,7 @@ Always: `schema_version` = `"1.0"`, `message_id` (unique, built by the indicator
 | `close` | — | `quantity`, `side`, `order` | flattens the **whole** position and cancels stop/target |
 | `reverse` | `quantity` and `side` (`long`/`short` = final side) | `position_effect` | flattens and opens the requested side; flat → opens |
 
-**Refused by All Win (V1):** `modify`, `cancel`, `position_effect: "reduce"`, non-market orders (`order.type` limit/stop), `signal_type: "master_account"`, any `schema_version` other than `1.0`. **Stop and target never go in the message:** they come from each account's profile.
+**Refused by All Win (V1):** `modify`, `cancel`, `position_effect: "reduce"`, non-market orders (`order.type` limit/stop), `signal_type: "master_account"`, a `schema_version` All Win does not support (today only `1.0`). **Stop and target never go in the message:** they come from each account's profile.
 
 Quantity is **unquoted**: `1`. Do not send `reference_price` while the chart is QQQ/SPY (it would be another instrument's price).
 
@@ -44,23 +44,23 @@ Quantity is **unquoted**: `1`. Do not send `reference_price` while the chart is 
 
 Buy (trigger):
 ```json
-{"schema_version":"1.0","message_id":"tv-MNQ-trigger-s6-buy-QQQ-5-1792679400000","sent_at":"2026-10-22T14:31:05.123Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trigger","action":"buy","instrument":{"symbol":"MNQ"},"quantity":1,"details":{"setup":"Setup 6","zone":"Defense","trigger":"engulfing"}}
+{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trigger-s6-buy-QQQ-5-1792679400000","sent_at":"2026-10-22T14:31:05.123Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trigger","action":"buy","instrument":{"symbol":"MNQ"},"quantity":1,"details":{"setup":"Setup 6","zone":"Defense","trigger":"engulfing"}}
 ```
 Sell (Trade Plan):
 ```json
-{"schema_version":"1.0","message_id":"tv-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000","sent_at":"2026-10-22T15:00:00.120Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trade_plan","action":"sell","instrument":{"symbol":"MNQ"},"quantity":2}
+{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000","sent_at":"2026-10-22T15:00:00.120Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trade_plan","action":"sell","instrument":{"symbol":"MNQ"},"quantity":2}
 ```
 Sell (NQ Trigger):
 ```json
-{"schema_version":"1.0","message_id":"tv-MNQ-nq_trigger-nq-sell-NQ1-1-1792682000000","sent_at":"2026-10-22T15:13:20.004Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"nq_trigger","action":"sell","instrument":{"symbol":"MNQ"},"quantity":1}
+{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-nq_trigger-nq-sell-NQ1-1-1792682000000","sent_at":"2026-10-22T15:13:20.004Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"nq_trigger","action":"sell","instrument":{"symbol":"MNQ"},"quantity":1}
 ```
 Flatten:
 ```json
-{"schema_version":"1.0","message_id":"tv-MNQ-trigger-s6-close-QQQ-5-1792683000000","sent_at":"2026-10-22T15:30:00.000Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trigger","action":"close","instrument":{"symbol":"MNQ"}}
+{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trigger-s6-close-QQQ-5-1792683000000","sent_at":"2026-10-22T15:30:00.000Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trigger","action":"close","instrument":{"symbol":"MNQ"}}
 ```
 Reverse to short:
 ```json
-{"schema_version":"1.0","message_id":"tv-MNQ-trigger-s3-reverse_short-QQQ-5-1792684000000","sent_at":"2026-10-22T15:46:40.250Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trigger","action":"reverse","side":"short","instrument":{"symbol":"MNQ"},"quantity":1}
+{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trigger-s3-reverse_short-QQQ-5-1792684000000","sent_at":"2026-10-22T15:46:40.250Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trigger","action":"reverse","side":"short","instrument":{"symbol":"MNQ"},"quantity":1}
 ```
 The same messages are in `examples/accepted/`.
 

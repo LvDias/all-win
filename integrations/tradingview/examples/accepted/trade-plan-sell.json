@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "message_id": "tv-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000",
+  "message_id": "tv-nq-es-strikes-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000",
   "sent_at": "2026-10-22T15:00:00.120Z",
   "source": {
     "type": "tradingview",

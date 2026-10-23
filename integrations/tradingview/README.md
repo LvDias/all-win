@@ -25,7 +25,7 @@ The Pine adapts to the instruction contract ([ADR-0003](../../docs/architecture/
 
 | Input | Default | Meaning |
 |---|---|---|
-| Source name | `nq-es-strikes` | `source.name` (1–64 characters), shown in the audit log |
+| Source name | `nq-es-strikes` | `source.name`, shown in the audit log and part of every `message_id`: 1–24 characters `A-Z a-z 0-9 . _ -`. Do not change it during the trading day (an event re-fired under a new name gets a new id) |
 | Indicator version | `4.0` | `source.version` (1–32 characters) |
 | Quantity: triggers / Trade Plan / NQ Triggers | 1 | Base quantity per signal type (1–1000), before each account's multiplier |
 | Send only at bar close | on | On: send on the bar's last tick (no repainting, up to one bar of delay). Off: send intrabar as soon as the condition is true |
@@ -40,15 +40,16 @@ Fixed in code: `instrument.symbol` = `MNQ` (V1); no `contract_month` and no `ref
 | `kind` | `"trigger"`, `"trade_plan"`, `"nq_trigger"` |
 | `action` | `"buy"`, `"sell"`, `"close"`, `"reverse"` |
 | `side` | `"long"`/`"short"` for `reverse` (final side), `""` otherwise |
-| `setup` | Short code that identifies the signal (`"s6"`, `"tp"`, `"nq"`); part of `message_id` |
+| `setup` | Short code that identifies the signal (`"s6"`, `"tp"`, `"nq"`); part of `message_id`; 1–16 characters `A-Z a-z 0-9 . _`, anything else is refused (never stripped) |
 | `qty` | Base quantity; ignored for `close` |
-| `details` | `""` or pairs from `aw_kv(key, value)` joined with `","` (max 32 keys); display only |
+| `details` | `""` or pairs from `aw_kv(key, value)` joined with `","`; hard limit 32 pairs; display only |
 
 Returns the `message_id` sent, or `""`.
 
 Behaviour:
-- `message_id` = `tv-MNQ-<kind>-<setup>-<action[_side]>-<chart ticker>-<timeframe>-<bar open time ms>`: the same event always has the same id, so the Core answers `duplicate` instead of executing twice (alert restarted, two alert instances on the chart). Two identical signals on the same bar and chart are one signal.
+- `message_id` = `tv-<source name>-MNQ-<kind>-<setup>-<action[_side]>-<chart ticker>-<timeframe>-<bar open time ms>` (unique per user across all sources): the same event always has the same id, so the Core answers `duplicate` instead of executing twice (alert restarted, two alert instances on the chart). Two identical signals on the same bar and chart are one signal.
 - `sent_at` = `timenow` in UTC with milliseconds (emission time; the Core's expiry is based on it).
 - Sends only on realtime bars. Each id is sent once per script run (`varip` guard), with `alert.freq_all` so that distinct signals on the same bar are never swallowed.
-- Every message is written to Pine Logs (`log.info`). Invalid arguments, an id over 128 characters or a token-shaped string in the body are logged with `log.error` and **nothing is sent** (fail safe).
+- Text values are JSON-escaped (backslash, double quote, newline).
+- Every message is written to Pine Logs (`log.info`). Invalid arguments (kind, action, side, setup, more than 32 details), an id over 128 characters, any other control character in the body, or a token-shaped string in the body are logged with `log.error` and **nothing is sent** (fail safe).
 - Invalid inputs stop the indicator at load with a visible error.

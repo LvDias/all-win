@@ -9,7 +9,7 @@
 
 // ---- Inputs ----------------------------------------------------------------
 AW_GRP = "All Win"
-aw_src_name  = input.string("nq-es-strikes", "Source name", group = AW_GRP)
+aw_src_name  = input.string("nq-es-strikes", "Source name", group = AW_GRP, tooltip = "1-24 characters A-Z a-z 0-9 . _ -. Part of every message_id: do not change it during the trading day.")
 aw_src_ver   = input.string("4.0", "Indicator version", group = AW_GRP)
 aw_qty_trig  = input.int(1, "Quantity: triggers", minval = 1, maxval = 1000, group = AW_GRP)
 aw_qty_tp    = input.int(1, "Quantity: Trade Plan", minval = 1, maxval = 1000, group = AW_GRP)
@@ -48,9 +48,10 @@ aw_pad(int v, int width) =>
 aw_utc(int t) =>
     aw_pad(year(t, "UTC"), 4) + "-" + aw_pad(month(t, "UTC"), 2) + "-" + aw_pad(dayofmonth(t, "UTC"), 2) + "T" + aw_pad(hour(t, "UTC"), 2) + ":" + aw_pad(minute(t, "UTC"), 2) + ":" + aw_pad(second(t, "UTC"), 2) + "." + aw_pad(t % 1000, 3) + "Z"
 
-// JSON string escaping for free text (backslash and double quote).
+// JSON string escaping for free text: backslash, double quote and newline. Any other control
+// character is caught by aw_send, which then sends nothing.
 aw_esc(string s) =>
-    str.replace_all(str.replace_all(s, "\\", "\\\\"), "\"", "\\\"")
+    str.replace_all(str.replace_all(str.replace_all(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
 
 // One "key":"value" pair for the details object. Join several with ",".
 aw_kv(string key, string value) =>
@@ -61,8 +62,8 @@ var string AW_CHART = aw_tok(syminfo.ticker)
 
 // ---- Load-time checks (the indicator shows the error before any alert exists) ----
 if barstate.isfirst
-    if str.length(aw_src_name) < 1 or str.length(aw_src_name) > 64
-        runtime.error("All Win: source name must have 1-64 characters")
+    if str.match(aw_src_name, "^[A-Za-z0-9._-]{1,24}$") == ""
+        runtime.error("All Win: source name must have 1-24 characters A-Z a-z 0-9 . _ -")
     if str.length(aw_src_ver) < 1 or str.length(aw_src_ver) > 32
         runtime.error("All Win: indicator version must have 1-32 characters")
 
@@ -71,22 +72,25 @@ if barstate.isfirst
 //   kind    : "trigger" | "trade_plan" | "nq_trigger"
 //   action  : "buy" | "sell" | "close" | "reverse"
 //   side    : "long" | "short" for reverse (final side); "" otherwise
-//   setup   : short code that identifies the signal, part of message_id (e.g. "s6", "tp", "nq")
+//   setup   : short code that identifies the signal, part of message_id: 1-16 characters
+//             A-Z a-z 0-9 . _ (e.g. "s6", "tp", "nq"); anything else is refused, never stripped
 //   qty     : base quantity in contracts (ignored for close)
-//   details : "" or pairs built with aw_kv(), joined with "," (max 32 keys)
+//   details : "" or pairs built with aw_kv(), joined with ","; hard limit 32 pairs (more = nothing sent)
 // Returns the message_id, or "" when nothing was sent.
 aw_send(string kind, string action, string side, string setup, int qty, string details) =>
     string sentId = ""
     bool kindOk = kind == "trigger" or kind == "trade_plan" or kind == "nq_trigger"
     bool actionOk = action == "buy" or action == "sell" or action == "close" or (action == "reverse" and (side == "long" or side == "short"))
+    bool setupOk = str.match(setup, "^[A-Za-z0-9._]{1,16}$") != ""
+    bool detailsOk = details == "" or array.size(str.split(details, "\":\"")) - 1 <= 32
     bool timingOk = barstate.isrealtime and (not aw_on_close or barstate.isconfirmed)
-    if not kindOk or not actionOk
-        log.error("All Win: invalid kind/action/side: " + kind + " " + action + " " + side + " (nothing sent)")
+    if not kindOk or not actionOk or not setupOk or not detailsOk
+        log.error("All Win: invalid kind/action/side/setup or more than 32 details: " + kind + " " + action + " " + side + " " + setup + " (nothing sent)")
     else if timingOk
         string act = action == "reverse" ? "reverse_" + side : action
         // Deterministic event key: the same event re-fired has the same id (the Core answers
-        // "duplicate"); distinct signals, charts and timeframes get distinct ids.
-        string id = "tv-" + AW_SYMBOL + "-" + kind + "-" + aw_tok(setup) + "-" + act + "-" + AW_CHART + "-" + timeframe.period + "-" + str.tostring(time)
+        // "duplicate"); distinct sources, signals, charts and timeframes get distinct ids.
+        string id = "tv-" + aw_src_name + "-" + AW_SYMBOL + "-" + kind + "-" + setup + "-" + act + "-" + AW_CHART + "-" + timeframe.period + "-" + str.tostring(time)
         string j = "{\"schema_version\":\"1.0\",\"message_id\":\"" + id + "\",\"sent_at\":\"" + aw_utc(timenow) + "\""
         j := j + ",\"source\":{\"type\":\"tradingview\",\"name\":\"" + aw_esc(aw_src_name) + "\",\"version\":\"" + aw_esc(aw_src_ver) + "\"}"
         j := j + ",\"signal_type\":\"" + kind + "\",\"action\":\"" + action + "\""
@@ -100,6 +104,8 @@ aw_send(string kind, string action, string side, string setup, int qty, string d
         j := j + "}"
         if str.length(id) > 128
             log.error("All Win: message_id longer than 128 characters (nothing sent): " + id)
+        else if str.match(j, "[\\x00-\\x1F]") != ""
+            log.error("All Win: control character in source or details (nothing sent)")
         else if str.contains(j, "awk_") or str.contains(j, "awd_")
             log.error("All Win: message looks like it contains a token (nothing sent)")
         else if not array.includes(aw_sent, id)
