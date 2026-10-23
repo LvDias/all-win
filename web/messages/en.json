@@ -6,7 +6,16 @@
       "cancel": "Cancel",
       "retry": "Try again",
       "use": "Use",
-      "close": "Close"
+      "close": "Close",
+      "back": "Back",
+      "done": "Done",
+      "copy": "Copy",
+      "confirm": "Confirm",
+      "save": "Save",
+      "refresh": "Refresh list",
+      "rename": "Rename",
+      "revoke": "Revoke",
+      "create": "Create"
     },
     "states": {
       "loading": "Loading…",
@@ -17,6 +26,23 @@
       "network": "No connection to the server. Try again.",
       "failed": "The action could not be completed.",
       "code": "Code: {code}"
+    },
+    "secret": {
+      "reveal": "Reveal",
+      "hide": "Hide",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "Could not copy. The value was revealed and selected: copy it by hand.",
+      "hiddenSuffix": "hidden"
+    },
+    "password": {
+      "toggle": "Show password"
+    },
+    "otp": {
+      "label": "6-digit code"
+    },
+    "status": {
+      "never": "Never"
     }
   },
   "language": {
@@ -35,7 +61,22 @@
   "home": {
     "title": "All Win",
     "intro": "Order execution with safety and transparency.",
-    "preferences": "Preferences"
+    "preferences": "Preferences",
+    "gettingStarted": {
+      "title": "Getting started",
+      "description": "Two steps to start receiving signals.",
+      "source": {
+        "label": "Create a signal source"
+      },
+      "pairing": {
+        "label": "Pair NinjaTrader"
+      },
+      "done": "Done",
+      "todo": "To do",
+      "alertGuide": "TradingView alert guide",
+      "installGuide": "How to install the plugin",
+      "soon": "coming soon"
+    }
   },
   "settings": {
     "preferences": {
@@ -92,20 +133,13 @@
       "rule_version_changed": "The firm's rule was updated while you were filling this in. Read it again and choose."
     },
     "auth": {
+      "channel_unavailable": "You don't have a confirmed channel for this.",
+      "code_invalid": "Invalid or expired code. Check it or request a new one.",
       "forbidden": "You do not have access to this page.",
-      "invalid_code": "Invalid code. Check it and try again.",
-      "invalid_credentials": "Incorrect email or password.",
-      "invitation_invalid": "This invitation is invalid or has expired.",
-      "password_breached": "This password appeared in known data breaches. Choose another one.",
-      "password_too_long": "The password is too long. Use at most 128 characters.",
-      "password_too_short": "The password is too short. Use at least 12 characters.",
-      "pending_expired": "The verification expired. Sign in again.",
-      "rate_limited": "Too many attempts. Wait a moment and try again.",
-      "reauth_failed": "Could not confirm your identity. Try again.",
-      "reset_token_invalid": "This reset link is invalid or has expired.",
-      "step_up_required": "Confirm your identity to continue.",
-      "totp_already_enabled": "Two-step verification is already on.",
-      "totp_setup_expired": "The setup expired. Start over.",
+      "invitation_invalid": "This invitation isn't valid. It may have expired or already been used.",
+      "rate_limited": "Too many requests. Wait a moment and try again.",
+      "step_up_channel_not_allowed": "On this new device, the code must be confirmed by e-mail.",
+      "step_up_required": "Confirm with a code to continue.",
       "unauthenticated": "Your session expired. Sign in again."
     },
     "common": {
@@ -130,13 +164,19 @@
       "source_mismatch": "The instruction does not match the source that sent it.",
       "unsupported_instrument": "Unsupported instrument.",
       "unsupported_media_type": "Unsupported content type.",
-      "unsupported_version": "Unsupported instruction version."
+      "unsupported_version": "Unsupported instruction version.",
+      "signal_type_not_allowed_for_source": "The signal type is not allowed for this source."
     },
     "invites": {
       "email_send_failed": "Could not send the invitation email.",
       "email_taken": "An account or invitation already exists for this email."
     },
     "me": {
+      "channel_change_closed": "This change is no longer open.",
+      "channel_change_pending": "An e-mail change is already in progress.",
+      "channel_change_too_soon": "You changed your e-mail recently. Try again later.",
+      "channel_unchanged": "This is already your current e-mail.",
+      "invalid_channel_value": "Enter a valid e-mail.",
       "invalid_time_zone": "Invalid time zone. Choose another one."
     },
     "pairing": {
@@ -419,5 +459,383 @@
       "blocked": "Can't delete {name}: it has an open position. Close it in NinjaTrader and try again.",
       "done": "Account deleted."
     }
+  },
+  "stepUp": {
+    "title": "Confirm with a code",
+    "description": "To {action}, we sent a new code to your e-mail.",
+    "sent": "The code works for this action only.",
+    "confirm": "Confirm",
+    "actions": {
+      "unpair": "unpair connection “{name}”",
+      "pairingCode": "generate a pairing code for “{name}”",
+      "connectionCreate": "create connection “{name}”",
+      "sourceRotate": "rotate the URL of source “{name}”",
+      "sourceCreate": "create source “{name}”",
+      "invite": "invite {email}"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "intro": "Enter your e-mail. We'll send you a code to sign in. There is no password.",
+      "email": "E-mail",
+      "remember": "Keep me signed in",
+      "rememberHelp": "For longer on this device. Don't use on a shared computer.",
+      "submit": "Send code",
+      "submitting": "Sending…",
+      "inviteOnly": "Access by invitation only.",
+      "reason": {
+        "session_expired": "Your session expired. Sign in again.",
+        "signed_out": "You signed out.",
+        "sessions_ended": "Your sessions were ended. Sign in again."
+      },
+      "errors": {
+        "emailRequired": "Enter your e-mail.",
+        "emailInvalid": "Enter a valid e-mail."
+      },
+      "rateLimited": "Too many code requests. Wait {time} and try again.",
+      "failed": "Could not connect. Try again."
+    },
+    "code": {
+      "title": "Enter the code",
+      "sent": "If {email} is registered, we sent a code. It's valid for {minutes} minutes and works once. Didn't arrive? Check spam or request another.",
+      "newDevice": "This is a new device. We sent a notice to your e-mail.",
+      "otherEmail": "Use another e-mail"
+    },
+    "invite": {
+      "title": "Create account",
+      "validating": "Checking the invitation…",
+      "invalid": "This invitation isn't valid. It may have expired or already been used. Ask for a new one.",
+      "reloaded": "If you reloaded this page, open the invitation link again.",
+      "signedInAs": "You are signed in as {email}. Sign out to accept this invitation.",
+      "signOut": "Sign out",
+      "stepDetails": "Your details",
+      "stepConfirm": "Confirm e-mail",
+      "intro": "You always sign in with a code sent to your e-mail. No password needed.",
+      "email": "E-mail",
+      "emailHelp": "This is the e-mail of the invitation.",
+      "language": "Language",
+      "timeZone": "Time zone: {zone} ({offset})",
+      "timeZoneChange": "Change",
+      "submit": "Send code",
+      "submitting": "Sending…",
+      "sent": "We sent a code to {email}. Enter it to create your account. It's valid for {minutes} minutes. Didn't arrive? Check spam or request another.",
+      "back": "Back",
+      "unknownOutcome": "We don't know whether your account was created. Try signing in with your e-mail."
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "connections": "Connections",
+    "sources": "Signal sources",
+    "ninjatrader": "NinjaTrader",
+    "settings": "Settings",
+    "security": "Security",
+    "preferences": "Preferences",
+    "admin": "Administration",
+    "invites": "Invitations",
+    "menu": "Open menu",
+    "userMenu": "User menu",
+    "signOut": "Sign out",
+    "main": "Main navigation",
+    "notFound": "Not found.",
+    "signOutFailed": "Could not sign out. Your session may still be active.",
+    "accounts": "Accounts"
+  },
+  "security": {
+    "title": "Security",
+    "channels": {
+      "title": "Sign-in channels",
+      "description": "You sign in with a code sent to one of these channels.",
+      "email": "E-mail",
+      "confirmed": "Confirmed",
+      "changeEmail": "Change e-mail",
+      "frozen": "You changed your e-mail recently. A new change is available on {date}.",
+      "pending": "E-mail change pending: {email} takes effect on {date}. Until then, your current e-mail stays in force.",
+      "cancelChange": "Cancel change",
+      "cancelTitle": "Cancel the e-mail change?",
+      "cancelBody": "Your current e-mail stays the same. We'll notify every channel.",
+      "cancelled": "E-mail change cancelled.",
+      "note": "Changing a channel needs a code on the current channel and one on the new channel.",
+      "advice": "Also protect your e-mail account (for example with your provider's two-step verification): whoever controls the e-mail controls access."
+    },
+    "session": {
+      "title": "Session",
+      "signOut": "Sign out",
+      "limits": "Your session ends after {idle} without use or {absolute} after signing in.",
+      "keepAlive": "Just leaving the page open doesn't keep the session active."
+    },
+    "devices": {
+      "title": "Devices and sessions",
+      "description": "Devices you signed in from.",
+      "current": "This device",
+      "firstSeen": "First seen: {date}",
+      "lastSeen": "Last seen: {date}",
+      "forget": "Forget device",
+      "forgetNamed": "Forget device {name}",
+      "forgetTitle": "Forget this device?",
+      "forgetBody": "Its sessions will end. The next time you sign in from it, you'll get the new-device notice again.",
+      "forgotten": "Device forgotten.",
+      "signOutAll": "Sign out of all devices"
+    },
+    "signOutAll": {
+      "title": "Sign out of all devices?",
+      "body": "All sessions, including this one, will end and the devices will be forgotten. You'll need to sign in again with a code.",
+      "review": "Before signing out, review what keeps working",
+      "notRevoked": "This does not revoke alert URLs or NinjaTrader connections. If you suspect unauthorized access, revoke anything you don't recognize.",
+      "activeSources": "{count, plural, one {# active source} other {# active sources}} → Signal sources",
+      "pairedConnections": "{count, plural, one {# paired connection} other {# paired connections}} → NinjaTrader",
+      "confirm": "Sign out of all"
+    },
+    "email": {
+      "title": "Change e-mail",
+      "description": "Two codes: one for the current e-mail and one for the new one.",
+      "stepNew": "New e-mail",
+      "stepCurrent": "Current e-mail",
+      "stepNewCode": "New e-mail: code",
+      "stepDone": "Done",
+      "expiresIn": "This change expires in {time}",
+      "codesToBoth": "We'll send a code to your current e-mail ({current}) and another to the new one. Both are required.",
+      "newLabel": "New e-mail",
+      "sendCodes": "Send codes",
+      "codeCurrent": "Enter the code sent to {email}.",
+      "codeNew": "Enter the code sent to {email}.",
+      "completed": "E-mail changed to {email}. Your sessions on other devices were ended. We notified the previous e-mail.",
+      "onHold": "Change scheduled. Your current e-mail stays in force until {date}. We notified the current e-mail.",
+      "finish": "Done",
+      "cancelled": "Change cancelled. Your e-mail is still {email}."
+    }
+  },
+  "admin": {
+    "notFound": "Not found.",
+    "link": {
+      "masked": "https://••••••••••••",
+      "done": "Done",
+      "guardTitle": "Close without copying the link?",
+      "guardBody": "You haven't copied the link and it won't be shown again. Close anyway?",
+      "guardBack": "Go back and copy",
+      "guardClose": "Close"
+    },
+    "invites": {
+      "title": "Invitations",
+      "list": "Invitation list",
+      "invite": "Invite",
+      "emptyTitle": "No invitations yet",
+      "emptyBody": "Invite someone to use All Win.",
+      "email": "Email",
+      "statusLabel": "Status",
+      "createdAt": "Created",
+      "expiresLabel": "Expires",
+      "actions": "Actions",
+      "status": {
+        "pending": "Pending",
+        "accepted": "Used",
+        "expired": "Expired",
+        "revoked": "Revoked"
+      },
+      "revokeFor": "Revoke the invitation for {email}",
+      "revokeTitle": "Revoke the invitation for {email}?",
+      "revokeBody": "The link will stop working.",
+      "revokedToast": "Invitation revoked.",
+      "createTitle": "New invitation",
+      "createBody": "The invitation is valid for 7 days, is tied to one email and can be used once.",
+      "language": "Invitation language",
+      "createSubmit": "Create invitation",
+      "resultTitle": "Invitation created",
+      "sent": "We sent the invitation to {email}.",
+      "manualDelivery": "The email was not sent. Copy the link and send it yourself.",
+      "emailFailed": "Could not send the email. Copy the link and send it yourself. The invitation is still valid.",
+      "linkLabel": "Invitation link",
+      "expiresAt": "Expires {date}"
+    }
+  },
+  "sources": {
+    "title": "Signal sources",
+    "description": "Each source has a secret URL. Paste it into the alert's Webhook URL field in TradingView.",
+    "new": "New source",
+    "showRevoked": "Show revoked",
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "url": "URL",
+      "status": "Status",
+      "created": "Created",
+      "lastSignal": "Last signal",
+      "actions": "Actions"
+    },
+    "type": {
+      "tradingview": "TradingView"
+    },
+    "automated": "Automated",
+    "status": {
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "urlAria": "Secret URL, hidden, identifier {keyId}",
+    "actions": {
+      "for": "Actions for {name}",
+      "rename": "Rename",
+      "rotate": "Generate new URL",
+      "revoke": "Revoke"
+    },
+    "empty": {
+      "title": "No signal sources",
+      "text": "Create a source to receive TradingView alerts securely."
+    },
+    "name": {
+      "label": "Source name",
+      "placeholder": "E.g. Strikes MNQ"
+    },
+    "create": {
+      "title": "New source",
+      "description": "Give it a name so you can recognize this source later."
+    },
+    "rename": {
+      "title": "Rename source",
+      "description": "The name does not change the URL."
+    },
+    "unknownOutcome": "We don't know whether the source was created. Refresh the list before trying again.",
+    "created": "Source created.",
+    "rotated": "URL of source “{name}” replaced.",
+    "reveal": {
+      "titleCreated": "Copy the source URL",
+      "titleRotated": "Copy the new URL",
+      "description": "The URL is shown only once.",
+      "warning": "Copy the URL now. For security, it won't be shown again. If you lose it, rotate to get a new one.",
+      "urlLabel": "Secret webhook URL",
+      "step1": "In TradingView, open the alert → Notifications → Webhook URL.",
+      "step2": "Paste the URL.",
+      "step3": "Save the alert.",
+      "automation": "Orders from this source are automated. Accounts at firms that forbid automation only receive them if you accept that on the account.",
+      "automationLink": "View accounts",
+      "done": "Done",
+      "guardTitle": "Close without copying?",
+      "guard": "You haven't copied the URL yet. If you close now, you'll need to generate a new one. Close anyway?",
+      "guardBack": "Go back and copy",
+      "guardClose": "Close"
+    },
+    "rotate": {
+      "title": "Generate a new URL for “{name}”?",
+      "body": "The current URL stops working immediately. Alerts that arrive with it are rejected and logged in the audit. Then paste the new URL into the TradingView alert.",
+      "confirm": "Generate new URL"
+    },
+    "revoke": {
+      "title": "Revoke source “{name}”?",
+      "body": "Alerts using this URL will be rejected. The source stays in the history as revoked. This can't be undone; to receive signals again, create a new source.",
+      "confirm": "Revoke source",
+      "toast": "Source “{name}” revoked."
+    }
+  },
+  "connections": {
+    "title": "NinjaTrader connections",
+    "new": "New connection",
+    "showUnpaired": "Show unpaired",
+    "columns": {
+      "name": "Name",
+      "status": "Status",
+      "accounts": "Accounts",
+      "plugin": "Plugin",
+      "lastSeen": "Last seen",
+      "actions": "Actions"
+    },
+    "status": {
+      "awaiting_pairing": "Awaiting pairing",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "outdated": "Outdated",
+      "unpaired": "Unpaired"
+    },
+    "notice": {
+      "disconnected": "The plugin is not connected. Orders for this instance's accounts will not be executed.",
+      "outdated": "Update the plugin to connect again."
+    },
+    "accountCount": "{count, plural, =0 {No accounts} one {# account} other {# accounts}}",
+    "accounts": {
+      "title": "NinjaTrader accounts",
+      "none": "No accounts reported yet.",
+      "bound": "Bound",
+      "unbound": "Not bound"
+    },
+    "details": {
+      "instance": "Instance ID:"
+    },
+    "actions": {
+      "for": "Actions for {name}",
+      "rename": "Rename",
+      "newCode": "Generate pairing code",
+      "move": "Move to another machine",
+      "unpair": "Unpair"
+    },
+    "empty": {
+      "title": "No NinjaTrader connected",
+      "step1": "Install the All Win plugin in NinjaTrader 8.",
+      "step2": "Create a connection here.",
+      "step3": "Enter the pairing code in the plugin."
+    },
+    "name": {
+      "label": "Connection name",
+      "placeholder": "E.g. Home PC, Chicago VPS"
+    },
+    "create": {
+      "title": "New connection",
+      "description": "Give it a name so you can recognize this machine later."
+    },
+    "rename": {
+      "title": "Rename connection",
+      "description": "The name does not change the pairing."
+    },
+    "unknownOutcome": "We don't know whether the connection was created. Refresh the list before trying again.",
+    "pairing": {
+      "title": "Pair “{name}”",
+      "moveTitle": "Move to another machine",
+      "share": "Enter this code in the NinjaTrader plugin.",
+      "codeLabel": "Pairing code",
+      "dontShare": "Don't share this code.",
+      "expiresIn": "Expires in {time}",
+      "instructions": "In NinjaTrader: open the All Win window, click Pair and enter the code. Upper or lower case, with or without the hyphen.",
+      "waiting": "Waiting for the plugin…",
+      "expired": "The code expired.",
+      "oneMinute": "The code expires in 1 minute.",
+      "newCode": "Generate new code",
+      "superseded": "A newer code was generated for this connection. This one is no longer valid.",
+      "locked": "Pairing is temporarily locked after too many wrong attempts. Wait a few minutes and generate a new code.",
+      "pairedTitle": "Connection paired",
+      "pairedDescription": "The plugin is now connected.",
+      "paired": "“{name}” connected. {count, plural, =0 {No accounts found.} one {# account found:} other {# accounts found:}}",
+      "moved": "“{name}” is now on another machine."
+    },
+    "move": {
+      "title": "Move “{name}” to another machine?",
+      "body": "You'll get a new code. When it's used, the current instance is disconnected and stops receiving orders.",
+      "confirm": "Generate code"
+    },
+    "unpair": {
+      "title": "Unpair “{name}”?",
+      "body": "This instance's plugin will be disconnected immediately and will stop receiving orders. To reconnect, create a new connection.",
+      "bound": "These accounts will go out of sync and stop receiving orders: {accounts}.",
+      "openPositions": "There is an open position in: {accounts}. The position stays open in NinjaTrader, with no All Win monitoring or risk protection. Nothing will be closed automatically.",
+      "acknowledge": "I understand the position will stay open",
+      "confirm": "Unpair",
+      "toast": "“{name}” unpaired."
+    }
+  },
+  "codeChallenge": {
+    "label": "Verification code",
+    "length": "({length} characters)",
+    "verify": "Verify",
+    "resend": "Resend code",
+    "resendIn": "in {time}",
+    "resent": "We sent a new code. The previous one is no longer valid.",
+    "resentAnnounce": "New code sent",
+    "canResend": "You can resend the code now",
+    "newCode": "Request a new code",
+    "locked": "Request a new code to continue.",
+    "expired": "This code has expired. Request a new code to continue.",
+    "deliveryFailed": "We couldn't send the code. Try again in a moment.",
+    "rateLimited": "Too many requests. Wait {time} and try again."
+  },
+  "stepper": {
+    "progress": "Step {current} of {total} · {label}",
+    "done": "completed"
   }
 }
