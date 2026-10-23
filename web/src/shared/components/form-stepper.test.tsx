@@ -165,6 +165,45 @@ describe("FormStepper", () => {
     expect(await screen.findByRole("heading", { level: 2, name: /Dados|Observação|Revisar/ })).toBeInTheDocument();
   });
 
+  it("shows a generic error when onSubmit throws, and stays silent for a cancelled step-up", async () => {
+    const failing = vi.fn(async (): Promise<void> => {
+      throw new Error("boom");
+    });
+    const { unmount } = renderApp(<Harness onSubmit={failing} />);
+    const person = userEvent.setup();
+    await toReview(person);
+    await person.click(screen.getByRole("button", { name: "Criar conta" }));
+    expect(await screen.findByText("Não foi possível concluir a ação.")).toBeInTheDocument();
+    unmount();
+    const { StepUpCancelled } = await import("@/shared/session/step-up");
+    renderApp(
+      <Harness
+        onSubmit={async () => {
+          throw new StepUpCancelled();
+        }}
+      />,
+    );
+    await toReview(person);
+    await person.click(screen.getByRole("button", { name: "Criar conta" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Criar conta" })).toBeEnabled());
+    expect(screen.queryByText("Não foi possível concluir a ação.")).not.toBeInTheDocument();
+  });
+
+  it("drops what was typed in an optional step when it is skipped", async () => {
+    renderApp(<Harness onSubmit={async () => {}} />);
+    const person = userEvent.setup();
+    await person.click(screen.getByRole("button", { name: "Continuar" }));
+    await person.type(await screen.findByRole("textbox", { name: "Firma" }), "Apex");
+    await person.click(screen.getByRole("button", { name: "Continuar" }));
+    await person.type(await screen.findByRole("textbox", { name: "Nome" }), "Conta 1");
+    await person.click(screen.getByRole("button", { name: "Continuar" }));
+    await person.type(await screen.findByRole("textbox", { name: "Observação" }), "rascunho");
+    await person.click(screen.getByRole("button", { name: "Pular etapa" }));
+    const group = await screen.findByRole("region", { name: "Observação" });
+    expect(within(group).getByText("Não definido")).toBeInTheDocument();
+    expect(screen.queryByText("rascunho")).not.toBeInTheDocument();
+  });
+
   it("asks before discarding a dirty form on the first step", async () => {
     const cancel = vi.fn();
     renderApp(<Harness onSubmit={async () => {}} onCancel={cancel} />);

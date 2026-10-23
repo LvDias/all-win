@@ -4,6 +4,8 @@ import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { FieldPath, FieldValues, UseFormReturn } from "react-hook-form";
 import type { ZodType } from "zod";
+import { errorMessage } from "@/shared/api/error-message";
+import { StepUpCancelled } from "@/shared/session/step-up";
 import { useUnsavedChanges } from "@/shared/i18n/locale-switch";
 import { useIsDesktop } from "@/shared/lib/use-media-query";
 import { Alert } from "@/shared/ui/alert";
@@ -68,6 +70,9 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
   const [currentId, setCurrentId] = useState<string>(steps[0]?.id ?? reviewId);
   const [backToReview, setBackToReview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // A ref closes the window between two clicks in the same tick, before the state flag re-renders.
+  const sending = useRef(false);
+  const root = useTranslations();
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [brokenSteps, setBrokenSteps] = useState<string[]>([]);
   const [summary, setSummary] = useState(0);
@@ -123,6 +128,13 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
     setBackToReview(false);
   }
 
+  function skip() {
+    if (!current) return;
+    // A skipped step is "not set": whatever was typed in it is dropped so the review does not show it.
+    for (const field of current.fields) form.resetField(field);
+    go(backToReview ? reviewId : (ids[index + 1] ?? reviewId));
+  }
+
   function back() {
     go(ids[Math.max(0, index - 1)] ?? ids[0] ?? reviewId);
   }
@@ -133,7 +145,7 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
   }
 
   async function submit() {
-    if (submitting || !canSubmit) return;
+    if (sending.current || !canSubmit) return;
     for (const step of active) {
       if (!validate(step)) {
         go(step.id);
@@ -141,6 +153,7 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
         return;
       }
     }
+    sending.current = true;
     setSubmitting(true);
     setFormErrors([]);
     setBrokenSteps([]);
@@ -160,7 +173,11 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
       setBrokenSteps([...new Set(broken)]);
       const target = active.find((step) => broken.includes(step.id));
       if (target) go(target.id);
+    } catch (failure) {
+      // `onSubmit` should map failures to SubmitError[]; anything it throws still reaches the user. A cancelled step-up is silent.
+      if (!(failure instanceof StepUpCancelled)) setFormErrors([errorMessage(root, failure).message]);
     } finally {
+      sending.current = false;
       setSubmitting(false);
     }
   }
@@ -251,7 +268,7 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
           </Button>
         )}
         {!inReview && current?.optional ? (
-          <Button type="button" variant="ghost" onClick={() => go(backToReview ? reviewId : (ids[index + 1] ?? reviewId))}>
+          <Button type="button" variant="ghost" onClick={skip}>
             {t("skip")}
           </Button>
         ) : null}
