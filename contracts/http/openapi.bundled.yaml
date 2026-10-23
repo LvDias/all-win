@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 5.1.0
+  version: 5.1.1
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -6602,9 +6602,12 @@ components:
 
         the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees
         the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection
-        is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies to the command as it stands
-        (`expired`, audited as `execution.expired`, account flagged out of sync). Whether that case keeps the out-of-sync
-        flag and gets `routing.reverse_close_only` is Esquadro''s next ADR-0004 delta; the contract will follow it.
+        is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening
+        leg of a reverse", 5.1.1): the open is held until the flatten it depends on is terminal; if it then expires it is
+        `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left
+        the Core, (2) the flatten succeeded with a proven flat position (`already_flat`, or for `filled` the latest report
+        with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets
+        `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
 
         '
       properties:
@@ -7831,7 +7834,7 @@ components:
           - routing.max_position_reached
           - routing.expired
           description: The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL
-            exceeded (5.1.0; an expiry later in the gateway queue follows ADR-0004 §5).
+            exceeded (5.1.0), or when the open leg expired in the gateway queue under the ADR-0004 §5 reverse exception (5.1.1).
         closed_qty:
           type: integer
           minimum: 1
