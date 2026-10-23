@@ -8,6 +8,8 @@ use catalog_application::enterprise::Symbol;
 use catalog_application::{CatalogError, InstrumentRepository};
 use sqlx::PgPool;
 
+pub mod instrument;
+
 #[derive(Clone)]
 pub struct PgInstrumentRepository {
     pool: PgPool,
