@@ -42,6 +42,7 @@
 
 1. **Trading-day strip** (`Card`, compact):
    - "Dia de trading: 22/10/2026 17:00 → 23/10/2026 17:00 (GMT-3)" and "Próximo reset: 23/10/2026 17:00 (GMT-3)". Source line: "Reset da firma: 17:00 CT" (tooltip: `17:00 CT (19:00 GMT-3)`, F§6.4) or "Reset: fechamento da sessão CME" for real accounts.
+   - **Playback account (S15 AC-7):** the strip says "Relógio de Playback: o reset e o P&L do dia seguem o relógio simulado ({simulated date-time}), não o do computador." The Core supplies the simulated time; a Sim reset or Playback rewind is a discontinuity handled by S11 (not counted as P&L).
    - Freshness: "Atualizado às 14:31:05 (GMT-3)" (absolute time, `<time>`). If the Core flags the data stale or the account's connection is down: badge `Sem dados recentes` (F§7.2) and the line "NinjaTrader desconectado: os valores abaixo podem estar desatualizados." The UI never shows stale data as current.
 2. **Account risk status** (one line, `StatusBadge`): the worst current state (`Alerta (80 %)`, `Limite atingido`, `Bloqueada até {time}` with reason, `Meta atingida`) or nothing when all is `normal`. Reasons follow F§7.1: a block caused by the profit target uses success color and says "motivo: meta de lucro diária atingida".
 3. **Banners:** a limit that is not `normal` shows a `RiskBanner` (C§5) above the meters, with the same wording as the notification (S18) and the shell aggregate.

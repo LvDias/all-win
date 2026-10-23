@@ -15,9 +15,9 @@
 | S21-01 | Trade list with filters and totals | `/[locale]/trades` (sidebar `Trades`) |
 | S21-02 | Trade detail (side panel) | over S21-01 |
 | S21-03 | Manual trade entry (AC-3) | `/[locale]/trades/new` |
-| S21-04 | Edit / delete a manual trade — **proposal, not drawn for build until the PO decides (Q-S21-6)** | S21-02 |
+| S21-04 | Edit / delete a manual trade — **provisional (Q56)** | S21-02 |
 
-Sidebar: `Trades` and `Desempenho` (S22) after `Atividade`. **[Aquarela to confirm the position and names.]**
+Sidebar: `Trades` and `Desempenho` (S22) after `Atividade`. (confirmed by Aquarela, foundations §3.4).
 
 ---
 
@@ -42,7 +42,7 @@ Sidebar: `Trades` and `Desempenho` (S22) after `Atividade`. **[Aquarela to confi
 
 | Filter | Component | Values |
 |---|---|---|
-| Período / Period | chips `Hoje`, `7 dias`, `30 dias`, `Personalizado` (two date pickers, zone shown) | default `30 dias`. Filters by **exit time** **[Q-S21-2]**, in the display zone |
+| Período / Period | chips `Hoje`, `7 dias`, `30 dias`, `Personalizado` (two date pickers, zone shown) | default `30 dias`. Filters by **exit time** in the profile's time zone **[Provisional, Q53 rec. (a)]** |
 | Conta / Account | multi-select `Combobox` including deleted accounts `(excluída)` | |
 | Fonte / Source | multi-select: the user's sources (incl. revoked), plus `Manual` and `Plataforma (sem sinal)` | see §3.4 |
 | Tipo de sinal / Signal type | `Gatilhos`, `Trade Plan`, `Gatilhos NQ`, `Master` (only if the Core returns master trades, S19) | as S7/S10 |
@@ -65,7 +65,7 @@ Default sort: exit time, newest first (stated in the caption). Sortable headers 
 | Entrada | date-time with seconds, and the price below (`21.234,50`, F§6.2) |
 | Saída | date-time with seconds, and the price below |
 | Tempo | duration, up to two units: `12 min 30 s`, `2 h 05 min` |
-| P&L | signed money (`+US$ 120,00`, `-US$ 45,50`), `--pnl-positive`/`--pnl-negative` plus the sign (F§3.2), never color alone |
+| P&L | signed money (`+US$ 120,00`, `-US$ 45,50`), **right-aligned, `tabular-nums`**, value as the Core's string (F§6.2); `--pnl-positive`/`--pnl-negative` plus the sign (F§3.2), never color alone |
 | MAE / MFE | two values, labeled; `—` when not available (§4.4) |
 | Origem | source name + signal type chip; `Manual`; `Plataforma (sem sinal)` (§3.4) |
 | Ações | kebab: `Ver detalhes`, `Ver instrução` (when originating instruction exists, → S10 timeline), `Ver conta` |
@@ -79,7 +79,7 @@ The table scrolls horizontally inside its container with a sticky first column (
 | Created by a routed instruction | source name · signal chip (`Gatilhos`, `Trade Plan`, `Gatilhos NQ`) | link to the instruction timeline |
 | Master replication (S19, V1.1) | `Replicação · {master account}` | |
 | Entered by the user | `Manual` badge (neutral, `PencilLine`) | AC-3 |
-| Placed by the user directly in the platform and captured | `Plataforma (sem sinal)` **[Q-S21-8: the slice plan only defines source "manual" for user-entered trades]** | |
+| Placed by the user directly in the platform and captured | `Plataforma (sem sinal)` (its own origin, distinct from `Manual`; label confirmed by the PO) | |
 
 ### 3.5 States
 
@@ -120,10 +120,10 @@ The table scrolls horizontally inside its container with a sticky first column (
 | Entrada — preço | price `Input` (F§6.3) | required; multiple of the tick (values from the Core): "Use múltiplos de 0,25" | `entry_price` |
 | Saída — data e hora | same | required; after the entry time → "A saída deve ser depois da entrada." | `exit_time` |
 | Saída — preço | same | same | `exit_price` |
-| MAE | money `Input` (≥ 0, ≤ 2 decimals) | optional **[Q-S21-5]** | `mae` |
+| MAE | money `Input` (≥ 0, ≤ 2 decimals), in USD **[Provisional, Q52]** | optional **[Provisional, Q55]** | `mae` |
 | MFE | money `Input` (≥ 0) | optional | `mfe` |
 
-- **Tempo na operação** and **P&L** are not typed: after the required fields are valid, a read-only block "Calculado" shows the duration and the P&L as returned by a Core preview (debounced 300 ms; skeleton while loading; on failure "Não foi possível calcular agora. Você ainda pode salvar." and the Core computes at save). **[Q-S21-3/4: PO to confirm that duration and P&L are derived from times, prices, quantity and the instrument's exact tick value, and whether fees are included.]** Help: "Calculado a partir dos preços, da quantidade e do valor do tick do instrumento." Entries never use floating point (X-3).
+- **Tempo na operação** and **P&L** are not typed: after the required fields are valid, a read-only block "Calculado" shows the duration and the P&L as returned by a Core preview (debounced 300 ms; skeleton while loading; on failure "Não foi possível calcular agora. Você ainda pode salvar." and the Core computes at save). Duration = exit − entry; P&L = exact arithmetic of prices, quantity and the instrument's tick value in the Core (PO). **Gross P&L, without commissions [Provisional, Q54 rec. (a)]**, and the detail says so. Help: "Calculado a partir dos preços, da quantidade e do valor do tick do instrumento." Entries never use floating point (X-3).
 - Source is fixed: a read-only line "Origem: Manual".
 - Time zone: typed values are interpreted in the display zone (profile, F§6.4); the zone is shown next to each label.
 - **Save:** idempotency key per form (a double click or a retry never creates two trades). Success: toast "Trade registrado." → list with the new row marked `Novo`. 422 `pointer` maps to the field and focuses it. Errors: destructive `Alert` above the footer with the code; values kept.
@@ -131,15 +131,18 @@ The table scrolls horizontally inside its container with a sticky first column (
 
 ### 4.3 Display of derived values
 
-For manual trades the detail says how the P&L was obtained (gross from prices, no fees unless Q-S21-4 says otherwise) so a manual trade is never confused with a platform-computed one.
+For manual trades the detail says how the P&L was obtained (gross from prices, no fees) so a manual trade is never confused with a platform-computed one.
 
 ### 4.4 Missing MAE/MFE
 
-Manual trades may have no MAE/MFE. The list and detail show `—` with the tooltip "Não informado". S22 excludes them from MAE/MFE averages and says how many trades were excluded (S22 spec).
+Manual trades may have no MAE/MFE **[Provisional, Q55 rec. (a)]**. The list and detail show `—` with the tooltip "Não informado". S22 excludes them from MAE/MFE averages and shows how many trades entered each average (S22 spec).
 
-### 4.5 S21-04 Edit and delete manual trades — proposal only
+### 4.5 S21-04 Edit and delete a manual trade **[Provisional, Q56 rec. (a); user decides]**
 
-Not in the ACs. Wrong manual entries would pollute S22. If the PO approves **[Q-S21-6]**: the detail panel of a **manual** trade gets `Editar` (same form, prefilled) and `Excluir` (`AlertDialog`: "Excluir este trade manual? Ele sai das métricas. Esta ação não pode ser desfeita." / `Excluir trade`); both are audited with previous values (S10, category `config`). Captured trades can never be edited or deleted.
+Not in the ACs, but wrong manual entries would pollute S22. The detail panel of a **manual** trade shows `Editar` and `Excluir`; **captured trades never have them** (the panel says "Trade capturado: não pode ser alterado.").
+- `Editar`: the S21-03 form prefilled (same validation, same preview, new idempotency key, `row_version` for concurrency → `common.version_conflict` "Este trade mudou em outro lugar."). Success toast "Trade atualizado."
+- `Excluir`: `AlertDialog` (cancel focused): "Excluir este trade manual? Ele sai da lista e das métricas. Esta ação não pode ser desfeita." / confirm `Excluir trade` (destructive). Toast "Trade excluído."
+- Both are audited with **before and after** values (S10, category `config`). Deleting keeps the audit entry; the trade disappears from S21/S22.
 
 ---
 
@@ -164,7 +167,7 @@ Not in the ACs. Wrong manual entries would pollute S22. If the PO approves **[Q-
 |---|---|---|
 | `trades.captured` (category `execution`) | "Trade concluído em {account}: {direction} {quantity}" | trade id, P&L (string), source link |
 | `trades.manual_created` (`config`) | "Trade manual registrado em {account}" | fields entered, user |
-| `trades.manual_changed` / `.manual_deleted` (`config`, only if Q-S21-6) | "Trade manual alterado / excluído" | previous values |
+| `trades.manual_changed` / `.manual_deleted` (`config`, Q56 provisional) | "Trade manual alterado / excluído" | previous values |
 
 ## 7. Accessibility
 
@@ -187,25 +190,28 @@ Not in the ACs. Wrong manual entries would pollute S22. If the PO approves **[Q-
 | Instruments with tick size and value | for input validation messages |
 | **Manual-trade preview** (stateless): duration and P&L for given account, instrument, direction, quantity, times, prices | no persistence |
 
-**Writes:** `createManualTrade` (idempotency key; 422 pointers `/entry_time`, `/exit_time`, `/entry_price`, `/exit_price`, `/quantity`, `/account_id`; codes `trades.exit_before_entry`, `trades.not_tick_multiple`, `trades.in_future`, names proposed); `updateManualTrade` / `deleteManualTrade` only if Q-S21-6.
+**Writes:** `createManualTrade` (idempotency key; 422 pointers `/entry_time`, `/exit_time`, `/entry_price`, `/exit_price`, `/quantity`, `/account_id`; codes `trades.exit_before_entry`, `trades.not_tick_multiple`, `trades.in_future`, names proposed); `updateManualTrade` / `deleteManualTrade` (Q56, provisional; `row_version`).
 
 **Events (SSE):** `trade.captured` (id, account) for the "novos trades" banner.
 
 **Plugin capture (data only, for the Plugin Engineer/Architect):** a completed-trade message carrying exactly the AC-1 fields with exact decimals as strings, an id for idempotency (a trade is never stored twice, X-?/S12 spirit), and the originating `command_id` when the trade came from a routed instruction.
 
-## 9. Open questions
+## 9. Decisions and open questions
 
-| ID | Question | Owner | Spec default |
-|---|---|---|---|
-| Q-S21-1 | Unit of MAE and MFE (USD, points or ticks) | PO / Architect | USD strings like P&L |
-| Q-S21-2 | Date filter applies to exit time | PO | Exit time |
-| Q-S21-3 | Duration derived from entry and exit times for manual trades | PO | Derived |
-| Q-S21-4 | P&L of manual trades computed from prices; are fees/commissions included in captured P&L? | PO / Architect | Computed gross; the detail states it |
-| Q-S21-5 | MAE/MFE optional in manual entry; excluded from averages when missing | PO | Optional |
-| Q-S21-6 | Can the user edit or delete manual trades? | PO | Not built until decided |
-| Q-S21-7 | Definition of one "trade": flat-to-flat round trip vs one per entry (individual mode adds, partial exits) | PO / Architect | As the Core sends |
-| Q-S21-8 | Source label for trades the user places directly in the platform | PO | `Plataforma (sem sinal)` |
-| Q-S21-9 | Position in the sidebar / names `Trades`, `Desempenho` | Aquarela | After `Atividade` |
+**Closed by the PO (Rumo, 2026-10-23):** duration = exit − entry (derived); the P&L of a manual trade is exact arithmetic in the Core from prices, quantity and tick value; a trade placed directly in the platform without a signal has its own origin, distinct from `Manual`, labeled `Plataforma (sem sinal)`. Sidebar position: Aquarela (foundations §3.4).
+
+**User questions drawn as recommendation (a), provisional:**
+
+| ID | Question | Spec default (provisional) |
+|---|---|---|
+| Q52 | Unit of MAE and MFE | USD |
+| Q53 | Date filter | By **exit time**, in the profile's time zone |
+| Q54 | P&L definition | Gross (no commissions); the detail says so |
+| Q55 | MAE/MFE in manual entry | Optional; `—` and left out of the averages, with the count of trades that entered each average (S22) |
+| Q56 | Edit/delete manual trades | Allowed, audited before/after; captured trades are never editable |
+| Q57 | What one "trade" is | One per entry with FIFO exits in individual mode; flat-to-flat in shared mode (the Core sends the trades; the UI shows what it receives) |
+
+Q52–Q57 define the numbers that S22 reconciles with this list.
 
 ## 10. AC traceability
 
