@@ -33,3 +33,6 @@ export const usePresetVersions = (ids: string[]) =>
   useQueries({
     queries: ids.map((id) => ({ queryKey: presetKeys.version(id), queryFn: ({ signal }: { signal: AbortSignal }) => apiFetch<PresetVersion>(`/api/v1/preset-versions/${segment(id)}`, { signal }) })),
   });
+
+export const usePresetVersion = (id: string | undefined) =>
+  useQuery({ enabled: id !== undefined, queryKey: presetKeys.version(id ?? ""), queryFn: ({ signal }) => apiFetch<PresetVersion>(`/api/v1/preset-versions/${segment(id as string)}`, { signal }) });

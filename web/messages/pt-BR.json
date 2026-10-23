@@ -1091,6 +1091,81 @@
         "presetAdded": "Um preset foi adicionado.",
         "presetRemoved": "Um preset foi removido."
       }
+    },
+    "account": {
+      "title": "Preset da firma",
+      "version": "Versão {n} do preset, verificada em {date}",
+      "fields": {
+        "max_position_qty": "Posição máxima",
+        "drawdown": "Drawdown",
+        "daily_loss_limit": "Perda diária",
+        "daily_profit_target": "Meta diária de lucro",
+        "trading_day_reset": "Reset do dia",
+        "consistency_rule": "Regra de consistência",
+        "commission_per_contract_side": "Comissão por contrato/lado",
+        "evaluation_profit_target": "Meta da avaliação"
+      },
+      "unresolved": "Não confirmado — não acompanhado",
+      "edited": "Editado",
+      "editedFor": "{field}: editado, ver valor do preset",
+      "presetValue": "Valor do preset: {value}",
+      "presetValueUnknown": "O preset não tem valor confirmado para este campo.",
+      "restore": "Restaurar valor do preset",
+      "restored": "Valor do preset restaurado.",
+      "conflict": "A conta mudou em outro lugar. Recarregue e tente de novo.",
+      "chosen": "Escolhido por você entre valores divergentes em {date}",
+      "newer": "Há uma nova versão do preset da {firm}: versão {n}, de {date}.",
+      "suspends": "Esta versão mudou a regra de automação. Ordens automatizadas estão suspensas até você revisar.",
+      "seeChanges": "Ver mudanças"
+    },
+    "diff": {
+      "title": "Mudanças da versão {n}",
+      "description": "Compare sua conta com o novo preset da {firm}. Nada muda até você aplicar.",
+      "caption": "Campos que diferem",
+      "columns": {
+        "field": "Campo",
+        "account": "Na sua conta",
+        "current": "Preset atual",
+        "new": "Nova versão"
+      },
+      "youEdited": "Você editou este valor",
+      "notConfirmed": "Não confirmado",
+      "none": "—",
+      "noRows": "Nenhum valor de regra mudou.",
+      "capConflict": "A nova versão limita a {n} contratos",
+      "lowerCap": "{field}: reduza para aplicar",
+      "keepOrUse": "{field}: manter seu valor ou usar o do preset?",
+      "choice": {
+        "keep_mine": "Manter meu valor",
+        "use_preset": "Usar o valor do preset"
+      },
+      "platform": "Plataforma da conta na firma",
+      "choose": "Escolha",
+      "errors": {
+        "required": "Preencha este valor.",
+        "invalid": "Informe um valor válido.",
+        "aboveCap": "No máximo {n}.",
+        "choiceRequired": "Escolha uma opção para continuar.",
+        "unresolved": "Resolva este valor para aplicar.",
+        "platformRequired": "Escolha a plataforma."
+      },
+      "stepUp": "Aplicar a nova versão do preset e aceitar ordens automatizadas",
+      "applied": "Versão {n} aplicada.",
+      "superseded": "Saiu uma versão mais nova enquanto você revisava. Revise de novo.",
+      "ruleChanged": "A regra da firma foi atualizada enquanto você revisava. Leia de novo e escolha.",
+      "conflict": "A conta mudou enquanto você revisava. Revise de novo.",
+      "keepCurrent": "Manter versão atual",
+      "apply": "Aplicar versão {n}"
+    },
+    "other": {
+      "choose": "Escolha",
+      "contracts": "Contratos",
+      "type": "Tipo",
+      "kind": "Tipo",
+      "amount": "Valor (US$)",
+      "time": "Horário (HH:MM)",
+      "zone": "Fuso horário",
+      "text": "Texto da regra"
     }
   }
 }

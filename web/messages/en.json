@@ -1091,6 +1091,81 @@
         "presetAdded": "A preset was added.",
         "presetRemoved": "A preset was removed."
       }
+    },
+    "account": {
+      "title": "Firm preset",
+      "version": "Preset version {n}, verified on {date}",
+      "fields": {
+        "max_position_qty": "Maximum position",
+        "drawdown": "Drawdown",
+        "daily_loss_limit": "Daily loss",
+        "daily_profit_target": "Daily profit target",
+        "trading_day_reset": "Trading-day reset",
+        "consistency_rule": "Consistency rule",
+        "commission_per_contract_side": "Commission per contract/side",
+        "evaluation_profit_target": "Evaluation target"
+      },
+      "unresolved": "Not confirmed — not tracked",
+      "edited": "Edited",
+      "editedFor": "{field}: edited, see the preset value",
+      "presetValue": "Preset value: {value}",
+      "presetValueUnknown": "The preset has no confirmed value for this field.",
+      "restore": "Restore preset value",
+      "restored": "Preset value restored.",
+      "conflict": "The account changed elsewhere. Reload and try again.",
+      "chosen": "Chosen by you among conflicting values on {date}",
+      "newer": "There is a new version of the {firm} preset: version {n}, from {date}.",
+      "suspends": "This version changed the automation rule. Automated orders are suspended until you review it.",
+      "seeChanges": "See changes"
+    },
+    "diff": {
+      "title": "Changes in version {n}",
+      "description": "Compare your account with the new {firm} preset. Nothing changes until you apply.",
+      "caption": "Fields that differ",
+      "columns": {
+        "field": "Field",
+        "account": "On your account",
+        "current": "Current preset",
+        "new": "New version"
+      },
+      "youEdited": "You edited this value",
+      "notConfirmed": "Not confirmed",
+      "none": "—",
+      "noRows": "No rule values differ.",
+      "capConflict": "The new version limits this to {n} contracts",
+      "lowerCap": "{field}: lower it to apply",
+      "keepOrUse": "{field}: keep your value or use the preset?",
+      "choice": {
+        "keep_mine": "Keep my value",
+        "use_preset": "Use the preset value"
+      },
+      "platform": "Platform of the account at the firm",
+      "choose": "Choose",
+      "errors": {
+        "required": "Fill in this value.",
+        "invalid": "Enter a valid value.",
+        "aboveCap": "At most {n}.",
+        "choiceRequired": "Choose one to continue.",
+        "unresolved": "Resolve this value to apply.",
+        "platformRequired": "Choose the platform."
+      },
+      "stepUp": "Apply the new preset version and accept automated orders",
+      "applied": "Version {n} applied.",
+      "superseded": "A newer version came out while you were reviewing. Review again.",
+      "ruleChanged": "The firm's rule was updated while you were reviewing. Read it again and choose.",
+      "conflict": "The account changed while you were reviewing. Review again.",
+      "keepCurrent": "Keep current version",
+      "apply": "Apply version {n}"
+    },
+    "other": {
+      "choose": "Choose",
+      "contracts": "Contracts",
+      "type": "Type",
+      "kind": "Kind",
+      "amount": "Amount (US$)",
+      "time": "Time (HH:MM)",
+      "zone": "Time zone",
+      "text": "Rule text"
     }
   }
 }

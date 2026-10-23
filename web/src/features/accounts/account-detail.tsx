@@ -4,7 +4,7 @@ import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ApiError } from "@/shared/api/client";
 import { errorMessage } from "@/shared/api/error-message";
 import { formatDate, formatDateTime } from "@/shared/format";
@@ -73,7 +73,8 @@ function OptInCard({ account, state, onReview }: { account: Account; state: OptI
   );
 }
 
-export function AccountDetail({ accountId, stepUp }: { accountId: string; stepUp?: StepUpRunner }) {
+/** `presetSection` is composed by the page (features never import each other): the S16 preset panel. */
+export function AccountDetail({ accountId, stepUp, presetSection }: { accountId: string; stepUp?: StepUpRunner; presetSection?: ReactNode }) {
   const t = useTranslations();
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
@@ -135,6 +136,8 @@ export function AccountDetail({ accountId, stepUp }: { accountId: string; stepUp
           <p className="text-muted-foreground">{t("accounts.detail.createdAt", { date: formatDateTime(a.created_at, locale, "UTC") })}</p>
         </CardContent>
       </Card>
+
+      {presetSection}
 
       <Card>
         <CardHeader><CardTitle>{t("accounts.detail.cards.platform")}</CardTitle></CardHeader>
