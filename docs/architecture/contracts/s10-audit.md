@@ -70,3 +70,7 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
   - `sources.*`, `connections.*` → config;
   - `connection.status_changed` → connection (a plugin restart is a `connection.status_changed` with `previous_status`);
   - `security.*` → security.
+- **`actor` (Crivo note on 4.3.0), so the Core fills it consistently:**
+  - `security.invitation_issued` / `security.invitation_revoked` → `user`: the platform admin, in their own log.
+  - `security.account_created` → `user`: the invitee who completed the sign-up, in the new user's log.
+  - General rule: `user` when a person's request caused the entry; `system` for everything the Core or the plugin does on its own (routing decisions, executions, risk states, connection status, scheduled derivations, Core-side switch-offs such as Q67); `platform_admin` only for an admin acting on another user's data (Q28 recovery).
