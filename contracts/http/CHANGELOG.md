@@ -1,5 +1,9 @@
 # HTTP API — changelog
 
+## 4.2.0 — 2026-10-23 (Q71 decided; no schema change)
+- Manual trades: a blank `commission` is computed by the Core with the ADR-0004 §7 per-fill rule on both sides: floor × quantity × 2 (`configured`), or 0 with no floor (`none`, "comissões não informadas"). The floor in force at save time is used, with no later recompute. `previewManualTrade` returns the value, and a typed commission overrides it (`manual`).
+- Notes: s13 wording `none` = not reported and no floor (Crivo nit).
+
 ## 4.1.0 — 2026-10-23 (Code Review of 4.0.0; additive)
 - F1: a lower (or removed) `commission_per_contract_side` applies from the next trading day (it loosens net limits; ADR-0006 §3.7, ADR-0004 §7); a higher one at once. New optional `AccountRisk.pending_commission_change` (`effective_from`, `new_commission_per_contract_side`, `change`: `commission_floor_lowered` / `commission_floor_removed`).
 - QA Security (low, same as F1): in `updateAccount`, an absent `commission_per_contract_side` now means unchanged (exception to the full replacement), and `null` removes the floor explicitly. The removal applies from the next trading day and is audited.

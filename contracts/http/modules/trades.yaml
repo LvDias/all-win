@@ -204,8 +204,12 @@ paths:
     get:
       tags: [trades]
       operationId: previewManualTrade
-      summary: Duration and P&L of a manual trade before saving (stateless, Core arithmetic)
-      description: Stores nothing, audits nothing. Same validation and same 422 codes as `createManualTrade`.
+      summary: Duration, commission and net / gross P&L of a manual trade before saving (stateless, Core arithmetic)
+      description: |
+        Stores nothing, audits nothing. Same validation and same 422 codes as `createManualTrade`.
+        Without `commission`, it returns the commission the Core would compute (Q71: floor × quantity × 2,
+        `configured`; no floor → 0, `none`), so the form shows the value and the user can override it.
+        With `commission`, it returns that value (`manual`).
       parameters:
         - { name: account_id, in: query, required: true, schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
         - { name: instrument_id, in: query, required: true, schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
@@ -446,9 +450,15 @@ components:
         mfe: { $ref: '#/components/schemas/ExcursionInput' }
         commission:
           description: |
-            Optional total commission of the trade, USD ≥ 0. Absent → the account's
-            `commission_per_contract_side` × quantity × 2 sides (`commission_source: configured`), or 0
-            when the account has none (`commission_source: none`, labelled "comissões não informadas").
+            Optional total commission of the trade, USD ≥ 0 (Q71, decided). Sent → used as typed
+            (`commission_source: manual`). Absent → computed by the Core, never by the browser, with the
+            per-fill rule of ADR-0004 §7 applied to both sides of the trade: commission =
+            `commission_per_contract_side` × quantity (entry side) + `commission_per_contract_side` ×
+            quantity (exit side) = floor × quantity × 2 (`commission_source: configured`); with no floor →
+            0 (`commission_source: none`, labelled "comissões não informadas"). The floor in force when the
+            trade is saved (create or update) is used and the value is stored; a later change of the floor
+            never recomputes it. The UI shows the Core's value from `previewManualTrade` and the user may
+            override it by typing a commission.
           $ref: '#/components/schemas/ExcursionInput'
     ExcursionInput:
       type: string
