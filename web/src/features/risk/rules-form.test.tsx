@@ -372,4 +372,28 @@ describe("RulesForm", () => {
     await waitFor(() => expect(saved).toHaveLength(1));
     expect((saved[0]?.rules as { drawdown: Record<string, unknown> }).drawdown).toEqual({ type: "static", amount: "3000.00" });
   });
+
+  it("keeps a Core amount such as 1.125 savable in pt-BR while the user does not touch it (Grosa low)", async () => {
+    serve(rules({ rules: { drawdown: { type: "trailing_eod", amount: "2500.00" }, daily_loss_limit: { kind: "hard", amount: "1000.125" }, profit_target_on_reach: "notify" } }));
+    serveAccount(account({ commission_per_contract_side: "1.125" }));
+    const rulesBodies: Record<string, unknown>[] = [];
+    const accountBodies: unknown[] = [];
+    server.use(preview(), http.put(`*/api/v1/accounts/${accountId}/risk-rules`, async ({ request }) => {
+      rulesBodies.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(rules({ version: 5 }));
+    }), http.put(`*/api/v1/accounts/${accountId}`, async ({ request }) => {
+      accountBodies.push(await request.json());
+      return HttpResponse.json(account());
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    expect(await screen.findByLabelText("Comissão por contrato e lado, em dólares")).toHaveValue("1.125");
+    const target = screen.getByLabelText("Valor da meta, em dólares");
+    await person.type(target, "600");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(rulesBodies).toHaveLength(1));
+    expect(rulesBodies[0]).toMatchObject({ rules: { daily_loss_limit: { amount: "1000.125" }, daily_profit_target: { amount: "600" } } });
+    expect(accountBodies).toHaveLength(0);
+    expect(screen.queryByText(/Digite a parte decimal explicitamente/)).not.toBeInTheDocument();
+  });
 });

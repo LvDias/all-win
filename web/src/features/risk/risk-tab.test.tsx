@@ -233,4 +233,24 @@ describe("evaluation card (S13b)", () => {
     await person.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Reiniciar contagem" }));
     await waitFor(() => expect(bodies).toEqual([{ evaluation_start: "2026-10-01", evaluation_earned_before: "0", row_version: 7 }]));
   });
+
+  it("keeps the earned-before amount the Core sent when only the start changes, even if it would be ambiguous typed (Grosa low)", async () => {
+    serve(risk({ evaluation: evaluation({ earned_before: "250.125" }) }));
+    server.use(http.get(`*/api/v1/accounts/${accountId}`, () => HttpResponse.json({ id: accountId, row_version: 7 })));
+    const bodies: unknown[] = [];
+    server.use(http.post(`*/api/v1/accounts/${accountId}/evaluation/restart`, async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ id: accountId, row_version: 8 });
+    }));
+    renderApp(<RiskTab accountId={accountId} />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("button", { name: "Ajustar contagem" }));
+    const dialog = await screen.findByRole("dialog");
+    await person.clear(within(dialog).getByLabelText("Início da contagem"));
+    await person.type(within(dialog).getByLabelText("Início da contagem"), "2026-10-15");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Reiniciar contagem" })).toBeEnabled());
+    await person.click(within(dialog).getByRole("button", { name: "Reiniciar contagem" }));
+    await person.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Reiniciar contagem" }));
+    await waitFor(() => expect(bodies).toEqual([{ evaluation_start: "2026-10-15", evaluation_earned_before: "250.125", row_version: 7 }]));
+  });
 });

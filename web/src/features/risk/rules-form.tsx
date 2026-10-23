@@ -174,28 +174,28 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
   const hasConsistency = rules.consistency_threshold_pct !== undefined;
   const flattenAvailable = current.enforcement_enabled;
 
-  function money(text: string, scale = 2): { value?: string; error?: string } {
+  function money(text: string, scale: number, original: string | undefined): { value?: string; error?: string } {
     if (text.trim() === "") return {};
-    const parsed = parseDecimalInput(text, locale, { scale });
+    const parsed = parseDecimalInput(text, locale, { scale, unchanged: original });
     if (parsed.ok) return { value: parsed.value };
     return { error: parsed.reason === "ambiguous" ? t("errors.amountAmbiguous") : t("errors.amountInvalid") };
   }
 
   /** What the Core will receive, shown before saving ("understood as US$ 2.500,00"), so a misread separator is caught by the user. */
-  function understood(text: string, scale: number): string | undefined {
+  function understood(text: string, scale: number, original: string | undefined): string | undefined {
     if (text.trim() === "") return undefined;
-    const parsed = parseDecimalInput(text, locale, { scale });
+    const parsed = parseDecimalInput(text, locale, { scale, unchanged: original });
     return parsed.ok ? t("understood", { value: formatMoney(parsed.value, locale) }) : undefined;
   }
 
   function build(): { pending?: Pending; errors: Errors } {
     const found: Errors = {};
     // A value the user did not change keeps the Core's own text ("2500.00"), so an untouched form is not a change.
-    const same = (original: string | undefined, typed: { value?: string; error?: string }) => (typed.value !== undefined && original !== undefined && canonicalAmount(original) === typed.value ? { value: original } : typed);
-    const dd = same(rules.drawdown?.amount, money(drawdownAmount));
-    const dl = dailyLossNone ? {} : same(rules.daily_loss_limit?.amount, money(dailyLoss));
-    const pt = same(rules.daily_profit_target?.amount, money(profitTarget));
-    const fee = money(commission, 4);
+    const same = (original: string | undefined, typed: { value?: string; error?: string }) => (typed.value !== undefined && original !== undefined && canonicalAmount(original) === canonicalAmount(typed.value) ? { value: original } : typed);
+    const dd = same(rules.drawdown?.amount, money(drawdownAmount, 2, rules.drawdown?.amount));
+    const dl = dailyLossNone ? {} : same(rules.daily_loss_limit?.amount, money(dailyLoss, 2, rules.daily_loss_limit?.amount));
+    const pt = same(rules.daily_profit_target?.amount, money(profitTarget, 2, rules.daily_profit_target?.amount));
+    const fee = money(commission, 4, account.commission_per_contract_side);
     if (dd.error) found.drawdownAmount = dd.error;
     if (dl.error) found.dailyLoss = dl.error;
     if (pt.error) found.profitTarget = pt.error;
@@ -224,7 +224,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
     const rulesBody = { version: storedVersion.current, rules: dropUndefined(next) };
     const before = account.commission_per_contract_side;
     // `undefined` keeps the floor, `null` removes it (contract: absent = unchanged).
-    const commissionChange: string | null | undefined = fee.value === undefined ? (before === undefined ? undefined : null) : before !== undefined && canonicalAmount(before) === fee.value ? undefined : fee.value;
+    const commissionChange: string | null | undefined = fee.value === undefined ? (before === undefined ? undefined : null) : before !== undefined && canonicalAmount(before) === canonicalAmount(fee.value) ? undefined : fee.value;
     const changed = stable(rulesBody.rules) !== storedRules.current;
     return { pending: { rules: changed ? rulesBody : null, commission: commissionChange }, errors: found };
   }
@@ -326,7 +326,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
           <CardTitle className="text-base">{t("sections.loss")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <FieldRow id={ids.drawdownAmount} label={t("fields.drawdownAmount")} error={errors.drawdownAmount} help={t("tighterNow")} parsed={understood(drawdownAmount, 2)}>
+          <FieldRow id={ids.drawdownAmount} label={t("fields.drawdownAmount")} error={errors.drawdownAmount} help={t("tighterNow")} parsed={understood(drawdownAmount, 2, rules.drawdown?.amount)}>
             <Input id={ids.drawdownAmount} inputMode="decimal" value={drawdownAmount} onChange={(event) => setDrawdownAmount(event.target.value)} autoComplete="off" aria-invalid={errors.drawdownAmount ? true : undefined} aria-describedby={describedBy(ids.drawdownAmount, errors.drawdownAmount)} />
           </FieldRow>
           <FieldRow id={ids.drawdownType} label={t("fields.drawdownType")} error={errors.drawdownType}>
@@ -350,7 +350,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
               <p className="text-sm text-muted-foreground">{t("dailyLossNone")}</p>
             </div>
           ) : (
-            <FieldRow id={ids.dailyLoss} label={t("fields.dailyLoss")} error={errors.dailyLoss} help={t("looserLater")} parsed={understood(dailyLoss, 2)}>
+            <FieldRow id={ids.dailyLoss} label={t("fields.dailyLoss")} error={errors.dailyLoss} help={t("looserLater")} parsed={understood(dailyLoss, 2, rules.daily_loss_limit?.amount)}>
               <Input id={ids.dailyLoss} inputMode="decimal" value={dailyLoss} onChange={(event) => setDailyLoss(event.target.value)} autoComplete="off" aria-invalid={errors.dailyLoss ? true : undefined} aria-describedby={describedBy(ids.dailyLoss, errors.dailyLoss)} />
             </FieldRow>
           )}
@@ -362,7 +362,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
           <CardTitle className="text-base">{t("sections.target")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <FieldRow id={ids.profitTarget} label={t("fields.profitTarget")} error={errors.profitTarget} parsed={understood(profitTarget, 2)}>
+          <FieldRow id={ids.profitTarget} label={t("fields.profitTarget")} error={errors.profitTarget} parsed={understood(profitTarget, 2, rules.daily_profit_target?.amount)}>
             <Input id={ids.profitTarget} inputMode="decimal" value={profitTarget} onChange={(event) => setProfitTarget(event.target.value)} autoComplete="off" aria-invalid={errors.profitTarget ? true : undefined} aria-describedby={describedBy(ids.profitTarget, errors.profitTarget)} />
           </FieldRow>
           <fieldset className="grid gap-2">
@@ -398,7 +398,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
           <CardTitle className="text-base">{t("sections.commission")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <FieldRow id={ids.commission} label={t("fields.commission")} error={errors.commission} help={t("commission.help")} parsed={understood(commission, 4)}>
+          <FieldRow id={ids.commission} label={t("fields.commission")} error={errors.commission} help={t("commission.help")} parsed={understood(commission, 4, account.commission_per_contract_side)}>
             <Input id={ids.commission} inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} autoComplete="off" aria-invalid={errors.commission ? true : undefined} aria-describedby={describedBy(ids.commission, errors.commission)} />
           </FieldRow>
           {commission.trim() === "" ? <Alert tone="warning">{t("commission.empty")}</Alert> : null}
