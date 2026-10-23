@@ -9,4 +9,4 @@
 - **Integration check on main:** `dotnet restore --locked-mode` + `dotnet test plugins/ninjatrader8` (DevOps).
 - **Known limitations:** host-level NT8 behavior is still untested until the Windows VPS (U1/U2) exists.
 - **Accepted risks:** none.
-- **Follow-ups:** CI (`make check`) once the user authorizes a GitHub remote.
+- **Follow-ups:** CI (`make check` in GitHub Actions) after the private GitHub remote is set up (user authorization recorded in decisions.md, 2026-10-23).

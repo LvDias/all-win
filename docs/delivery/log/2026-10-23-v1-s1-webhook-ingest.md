@@ -9,6 +9,6 @@
   - QA [Integration & E2E] (Sentinela): APPROVED core `976e4f9` + infra `5329015` — 118/118, zero secret occurrences across Caddy (incl. debug), Core trace, DB dump, metrics, responses; p95 10.5 ms through Caddy (budget 300 ms).
   - Database Architect (Lastro): migrations approved.
   - Integration on `main` `7e22e43`: E2E 118/118 again, trees identical to the reviewed SHAs, p95 14.8 ms.
-- **Known limitations:** p95 measured with a loaded host (upper bound); IP flood cap of 3000/min and the unknown-key cache not observable black-box; no CI pipeline yet; `/metrics` must never be routed at the public edge; HSTS to be set at Caddy before any HTTPS exposure. Web types on `main` are from contract 1.1.0 while the contract is 1.1.3 (drift fix in progress).
+- **Known limitations:** p95 measured with a loaded host (upper bound); IP flood cap of 3000/min and the unknown-key cache not observable black-box; no CI pipeline yet; `/metrics` must never be routed at the public edge; HSTS to be set at Caddy before any HTTPS exposure. Web types on `main` are from contract 1.1.0 while the contract on `main` is 1.1.2 (1.1.3 is on branch `s/v1-s1-webhook-ingest--contracts`, pending merge; drift fix in progress).
 - **Accepted risks:** none.
 - **Follow-ups:** API-SPEC (Core-generated OpenAPI + drift check) before S3 core merge; M1 needs per-consumer delivery tracking for routing.
