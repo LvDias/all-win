@@ -1,6 +1,12 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 8; **rev. 9 proposed** (S10 audit contract 2.4.0 by Compasso; Code Review pending). Rev. 9:
+- **Status:** Accepted (2026-10-23), rev. 9; **rev. 10 proposed** (S16 presets contract 2.5.0 by Compasso; account/limits consistency = option (B), ADR-0006; Code Review pending). Rev. 10:
+  - adds the preset catalog: `prop_firm`, `firm_release`, `firm_release_platform`, `firm_plan`, `preset`, `preset_version`, `preset_rule_set` and `firm_stance`;
+  - adds `release_id` and the in-catalog FKs on `opt_in_rule_version`;
+  - adds `accounts.account_rule_value`;
+  - adds `account.limits_version` / `limits_changed_at` and `risk.account_limits.derived_from_version` (ADR-0006, option B; §5.7);
+  - adds `app.outbox.seq` → `audit_entry.event_seq` for the S10 order (§6.4, agreed with Compasso for contract 3.0.0).
+- Rev. 9 (83a4f52):
   - adds `outcome`, `is_exit`, `message_id`, `source_name` and `safe_to_display` to `audit.audit_entry`, in forward migration #7b (§6.4, §8);
   - widens the no-secret `CHECK` to the text snapshots;
   - **corrects rev. 8**: `account.*_rule_version_id` are plain `uuid`, not FKs to `catalog`, because the only cross-module FK is to `identity.app_user` (§1, rule 1).
@@ -534,7 +540,6 @@ CREATE TABLE catalog.opt_in_rule_version (               -- global, no RLS; appe
   firm_stance       text NOT NULL CHECK (firm_stance IN ('allowed','forbidden','conditional','unknown','not_confirmed')),
   is_generic        boolean NOT NULL,
   firm_id           uuid,                                -- S16: FK to catalog.prop_firm
-  preset_version_id uuid,                                -- S16: FK to catalog.preset_version
   firm_platform     text CHECK (firm_platform ~ '^[a-z][a-z0-9_]{0,31}$'),  -- when the rule is platform-specific
   version_number    integer NOT NULL CHECK (version_number >= 1),
   published_at      timestamptz NOT NULL DEFAULT now(),
@@ -545,13 +550,13 @@ CREATE TABLE catalog.opt_in_rule_version (               -- global, no RLS; appe
   previous_id       uuid REFERENCES catalog.opt_in_rule_version(id),
   UNIQUE (id, kind),
   CONSTRAINT rule_version_generic_check CHECK (NOT is_generic OR (firm_stance = 'unknown' AND quotes = '[]'::jsonb
-             AND research IS NULL AND firm_id IS NULL AND preset_version_id IS NULL AND firm_platform IS NULL)),
+             AND research IS NULL AND firm_id IS NULL AND firm_platform IS NULL)),
   CONSTRAINT rule_version_firm_check CHECK (is_generic OR firm_id IS NOT NULL),
   CONSTRAINT rule_version_change_check CHECK ((previous_id IS NULL) = (change_cause IS NULL)),
   CONSTRAINT rule_version_reason_check CHECK (change_cause IS DISTINCT FROM 'text_changed' OR change_reason IS NOT NULL)
 );
 CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_version (kind, version_number) WHERE is_generic;
--- Non-generic numbering (per preset selection and kind) gets its unique key in S16.
+-- Non-generic: one version per (release, firm_platform, kind), unique index added in S16 (§5.7).
 -- Grants: allwin_app SELECT, INSERT (publishing goes through the admin use case); no UPDATE/DELETE for anyone at
 -- runtime, so a published text cannot change under a recorded choice. A correction is a new version (change_cause).
 -- The current version of a selection is the highest version_number.
@@ -597,6 +602,8 @@ CREATE TABLE accounts.account (
   updated_at        timestamptz NOT NULL DEFAULT now(),
   archived_at       timestamptz,                         -- "deleted" (S5 AC-6); history keeps the id
   row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
+  limits_version    integer NOT NULL DEFAULT 1 CHECK (limits_version >= 1),  -- ADR-0006: bumped with every limits-relevant change
+  limits_changed_at timestamptz NOT NULL DEFAULT now(),  -- ADR-0006 §3.5: age of a version gap (60-s alert)
   create_idempotency_key uuid,                           -- Idempotency-Key of the create (rev. 8)
   create_request_hash    bytea CHECK (octet_length(create_request_hash) = 32),  -- SHA-256 of the canonical body, step_up excluded
   UNIQUE (user_id, id),
@@ -764,7 +771,8 @@ These tables mirror `limits` in ADR-0004, so the Core can publish versioned limi
 CREATE TABLE risk.account_limits (
   user_id               uuid NOT NULL REFERENCES identity.app_user(id),
   account_id            uuid NOT NULL,                   -- accounts.account (cross-module id)
-  version               integer NOT NULL CHECK (version >= 1),   -- monotonic, sent in `limits`
+  version               integer NOT NULL CHECK (version >= 1),   -- monotonic, sent in `limits`; S13 PUT concurrency token
+  derived_from_version  integer NOT NULL CHECK (derived_from_version >= 1),  -- ADR-0006: account.limits_version it was derived from
   enforcement_enabled   boolean NOT NULL DEFAULT false,  -- S15 AC-1 (off by default)
   daily_loss_limit      NUMERIC(18,4) CHECK (daily_loss_limit >= 0),
   daily_profit_target   NUMERIC(18,4) CHECK (daily_profit_target >= 0),
@@ -780,6 +788,163 @@ CREATE TABLE risk.account_limits (
 );
 -- Trading-day state, blocks, consistency tracking: designed with S13/S15.
 ```
+
+### 5.7 Prop firm presets (S16; rev. 10, proposed)
+
+Global catalog, no RLS, written only by the publishing use case.
+- **Published content is immutable.** `firm_release`, `firm_release_platform`, `firm_stance`, `preset_version`, `preset_rule_set` and `opt_in_rule_version` get `SELECT, INSERT` only, with no `UPDATE`/`DELETE`. A correction is a new release.
+- **Identity rows can be renamed** (`prop_firm`, `firm_plan`, `preset`). Their ids are stable across releases. A rename is published with the release: same id, a column-level `GRANT UPDATE (name)` on `prop_firm` and `firm_plan` and `UPDATE (size_label)` on `preset`, and no `DELETE`.
+  - Names are current display labels. History keeps its own snapshot: audit `details`, and `account` manual fields only for manual mode.
+  - A plan that really changes (new rules, new sizes) is a new `plan_id`, decided by the publisher. All foreign keys below stay inside `catalog` (§1, rule 1).
+
+```sql
+CREATE TABLE catalog.prop_firm (
+  id          uuid PRIMARY KEY,
+  slug        text NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(slug) <= 64),
+  name        text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE catalog.firm_release (                      -- versioning unit: one researched, published firm (S16 §2.1)
+  id             uuid PRIMARY KEY,
+  firm_id        uuid NOT NULL REFERENCES catalog.prop_firm(id),
+  version_number integer NOT NULL CHECK (version_number >= 1),
+  published_at   timestamptz NOT NULL DEFAULT now(),
+  verified_on    date NOT NULL,
+  changes        jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(changes) = 'array'),       -- ReleaseChange[]
+  manual_only    jsonb CHECK (manual_only IS NULL OR jsonb_typeof(manual_only) = 'object'), -- RuleQuote (S16 AC-7)
+  excluded_plans text[] NOT NULL DEFAULT '{}',          -- S16 AC-9, names as published
+  UNIQUE (firm_id, version_number),
+  UNIQUE (firm_id, id)
+);
+
+CREATE TABLE catalog.firm_release_platform (             -- FirmDetail.platforms
+  release_id uuid NOT NULL REFERENCES catalog.firm_release(id),
+  code       text NOT NULL CHECK (code ~ '^[a-z][a-z0-9_]{0,31}$'),
+  label      text NOT NULL CHECK (char_length(label) BETWEEN 1 AND 60),
+  PRIMARY KEY (release_id, code)
+);
+
+CREATE TABLE catalog.firm_stance (                       -- vps / personal_device per release (automation/copy = opt_in_rule_version)
+  release_id uuid NOT NULL REFERENCES catalog.firm_release(id),
+  kind       text NOT NULL CHECK (kind IN ('vps','personal_device')),
+  value      text NOT NULL,
+  quotes     jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(quotes) = 'array'),   -- RuleQuote[], verbatim
+  research   jsonb CHECK (research IS NULL OR jsonb_typeof(research) = 'object'),
+  PRIMARY KEY (release_id, kind),
+  CHECK ((kind = 'vps' AND value IN ('allowed','forbidden','conditional','unknown','not_confirmed'))
+      OR (kind = 'personal_device' AND value IN ('required','not_required','unknown')))
+);
+
+CREATE TABLE catalog.firm_plan (                         -- stable across releases (plan_id on the wire)
+  id      uuid PRIMARY KEY,
+  firm_id uuid NOT NULL REFERENCES catalog.prop_firm(id),
+  name    text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  UNIQUE (firm_id, id)
+);
+CREATE UNIQUE INDEX firm_plan_name_key ON catalog.firm_plan (firm_id, lower(name));
+
+CREATE TABLE catalog.preset (                            -- firm × plan × phase × size; stable across releases
+  id          uuid PRIMARY KEY,
+  firm_id     uuid NOT NULL,
+  plan_id     uuid NOT NULL,
+  phase       text NOT NULL CHECK (phase IN ('evaluation','funded','live')),
+  size_amount NUMERIC(18,4) NOT NULL CHECK (size_amount > 0),
+  size_label  text CHECK (char_length(size_label) <= 32),
+  UNIQUE (plan_id, phase, size_amount),
+  UNIQUE (firm_id, id),
+  FOREIGN KEY (firm_id, plan_id) REFERENCES catalog.firm_plan (firm_id, id)
+);
+
+CREATE TABLE catalog.preset_version (                    -- one per preset per release that offers it
+  id          uuid PRIMARY KEY,
+  preset_id   uuid NOT NULL,
+  firm_id     uuid NOT NULL,
+  release_id  uuid NOT NULL,
+  manual_only jsonb CHECK (manual_only IS NULL OR jsonb_typeof(manual_only) = 'object'),  -- RuleQuote; risk only, no routing
+  UNIQUE (preset_id, release_id),
+  FOREIGN KEY (firm_id, preset_id)  REFERENCES catalog.preset (firm_id, id),
+  FOREIGN KEY (firm_id, release_id) REFERENCES catalog.firm_release (firm_id, id)   -- same firm, by construction
+);
+-- superseded_by is derived (the same preset's version in a later release), not stored, so rows stay immutable.
+
+CREATE TABLE catalog.preset_rule_set (                   -- PresetVersion.rule_sets
+  preset_version_id uuid NOT NULL REFERENCES catalog.preset_version(id),
+  firm_platform     text CHECK (firm_platform ~ '^[a-z][a-z0-9_]{0,31}$'),  -- NULL = one set for every platform
+  rules             jsonb NOT NULL,                      -- PresetRules with provenance per field (verified / not_confirmed)
+  CHECK (jsonb_typeof(rules) = 'object'
+         AND rules ?& ARRAY['max_position_qty','drawdown','daily_loss_limit','trading_day_reset']),  -- S16 AC-6 fields
+  CHECK (NOT jsonb_path_exists(rules, '$.**.amount ? (@.type() == "number")'))   -- money only as decimal strings (X-3)
+  -- Every money field in PresetRules / PresetRuleValues is named `amount` (MoneyAmount). A future money field with
+  -- another key must be named `amount` or added to this CHECK (and to account_rule_value's).
+);
+CREATE UNIQUE INDEX preset_rule_set_key ON catalog.preset_rule_set (preset_version_id, coalesce(firm_platform, ''));
+-- "One set without a platform OR one per platform" is a publishing rule (Core) plus a §9 test.
+```
+
+- **Why the rules are stored as `jsonb`:** they are published documents. Each holds a value or ≥ 2 published values, sources, published texts and free wording (`consistency_rule.text`), and is shown and diffed but never computed in SQL. Their exact schema is the contract (`PresetRules`), validated by the publishing use case. Money inside is a **JSON string** (`MoneyAmount`), never a JSON number, and the second `CHECK` enforces that. Arithmetic happens only on the typed `NUMERIC` copy in `risk.account_limits`.
+- **`opt_in_rule_version` (rev. 8 table), forward change:**
+  - A rule version is **per firm release × `firm_platform` × kind** (Compasso, S16). The stance belongs to the firm, not to a plan, phase or size; `getOptInRules` takes `preset_version_id` only to find the release and platform. So the table has **no `preset_version_id`**: rev. 10 removes it from the §5.1 DDL. #5 is not written yet, so nothing needs to be dropped.
+  - Add `release_id uuid REFERENCES catalog.firm_release(id)` with `CHECK (is_generic = (release_id IS NULL))`, and the FK `firm_id → prop_firm`, both inside `catalog`.
+  - `firm_platform` (already there) stays NULL for generic rows and for firms whose rules do not vary by platform.
+  - Non-generic uniqueness: `CREATE UNIQUE INDEX … (release_id, firm_platform, kind) NULLS NOT DISTINCT WHERE NOT is_generic` (PG ≥ 15). `version_number` keeps counting per `(firm_id, kind, firm_platform)`.
+  - The existing rows are the 2 generic ones, so the new constraints validate trivially.
+- **Accounts keep plain ids:** `account.firm_id`, `account.preset_version_id` and `*_rule_version_id` are plain `uuid` (§1, rule 1). The catalog query port resolves them and checks existence and coherence:
+  - the version belongs to the firm;
+  - the platform is offered by the release;
+  - `account.size_amount` equals the preset's `size_amount`.
+  These are Core rules with §9 tests, since cross-module `CHECK`s are not possible.
+
+```sql
+CREATE TABLE accounts.account_rule_value (               -- the account's own rule values and their origin (S16 §2.4, Q-S16-3)
+  user_id     uuid NOT NULL,
+  account_id  uuid NOT NULL,
+  field       text NOT NULL CHECK (field IN ('max_position_qty','drawdown','daily_loss_limit',
+                                             'daily_profit_target','trading_day_reset','consistency_rule')),
+  origin      text NOT NULL CHECK (origin IN ('edited','chosen_from_conflict')),
+  value       jsonb,                                     -- typed by field (PresetRuleValues); NULL for max_position_qty
+  chose       text CHECK (chose IN ('published_value','other_value')),
+  chosen_at   timestamptz,
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, field),
+  FOREIGN KEY (user_id, account_id) REFERENCES accounts.account (user_id, id),
+  CHECK ((field = 'max_position_qty') = (value IS NULL)),           -- its value is account.max_position_qty (S5)
+  CHECK (value IS NULL OR jsonb_typeof(value) = 'object'),
+  CHECK (value IS NULL OR NOT jsonb_path_exists(value, '$.**.amount ? (@.type() == "number")')),
+  CHECK ((origin = 'chosen_from_conflict') = (chose IS NOT NULL)),
+  CHECK ((chose IS NULL) = (chosen_at IS NULL))
+);  -- RLS: user_id = app.current_user_id()
+```
+
+- **Only deviations are stored.** `preset` is the absence of a row (the value comes from the preset version), and `unresolved` is an optional not-confirmed field with no row. So applying a version or restoring a value deletes or rewrites rows, and the getAccountPreset `origin` is derived.
+- Rows exist only for prop accounts with a preset. Manual-mode accounts have none, which is a Core rule; a cross-table `CHECK` is not possible.
+- Applying, restoring and re-selecting rewrite `account` (bumping `row_version`) and its `account_rule_value` rows **in one `accounts` transaction**: same module, so this is atomic by construction.
+- Q13-b erasure deletes the rows with the account. The catalog is reference data and is kept.
+
+**Account ↔ `risk.account_limits` consistency: option (B), [ADR-0006](../adr/0006-derived-state-across-modules.md)** (Esquadro, 2026-10-23):
+- **Producer (`accounts`):** **every write that changes an input of the derived limits** bumps `account.limits_version` and sets `limits_changed_at = now()`, in the same transaction as the change. The inputs are:
+  - account create;
+  - an update of firm, plan, phase, size, `firm_platform` or `preset_version_id` (re-selection);
+  - `max_position_qty`;
+  - any `account_rule_value` write: an edit, a `chosen_from_conflict` resolution, `restorePresetValue`;
+  - a preset apply;
+  - a newly adopted rule version.
+
+  A write that changes none of them (e.g. `display_name`) does not bump. The same transaction writes `account.limits_changed {account_id, limits_version}` to `app.outbox`.
+- **Consumer (`risk`):**
+  - It recomputes from the accounts query port, which returns the inputs **together with their `limits_version` in one consistent read** (one statement or one snapshot). It stores that version, not the event's, as `derived_from_version`. So the stored limits always match the version they claim, even if a newer change landed after the event.
+  - Idempotent: `… ON CONFLICT (account_id) DO UPDATE … WHERE risk.account_limits.derived_from_version < EXCLUDED.derived_from_version`, so a redelivered or out-of-order event never downgrades. `version` (the plugin `limits` token) increments on every applied upsert.
+  - Start policy `from_now`, plus a startup reconciliation. The accounts query port `list_limits_versions() → [(account_id, limits_version)]` is compared with risk's own `derived_from_version`, and every account that differs is derived through the same path as the consumer. There is no SQL across schemas. The live account list is small and needs no index until measured.
+- **Gate (routing):**
+  - It reads `limits_version` (accounts port) and `derived_from_version` (risk port).
+  - An action that cannot be classified as entry or exit counts as position-increasing (fail closed). The two versions are read once per instruction, at the decision.
+  - The gate ships with the S13 `risk` consumer, never before.
+  - If there is no row, or the row is older, position-increasing actions are skipped with `routing.limits_pending` (audited, no alert). Exits continue (P1). The code is in contract 3.0.0 (`RouteReasonCode`, `KnownAuditCode`, `details.limits_version`) and in ADR-0003 with Esquadro's next delta.
+- **Plugin:** `limits` are sent only after the upsert.
+- **Monitoring:** a worker job every 30 s runs the same comparison and raises an operational alert when a gap is older than 60 s, measured from `limits_changed_at`. It **only alerts** and never derives outside the consumer path.
+- **Tests:** ADR-0006 §4 (eb7a6d017161), and §9 below.
+
+**For S13 (preview §5.6 to realign):** the contract's `DrawdownValue.type` uses `trailing_eod` and `other`, while the preview has `trailing_end_of_day` and no `other`. `DailyLossValue.kind` (`hard` / `soft_pause` / `none`) has no column yet. Both are fixed when S13 writes the table.
 
 ## 6. Ingest, routing and execution records (S1 + M1)
 
@@ -1005,6 +1170,7 @@ CREATE TABLE app.outbox (                                -- domain events, writt
   last_error       text CHECK (char_length(last_error) <= 500),               -- consumer + error, never payload
   next_attempt_at  timestamptz NOT NULL DEFAULT now(),                        -- backoff 2^n s, max 600 s
   dead_lettered_at timestamptz,                                               -- after 20 attempts; kept, alerted
+  seq              bigint GENERATED ALWAYS AS IDENTITY (CACHE 1) UNIQUE,        -- rev. 10 (S10-3): causal order
   CONSTRAINT outbox_last_error_no_token CHECK (last_error !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
 );
 CREATE INDEX outbox_due_idx ON app.outbox (next_attempt_at, occurred_at)
@@ -1038,6 +1204,7 @@ CREATE TABLE audit.audit_entry (
   message_id      text CHECK (message_id ~ '^[A-Za-z0-9._:-]{1,128}$'),                    -- same rule as routing.message_receipt
   source_name     text CHECK (char_length(source_name) BETWEEN 1 AND 60),                  -- snapshot, like account_name
   safe_to_display boolean NOT NULL,                      -- raw details may be shown; the Core decides each time (no default)
+  event_seq       bigint NOT NULL,                       -- rev. 10 (S10-3): app.outbox.seq of the source event
   PRIMARY KEY (occurred_at, id),
   UNIQUE (occurred_at, source_event_id),
   CONSTRAINT audit_entry_source_name_check  CHECK (source_id IS NULL OR source_name IS NOT NULL),   -- #7b: NOT VALID
@@ -1048,7 +1215,7 @@ CREATE TABLE audit.audit_entry (
     AND coalesce(source_name,'')  !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
     AND coalesce(message_id,'')   !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')  -- its pattern allows '_' (F2)
 ) PARTITION BY RANGE (occurred_at);
-CREATE INDEX audit_entry_user_time_idx        ON audit.audit_entry (user_id, occurred_at DESC);
+CREATE INDEX audit_entry_user_time_idx        ON audit.audit_entry (user_id, occurred_at DESC, event_seq DESC, id DESC);  -- rev. 10 (#7b)
 CREATE INDEX audit_entry_user_instruction_idx ON audit.audit_entry (user_id, instruction_id) WHERE instruction_id IS NOT NULL;
 CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, account_id, occurred_at DESC) WHERE account_id IS NOT NULL;
 -- partitions audit.audit_entry_YYYYMM created 3 months ahead + audit.audit_entry_default (must stay empty)
@@ -1061,6 +1228,27 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
   - `account_deleted` is computed when reading, from `accounts.account.archived_at` through the accounts query port, and is not stored.
   - `q` = an instruction id uses `audit_entry_user_instruction_idx`. `q` = a `message_id` is first resolved to its instruction id through `routing.message_receipt` (PK `(user_id, message_id)`), so `message_id` needs no index here.
   - **`safe_to_display` has no default**, so a producer that forgets it fails on insert instead of exposing raw JSON. Fail-closed was agreed with Compasso, who corrected S10 §3; the API value is unchanged.
+- **Order (rev. 10; Code Review S10-3, agreed with Compasso, contract 3.0.0).** The S10 contract orders steps by "the Core's sequence", and today no column holds one.
+  - `occurred_at` is the producer's wall clock and can tie inside one transaction.
+  - `recorded_at` and `audit_entry.id` are taken when the audit consumer runs, so they follow delivery order, which redelivery and backfill can change.
+  - **Proposal:**
+    - `app.outbox.seq bigint GENERATED ALWAYS AS IDENTITY (CACHE 1)` is drawn when the producer inserts the event;
+    - it is copied into `audit_entry.event_seq`;
+    - the timeline orders by `event_seq`, falling back to `(occurred_at, id)` for rows that do not have one.
+  - It is causal where it matters: a later step runs in a later transaction that saw the earlier one committed, so it draws a larger value. Events of one transaction get values in insert order.
+  - Concurrent, unrelated transactions may interleave, which does not matter for one instruction's timeline.
+  - `CACHE 1` keeps one sequence order across sessions.
+  - Migration plan, both before production:
+    - `app.outbox.seq`: a forward `app` migration. `ADD COLUMN … GENERATED ALWAYS AS IDENTITY` fills existing rows.
+    - `event_seq`: added in #7b with the metadata-default trick (`DEFAULT 0` then `DROP DEFAULT`). Old rows read 0 and sort by the fallback.
+  - **Contract (3.0.0):** ordering text only, with no new field.
+    - The timeline orders steps by `event_seq` (causal).
+    - `listActivity` orders by `(occurred_at, event_seq, id)`, newest first. Its opaque cursor carries that position. `id` is the final tie-breaker, because rows written before #7b all have `event_seq = 0`.
+  - **Index:** #7b replaces `audit_entry_user_time_idx (user_id, occurred_at DESC)` with `(user_id, occurred_at DESC, event_seq DESC, id DESC)`, the exact keyset order of `listActivity`. That makes it a measured need, not a speculative index.
+    - The timeline reads one instruction's rows through `audit_entry_user_instruction_idx` and sorts that handful in memory.
+    - Before production, a plain `CREATE INDEX` on the partitioned parent, then `DROP INDEX` of the old one, is acceptable.
+  - The rejected alternative was a declared non-causal `(occurred_at, recorded_at, id)`.
+  - **Rule:** every `audit_entry` row comes from an `app.outbox` event. This is already implied by `source_event_id NOT NULL` and the dedupe key, and today's audit consumer (`core/crates/audit`) only maps events. A producer that wants an audit row (e.g. `security.*` from auth) writes an outbox event in its own transaction, never an audit row directly. So `event_seq` is always available, and the user-visible log keeps the outbox's crash safety (X-5).
 - **No secret in `audit_entry`** (§1 rule 9; CLAUDE.md):
   - The Core redacts before writing.
   - The storage `CHECK` refuses an `awk_`/`awd_` token in `details`, in the two free-text snapshots (`account_name`, `source_name`), since a user could paste a token into a name, and in `message_id`. Its pattern allows `_`, so a 61-character token would otherwise match.
@@ -1156,7 +1344,9 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 7b | `audit_entry_activity_columns` (rev. 9): the S10 columns and constraints on the partitioned table (see below) | S10 (or whichever slice first emits them); version stamped after the latest merged migration |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
-| 10 | `risk_create_account_limits` | S13 (Wave 3) |
+| 10 | `risk_create_account_limits` (with `derived_from_version`, ADR-0006) | S13 (Wave 3) |
+| 11 | `catalog_create_presets` (rev. 10): the §5.7 catalog tables + the forward change on `opt_in_rule_version` | S16; version stamped after the latest merged migration |
+| 12 | `accounts_create_rule_values` (rev. 10): `account_rule_value`; `account.limits_version` / `limits_changed_at` go into #5 directly if it is still unwritten, else they are added here | S16; after #5 and #11 |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
 
 **Dependencies across branches:**
@@ -1169,7 +1359,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
 - Plan:
   1. `ADD COLUMN outcome text NOT NULL DEFAULT 'info'` and `safe_to_display boolean NOT NULL DEFAULT false`, then `ALTER … DROP DEFAULT`. These are fast metadata defaults (PG ≥ 11), and dropping the defaults makes every new insert set the values.
-  2. Add the nullable `is_exit`, `message_id` and `source_name`.
+  2. Add the nullable `is_exit`, `message_id` and `source_name`, and `event_seq bigint NOT NULL DEFAULT 0` then `DROP DEFAULT` (rev. 10). Replace `audit_entry_user_time_idx` with `(user_id, occurred_at DESC, event_seq DESC, id DESC)`. `app.outbox.seq` comes first, in its own forward `app` migration.
   3. Add the `CHECK`s:
      - the column `CHECK`s on `outcome`, `is_exit`, `message_id` and `source_name`, validated, since only new values can fail them;
      - `audit_entry_source_name_check` and `audit_entry_account_name_check` added **`NOT VALID` and never validated**. Old rows have `source_id` with a just-added NULL `source_name`, or a NULL `account_name`, and cannot be backfilled. `NOT VALID` enforces the rule on every new insert and exempts the old rows. Verified on PostgreSQL 16.15 in a scratch database:
@@ -1249,6 +1439,25 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - a copy without `copied_at` fails;
      - a stale `row_version` updates 0 rows;
    - rev. 8, `subscription`: a stale `row_version` updates 0 rows;
+   - rev. 10, catalog:
+     - a rule set missing `drawdown`, and one with a JSON-number `amount`, fail;
+     - a second rule set with the same `(version, platform)` fails;
+     - a `preset_version` whose release belongs to another firm fails (composite FK);
+     - a `personal_device` stance `allowed` fails;
+     - `allwin_app` cannot `UPDATE`/`DELETE` releases, versions or rule sets;
+   - rev. 10, coherence (Core): an account with a preset whose `size_amount` differs from the preset's, whose `firm_id` is not the version's firm, or whose `firm_platform` the release does not offer, is refused;
+   - rev. 10, `account_rule_value`:
+     - `max_position_qty` with a value, and `drawdown` without one, fail;
+     - `chosen_from_conflict` without `chose`/`chosen_at` fails;
+     - a JSON-number `amount` fails;
+     - another user's account is refused by the composite FK and invisible under RLS;
+     - apply rewrites the account and its rows atomically (a forced failure leaves both unchanged);
+   - rev. 10, ADR-0006:
+     - an entry for an account whose limits are stale (or missing) is skipped with `routing.limits_pending`, and an exit goes through;
+     - a redelivered or out-of-order `limits_changed` never lowers `derived_from_version`;
+     - after a crash between commit and consumption, startup reconciliation closes the gap;
+     - a `limits_version` below 1 fails;
+     - lowering `max_position_qty` (and editing a rule value, or restoring one) bumps `limits_version` and gates entries until risk has derived the new version; renaming the account does not bump;
    - decimal round-trip at maximum scale (`NUMERIC(22,10)`, `NUMERIC(18,4)`) through sqlx `rust_decimal`.
 3. The RLS lint test (§3) runs in CI.
 4. The Q13 §9 size measurement on 1 M synthetic audit rows.
