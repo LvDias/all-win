@@ -5,34 +5,254 @@
   "description": "One JSON object per WebSocket text frame. Envelope plus a payload selected by `type`. Delivery, ordering, expiry and reconnect semantics are normative in ADR-0004.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["protocol_version", "msg_id", "type", "sent_at", "payload"],
+  "required": [
+    "protocol_version",
+    "msg_id",
+    "type",
+    "sent_at",
+    "payload"
+  ],
   "properties": {
-    "protocol_version": { "type": "string", "pattern": "^1\\.(0|[1-9][0-9]*)$" },
-    "msg_id": { "$ref": "#/$defs/uuid" },
+    "protocol_version": {
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$"
+    },
+    "msg_id": {
+      "$ref": "#/$defs/uuid"
+    },
     "type": {
       "enum": [
-        "hello", "welcome", "error", "ack", "heartbeat",
-        "command", "limits", "instruction_result",
-        "execution_report", "position_snapshot", "instruction", "risk_event", "risk_state"
+        "hello",
+        "welcome",
+        "error",
+        "ack",
+        "heartbeat",
+        "command",
+        "limits",
+        "instruction_result",
+        "execution_report",
+        "position_snapshot",
+        "instruction",
+        "risk_event",
+        "risk_state"
       ]
     },
-    "sent_at": { "$ref": "#/$defs/utc_timestamp" },
-    "payload": { "type": "object" }
+    "sent_at": {
+      "$ref": "#/$defs/utc_timestamp"
+    },
+    "payload": {
+      "type": "object"
+    }
   },
   "allOf": [
-    { "if": { "properties": { "type": { "const": "hello" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/hello" } } } },
-    { "if": { "properties": { "type": { "const": "welcome" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/welcome" } } } },
-    { "if": { "properties": { "type": { "const": "error" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/error" } } } },
-    { "if": { "properties": { "type": { "const": "ack" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/ack" } } } },
-    { "if": { "properties": { "type": { "const": "heartbeat" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/heartbeat" } } } },
-    { "if": { "properties": { "type": { "const": "command" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/command" } } } },
-    { "if": { "properties": { "type": { "const": "limits" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/limits" } } } },
-    { "if": { "properties": { "type": { "const": "instruction_result" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/instruction_result" } } } },
-    { "if": { "properties": { "type": { "const": "execution_report" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/execution_report" } } } },
-    { "if": { "properties": { "type": { "const": "position_snapshot" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/position_snapshot" } } } },
-    { "if": { "properties": { "type": { "const": "instruction" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/instruction_msg" } } } },
-    { "if": { "properties": { "type": { "const": "risk_event" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/risk_event" } } } },
-    { "if": { "properties": { "type": { "const": "risk_state" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/risk_state" } } } }
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "hello"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/hello"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "welcome"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/welcome"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ack"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ack"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "heartbeat"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/heartbeat"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "command"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/command"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "limits"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/limits"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "instruction_result"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/instruction_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "execution_report"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/execution_report"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "position_snapshot"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/position_snapshot"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "instruction"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/instruction_msg"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "risk_event"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/risk_event"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "risk_state"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/risk_state"
+          }
+        }
+      }
+    }
   ],
   "$defs": {
     "uuid": {
@@ -46,10 +266,12 @@
     "price": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,10})?$",
-      "not": { "pattern": "^0(\\.0+)?$" }
+      "not": {
+        "pattern": "^0(\\.0+)?$"
+      }
     },
     "decimal": {
-      "description": "Exact signed decimal as a string (money, P&L, price deltas).",
+      "description": "Exact signed decimal as a string (price deltas). Money uses `money`.",
       "type": "string",
       "pattern": "^-?(0|[1-9][0-9]{0,13})(\\.[0-9]{1,10})?$"
     },
@@ -62,106 +284,336 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
     },
-    "platform_account": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "platform_account": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
     "instrument": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["symbol", "contract_month"],
+      "required": [
+        "symbol",
+        "contract_month"
+      ],
       "properties": {
-        "symbol": { "type": "string", "pattern": "^[A-Z0-9]{1,10}$" },
-        "contract_month": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$" }
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{1,10}$"
+        },
+        "contract_month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        }
       }
     },
     "order_spec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
-        "type": { "enum": ["market", "limit", "stop", "stop_limit"] },
-        "limit_price": { "$ref": "#/$defs/price" },
-        "stop_price": { "$ref": "#/$defs/price" },
-        "time_in_force": { "enum": ["day", "gtc"] }
+        "type": {
+          "enum": [
+            "market",
+            "limit",
+            "stop",
+            "stop_limit"
+          ]
+        },
+        "limit_price": {
+          "$ref": "#/$defs/price"
+        },
+        "stop_price": {
+          "$ref": "#/$defs/price"
+        },
+        "time_in_force": {
+          "enum": [
+            "day",
+            "gtc"
+          ]
+        }
       },
       "allOf": [
-        { "if": { "properties": { "type": { "const": "limit" } } }, "then": { "required": ["limit_price"], "not": { "required": ["stop_price"] } } },
-        { "if": { "properties": { "type": { "const": "stop" } } }, "then": { "required": ["stop_price"], "not": { "required": ["limit_price"] } } },
-        { "if": { "properties": { "type": { "const": "stop_limit" } } }, "then": { "required": ["limit_price", "stop_price"] } },
-        { "if": { "properties": { "type": { "const": "market" } } }, "then": { "allOf": [ { "not": { "required": ["limit_price"] } }, { "not": { "required": ["stop_price"] } } ] } }
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "limit"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "limit_price"
+            ],
+            "not": {
+              "required": [
+                "stop_price"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stop"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "stop_price"
+            ],
+            "not": {
+              "required": [
+                "limit_price"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stop_limit"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "limit_price",
+              "stop_price"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "market"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "limit_price"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "stop_price"
+                  ]
+                }
+              }
+            ]
+          }
+        }
       ]
     },
     "account_kind": {
       "description": "Detected by the adapter from the platform connection. Non-release adapter builds act only on simulation/playback.",
-      "enum": ["simulation", "playback", "live", "unknown"]
+      "enum": [
+        "simulation",
+        "playback",
+        "live",
+        "unknown"
+      ]
     },
-    "child_role": { "enum": ["entry", "stop", "target", "exit", "flatten"] },
-
+    "child_role": {
+      "enum": [
+        "entry",
+        "stop",
+        "target",
+        "exit",
+        "flatten"
+      ]
+    },
     "hello": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["instance_id", "adapter", "supported_protocol_versions", "accounts"],
+      "required": [
+        "instance_id",
+        "adapter",
+        "supported_protocol_versions",
+        "accounts"
+      ],
       "properties": {
-        "instance_id": { "$ref": "#/$defs/uuid" },
+        "instance_id": {
+          "$ref": "#/$defs/uuid"
+        },
         "adapter": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["type", "version", "build"],
+          "required": [
+            "type",
+            "version",
+            "build"
+          ],
           "properties": {
-            "type": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
-            "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$" },
-            "build": { "enum": ["release", "development"] },
-            "platform_version": { "type": "string", "maxLength": 32 }
+            "type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,31}$"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$"
+            },
+            "build": {
+              "enum": [
+                "release",
+                "development"
+              ]
+            },
+            "platform_version": {
+              "type": "string",
+              "maxLength": 32
+            }
           }
         },
         "supported_protocol_versions": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" }
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+$"
+          }
         },
         "accounts": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["platform_account", "kind"],
+            "required": [
+              "platform_account",
+              "kind",
+              "oco_location"
+            ],
             "properties": {
-              "platform_account": { "$ref": "#/$defs/platform_account" },
-              "connection_name": { "type": "string", "maxLength": 128 },
-              "kind": { "$ref": "#/$defs/account_kind" }
+              "platform_account": {
+                "$ref": "#/$defs/platform_account"
+              },
+              "connection_name": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "kind": {
+                "$ref": "#/$defs/account_kind"
+              },
+              "oco_location": {
+                "description": "Where OCO between protective orders is enforced for this account's connection (ADR-0004 6.1). NinjaTrader and Rithmic connections: local.",
+                "enum": [
+                  "local",
+                  "server",
+                  "unknown"
+                ]
+              }
             }
           }
         },
         "pending_outbound": {
           "description": "Number of unacknowledged reliable messages the adapter will retransmit after welcome.",
-          "type": "integer", "minimum": 0
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
     "welcome": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["session_id", "connection_id", "protocol_version", "heartbeat_interval_ms", "ack_timeout_ms", "simulation_only", "locale", "accounts"],
+      "required": [
+        "session_id",
+        "connection_id",
+        "protocol_version",
+        "heartbeat_interval_ms",
+        "ack_timeout_ms",
+        "simulation_only",
+        "locale",
+        "accounts"
+      ],
       "properties": {
-        "session_id": { "$ref": "#/$defs/uuid" },
-        "connection_id": { "$ref": "#/$defs/uuid" },
-        "protocol_version": { "type": "string", "pattern": "^1\\.[0-9]+$" },
-        "heartbeat_interval_ms": { "type": "integer", "minimum": 1000, "maximum": 60000 },
-        "ack_timeout_ms": { "type": "integer", "minimum": 500, "maximum": 60000 },
-        "simulation_only": { "description": "True in every non-production environment: the adapter must refuse non-simulation accounts.", "type": "boolean" },
-        "locale": { "enum": ["pt-BR", "en"] },
+        "session_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "connection_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "protocol_version": {
+          "type": "string",
+          "pattern": "^1\\.[0-9]+$"
+        },
+        "heartbeat_interval_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000
+        },
+        "ack_timeout_ms": {
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 60000
+        },
+        "simulation_only": {
+          "description": "True in every non-production environment: the adapter must refuse non-simulation accounts.",
+          "type": "boolean"
+        },
+        "locale": {
+          "enum": [
+            "pt-BR",
+            "en"
+          ]
+        },
         "accounts": {
           "description": "Accounts of this instance that the user registered and mapped. Unlisted platform accounts are ignored by the adapter (no commands, no reports).",
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["account_id", "platform_account", "roles", "sync_state"],
+            "required": [
+              "account_id",
+              "platform_account",
+              "roles",
+              "sync_state"
+            ],
             "properties": {
-              "account_id": { "$ref": "#/$defs/uuid" },
-              "platform_account": { "$ref": "#/$defs/platform_account" },
-              "roles": {
-                "type": "array", "uniqueItems": true, "minItems": 1,
-                "items": { "enum": ["destination", "master"] }
+              "account_id": {
+                "$ref": "#/$defs/uuid"
               },
-              "sync_state": { "enum": ["in_sync", "out_of_sync"] }
+              "platform_account": {
+                "$ref": "#/$defs/platform_account"
+              },
+              "roles": {
+                "type": "array",
+                "uniqueItems": true,
+                "minItems": 1,
+                "items": {
+                  "enum": [
+                    "destination",
+                    "master"
+                  ]
+                }
+              },
+              "sync_state": {
+                "enum": [
+                  "in_sync",
+                  "out_of_sync"
+                ]
+              },
+              "sync_reasons": {
+                "type": "array",
+                "uniqueItems": true,
+                "maxItems": 20,
+                "items": {
+                  "$ref": "#/$defs/code"
+                }
+              }
             }
           }
         }
@@ -170,19 +622,38 @@
     "error": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["code"],
+      "required": [
+        "code"
+      ],
       "properties": {
-        "code": { "$ref": "#/$defs/code" },
-        "ref_msg_id": { "$ref": "#/$defs/uuid" },
-        "detail": { "type": "string", "maxLength": 512 }
+        "code": {
+          "$ref": "#/$defs/code"
+        },
+        "ref_msg_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 512
+        }
       }
     },
     "ack": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["msg_ids"],
+      "required": [
+        "msg_ids"
+      ],
       "properties": {
-        "msg_ids": { "type": "array", "minItems": 1, "maxItems": 500, "uniqueItems": true, "items": { "$ref": "#/$defs/uuid" } }
+        "msg_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuid"
+          }
+        }
       }
     },
     "heartbeat": {
@@ -193,14 +664,38 @@
     "command": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command_id", "instruction_id", "account_id", "platform_account", "instrument", "kind"],
+      "required": [
+        "command_id",
+        "instruction_id",
+        "account_id",
+        "platform_account",
+        "instrument",
+        "kind"
+      ],
       "properties": {
-        "command_id": { "$ref": "#/$defs/uuid" },
-        "instruction_id": { "$ref": "#/$defs/uuid" },
-        "account_id": { "$ref": "#/$defs/uuid" },
-        "platform_account": { "$ref": "#/$defs/platform_account" },
-        "instrument": { "$ref": "#/$defs/instrument" },
-        "kind": { "enum": ["place", "modify", "cancel", "flatten"] },
+        "command_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "instruction_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "platform_account": {
+          "$ref": "#/$defs/platform_account"
+        },
+        "instrument": {
+          "$ref": "#/$defs/instrument"
+        },
+        "kind": {
+          "enum": [
+            "place",
+            "modify",
+            "cancel",
+            "flatten"
+          ]
+        },
         "expires_at": {
           "description": "Position-increasing commands always carry it. The adapter rejects the command with command.expired if received after this instant (skew-corrected).",
           "$ref": "#/$defs/utc_timestamp"
@@ -212,64 +707,309 @@
         "place": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["side", "quantity", "order", "position_effect"],
+          "required": [
+            "side",
+            "quantity",
+            "order",
+            "position_effect"
+          ],
           "properties": {
-            "side": { "enum": ["buy", "sell"] },
-            "quantity": { "type": "integer", "minimum": 1, "maximum": 10000 },
-            "order": { "$ref": "#/$defs/order_spec" },
-            "position_effect": { "enum": ["open", "reduce"] },
+            "side": {
+              "enum": [
+                "buy",
+                "sell"
+              ]
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "order": {
+              "$ref": "#/$defs/order_spec"
+            },
+            "position_effect": {
+              "enum": [
+                "open",
+                "reduce"
+              ]
+            },
             "protection": {
               "description": "Stop/target from the account profile, normalized to ticks by the Core. Absent for reduce orders. The adapter computes prices from the fill price (individual) or the average price (shared).",
               "type": "object",
               "additionalProperties": false,
-              "required": ["mode"],
+              "required": [
+                "mode"
+              ],
               "minProperties": 2,
               "properties": {
-                "mode": { "enum": ["individual", "shared"] },
-                "stop_ticks": { "type": "integer", "minimum": 1, "maximum": 100000 },
-                "target_ticks": { "type": "integer", "minimum": 1, "maximum": 100000 }
+                "mode": {
+                  "enum": [
+                    "individual",
+                    "shared"
+                  ]
+                },
+                "stop_ticks": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
+                },
+                "target_ticks": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
+                }
               }
             }
           },
           "allOf": [
-            { "if": { "properties": { "position_effect": { "const": "reduce" } } }, "then": { "not": { "required": ["protection"] } } }
+            {
+              "if": {
+                "properties": {
+                  "position_effect": {
+                    "const": "reduce"
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "protection"
+                  ]
+                }
+              }
+            }
           ]
         },
         "modify": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["targets"],
+          "required": [
+            "targets"
+          ],
           "properties": {
-            "targets": { "$ref": "#/$defs/order_targets" },
-            "price_delta": { "allOf": [ { "$ref": "#/$defs/decimal" }, { "not": { "pattern": "^-?0(\\.0+)?$" } } ] },
-            "quantity": { "type": "integer", "minimum": 1, "maximum": 10000 }
+            "targets": {
+              "$ref": "#/$defs/order_targets"
+            },
+            "price_delta": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/decimal"
+                },
+                {
+                  "not": {
+                    "pattern": "^-?0(\\.0+)?$"
+                  }
+                }
+              ]
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
           },
-          "anyOf": [ { "required": ["price_delta"] }, { "required": ["quantity"] } ]
+          "anyOf": [
+            {
+              "required": [
+                "price_delta"
+              ]
+            },
+            {
+              "required": [
+                "quantity"
+              ]
+            }
+          ]
         },
         "cancel": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["targets"],
-          "properties": { "targets": { "$ref": "#/$defs/order_targets" } }
+          "required": [
+            "targets"
+          ],
+          "properties": {
+            "targets": {
+              "$ref": "#/$defs/order_targets"
+            }
+          }
         },
         "flatten": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["reason"],
+          "required": [
+            "reason"
+          ],
           "properties": {
-            "reason": { "enum": ["close", "reverse"] }
+            "reason": {
+              "enum": [
+                "close",
+                "reverse",
+                "orphan_fill"
+              ]
+            }
           }
         },
-        "reason_code": { "$ref": "#/$defs/code" }
+        "reason_code": {
+          "$ref": "#/$defs/code"
+        }
       },
       "allOf": [
-        { "if": { "properties": { "kind": { "const": "place" } } }, "then": { "required": ["place"], "not": { "anyOf": [ { "required": ["modify"] }, { "required": ["cancel"] }, { "required": ["flatten"] } ] } } },
-        { "if": { "properties": { "kind": { "const": "modify" } } }, "then": { "required": ["modify"], "not": { "anyOf": [ { "required": ["place"] }, { "required": ["cancel"] }, { "required": ["flatten"] } ] } } },
-        { "if": { "properties": { "kind": { "const": "cancel" } } }, "then": { "required": ["cancel"], "not": { "anyOf": [ { "required": ["place"] }, { "required": ["modify"] }, { "required": ["flatten"] } ] } } },
-        { "if": { "properties": { "kind": { "const": "flatten" } } }, "then": { "required": ["flatten"], "not": { "anyOf": [ { "required": ["place"] }, { "required": ["modify"] }, { "required": ["cancel"] } ] } } },
         {
-          "if": { "properties": { "kind": { "const": "place" } , "place": { "properties": { "position_effect": { "const": "open" } } } }, "required": ["place"] },
-          "then": { "required": ["expires_at"] }
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "place"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "place"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "modify"
+                  ]
+                },
+                {
+                  "required": [
+                    "cancel"
+                  ]
+                },
+                {
+                  "required": [
+                    "flatten"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "modify"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "modify"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "place"
+                  ]
+                },
+                {
+                  "required": [
+                    "cancel"
+                  ]
+                },
+                {
+                  "required": [
+                    "flatten"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cancel"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "cancel"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "place"
+                  ]
+                },
+                {
+                  "required": [
+                    "modify"
+                  ]
+                },
+                {
+                  "required": [
+                    "flatten"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "flatten"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "flatten"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "place"
+                  ]
+                },
+                {
+                  "required": [
+                    "modify"
+                  ]
+                },
+                {
+                  "required": [
+                    "cancel"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "place"
+              },
+              "place": {
+                "properties": {
+                  "position_effect": {
+                    "const": "open"
+                  }
+                }
+              }
+            },
+            "required": [
+              "place"
+            ]
+          },
+          "then": {
+            "required": [
+              "expires_at"
+            ]
+          }
         }
       ]
     },
@@ -281,64 +1021,145 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["command_id", "child_role"],
+        "required": [
+          "command_id",
+          "child_role"
+        ],
         "properties": {
-          "command_id": { "$ref": "#/$defs/uuid" },
-          "child_role": { "enum": ["entry", "stop", "target"] },
-          "platform_order_id": { "type": "string", "maxLength": 128 }
+          "command_id": {
+            "$ref": "#/$defs/uuid"
+          },
+          "child_role": {
+            "enum": [
+              "entry",
+              "stop",
+              "target"
+            ]
+          },
+          "platform_order_id": {
+            "type": "string",
+            "maxLength": 128
+          }
         }
       }
     },
     "limits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["accounts"],
+      "required": [
+        "accounts"
+      ],
       "properties": {
         "accounts": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["account_id", "platform_account", "version", "enforcement_enabled", "max_position", "trading_day", "warning_threshold_pct"],
+            "required": [
+              "account_id",
+              "platform_account",
+              "version",
+              "enforcement_enabled",
+              "max_position",
+              "trading_day",
+              "warning_threshold_pct"
+            ],
             "properties": {
-              "account_id": { "$ref": "#/$defs/uuid" },
-              "platform_account": { "$ref": "#/$defs/platform_account" },
-              "version": { "description": "Monotonic per account; the adapter ignores older versions.", "type": "integer", "minimum": 1 },
-              "enforcement_enabled": { "type": "boolean" },
-              "max_position": { "type": "integer", "minimum": 1 },
-              "daily_loss_limit": { "$ref": "#/$defs/non_negative_decimal" },
+              "account_id": {
+                "$ref": "#/$defs/uuid"
+              },
+              "platform_account": {
+                "$ref": "#/$defs/platform_account"
+              },
+              "version": {
+                "description": "Monotonic per account; the adapter ignores older versions.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "enforcement_enabled": {
+                "type": "boolean"
+              },
+              "max_position": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "daily_loss_limit": {
+                "$ref": "#/$defs/non_negative_money"
+              },
               "daily_profit_target": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["amount", "on_reach"],
+                "required": [
+                  "amount",
+                  "on_reach"
+                ],
                 "properties": {
-                  "amount": { "$ref": "#/$defs/non_negative_decimal" },
-                  "on_reach": { "enum": ["notify", "flatten_and_block"] }
+                  "amount": {
+                    "$ref": "#/$defs/non_negative_money"
+                  },
+                  "on_reach": {
+                    "enum": [
+                      "notify",
+                      "flatten_and_block"
+                    ]
+                  }
                 }
               },
               "drawdown": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["type", "amount"],
+                "required": [
+                  "type",
+                  "amount"
+                ],
                 "properties": {
-                  "type": { "enum": ["trailing_intraday", "trailing_end_of_day", "static"] },
-                  "amount": { "$ref": "#/$defs/non_negative_decimal" },
-                  "floor_balance": { "$ref": "#/$defs/decimal" },
-                  "high_water_balance": { "$ref": "#/$defs/decimal" },
-                  "lock_at_balance": { "$ref": "#/$defs/decimal" }
+                  "type": {
+                    "enum": [
+                      "trailing_intraday",
+                      "trailing_end_of_day",
+                      "static"
+                    ]
+                  },
+                  "amount": {
+                    "$ref": "#/$defs/non_negative_money"
+                  },
+                  "floor_balance": {
+                    "$ref": "#/$defs/money"
+                  },
+                  "high_water_balance": {
+                    "$ref": "#/$defs/money"
+                  },
+                  "lock_at_balance": {
+                    "$ref": "#/$defs/money"
+                  }
                 }
               },
               "trading_day": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["reset_local_time", "time_zone"],
+                "required": [
+                  "reset_local_time",
+                  "time_zone"
+                ],
                 "properties": {
-                  "reset_local_time": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
-                  "time_zone": { "type": "string", "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$" }
+                  "reset_local_time": {
+                    "type": "string",
+                    "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  },
+                  "time_zone": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$"
+                  }
                 }
               },
-              "warning_threshold_pct": { "type": "integer", "minimum": 1, "maximum": 99 },
-              "blocked_until": { "$ref": "#/$defs/utc_timestamp" }
+              "warning_threshold_pct": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 99
+              },
+              "blocked_until": {
+                "$ref": "#/$defs/utc_timestamp"
+              }
             }
           }
         }
@@ -347,92 +1168,302 @@
     "instruction_result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["message_id", "status"],
+      "required": [
+        "message_id",
+        "status"
+      ],
       "properties": {
-        "message_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "status": { "enum": ["accepted", "duplicate", "rejected"] },
-        "instruction_id": { "$ref": "#/$defs/uuid" },
-        "error_code": { "$ref": "#/$defs/code" },
-        "pointer": { "type": "string", "maxLength": 256 }
+        "message_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "rejected"
+          ]
+        },
+        "instruction_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "error_code": {
+          "$ref": "#/$defs/code"
+        },
+        "pointer": {
+          "type": "string",
+          "maxLength": 256
+        }
       },
       "allOf": [
-        { "if": { "properties": { "status": { "const": "rejected" } } }, "then": { "required": ["error_code"] }, "else": { "required": ["instruction_id"] } }
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "error_code"
+            ]
+          },
+          "else": {
+            "required": [
+              "instruction_id"
+            ]
+          }
+        }
       ]
     },
     "execution_report": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["event_id", "account_id", "platform_account", "instrument", "status", "origin", "occurred_at"],
+      "required": [
+        "event_id",
+        "account_id",
+        "platform_account",
+        "instrument",
+        "status",
+        "origin",
+        "occurred_at"
+      ],
       "properties": {
-        "event_id": { "$ref": "#/$defs/uuid" },
-        "command_id": { "description": "Absent for external orders (origin=external).", "$ref": "#/$defs/uuid" },
-        "account_id": { "$ref": "#/$defs/uuid" },
-        "platform_account": { "$ref": "#/$defs/platform_account" },
-        "instrument": { "$ref": "#/$defs/instrument" },
-        "origin": { "description": "all_win: created by a Core command; local_enforcement: created by the adapter's risk enforcement; external: placed by the user or another tool on the platform.", "enum": ["all_win", "local_enforcement", "external"] },
-        "child_role": { "$ref": "#/$defs/child_role" },
-        "platform_order_id": { "type": "string", "maxLength": 128 },
-        "status": { "enum": ["received", "working", "partially_filled", "filled", "cancelled", "rejected", "expired", "duplicate"] },
-        "side": { "enum": ["buy", "sell"] },
-        "order": { "$ref": "#/$defs/order_spec" },
-        "quantity": { "type": "integer", "minimum": 1 },
+        "event_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "command_id": {
+          "description": "Absent for external orders (origin=external).",
+          "$ref": "#/$defs/uuid"
+        },
+        "account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "platform_account": {
+          "$ref": "#/$defs/platform_account"
+        },
+        "instrument": {
+          "$ref": "#/$defs/instrument"
+        },
+        "origin": {
+          "description": "all_win: created by a Core command; local_enforcement: created by the adapter's risk enforcement; external: placed by the user or another tool on the platform.",
+          "enum": [
+            "all_win",
+            "local_enforcement",
+            "external"
+          ]
+        },
+        "child_role": {
+          "$ref": "#/$defs/child_role"
+        },
+        "platform_order_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "status": {
+          "enum": [
+            "received",
+            "working",
+            "partially_filled",
+            "filled",
+            "cancelled",
+            "rejected",
+            "expired",
+            "duplicate",
+            "unknown"
+          ]
+        },
+        "side": {
+          "enum": [
+            "buy",
+            "sell"
+          ]
+        },
+        "order": {
+          "$ref": "#/$defs/order_spec"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
         "fill": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["fill_id", "quantity", "price"],
+          "required": [
+            "fill_id",
+            "quantity",
+            "price"
+          ],
           "properties": {
-            "fill_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-            "quantity": { "type": "integer", "minimum": 1 },
-            "price": { "$ref": "#/$defs/price" },
-            "commission": { "$ref": "#/$defs/non_negative_decimal" }
+            "fill_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "price": {
+              "$ref": "#/$defs/price"
+            },
+            "commission": {
+              "$ref": "#/$defs/non_negative_money"
+            },
+            "operation": {
+              "description": "add (default): new execution; amend/remove: the platform corrected or removed an earlier execution with the same fill_id (e.g. broker back office).",
+              "enum": [
+                "add",
+                "amend",
+                "remove"
+              ]
+            }
           }
         },
-        "position_after": { "$ref": "#/$defs/position" },
-        "reason_code": { "$ref": "#/$defs/code" },
-        "occurred_at": { "$ref": "#/$defs/utc_timestamp" },
-        "platform_time": { "description": "Platform/connection time (Playback uses simulated time).", "$ref": "#/$defs/utc_timestamp" }
+        "position_after": {
+          "$ref": "#/$defs/position"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/code"
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "platform_time": {
+          "description": "Platform/connection time (Playback uses simulated time).",
+          "$ref": "#/$defs/utc_timestamp"
+        }
       },
       "allOf": [
-        { "if": { "properties": { "status": { "enum": ["partially_filled", "filled"] } } }, "then": { "required": ["fill", "position_after"] } },
-        { "if": { "properties": { "status": { "enum": ["rejected", "expired", "duplicate"] } } }, "then": { "required": ["reason_code"] } },
-        { "if": { "properties": { "origin": { "const": "all_win" } } }, "then": { "required": ["command_id"] } }
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "partially_filled",
+                  "filled"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fill",
+              "position_after"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "rejected",
+                  "expired",
+                  "duplicate"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason_code"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "all_win"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "command_id"
+            ]
+          }
+        }
       ]
     },
     "position": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["quantity"],
+      "required": [
+        "quantity"
+      ],
       "properties": {
-        "quantity": { "description": "Signed: positive long, negative short, 0 flat.", "type": "integer" },
-        "average_price": { "$ref": "#/$defs/price" }
+        "quantity": {
+          "description": "Signed: positive long, negative short, 0 flat.",
+          "type": "integer"
+        },
+        "average_price": {
+          "$ref": "#/$defs/price"
+        }
       }
     },
     "position_snapshot": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["trigger", "taken_at", "accounts"],
+      "required": [
+        "trigger",
+        "taken_at",
+        "accounts"
+      ],
       "properties": {
-        "trigger": { "enum": ["reconnect", "periodic", "change", "requested"] },
-        "taken_at": { "$ref": "#/$defs/utc_timestamp" },
+        "trigger": {
+          "enum": [
+            "reconnect",
+            "periodic",
+            "change",
+            "requested",
+            "account_reset"
+          ]
+        },
+        "taken_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
         "accounts": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["account_id", "platform_account", "connected", "positions", "working_orders"],
+            "required": [
+              "account_id",
+              "platform_account",
+              "connected",
+              "positions",
+              "working_orders"
+            ],
             "properties": {
-              "account_id": { "$ref": "#/$defs/uuid" },
-              "platform_account": { "$ref": "#/$defs/platform_account" },
-              "connected": { "type": "boolean" },
+              "account_id": {
+                "$ref": "#/$defs/uuid"
+              },
+              "platform_account": {
+                "$ref": "#/$defs/platform_account"
+              },
+              "connected": {
+                "type": "boolean"
+              },
               "positions": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["instrument", "position"],
+                  "required": [
+                    "instrument",
+                    "position"
+                  ],
                   "properties": {
-                    "instrument": { "$ref": "#/$defs/instrument" },
-                    "position": { "$ref": "#/$defs/position" }
+                    "instrument": {
+                      "$ref": "#/$defs/instrument"
+                    },
+                    "position": {
+                      "$ref": "#/$defs/position"
+                    }
                   }
                 }
               },
@@ -441,16 +1472,56 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["platform_order_id", "instrument", "side", "quantity", "order", "origin"],
+                  "required": [
+                    "platform_order_id",
+                    "instrument",
+                    "side",
+                    "quantity",
+                    "order",
+                    "origin"
+                  ],
                   "properties": {
-                    "platform_order_id": { "type": "string", "maxLength": 128 },
-                    "command_id": { "$ref": "#/$defs/uuid" },
-                    "child_role": { "$ref": "#/$defs/child_role" },
-                    "instrument": { "$ref": "#/$defs/instrument" },
-                    "side": { "enum": ["buy", "sell"] },
-                    "quantity": { "type": "integer", "minimum": 1 },
-                    "order": { "$ref": "#/$defs/order_spec" },
-                    "origin": { "enum": ["all_win", "local_enforcement", "external"] }
+                    "platform_order_id": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "command_id": {
+                      "$ref": "#/$defs/uuid"
+                    },
+                    "child_role": {
+                      "$ref": "#/$defs/child_role"
+                    },
+                    "instrument": {
+                      "$ref": "#/$defs/instrument"
+                    },
+                    "side": {
+                      "enum": [
+                        "buy",
+                        "sell"
+                      ]
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "order": {
+                      "$ref": "#/$defs/order_spec"
+                    },
+                    "origin": {
+                      "enum": [
+                        "all_win",
+                        "local_enforcement",
+                        "external"
+                      ]
+                    },
+                    "state": {
+                      "enum": [
+                        "accepted",
+                        "working",
+                        "trigger_pending",
+                        "unknown"
+                      ]
+                    }
                   }
                 }
               }
@@ -462,46 +1533,140 @@
     "instruction_msg": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["account_id", "instruction"],
+      "required": [
+        "account_id",
+        "instruction"
+      ],
       "properties": {
-        "account_id": { "description": "The master account the instruction originates from.", "$ref": "#/$defs/uuid" },
-        "instruction": { "$ref": "https://allwin.app/contracts/instruction/v1/instruction.schema.json" }
+        "account_id": {
+          "description": "The master account the instruction originates from.",
+          "$ref": "#/$defs/uuid"
+        },
+        "instruction": {
+          "$ref": "https://allwin.app/contracts/instruction/v1/instruction.schema.json"
+        }
       }
     },
     "risk_event": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["event_id", "account_id", "kind", "occurred_at", "limits_version"],
+      "required": [
+        "event_id",
+        "account_id",
+        "kind",
+        "occurred_at",
+        "limits_version"
+      ],
       "properties": {
-        "event_id": { "$ref": "#/$defs/uuid" },
-        "account_id": { "$ref": "#/$defs/uuid" },
-        "kind": { "enum": ["warning", "limit_reached", "flattened", "orders_cancelled", "blocked", "unblocked", "blocked_order_cancelled"] },
-        "metric": { "enum": ["daily_loss", "drawdown", "daily_profit_target", "max_position"] },
-        "value": { "$ref": "#/$defs/decimal" },
-        "limit": { "$ref": "#/$defs/decimal" },
-        "limits_version": { "type": "integer", "minimum": 1 },
-        "while_disconnected": { "type": "boolean" },
-        "occurred_at": { "$ref": "#/$defs/utc_timestamp" },
-        "platform_time": { "$ref": "#/$defs/utc_timestamp" }
+        "event_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "kind": {
+          "enum": [
+            "warning",
+            "limit_reached",
+            "flattened",
+            "orders_cancelled",
+            "blocked",
+            "unblocked",
+            "blocked_order_cancelled"
+          ]
+        },
+        "metric": {
+          "enum": [
+            "daily_loss",
+            "drawdown",
+            "daily_profit_target",
+            "max_position"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/money"
+        },
+        "limit": {
+          "$ref": "#/$defs/money"
+        },
+        "limits_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "while_disconnected": {
+          "type": "boolean"
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "platform_time": {
+          "$ref": "#/$defs/utc_timestamp"
+        }
       },
       "allOf": [
-        { "if": { "properties": { "kind": { "enum": ["warning", "limit_reached"] } } }, "then": { "required": ["metric", "value", "limit"] } }
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "warning",
+                  "limit_reached"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "metric",
+              "value",
+              "limit"
+            ]
+          }
+        }
       ]
     },
     "risk_state": {
       "description": "Latest-value-wins live state for display; not acknowledged, may be coalesced or dropped.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["account_id", "as_of", "realized_pnl", "unrealized_pnl"],
+      "required": [
+        "account_id",
+        "as_of",
+        "realized_pnl",
+        "unrealized_pnl"
+      ],
       "properties": {
-        "account_id": { "$ref": "#/$defs/uuid" },
-        "as_of": { "$ref": "#/$defs/utc_timestamp" },
-        "realized_pnl": { "$ref": "#/$defs/decimal" },
-        "unrealized_pnl": { "$ref": "#/$defs/decimal" },
-        "daily_loss_remaining": { "$ref": "#/$defs/decimal" },
-        "drawdown_remaining": { "$ref": "#/$defs/decimal" },
-        "balance": { "$ref": "#/$defs/decimal" }
+        "account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "as_of": {
+          "$ref": "#/$defs/utc_timestamp"
+        },
+        "realized_pnl": {
+          "$ref": "#/$defs/money"
+        },
+        "unrealized_pnl": {
+          "$ref": "#/$defs/money"
+        },
+        "daily_loss_remaining": {
+          "$ref": "#/$defs/money"
+        },
+        "drawdown_remaining": {
+          "$ref": "#/$defs/money"
+        },
+        "balance": {
+          "$ref": "#/$defs/money"
+        }
       }
+    },
+    "money": {
+      "description": "Exact signed money amount as a string, at most 4 fraction digits (ALIGN-1). Never rounded silently.",
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]{0,13})(\\.[0-9]{1,4})?$"
+    },
+    "non_negative_money": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,13})(\\.[0-9]{1,4})?$"
     }
   }
 }

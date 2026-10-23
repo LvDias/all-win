@@ -1,0 +1,29 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-000000000d01",
+  "type": "welcome",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "session_id": "0192b3c4-0000-7000-8000-000000000005",
+    "connection_id": "0192b3c4-0000-7000-8000-000000000003",
+    "protocol_version": "1.0",
+    "heartbeat_interval_ms": 10000,
+    "ack_timeout_ms": 5000,
+    "simulation_only": true,
+    "locale": "pt-BR",
+    "accounts": [
+      {
+        "account_id": "0192b3c4-0000-7000-8000-000000000001",
+        "platform_account": "Sim101",
+        "roles": [
+          "destination"
+        ],
+        "sync_state": "out_of_sync",
+        "sync_reasons": [
+          "sync.bracket_integrity_unknown",
+          "sync.disconnected_in_trade"
+        ]
+      }
+    ]
+  }
+}

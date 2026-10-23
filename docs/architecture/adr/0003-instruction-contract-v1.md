@@ -1,6 +1,6 @@
 # ADR-0003 — Standard instruction contract v1 and correlation identifiers
 
-- **Status:** Proposed (2026-10-23) — awaiting user acceptance
+- **Status:** Accepted (2026-10-23) — accepted by the user with answers P1–P5 (§10). Acceptance deltas: §4.1 automation opt-in gate and per-(source, account) signal filter; §7 token format; §5 command step codes
 - **Owner:** Software Architect
 - **Answers:** product-vision.md §6 (draft fields) and §13 open question #2 (identifiers for modify/cancel and master replication).
 - **Implements user decisions:** A3 (secret in the URL, masked in every log), Q1 (conflict semantics), Q5 (followers' stop/target from their own profile), Q14 (out-of-sync gate), Q16 (command TTL; protocol details in ADR-0004).
@@ -66,12 +66,13 @@ For each target account selected by routing, the Core runs the steps below in or
 | Gate | Applies to | Code |
 |---|---|---|
 | Account disabled or paused | all actions | `routing.account_inactive` |
-| Signal type not selected for this account | all actions | `routing.signal_type_not_selected` |
+| Account of a firm that forbids automation and the user has not opted in to automated sources (decision 2026-10-23, option A) | all actions from automated sources (every V1 source) | `routing.automation_not_accepted` |
+| Signal type not selected for this (source, account) subscription (Q-A4, stored as `routing.subscription`) | all actions | `routing.signal_type_not_selected` |
 | Account flagged out of sync (Q14: stops until the user clears it) | position-increasing actions (`buy`/`sell` with `open`, `reverse`, `modify` of an entry) | `routing.out_of_sync` |
 | Risk block (account reached a limit; also with enforcement off, Q2) | position-increasing actions | `routing.risk_blocked` |
 | Command TTL would be exceeded before delivery | all actions | `routing.expired` (see ADR-0004) |
 
-> **Proposal, to be confirmed by the user via the PO (see §10, item P1):** risk and out-of-sync gates do **not** block exits (`close`, `reduce`, `cancel`, `modify` of a protective order). Refusing an exit while at a limit or out of sync would increase exposure, and a flatten is safe regardless of the Core's view of the position. Paused/disabled accounts block everything, because that is an explicit user choice.
+> **Decided (P1):** risk and out-of-sync gates do **not** block exits (`close`, `reduce`, `cancel`, `modify` of a protective order). Refusing an exit while at a limit or out of sync would increase exposure, and a flatten is safe regardless of the Core's view of the position. Paused/disabled accounts block everything, because that is an explicit user choice.
 
 ### 4.2 Actions
 
@@ -81,7 +82,7 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 |---|---|---|
 | `buy`/`sell`, `open` | flat, or the same direction | Open/add `min(Q, M − abs(P))` with stop/target from the account profile (individual or shared mode). If capped, the excess is skipped (`routing.quantity_capped`); if there is no room, `routing.max_position_reached` |
 | `buy`/`sell`, `open` | opposite direction | **Rejected and notified:** `routing.position_conflict` (Q1-a). The source must send `close` or `reverse` explicitly |
-| `buy`/`sell`, `reduce` | opposite direction | Reduce by `min(Q, abs(P))`. **Never flips.** Protective orders are resized to the remaining position (P2); at flat, orphan-order protection cancels the rest |
+| `buy`/`sell`, `reduce` | opposite direction | Reduce by `min(Q, abs(P))`. **Never flips.** Protective orders are resized to the remaining position, oldest entries first in individual mode (P2, FIFO); at flat, orphan-order protection cancels the rest |
 | `buy`/`sell`, `reduce` | flat or same direction | Skipped: `routing.nothing_to_reduce` |
 | `close` | any non-flat | **Flatten the whole position** in that contract and cancel all its stops/targets (Q1). `quantity`, if present, is ignored and the audit records `quantity_ignored`. A misconfigured close template must never leave a position open |
 | `close` | flat | No-op, audited: `routing.nothing_to_close` |
@@ -104,7 +105,7 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 | `refs.order_ref` | per source, by the source | Stable id of one source order across its life. Required by policy on master-account `buy`/`sell`/`reverse`, and by schema on `modify`/`cancel`. The master plugin generates it (a GUID-based string) and maps it to the platform order internally; platform order ids can change and are never used as `order_ref` |
 | `refs.parent_order_ref` | per source, by the source | Links a source protective order (`order.role` = `stop`/`target`) to the entry it protects. Used to find the follower protective orders that correspond to it |
 | `instruction_id` | Core (UUIDv7) | Accepted instruction; returned by ingress, used in the audit trail |
-| `command_id` | Core | One unit of work for one target account. **Deterministic:** UUIDv5 of `(instruction_id, target_account_id, step)`, so retries and restarts never create a second command for the same work (ADR-0004) |
+| `command_id` | Core | One unit of work for one target account. **Deterministic:** UUIDv5 of `(instruction_id, target_account_id, step)`, so retries and restarts never create a second command for the same work (ADR-0004). `step` is one of a fixed list: `place`, `flatten`, `modify:<n>`, `cancel:<n>`, where `<n>` is the zero-based ordinal of that command kind in the routing plan for that (instruction, account) (ALIGN-6); and `orphan_flatten:<event_id>` for the Q-O1 (b) flatten of a position opened by an orphan bracket leg, where `event_id` is the execution report of that orphan fill. It keeps the id deterministic across Core retries and distinct from the instruction's own `flatten` (ALIGN-8) |
 | `platform_order_id` | adapter | The venue's order id, reported in execution reports; stored, never sent back as a source reference |
 
 **Correlation map (Core, `routing` module):**
@@ -120,7 +121,7 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 - **Master protective order created:** not replicated. Followers already have profile-based protection (Q5-a).
 - **Master protective order moved** (`modify`, `order.role` = `stop`/`target`, `changes.price_delta`, `refs.parent_order_ref` = `E`): every follower `stop`/`target` child under `E` moves by the same `price_delta` ("followers move theirs by the same amount"). In shared mode the follower's single position-level stop/target moves.
 - **Master working entry modified** (`modify` with `refs.order_ref` = `E`): price moves by `price_delta`, and quantity becomes `changes.quantity × multiplier`, capped at `M`.
-- **Master order cancelled** (`cancel` with `refs.order_ref`): the corresponding children are cancelled. Cancelling a master protective order therefore cancels the followers' corresponding protective orders, which may leave followers unprotected. This follows the decided rule "everything done on the master is replicated", and S20 must make it visible (P3).
+- **Master order cancelled** (`cancel` with `refs.order_ref`): the corresponding children are cancelled. Cancelling a master protective order therefore cancels the followers' corresponding protective orders, which may leave followers unprotected. This follows the decided rule "everything done on the master is replicated" and is confirmed (P3): each affected follower gets a warning notification.
 - **Master partial exit:** `sell`/`buy` with `position_effect: reduce`. **Master flat:** `close`. Because `reduce` never flips and `close` on flat is a no-op, a follower whose own profile stop already fired cannot be pushed into an opposite position.
 
 ## 6. Source policies in V1 (Core, not schema)
@@ -139,7 +140,7 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 
 ## 7. TradingView ingress (implements A3)
 
-- **URL:** `POST https://<host>/ingress/v1/tradingview/awk_<key_id>_<secret>`.
+- **URL:** `POST https://<host>/ingress/v1/tradingview/awk_<key_id>_<secret>`. Format (ALIGN-3): `key_id` = 12 characters `[A-Za-z0-9]`, `secret` = 43 characters base64url without padding (32 random bytes); full pattern `^awk_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$`.
   - The token is per source, shown once in the web app, and can be rotated and revoked.
   - **The body carries no credential.**
   - The secret part is **masked in every log** (Caddy, Core, audit). The requirements and the automated masking test are in ADR-0001 §5.
@@ -158,7 +159,7 @@ The following rules use `Q = quantity × account multiplier`, `P` = the account'
 
   Every rejection with a valid token is written to the user's audit log, without the token, so the user sees *why* a signal did nothing.
 
-- **Expiry base (input to Q16 TTL):** `expiry_base = min(sent_at, received_at)`. A delayed webhook expires just like a delayed delivery, and a future `sent_at` (clock skew) can never extend the TTL. A command's `expires_at = expiry_base + account TTL` (ADR-0004). This follows the Q16 rationale that a late entry is worse than a missed one (P4).
+- **Expiry base (input to Q16 TTL):** `expiry_base = min(sent_at, received_at)`. A delayed webhook expires just like a delayed delivery, and a future `sent_at` (clock skew) can never extend the TTL. A command's `expires_at = expiry_base + account TTL` (ADR-0004). This follows the Q16 rationale that a late entry is worse than a missed one (P4, decided).
 - **`message_id` guidance for the Pine indicator** (see `integrations/tradingview`, S17): `tv-<symbol>-<signal kind>-<setup>-<bar time ms>`, built with `str.tostring(time)`. The id must differ between distinct signals on the same bar (include the setup or a sequence) and must be identical if the same alert fires twice for the same event.
 
 ## 8. Versioning and compatibility
@@ -177,19 +178,19 @@ These are inputs for `docs/architecture/data/` (owner: Database Architect):
   - `UNIQUE (user_id, message_id)`.
 - Per-target routing outcomes: `instruction_id`, `target_account_id`, `outcome_code`, computed quantities, `command_id`.
 - Correlation map: `user_id`, `source_id`, `order_ref`, `target_account_id`, `command_id`, `child_role`, `platform_order_id`.
-- Catalog: instruments, holding root symbol, tick size, tick value and point value as exact decimals, sessions, and the **active contract month per instrument** (P5).
+- Catalog: instruments, holding root symbol, tick size, tick value and point value as exact decimals, sessions, and the **active contract month per instrument**, maintained globally by the admin with an advance-warning date (P5, decided).
 
-## 10. Open items for the user (through the PO)
+## 10. User decisions on the open items (2026-10-23)
 
-These are derived rules that follow from decided principles but were not explicitly decided.
-
-| # | Item | Proposal |
+| # | Item | Decision |
 |---|---|---|
-| P1 | Do risk / out-of-sync gates block exits (`close`, `reduce`, protective `modify`/`cancel`)? | No: exits always pass those two gates. Paused/disabled block everything |
-| P2 | On a partial exit (`reduce`) in **individual** stop/target mode, which entries' protective orders are reduced first? | FIFO (oldest entry first) |
-| P3 | Master cancels its protective order: followers' corresponding protective orders are cancelled ("everything is replicated"). Confirm, given followers end up unprotected | Confirm, with a warning notification on each affected follower |
-| P4 | Expiry base = `min(sent_at, received_at)`, so delayed webhooks also expire | Accept |
-| P5 | Who sets the active contract month (rollover) when TradingView sends only `MNQ`? | The user sets the rollover date per instrument in the web app; the Core switches automatically on that date and warns in advance |
+| P1 | Do risk / out-of-sync gates block exits? | **No.** Exits (`close`, `reduce`, protective `modify`/`cancel`) always pass those two gates. Paused/disabled block everything |
+| P2 | Partial exit in individual mode: which protective orders are reduced first? | **FIFO** (oldest entry first) |
+| P3 | Master cancels a protective order | **Replicated**, with a warning notification on each affected follower |
+| P4 | Expiry base | **`min(sent_at, received_at)`** |
+| P5 | Active contract month / rollover | **Global rollover catalog maintained by the admin**, with advance warning to users. The Core switches the active contract on the configured date |
+
+Related decisions used by this ADR: Q-A1 (one maximum position per account in V1), Q-A2 (stop/target profiles keyed by instrument), Q-A4 (signal filter per (source, account)), Q-N1 (dollar distances rounded toward the entry, see ADR-0004 §5), Q17 (several named TradingView sources per user, each with its own token), and the automation opt-in for firms that forbid automation (§4.1).
 
 ## 11. Consequences
 
@@ -205,6 +206,6 @@ These are derived rules that follow from decided principles but were not explici
 
 ## 12. Adoption
 
-1. The user accepts this ADR (P1–P5 can be answered separately; none blocks S1/S2).
+1. ~~The user accepts this ADR.~~ Done 2026-10-23.
 2. Backend Rust implements the DTOs in `core/crates/contracts` and the fixture tests. The Plugin Engineer does the same in `AllWin.Adapter.Core` (master input, S19). Frontend generates TS types (ADR-0002 §4).
 3. S1 implements §7, including the masking test. S17 produces Pine templates conforming to §3 and §7.

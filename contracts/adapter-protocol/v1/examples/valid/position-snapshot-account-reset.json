@@ -1,0 +1,19 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-000000000d08",
+  "type": "position_snapshot",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "trigger": "account_reset",
+    "taken_at": "2026-10-22T14:50:00Z",
+    "accounts": [
+      {
+        "account_id": "0192b3c4-0000-7000-8000-000000000001",
+        "platform_account": "Sim101",
+        "connected": true,
+        "positions": [],
+        "working_orders": []
+      }
+    ]
+  }
+}

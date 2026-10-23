@@ -18,7 +18,8 @@
         "roles": [
           "destination"
         ],
-        "sync_state": "in_sync"
+        "sync_state": "in_sync",
+        "sync_reasons": []
       }
     ]
   }

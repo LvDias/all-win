@@ -1,0 +1,32 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-0000000003e9",
+  "type": "hello",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "instance_id": "0192b3c4-0000-7000-8000-000000000004",
+    "adapter": {
+      "type": "ninjatrader8",
+      "version": "0.1.0",
+      "build": "development",
+      "platform_version": "8.1.4.1"
+    },
+    "supported_protocol_versions": [
+      "1.0"
+    ],
+    "accounts": [
+      {
+        "platform_account": "Sim101",
+        "connection_name": "Simulated Data Feed",
+        "kind": "simulation"
+      },
+      {
+        "platform_account": "Playback101",
+        "connection_name": "Playback Connection",
+        "kind": "playback",
+        "oco_location": "local"
+      }
+    ],
+    "pending_outbound": 0
+  }
+}

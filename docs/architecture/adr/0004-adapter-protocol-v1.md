@@ -1,6 +1,6 @@
 # ADR-0004 — Core ↔ platform adapter protocol v1
 
-- **Status:** Proposed (2026-10-23) — awaiting user acceptance
+- **Status:** Accepted (2026-10-23) — accepted by the user with answers T1–T3 (§11). Acceptance deltas, recorded in `contracts/adapter-protocol/CHANGELOG.md`: §6.1 bracket integrity on local-OCO connections (NT8 profile F5); money type with 4 decimals (ALIGN-1); token formats (ALIGN-3); pairing limits and HMAC storage (ALIGN-4); Q18 unpairing; Q-N1 dollar rounding; `fill.operation` and `account_reset` (NT8 profile §6)
 - **Owner:** Software Architect
 - **Depends on:** [ADR-0001](0001-technology-stack.md) §6–7, [ADR-0003](0003-instruction-contract-v1.md)
 - **Implements user decisions:**
@@ -29,7 +29,8 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 - **Connection:** `wss://<host>/adapter/v1`, a WebSocket over TLS 1.2+, **opened outbound by the adapter**. No inbound port is needed on the trader's machine.
 - **Frames:** one JSON object per text frame, UTF-8, at most 256 KiB.
 - **Authentication:** `Authorization: Bearer awd_<key_id>_<secret>` on the upgrade request (a device token, §8).
-  - The Core stores only `key_id` and a SHA-256 hash.
+  - Token format (ALIGN-3): `awd_<key_id>_<secret>`, `key_id` = 12 characters `[A-Za-z0-9]`, `secret` = 43 characters base64url (32 random bytes); pattern `^awd_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$`.
+  - The Core stores only `key_id` and a SHA-256 hash of the secret (high entropy, so no pepper is needed).
   - The token is **masked in every log**: only `key_id` is printed, same rule as ADR-0001 §5.
 - **One active session per connection** (per NinjaTrader instance). A new authenticated session for the same connection closes the old one with code `4004 superseded`.
 - **WebSocket close codes:**
@@ -97,17 +98,17 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 ## 5. Command semantics and expiry (Q16)
 
 - **`place`:** side, quantity (already multiplied and capped by the Core), `order` (market/limit/stop/stop_limit) and `position_effect`.
-  - For `open`, it carries **`protection`**: mode `individual`|`shared`, `stop_ticks`, `target_ticks`. The Core normalizes the profile's points/ticks/dollars into whole ticks using the catalog's exact tick size and tick value.
+  - For `open`, it carries **`protection`**: mode `individual`|`shared`, `stop_ticks`, `target_ticks`. The Core normalizes the profile's points/ticks/dollars into whole ticks using the catalog's exact tick size and tick value. A dollar distance that is not a whole number of ticks is **rounded toward the entry** (the tighter distance), and the adjustment is shown in the audit (Q-N1, decided). Profiles are keyed by instrument (Q-A2).
   - The adapter computes protective prices from the **fill price** (individual) or the **average position price** (shared, re-computed on every add), rounds to tick size, and reports the protective orders as `execution_report`s with `child_role` `stop`/`target` under the same `command_id`.
 - **`modify` / `cancel`:** target orders created by All Win, identified by `(command_id, child_role)`, plus the `platform_order_id` when known. `modify` applies `price_delta` and/or a new total `quantity`.
 - **`flatten`:** closes the account's position in that contract and cancels **all** its working orders (orphan-order protection). The reason is `close` or `reverse`.
 - **Orphan-order protection in the adapter:** whenever an account's position in a contract becomes flat **for any reason**, the adapter immediately cancels the remaining All Win stop/target orders for it, and reports them `cancelled` with `reason_code: order.orphan_cancelled` (vision §8).
 - **Expiry (`expires_at`)**:
   - **Computed by the Core:** `expires_at = expiry_base + account.command_ttl`, where `expiry_base = min(instruction.sent_at, received_at)` (ADR-0003 §7).
-  - **Default TTL: 5 seconds.** Editable per account between 1 and 60 seconds (Q16: short default, per-account editable). The 5 s value is a proposal pending user confirmation (§11, T2).
+  - **Default TTL: 5 seconds.** Editable per account between 1 and 60 seconds (Q16: short default, per-account editable). The 5 s default is decided (T2).
   - **Core side:** the Core never sends a command whose `expires_at` has passed. Pending commands found expired after a reconnect or restart become `expired`, are audited, and the account is flagged **out of sync**.
   - **Adapter side:** the adapter rejects a command received after `expires_at`, using its clock corrected by the skew measured between `welcome.sent_at` and local receipt, and reports `status: expired`, `reason_code: command.expired`. A command already submitted to the platform is never cancelled because of expiry.
-  - **Which commands carry it:** the schema **requires** `expires_at` on position-increasing commands (`place` with `position_effect: open`). For exits (`flatten`, `reduce`, `cancel`, protective `modify`) it is optional, and the Core omits it by default, so a late exit still reduces exposure. This depends on user confirmation (§11, T1); if the user wants exits to expire too, the Core simply sets the field and no protocol change is needed.
+  - **Which commands carry it:** the schema **requires** `expires_at` on position-increasing commands (`place` with `position_effect: open`). For exits (`flatten`, `reduce`, `cancel`, protective `modify`) it is optional, and the Core omits it, so a late exit still reduces exposure; late exits are audited as late (T1, decided: only entries expire).
 
 ## 6. Synchronization, disconnects and out-of-sync (Q14)
 
@@ -120,14 +121,42 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 | Disconnect while flat with nothing in flight | `disconnected` only. On reconnect, if the snapshot shows flat with no All Win working orders, the state returns to normal automatically and the user is notified |
 | Reconnect snapshot differs from the expected state (position or All Win working orders) | `out_of_sync` + alert listing the differences |
 | Periodic snapshot (every 60 s while connected) differs | `out_of_sync` + alert |
-| External order or fill on a destination account (`origin: external`) | Reported and audited. Whether it marks the account out of sync is decided in S11 (§11, T3) |
+| External order or fill on a destination account (`origin: external`) | Destinations of master replication: `out_of_sync` + alert. TradingView-only destinations: audit only (T3, decided) |
+| Sim account reset or Playback rewind (`position_snapshot.trigger: account_reset`, NT8 `SimulationAccountReset`) | `out_of_sync` (`sync.simulation_reset`); the discontinuity is never interpreted as fills |
+| Execution amended or removed by the platform (`fill.operation` `amend`/`remove`) | The Core corrects the position and P&L, audits it, and flags `out_of_sync` if the expected state no longer matches |
+| User unpairs the connection (Q18) | Every mapped account of that connection becomes `out_of_sync`; nothing is closed or cancelled |
+| Bracket integrity cases on local-OCO connections | See §6.1 |
 
 **While `out_of_sync`:**
 
 - The Core refuses new position-increasing instructions for the account (`routing.out_of_sync`, ADR-0003 §4.1).
 - **It never sends corrective orders on its own:** no reopen, no resync, no catch-up.
 - The user sees the differences and either fixes the account manually and clears the flag, or flattens and clears.
-- `welcome.accounts[].sync_state` tells the plugin to show the state in its window.
+- `welcome.accounts[].sync_state` and `sync_reasons` tell the plugin to show the state and its reasons in its window.
+
+### 6.1 Bracket integrity on connections with locally simulated OCO
+
+**Fact** (NT8 profile §7.3, official NinjaTrader documentation): on the **NinjaTrader** and **Rithmic** connections, OCO is simulated on the local PC. While NT8 is closed, crashed, or has lost its connection, a filled stop does **not** cancel its target, and vice versa. Locally simulated orders in `TriggerPending` may come back in state `Unknown`. Our orphan-order protection (vision §8) runs in the plugin, so it cannot act while NT8 is down either.
+
+**Protocol and state rules:**
+
+- **Reporting the OCO location.** In `hello.accounts[]`, the adapter reports `oco_location` as `local`, `server` or `unknown`, derived from the connection provider: NinjaTrader and Rithmic → `local`; providers documented as server-side → `server`; anything else → `unknown`. The Core treats `unknown` like `local`.
+- **Warning in the UI.** The web app and the plugin show a permanent notice on accounts with `oco_location` `local` or `unknown`: brackets are only fully protected while NinjaTrader is running and connected.
+- **While unobservable.** An account with All Win protective orders working on a `local`/`unknown` connection gets the sync reason `sync.bracket_integrity_unknown` when either of these happens:
+  - the adapter session drops;
+  - a snapshot reports `connected: false` for that account (the platform's broker connection was lost while NT8 kept running).
+  Because the account had working orders, it is already `out_of_sync` under the disconnect rule; the reason makes the cause explicit.
+- **Reconnect evaluation.** This uses the mandatory `position_snapshot` with order `state`, plus the execution reports replayed from the outbox:
+
+| Case found at reconnect | Action | Sync reason |
+|---|---|---|
+| Position flat, one leg filled, the other leg still working | The adapter applies **orphan-order protection** immediately (decided rule: cancel remaining protective orders whenever flat) and reports `order.orphan_cancelled` | `sync.bracket_orphan_leg` (informational; the account still needs the user to clear it, per the disconnect rule) |
+| **Both legs filled**: the orphan leg opened an unintended opposite position | **Decided (Q-O1 / Q27 = b):** the Core sends `flatten` with reason `orphan_fill` for that position only, with a top-severity alert, and audits it. The command keeps the `instruction_id` that created the bracket and uses step `orphan_flatten:<event_id of the orphan fill>`, so it never collides with that instruction's own `flatten` (ALIGN-8) | `sync.bracket_double_fill` |
+| Position open, protective orders missing or in state `unknown` (unprotected position) | Alert at the highest severity and wait. The Core never re-submits protection on its own (vision §8, alert and wait) | `sync.bracket_incomplete` |
+| Position and orders match the expected state | Nothing to do. The reason is removed; the account stays `out_of_sync` until the user clears it if the disconnect rule applied | — |
+
+- **Detection after a plugin restart** relies on the `Order.Name` reference (`command_id` + `child_role`, at most 50 characters; profile §6) and on object identity. Spike experiment E4 verifies that the name survives a restart.
+- **The race at reconnect is covered.** If the remaining leg fills before the orphan cancel, the case becomes the double-fill row.
 
 ## 7. Local risk enforcement (second barrier)
 
@@ -160,9 +189,9 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 |---|---|
 | Alphabet / length | 8 characters, Crockford Base32 (the displayed codes never contain I, L, O, U), shown as `XXXX-XXXX`. Input is case-insensitive, ignores spaces and hyphens, and maps O→0 and I/L→1, so the visual confusions the design worried about (0/O, 1/I) cannot cause a failed pairing. 40 bits |
 | Lifetime | 10 minutes, **single use**; at most one active code per connection (a new code invalidates the previous one) |
-| Storage | SHA-256 hash only; never logged in clear (code prefix at most) |
-| Brute force | 5 wrong attempts against a connection's active code invalidate it. Per source IP: 10 attempts per minute on the pairing endpoint. Global anomaly alert in Core logs |
-| Re-pairing | Generating a new code for an already paired connection lets the user move to a new machine. Successful re-pairing **revokes the previous device token** (its session closes with 4002) |
+| Storage | **HMAC-SHA-256 with a server-side pepper** (ALIGN-4): a 40-bit code hashed with plain SHA-256 could be brute-forced offline after a database leak. Never logged in clear, not even a prefix. TOTP recovery codes (50 bits) use the same scheme |
+| Brute force | The pairing request carries only the code, so a wrong attempt cannot be attributed to a connection (ALIGN-4). Limits: **per source IP, 10 attempts per minute**; **globally, 100 failed attempts per 10 minutes** locks the pairing endpoint for 10 minutes and raises an operational alert. With a 40-bit space, at most a few codes active at once and the 10-minute lifetime, the chance of guessing any active code is about 10⁻⁹ per lockout window. The web shows an active code as *used* or *expired*; it is never revealed again |
+| Re-pairing | Generating a new code for an already paired connection lets the user move to a new machine. Successful re-pairing **revokes the previous device token** (its session closes with 4002) **Account bindings follow the connection by `platform_account` name**: accounts reported by the new instance with the same name keep their All Win binding. Bound accounts the new instance does not report become `out_of_sync` with reason `sync.account_not_found_after_repair` and receive nothing until the user rebinds or clears them (design S3-10 question) |
 | Revocation | "Unpair" in the web app revokes the token immediately |
 | Device token | `awd_<key_id>_<secret>`, 256-bit secret, no expiry while in use. It is revoked by unpairing or re-pairing. Rotation on demand comes later if required |
 | Environment guard | Outside production, `simulation_only` is always true and the Core refuses to map platform accounts reported as `live` or `unknown`. Development adapter builds refuse non-simulation accounts on their own as well |
@@ -185,13 +214,15 @@ The Core keeps, per account, an **expected state**: position per contract and Al
   - offline enforcement.
 - **Windows checklist** on NinjaTrader 8 Sim/Playback: see the [NinjaTrader 8 spike plan](../spikes/nt8-spike-plan.md).
 
-## 11. Open items for the user (through the PO)
+## 11. User decisions (2026-10-23)
 
-| # | Item | Proposal |
+| # | Item | Decision |
 |---|---|---|
-| T1 | Do exits (`flatten`, `reduce`, `cancel`, protective `modify`) expire like entries? | No. Late exits still reduce exposure, and the audit marks them as late. Entries always expire |
-| T2 | Default command TTL value | **5 s** (editable 1–60 s per account) |
-| T3 | Does an external (manual) order or fill on a destination account mark it out of sync? | Yes for destinations of master replication. For TradingView-only destinations, audit only |
+| T1 | Do exits expire? | **No.** Only entries expire; late exits are audited as late |
+| T2 | Default command TTL | **5 s**, editable 1–60 s per account |
+| T3 | External order or fill on a destination | **Out of sync** for master-replication destinations; **audit only** for TradingView-only destinations |
+| Q18 | Unpairing a connection | Allowed with confirmation; its accounts become out of sync; nothing is closed |
+| Q-O1 (Q27) | Double fill of a locally simulated bracket while NT8 was down (§6.1) | **(b)**: automatically flatten only the position created by the orphan leg, with a top-severity alert and audit (decided 2026-10-23) |
 
 ## 12. Consequences
 
