@@ -1,6 +1,10 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 11; **rev. 12 proposed** (Code Review pending). Rev. 12: `audit_entry.actor` (`user` / `system` / `platform_admin`, HTTP 3.0.0 `AuditEntry.actor`), in #7b (§6.4).
+- **Status:** Accepted (2026-10-23), rev. 12; **rev. 13 proposed** (S13 risk contract 3.1.0 by Compasso; Code Review pending). Rev. 13:
+  - turns §5.6 from a preview into the S13 schema: `risk.account_limits` (+ `effective_as_of`) aligned with the S16 value types, the derived `scheduled_limit`, `trading_day`, `drawdown_tracker` and `account_block`;
+  - `account_rule_value` serves accounts without a preset (`set_by_user`), adds the fields `profit_target_on_reach` and `consistency_threshold_pct`, a per-field `saved_at` and an `is_unset` tombstone. Under ADR-0006 §3.7 (Q48), the inputs live in `accounts` and the looser-value schedule is derived in `risk`.
+  - Q47, Q48 and Q49 are provisional and no constraint encodes them.
+- Rev. 12 (1647af5): `audit_entry.actor` (`user` / `system` / `platform_admin`, HTTP 3.0.0 `AuditEntry.actor`), in #7b (§6.4).
 - Rev. 11 (7b976d6): `one_time_code.action` gains `route_enable` and `account_binding_change` (HTTP 3.0.0, pending Q35), both targeted (target = account).
 - Rev. 10 (49dbea0):
   - adds the preset catalog: `prop_firm`, `firm_release`, `firm_release_platform`, `firm_plan`, `preset`, `preset_version`, `preset_rule_set` and `firm_stance`;
@@ -768,31 +772,121 @@ CREATE INDEX subscription_source_idx ON routing.subscription (user_id, source_id
 - The S7 route endpoints accept only `trigger`, `trade_plan` and `nq_trigger`; `master_account` stays in the `CHECK` for S19 follower subscriptions (S7 contract §5). This is a Core validation, with no schema change.
 - Multiplier and max position are read from `accounts` at routing time. Every routing decision **snapshots** the values it used (§6), so the audit trail stays explainable after an edit.
 
-### 5.6 Risk core (preview for S13–S15; only `max_position_qty` is needed by S5–S7)
+### 5.6 Risk core (S13; rev. 13, proposed — contract 3.1.0)
 
-These tables mirror `limits` in ADR-0004, so the Core can publish versioned limits.
+All `risk.*` tables are user-owned (RLS `user_id = app.current_user_id()`), and the `risk` module is their only writer. **The rule inputs are not here.** They belong to `accounts` (`account_rule_value`, the account columns below, §5.7), and `risk.account_limits` is **derived** from them (ADR-0006).
 
 ```sql
-CREATE TABLE risk.account_limits (
-  user_id               uuid NOT NULL REFERENCES identity.app_user(id),
-  account_id            uuid NOT NULL,                   -- accounts.account (cross-module id)
-  version               integer NOT NULL CHECK (version >= 1),   -- monotonic, sent in `limits`; S13 PUT concurrency token
-  derived_from_version  integer NOT NULL CHECK (derived_from_version >= 1),  -- ADR-0006: account.limits_version it was derived from
-  enforcement_enabled   boolean NOT NULL DEFAULT false,  -- S15 AC-1 (off by default)
-  daily_loss_limit      NUMERIC(18,4) CHECK (daily_loss_limit >= 0),
-  daily_profit_target   NUMERIC(18,4) CHECK (daily_profit_target >= 0),
-  profit_target_on_reach text NOT NULL DEFAULT 'notify' CHECK (profit_target_on_reach IN ('notify','flatten_and_block')),
-  drawdown_type         text CHECK (drawdown_type IN ('trailing_intraday','trailing_end_of_day','static')),
-  drawdown_amount       NUMERIC(18,4) CHECK (drawdown_amount >= 0),
-  reset_local_time      time NOT NULL,                   -- firm reset or CME close
-  reset_time_zone       text NOT NULL,                   -- IANA
-  warning_threshold_pct smallint NOT NULL DEFAULT 80 CHECK (warning_threshold_pct BETWEEN 1 AND 99),
-  updated_at            timestamptz NOT NULL DEFAULT now(),
+CREATE TABLE risk.account_limits (                       -- derived, typed copy of the account's tracked rules (ADR-0006)
+  user_id                   uuid NOT NULL REFERENCES identity.app_user(id),
+  account_id                uuid NOT NULL,               -- accounts.account (cross-module id)
+  version                   integer NOT NULL CHECK (version >= 1),   -- monotonic; sent in plugin `limits`
+  derived_from_version      integer NOT NULL CHECK (derived_from_version >= 1),  -- account.limits_version of the consistent read
+  effective_as_of           timestamptz NOT NULL,        -- the trading-day start these effective values cover (re-derived at each reset)
+  enforcement_enabled       boolean NOT NULL DEFAULT false,  -- S15 AC-1; risk-owned, never touched by the derivation upsert
+  daily_loss_kind           text CHECK (daily_loss_kind IN ('hard','soft_pause','none')),   -- NULL = unset
+  daily_loss_limit          NUMERIC(18,4) CHECK (daily_loss_limit > 0),
+  drawdown_type             text CHECK (drawdown_type IN ('trailing_intraday','trailing_eod','static')),  -- 'other' is untracked → NULL
+  drawdown_amount           NUMERIC(18,4) CHECK (drawdown_amount > 0),
+  daily_profit_target       NUMERIC(18,4) CHECK (daily_profit_target > 0),
+  profit_target_on_reach    text NOT NULL DEFAULT 'notify' CHECK (profit_target_on_reach IN ('notify','flatten_and_block')),
+  consistency_threshold_pct NUMERIC(4,1) CHECK (consistency_threshold_pct BETWEEN 0 AND 100),  -- tracked, never enforced (AC-6)
+  reset_source              text NOT NULL CHECK (reset_source IN ('firm','cme_session_close')),
+  reset_local_time          time,                        -- firm reset (account copy; Q-S13-2)
+  reset_time_zone           text,                        -- IANA
+  updated_at                timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id),
-  CHECK ((drawdown_type IS NULL) = (drawdown_amount IS NULL))
+  UNIQUE (user_id, account_id),
+  CHECK ((daily_loss_kind IS NULL OR daily_loss_kind = 'none') = (daily_loss_limit IS NULL)),
+  CHECK ((drawdown_type IS NULL) = (drawdown_amount IS NULL)),
+  CHECK ((reset_source = 'firm') = (reset_local_time IS NOT NULL AND reset_time_zone IS NOT NULL))
 );
--- Trading-day state, blocks, consistency tracking: designed with S13/S15.
+-- 'cme_session_close' (real accounts): the Core takes the close from the exchange calendar, not a stored time.
+
+CREATE TABLE risk.scheduled_limit (                      -- DERIVED (ADR-0006 §3.7): a looser value in force from a later trading day
+  user_id               uuid NOT NULL,
+  account_id            uuid NOT NULL,
+  kind                  text NOT NULL CHECK (kind IN ('daily_loss','drawdown','daily_profit_target','consistency','profit_target_on_reach',
+                                                   'trading_day_reset')),  -- reset changes are ALWAYS scheduled (F1)
+  new_value             jsonb CHECK (new_value IS NULL OR (jsonb_typeof(new_value) = 'object'
+                          AND NOT jsonb_path_exists(new_value, '$.**.amount ? (@.type() == "number")'))),  -- money as strings
+  is_unset              boolean NOT NULL DEFAULT false,  -- the scheduled change removes the rule
+  effective_from        timestamptz NOT NULL,            -- start of the trading day after the field's saved_at, under the CURRENT reset
+  derived_from_version  integer NOT NULL CHECK (derived_from_version >= 1),
+  PRIMARY KEY (account_id, kind),                        -- latest save wins → at most one schedule per kind
+  CHECK ((new_value IS NULL) = is_unset),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+CREATE INDEX scheduled_limit_due_idx ON risk.scheduled_limit (effective_from);
+
+CREATE TABLE risk.trading_day (                          -- one row per account and trading day; P&L inputs, not percentages
+  user_id         uuid NOT NULL,
+  account_id      uuid NOT NULL,
+  trading_date    date NOT NULL,                         -- the day label in the reset's time zone
+  starts_at       timestamptz NOT NULL,
+  ends_at         timestamptz NOT NULL,                  -- = next_reset
+  source          text NOT NULL CHECK (source IN ('firm','cme_session_close')),
+  start_balance   NUMERIC(18,4),                         -- balance at the reset, from the platform snapshot
+  realized_pnl    NUMERIC(18,4) NOT NULL DEFAULT 0,
+  unrealized_pnl  NUMERIC(18,4),                         -- last known; NULL when unknown
+  as_of           timestamptz,                           -- time of the last P&L input (staleness, §AccountRisk.as_of)
+  PRIMARY KEY (account_id, trading_date),
+  CHECK (ends_at > starts_at),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+
+CREATE TABLE risk.drawdown_tracker (                     -- trailing drawdown state (Q-S13-5)
+  user_id             uuid NOT NULL,
+  account_id          uuid NOT NULL PRIMARY KEY,
+  high_water_balance  NUMERIC(18,4) NOT NULL,            -- intraday or end-of-day per drawdown_type
+  floor_balance       NUMERIC(18,4) NOT NULL,            -- balance at which the drawdown is breached, now
+  stopped_trailing_at timestamptz,                       -- when the firm's "stops trailing at" condition was met
+  as_of               timestamptz NOT NULL,
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+
+CREATE TABLE risk.account_block (                        -- blocked until the reset (S15 writes it; no early unlock)
+  id          uuid PRIMARY KEY,
+  user_id     uuid NOT NULL,
+  account_id  uuid NOT NULL,
+  cause       text NOT NULL CHECK (cause IN ('daily_loss','drawdown','daily_profit_target')),
+  blocked_at  timestamptz NOT NULL DEFAULT now(),
+  until       timestamptz NOT NULL,                      -- the trading-day end
+  ended_at    timestamptz,                               -- set at the reset
+  CHECK (until > blocked_at),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+CREATE UNIQUE INDEX account_block_active_key ON risk.account_block (account_id) WHERE ended_at IS NULL;
 ```
+
+- **Derived, not computed in SQL:** `used`, `limit`, `percent` (truncated), `state`, `unset_rules`, `untracked_rules`, `limits_pending` (ADR-0006 versions) and `stale` / `stale_reason` (connection state from `gateway`, plus `as_of`). Each is computed by the Core per request from the rows above. The 80 % warning level is fixed (D18), so the preview's `warning_threshold_pct` column is dropped.
+- **Provisional decisions stay out of the schema:**
+  - **Q47:** no `NOT NULL` on the daily loss; "required for prop unless the preset says `none`" is a Core check.
+  - **Q49 / Q63:** no `CHECK` couples `flatten_and_block` with `enforcement_enabled`. The Core treats it as `notify` when enforcement is off.
+  - **Q48:** only `risk.scheduled_limit` serves it. If Q48 becomes "immediately", the table stays empty, and the `saved_at` / `is_unset` inputs stay useful anyway.
+- **Q48 (ADR-0006 §3.7, decided by Esquadro; Code Review A1):**
+  - **Input** (`accounts`): the value, or `is_unset`, plus the field's own `saved_at`. The latest save of a field wins.
+  - **Derivation** (`risk`, from the consistent read plus the limits in force), per kind:
+    - stricter → effective now, in `account_limits`;
+    - looser → `scheduled_limit`, with `effective_from` = the start of the trading day after **that field's** `saved_at`. It is never the account-wide `limits_changed_at`, which an unrelated later save would move.
+    - "Looser" follows the contract: removing a rule, `flatten_and_block` → `notify`, and `daily_loss` `hard` → `soft_pause` / `none`.
+    - **An incomparable change of one kind counts as looser** (e.g. drawdown `static` 2000 → `trailing_eod` 2500), so it is scheduled and today's limit stays (fail closed).
+    - **A `trading_day_reset` change is always scheduled, never effective now** (Code Review F1). Its `effective_from` is the start of the trading day after its `saved_at`, computed with the **current** reset. Moving the reset mid-day would otherwise re-cut today: an earlier reset would end the block and restart the daily counters early (an early unlock, vision §9), and a later one would stretch today.
+    - A stricter save replaces the pending one at the input, so after the reset the stricter value is still in force.
+    - Only the derivation writes `account_limits` and `scheduled_limit`, never an API use case. Both can be rebuilt from the accounts read.
+  - **Reset step** (one `risk` step per trading-day start):
+    1. end the previous day's blocks (`account_block.ended_at`);
+    2. apply the due `scheduled_limit` rows (`scheduled_limit_due_idx`) and delete them;
+    3. re-derive, setting `effective_as_of` = that day's start and bumping `version`;
+    4. send `limits` to the plugin.
+    - There is no `limits_version` bump, since no input changed. A looser value never ends a block early (no early unlock).
+  - **Monitoring:** an alert fires when `effective_as_of` stays behind the current trading-day start for more than 60 s (stuck reset). Meanwhile the previous, stricter or equal, limits stay in force.
+  - **A pending-only save still bumps `limits_version`.** That briefly gates entries; it is intended, since it keeps `pending_changes` visible.
+  - `AccountRisk.pending_changes` reads `scheduled_limit`.
+  - **Ports:** only risk → accounts (query port); the trait lives in risk's application crate and is wired in `crates/app`.
+- **Consistency** needs every day's profit, so `trading_day` rows are kept for the account's lifetime and erased with it (Q13-b). The volume is about 250 rows per account per year.
+- **Playback (S15 AC-7):** the day boundaries and P&L follow the simulated clock. `starts_at` / `ends_at` / `as_of` hold simulated instants for playback accounts. This is to be confirmed with S15 when it writes the playback clock source.
+- The P&L inputs (fills, platform balance snapshots) arrive as `gateway` events. Their mapping is S13 Backend work, under ADR-0006 rules for derived state.
 
 ### 5.7 Prop firm presets (S16; rev. 10, proposed)
 
@@ -905,15 +999,19 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   user_id     uuid NOT NULL,
   account_id  uuid NOT NULL,
   field       text NOT NULL CHECK (field IN ('max_position_qty','drawdown','daily_loss_limit',
-                                             'daily_profit_target','trading_day_reset','consistency_rule')),
-  origin      text NOT NULL CHECK (origin IN ('edited','chosen_from_conflict')),
+                                             'daily_profit_target','trading_day_reset','consistency_rule',
+                                             'profit_target_on_reach','consistency_threshold_pct')),  -- last two: S13 (rev. 13)
+  origin      text NOT NULL CHECK (origin IN ('edited','chosen_from_conflict','set_by_user')),  -- set_by_user: no preset (rev. 13)
   value       jsonb,                                     -- typed by field (PresetRuleValues); NULL for max_position_qty
   chose       text CHECK (chose IN ('published_value','other_value')),
   chosen_at   timestamptz,
+  is_unset    boolean NOT NULL DEFAULT false,          -- the user removed this rule (S13); a tombstone that keeps its saved_at
+  saved_at    timestamptz NOT NULL DEFAULT now(),        -- this field's own save time (ADR-0006 §3.7; never account-wide)
   updated_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id, field),
   FOREIGN KEY (user_id, account_id) REFERENCES accounts.account (user_id, id),
-  CHECK ((field = 'max_position_qty') = (value IS NULL)),           -- its value is account.max_position_qty (S5)
+  CHECK (CASE WHEN field = 'max_position_qty' THEN value IS NULL AND NOT is_unset  -- value is account.max_position_qty (S5); never removed
+              ELSE (value IS NULL) = is_unset END),
   CHECK (value IS NULL OR jsonb_typeof(value) = 'object'),
   CHECK (value IS NULL OR NOT jsonb_path_exists(value, '$.**.amount ? (@.type() == "number")')),
   CHECK ((origin = 'chosen_from_conflict') = (chose IS NOT NULL)),
@@ -922,12 +1020,20 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
 ```
 
 - **Only deviations are stored.** `preset` is the absence of a row (the value comes from the preset version), and `unresolved` is an optional not-confirmed field with no row. So applying a version or restoring a value deletes or rewrites rows, and the getAccountPreset `origin` is derived.
-- Rows exist only for prop accounts with a preset. Manual-mode accounts have none, which is a Core rule; a cross-table `CHECK` is not possible.
+- **New S13 fields:**
+  - `profit_target_on_reach`: value `{"mode":"notify"|"flatten_and_block"}`. No row means `notify`.
+  - `consistency_threshold_pct`: value `{"pct":"30.0"}`, at most one decimal (Q-S13-7).
+  - They are rule rows so that a looser change (`flatten_and_block` → `notify`, a higher threshold) can be pending like the others.
+- **Inputs only (Q48, provisional; ADR-0006 §3.7):**
+  - A save writes the user's value, or `is_unset` for a removed rule, plus that field's `saved_at`. The **latest save of a field wins** and replaces any earlier value, whether pending or not.
+  - `accounts` computes no trading day and no effective date. The superseded values are in the audit (`risk.rules_changed`).
+  - A removal is kept as an `is_unset` row (a tombstone), because risk needs its `saved_at` to schedule it.
+- **Accounts without a preset** (real, and manual-mode prop) store each rule they set as `origin = 'set_by_user'` (rev. 13, S13 `putAccountRiskRules`). With a preset, only `edited` / `chosen_from_conflict` occur. These are Core rules, since a cross-table `CHECK` is not possible. A real account has no `trading_day_reset` row (`risk.reset_not_editable`).
 - Applying, restoring and re-selecting rewrite `account` (bumping `row_version`) and its `account_rule_value` rows **in one `accounts` transaction**: same module, so this is atomic by construction.
 - Q13-b erasure deletes the rows with the account. The catalog is reference data and is kept.
 
 **Account ↔ `risk.account_limits` consistency: option (B), [ADR-0006](../adr/0006-derived-state-across-modules.md)** (Esquadro, 2026-10-23):
-- **Producer (`accounts`):** **every write that changes an input of the derived limits** bumps `account.limits_version` and sets `limits_changed_at = now()`, in the same transaction as the change. The inputs are:
+- **Producer (`accounts`):** **every write that changes an input of the derived limits** (rev. 13: including `putAccountRiskRules` and pending-only saves) bumps `account.limits_version` and sets `limits_changed_at = now()`, in the same transaction as the change. The inputs are:
   - account create;
   - an update of firm, plan, phase, size, `firm_platform` or `preset_version_id` (re-selection);
   - `max_position_qty`;
@@ -949,7 +1055,7 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
 - **Monitoring:** a worker job every 30 s runs the same comparison and raises an operational alert when a gap is older than 60 s, measured from `limits_changed_at`. It **only alerts** and never derives outside the consumer path.
 - **Tests:** ADR-0006 §4 (eb7a6d017161), and §9 below.
 
-**For S13 (preview §5.6 to realign):** the contract's `DrawdownValue.type` uses `trailing_eod` and `other`, while the preview has `trailing_end_of_day` and no `other`. `DailyLossValue.kind` (`hard` / `soft_pause` / `none`) has no column yet. Both are fixed when S13 writes the table.
+**S13 alignment (rev. 13):** §5.6 now uses the S16 value types (`trailing_eod`, `daily_loss_kind`); a drawdown of type `other` is untracked and not derived.
 
 ## 6. Ingest, routing and execution records (S1 + M1)
 
@@ -1358,7 +1464,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 7b | `audit_entry_activity_columns` (rev. 9): the S10 columns and constraints on the partitioned table (see below) | S10 (or whichever slice first emits them); version stamped after the latest merged migration |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
-| 10 | `risk_create_account_limits` (with `derived_from_version`, ADR-0006) | S13 (Wave 3) |
+| 10 | `risk_create_account_limits` (rev. 13): `account_limits`, `scheduled_limit` (derived), `trading_day`, `drawdown_tracker`, `account_block`, with RLS | S13; unwritten, so it takes the rev. 13 shape directly |
 | 11 | `catalog_create_presets` (rev. 10): the §5.7 catalog tables + the forward change on `opt_in_rule_version` | S16; version stamped after the latest merged migration |
 | 12 | `accounts_create_rule_values` (rev. 10): `account_rule_value`; `account.limits_version` / `limits_changed_at` go into #5 directly if it is still unwritten, else they are added here | S16; after #5 and #11 |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
@@ -1466,6 +1572,23 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - a JSON-number `amount` fails;
      - another user's account is refused by the composite FK and invisible under RLS;
      - apply rewrites the account and its rows atomically (a forced failure leaves both unchanged);
+   - rev. 13, risk:
+     - `daily_loss_kind = 'none'` with a limit fails, and `hard` without one fails;
+     - `drawdown_type = 'other'` fails, because it is untracked and never derived;
+     - an amount of 0 fails;
+     - `reset_source = 'firm'` without a time fails;
+     - a second active block fails;
+     - another user's rows are invisible;
+     - the derivation upsert never changes `enforcement_enabled`;
+     - Q48:
+       - a looser save → a `scheduled_limit` row at the start of the trading day after that field's `saved_at`, while the stricter limit holds;
+       - an unrelated later save of another field does not move it;
+       - looser then stricter → only the stricter value remains, and it is still in force after the reset;
+       - the reset applies due rows with no `limits_version` bump and sets `effective_as_of`;
+       - an active block stays until the reset even if a looser value is due;
+       - a mid-day `trading_day_reset` edit is scheduled: today's `trading_day` boundaries and the active block are unchanged, and the new reset applies from the next trading day;
+       - an incomparable drawdown change (`static` → `trailing_eod`) is scheduled, not applied now;
+       - `is_unset` with a value, or `max_position_qty` unset, fails;
    - rev. 10, ADR-0006:
      - an entry for an account whose limits are stale (or missing) is skipped with `routing.limits_pending`, and an exit goes through;
      - a redelivered or out-of-order `limits_changed` never lowers `derived_from_version`;
