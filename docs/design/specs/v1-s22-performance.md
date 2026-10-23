@@ -50,8 +50,8 @@ A `dl` of seven figure `Card`s (two columns on mobile, four ≥ `lg`), all from 
 | Figure | pt-BR / en | Format | Note |
 |---|---|---|---|
 | Trades | Trades | integer | |
-| P&L total | Total P&L | signed money (F§6.2) with `--pnl-*` token **and** sign | |
-| P&L médio por trade | Avg P&L per trade | signed money | |
+| P&L total (líquido) | Net P&L total | signed money (F§6.2) with `--pnl-*` token **and** sign | |
+| P&L médio por trade (líquido) | Avg net P&L per trade | signed money | |
 | Taxa de acerto | Win rate | percent with one decimal as sent by the Core, plus "{wins} vitórias · {losses} derrotas · {zero} zero" (counts from the Core) | definition in §3.4 |
 | Tempo médio na operação | Avg time in trade | duration, two units (`12 min 30 s`) | |
 | MAE médio | Avg MAE | money | basis line when not all trades have it, see below |
@@ -86,7 +86,7 @@ Control above the table: `ToggleGroup` "Agrupar por" with three options: `Fonte`
 
 | Figure | Text pt-BR |
 |---|---|
-| P&L total | "Soma do resultado de todos os trades do filtro." |
+| P&L total | "Soma do resultado líquido (depois das comissões) de todos os trades do filtro." |
 | P&L médio | "P&L total dividido pelo número de trades." |
 | Taxa de acerto | "Trades com resultado positivo divididos pelo total de trades." **[Provisional, Q58 rec. (a)]** a trade with P&L = 0 is not a win; the total includes all trades; wins, losses and zero are shown as counts |
 | Tempo médio | "Média do tempo entre a entrada e a saída de cada trade." |
@@ -158,7 +158,7 @@ The pt-BR/en wording is reviewed by the PO; the definitions must match what the 
 | Q58 | Win rate with P&L = 0 | **Provisional (a):** zero is not a win; total = all trades; wins, losses and zero counts shown |
 | Q59 | Extra metrics beyond AC-1 (profit factor, best/worst trade, average win/loss, per-day curve) | **Not drawn until decided** |
 
-**Reminder:** S22 reconciles with the trade list (S22 AC-2), so Q52–Q57 (MAE/MFE unit, date filter, gross P&L, optional MAE/MFE, edit/delete of manual trades, what one trade is) define the numbers.
+**Reminder:** S22 reconciles with the trade list (S22 AC-2), so Q52–Q57 (MAE/MFE unit, date filter, net P&L, optional MAE/MFE, edit/delete of manual trades, what one trade is) define the numbers.
 
 ## 8. AC traceability
 
@@ -167,3 +167,5 @@ The pt-BR/en wording is reviewed by the PO; the definitions must match what the 
 | AC-1 totals and per-trade averages of P&L, win rate, time in trade, MAE, MFE for a period and set of accounts, split by source and signal type | §3.1–§3.3 |
 | AC-2 numbers reconcile exactly with the trade list | §2, §3.3 total row, §3.5 `as_of`, `Ver` links, §6 |
 | X-2, X-3, X-6, X-8 | permissions, Core-computed values, pt-BR/en, instants |
+
+**P&L basis (rev. 1b, Aquarela, S21 rev. 2b):** every P&L figure here is **net** (after commissions), the same `pnl` the trade list uses (S21 AC-1/AC-7, contract 3.5.0+), so S22 and S21 reconcile. The gross total and the commission total are shown in a secondary line under the `Total` card, and when `uncommissioned_count` > 0 the same warning as S21 §3.2 appears ("{n} trades sem comissão informada: neles o líquido é igual ao bruto."). Win rate uses the net result.
