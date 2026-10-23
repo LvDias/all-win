@@ -1,6 +1,12 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 13; **rev. 14 proposed** (S21 trades contract 3.3.0 by Compasso; Code Review pending). Rev. 14: new `trades` schema with `trades.trade` (§6.6). Captured trades are immutable and only manual ones are editable (Q56, provisional); money is `NUMERIC`; prices are whole ticks (a Core rule). Q52–Q57 are not encoded in constraints.
+- **Status:** Accepted (2026-10-23), rev. 14; **rev. 15 proposed** (user decisions of 2026-10-23: net P&L as the main value, risk on net, V1 evaluation target, U20 (a) commission floor; Architect, HTTP contract and Code Review pending). Rev. 15 (§5.6, §5.7, §6.3, §6.6):
+  - per-fill effective commission with its source;
+  - gross / commission / net on trades;
+  - `commission_per_contract_side` and `evaluation_profit_target` as account rule fields, also in the preset;
+  - `account.evaluation_start`;
+  - the risk evaluation baseline, derived under ADR-0006.
+- Rev. 14 (b45a02c, 6b4e8e3): Rev. 14: new `trades` schema with `trades.trade` (§6.6). Captured trades are immutable and only manual ones are editable (Q56, provisional); money is `NUMERIC`; prices are whole ticks (a Core rule). Q52–Q57 are not encoded in constraints.
 - Rev. 13 (2ceab9a): Rev. 13:
   - turns §5.6 from a preview into the S13 schema: `risk.account_limits` (+ `effective_as_of`) aligned with the S16 value types, the derived `scheduled_limit`, `trading_day`, `drawdown_tracker` and `account_block`;
   - `account_rule_value` serves accounts without a preset (`set_by_user`), adds the fields `profit_target_on_reach` and `consistency_threshold_pct`, a per-field `saved_at` and an `is_unset` tombstone. Under ADR-0006 §3.7 (Q48), the inputs live in `accounts` and the looser-value schedule is derived in `risk`.
@@ -614,6 +620,8 @@ CREATE TABLE accounts.account (
   row_version       integer NOT NULL DEFAULT 1,          -- optimistic concurrency
   limits_version    integer NOT NULL DEFAULT 1 CHECK (limits_version >= 1),  -- ADR-0006: bumped with every limits-relevant change
   limits_changed_at timestamptz NOT NULL DEFAULT now(),  -- ADR-0006 §3.5: age of a version gap (60-s alert)
+  evaluation_start  date,                                -- rev. 15 (S13b): user-given; Core default = registration date (user's time zone); limits input
+  evaluation_earned_before NUMERIC(18,4) CHECK (evaluation_earned_before >= 0),  -- rev. 15 (S13b): optional profit already earned before evaluation_start
   create_idempotency_key uuid,                           -- Idempotency-Key of the create (rev. 8)
   create_request_hash    bytea CHECK (octet_length(create_request_hash) = 32),  -- SHA-256 of the canonical body, step_up excluded
   UNIQUE (user_id, id),
@@ -792,6 +800,9 @@ CREATE TABLE risk.account_limits (                       -- derived, typed copy 
   daily_profit_target       NUMERIC(18,4) CHECK (daily_profit_target > 0),
   profit_target_on_reach    text NOT NULL DEFAULT 'notify' CHECK (profit_target_on_reach IN ('notify','flatten_and_block')),
   consistency_threshold_pct NUMERIC(4,1) CHECK (consistency_threshold_pct BETWEEN 0 AND 100),  -- tracked, never enforced (AC-6)
+  evaluation_profit_target  NUMERIC(18,4) CHECK (evaluation_profit_target > 0),   -- rev. 15 (Q46, V1): notice only
+  evaluation_start          date,                        -- rev. 15: copy of account.evaluation_start
+  evaluation_earned_before  NUMERIC(18,4),                -- rev. 15: copy of account.evaluation_earned_before
   reset_source              text NOT NULL CHECK (reset_source IN ('firm','cme_session_close')),
   reset_local_time          time,                        -- firm reset (account copy; Q-S13-2)
   reset_time_zone           text,                        -- IANA
@@ -828,11 +839,25 @@ CREATE TABLE risk.trading_day (                          -- one row per account 
   ends_at         timestamptz NOT NULL,                  -- = next_reset
   source          text NOT NULL CHECK (source IN ('firm','cme_session_close')),
   start_balance   NUMERIC(18,4),                         -- balance at the reset, from the platform snapshot
-  realized_pnl    NUMERIC(18,4) NOT NULL DEFAULT 0,
+  realized_pnl_gross NUMERIC(18,4) NOT NULL DEFAULT 0,
+  realized_commission NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (realized_commission >= 0),   -- rev. 15: Σ fills' commission_effective
+  commission_gap  NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (commission_gap >= 0),   -- Σ (effective − reported): what the platform balance lacks
+  realized_pnl_net NUMERIC(18,4) GENERATED ALWAYS AS (realized_pnl_gross - realized_commission) STORED,  -- risk runs on net
   unrealized_pnl  NUMERIC(18,4),                         -- last known; NULL when unknown
   as_of           timestamptz,                           -- time of the last P&L input (staleness, §AccountRisk.as_of)
   PRIMARY KEY (account_id, trading_date),
   CHECK (ends_at > starts_at),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+
+CREATE TABLE risk.evaluation_progress (                  -- rev. 15, DERIVED (ADR-0006): "how much is left to pass" (Q46)
+  user_id               uuid NOT NULL,
+  account_id            uuid NOT NULL PRIMARY KEY,
+  evaluation_start      date NOT NULL,
+  baseline_balance      NUMERIC(18,4) NOT NULL,          -- net balance at the start of evaluation_start's trading day
+  baseline_source       text NOT NULL CHECK (baseline_source IN ('platform_snapshot','account_size')),
+  derived_from_version  integer NOT NULL CHECK (derived_from_version >= 1),
+  target_reached_at     timestamptz,                     -- notice + notification once; no automatic action (user decision)
   FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
 );
 
@@ -860,6 +885,18 @@ CREATE TABLE risk.account_block (                        -- blocked until the re
 CREATE UNIQUE INDEX account_block_active_key ON risk.account_block (account_id) WHERE ended_at IS NULL;
 ```
 
+- **Net (rev. 15; user decision: risk computed on net):**
+  - Daily loss, drawdown, the daily profit target and S15 enforcement all use net figures.
+  - `realized_pnl_net` = gross − effective commissions.
+  - The trailing drawdown's high water and floor follow the **adjusted** balance = platform balance − Σ `commission_gap`. A simulation account that reports no commission therefore still pays the configured floor.
+  - **Live usage** (daily loss and the intraday drawdown on equity) also deducts the **expected closing commission** = rate × open quantity, using the floor only, since the platform's real one is not known yet. This is fail-closed: a limit triggers a few dollars earlier, never later. End-of-day and realized values stay realized-only. The plugin uses the same rule (ADR-0004 §7, protocol 1.3). The expected commission is computed per request, not stored.
+- **Evaluation target (rev. 15, Q46 in V1):**
+  - Inputs are in `accounts`: `evaluation_start`, defaulting to the registration date, and the `evaluation_profit_target` rule field.
+  - `risk.evaluation_progress` is derived under ADR-0006, through the same consistent read and `derived_from_version`. The baseline is the net balance at the start of `evaluation_start`'s trading day, from `trading_day.start_balance` adjusted by the commission gap (`platform_snapshot`). Before that data exists (e.g. a start date earlier than the account's first day), it is the account's `size_amount` (`account_size`). Esquadro agreed. While `baseline_source = 'account_size'`, the progress view shows "base estimada pelo tamanho da conta".
+  - **Protocol 1.3:** `limits.evaluation.baseline_net_pnl` = `evaluation_earned_before` + (adjusted balance at the previous day's close − baseline). The plugin adds the day's net to it.
+  - Remaining = target − (`evaluation_earned_before` + current adjusted net balance − baseline). It is computed per request, not stored.
+  - **"Reiniciar contagem"** (S13b; `POST /accounts/{id}/evaluation/restart`, HTTP 3.5.0) is the only way to change `evaluation_start` after create. It is an `accounts` write: a new `evaluation_start` (today by default), with `evaluation_earned_before` cleared unless re-entered. It bumps `limits_version` and is audited (`accounts.evaluation_restarted`, old and new start), so `risk` re-derives a fresh `evaluation_progress` with `target_reached_at` NULL.
+  - Reaching the target sets `target_reached_at` and emits a notice and notification once, with no automatic action. Minimum days and payout come later.
 - **Derived, not computed in SQL:** `used`, `limit`, `percent` (truncated), `state`, `unset_rules`, `untracked_rules`, `limits_pending` (ADR-0006 versions) and `stale` / `stale_reason` (connection state from `gateway`, plus `as_of`). Each is computed by the Core per request from the rows above. The 80 % warning level is fixed (D18), so the preview's `warning_threshold_pct` column is dropped.
 - **Provisional decisions stay out of the schema:**
   - **Q47:** no `NOT NULL` on the daily loss; "required for prop unless the preset says `none`" is a Core check.
@@ -1001,7 +1038,8 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   account_id  uuid NOT NULL,
   field       text NOT NULL CHECK (field IN ('max_position_qty','drawdown','daily_loss_limit',
                                              'daily_profit_target','trading_day_reset','consistency_rule',
-                                             'profit_target_on_reach','consistency_threshold_pct')),  -- last two: S13 (rev. 13)
+                                             'profit_target_on_reach','consistency_threshold_pct',  -- S13 (rev. 13)
+                                             'commission_per_contract_side','evaluation_profit_target')),  -- rev. 15
   origin      text NOT NULL CHECK (origin IN ('edited','chosen_from_conflict','set_by_user')),  -- set_by_user: no preset (rev. 13)
   value       jsonb,                                     -- typed by field (PresetRuleValues); NULL for max_position_qty
   chose       text CHECK (chose IN ('published_value','other_value')),
@@ -1025,6 +1063,13 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   - `profit_target_on_reach`: value `{"mode":"notify"|"flatten_and_block"}`. No row means `notify`.
   - `consistency_threshold_pct`: value `{"pct":"30.0"}`, at most one decimal (Q-S13-7).
   - They are rule rows so that a looser change (`flatten_and_block` → `notify`, a higher threshold) can be pending like the others.
+- **Rev. 15 fields:**
+  - `commission_per_contract_side`: `{"amount": "0.37"}` (U20 a). It is prefilled from the preset when the firm publishes it (origin = preset, i.e. no row), and editable (`edited` / `set_by_user`).
+    - It **is a limits input** (Esquadro): the plugin applies the same floor in local enforcement and in `trade_completed`, and receives it in `limits.commission_per_contract_side` (protocol 1.3). A change bumps `limits_version` so risk re-sends `limits`.
+    - The bump recomputes nothing already recorded. It only enters new fills' effective commission, on the Core (gateway snapshot) and in the plugin alike, and past fills keep their rate. A fill at the exact boundary where plugin and Core diverge goes to `trades.reconcile_mismatch`.
+  - `evaluation_profit_target`: `{"amount": "3000.00"}` (Q46). It is a limits input, together with `account.evaluation_start`.
+    - A change applies at once and is never scheduled, because it is a target, not a limit.
+  - Both are optional preset keys too (`PresetRules`; not in the `?&` required list).
 - **Inputs only (Q48, provisional; ADR-0006 §3.7):**
   - A save writes the user's value, or `is_unset` for a removed rule, plus that field's `saved_at`. The **latest save of a field wins** and replaces any earlier value, whether pending or not.
   - `accounts` computes no trading day and no effective date. The superseded values are in the audit (`risk.rules_changed`).
@@ -1038,7 +1083,8 @@ CREATE TABLE accounts.account_rule_value (               -- the account's own ru
   - account create;
   - an update of firm, plan, phase, size, `firm_platform` or `preset_version_id` (re-selection);
   - `max_position_qty`;
-  - any `account_rule_value` write: an edit, a `chosen_from_conflict` resolution, `restorePresetValue`;
+  - any `account_rule_value` write: an edit, a `chosen_from_conflict` resolution, `restorePresetValue` (rev. 15: including `commission_per_contract_side`, sent in plugin `limits`);
+  - `evaluation_start` / `evaluation_earned_before`, including "reiniciar contagem" (rev. 15);
   - a preset apply;
   - a newly adopted rule version.
 
@@ -1198,7 +1244,10 @@ CREATE TABLE gateway.execution_report (
   fill_qty          integer CHECK (fill_qty >= 1),
   fill_price        NUMERIC(22,10),
   fill_operation    text CHECK (fill_operation IN ('add','amend','remove')),  -- wire default 'add', stored explicitly
-  commission        NUMERIC(18,4) CHECK (commission >= 0),   -- non_negative_money (ALIGN-1)
+  commission        NUMERIC(18,4) CHECK (commission >= 0),   -- platform-reported (ALIGN-1); NULL = not reported
+  commission_rate      NUMERIC(18,4) CHECK (commission_rate >= 0),       -- rev. 15: account's commission_per_contract_side at record time (snapshot)
+  commission_effective NUMERIC(18,4) CHECK (commission_effective >= 0),  -- rev. 15 (U20 a): max(reported, rate × fill_qty)
+  commission_source    text CHECK (commission_source IN ('platform','configured','none')),  -- which one won; 'none' = neither exists (warning)
   position_after    integer,                             -- signed
   avg_price_after   NUMERIC(22,10),
   reason_code       text,
@@ -1207,8 +1256,13 @@ CREATE TABLE gateway.execution_report (
   received_at       timestamptz NOT NULL DEFAULT now(),
   payload           jsonb NOT NULL,
   CHECK ((fill_id IS NULL) = (fill_qty IS NULL) AND (fill_id IS NULL) = (fill_price IS NULL)
-         AND (fill_id IS NULL) = (fill_operation IS NULL))
+         AND (fill_id IS NULL) = (fill_operation IS NULL)),
+  CHECK ((fill_id IS NULL) = (commission_effective IS NULL) AND (fill_id IS NULL) = (commission_source IS NULL)),
+  CHECK (commission_source IS DISTINCT FROM 'none' OR commission_effective = 0)
 );
+-- rev. 15: gateway computes the effective commission once per fill when it records the report: the account rate
+-- is read through the accounts query port, as a point-in-time snapshot like routing's multiplier snapshot. Trades
+-- and risk consume it; neither recomputes it. A later rate change never rewrites past fills.
 CREATE UNIQUE INDEX execution_report_fill_key ON gateway.execution_report (account_id, fill_id) WHERE fill_operation = 'add';
 CREATE INDEX execution_report_fill_history_idx ON gateway.execution_report (account_id, fill_id, occurred_at)
   WHERE fill_id IS NOT NULL;
@@ -1430,8 +1484,10 @@ CREATE TABLE trades.trade (                              -- one completed trade 
   exit_time           timestamptz NOT NULL,
   exit_price          NUMERIC(22,10) NOT NULL CHECK (exit_price > 0),
   duration_seconds    integer GENERATED ALWAYS AS (floor(extract(epoch FROM (exit_time - entry_time)))::integer) STORED,  -- exit − entry (PO)
-  pnl                 NUMERIC(18,4) NOT NULL,            -- money (X-3); plugin's value when captured, Core's when manual
-  pnl_basis           text NOT NULL DEFAULT 'gross' CHECK (pnl_basis IN ('gross','net')),  -- 'net' reserved (Q54)
+  pnl_gross           NUMERIC(18,4) NOT NULL,            -- money (X-3); plugin's value when captured, Core's when manual
+  commission          NUMERIC(18,4) NOT NULL CHECK (commission >= 0),  -- rev. 15: Σ effective commission of the trade's fills
+  commission_source   text NOT NULL CHECK (commission_source IN ('platform','configured','mixed','manual','none')),
+  pnl_net             NUMERIC(18,4) GENERATED ALWAYS AS (pnl_gross - commission) STORED,  -- main value (user, 2026-10-23)
   mae                 NUMERIC(18,4) CHECK (mae >= 0),    -- USD (Q52); NULL = not observed (partial interval, protocol 1.3) or not provided (manual, Q55); never 0 by default
   mfe                 NUMERIC(18,4) CHECK (mfe >= 0),
   origin              text NOT NULL CHECK (origin IN ('routed','master','manual','platform')),
@@ -1468,7 +1524,7 @@ CREATE TABLE trades.trade (                              -- one completed trade 
 CREATE UNIQUE INDEX trade_plugin_id_key   ON trades.trade (account_id, plugin_trade_id) WHERE plugin_trade_id IS NOT NULL;  -- never stored twice
 CREATE UNIQUE INDEX trade_create_key      ON trades.trade (user_id, create_idempotency_key) WHERE create_idempotency_key IS NOT NULL;
 CREATE INDEX trade_user_exit_idx          ON trades.trade (user_id, exit_time, id);           -- default sort + from/to (Q53)
-CREATE INDEX trade_user_pnl_idx           ON trades.trade (user_id, pnl, id);                 -- sort = pnl (both orders)
+CREATE INDEX trade_user_pnl_idx           ON trades.trade (user_id, pnl_net, id);             -- sort = P&L (net, both orders)
 CREATE INDEX trade_user_duration_idx      ON trades.trade (user_id, duration_seconds, id);    -- sort = duration
 -- Immutability: a BEFORE UPDATE OR DELETE trigger raises unless OLD.origin = 'manual'
 -- (or current_user = 'allwin_maint' for the Q13-b erasure).
@@ -1485,7 +1541,7 @@ CREATE INDEX trade_user_duration_idx      ON trades.trade (user_id, duration_sec
 - **The provisional decisions stay out of the schema:**
   - **Q52:** `mae`/`mfe` are nullable USD amounts ≥ 0.
   - **Q53:** filters use `exit_time`, which is the leading sort index. Another time base would need only an index.
-  - **Q54:** `pnl_basis` is a column, and `net` is allowed.
+  - **Q54 (decided, rev. 15):** both values are stored: `pnl_gross`, plus `commission` and a generated `pnl_net`. Wire mapping (HTTP 3.5.0): `Trade.pnl` ← `pnl_net`, `gross_pnl` ← `pnl_gross`, `commission`, `commission_source`; `pnl_basis` stays on the wire, always `net`. The summary's `total_pnl` / `total_gross_pnl` / `total_commission` are sums, and `uncommissioned_count` counts `commission_source = 'none'`. Net is the main value, sorted and summed; gross is shown beside it. `pnl_basis` is removed. #13 is unwritten, so the table takes this shape directly.
   - **Q55:** `mae`/`mfe` are nullable, and NULL means "not provided", never 0.
   - **Q56:** the trigger condition, as above.
   - **Q57:** the Core decides what one trade is; nothing in the schema assumes it.
@@ -1493,6 +1549,11 @@ CREATE INDEX trade_user_duration_idx      ON trades.trade (user_id, duration_sec
   - `duration_seconds` is a stored generated column so it can be sorted and indexed. It is computed from the two instants, which matches the PO's definition.
 - **Snapshots:** `account_name`, `source_name` and `master_account_name` are kept as they were, like the audit's. `account_deleted` is derived when reading. `instrument_symbol` is resolved from `catalog`, which is global, immutable reference data.
 - **Retention:** trades are kept for the life of the user account (S10 AC-3) and erased with it (Q13-b). The volume is a few rows per account per day.
+- **Commission on trades (rev. 15, U20 a):**
+  - **Captured:** the sum of the trade's fills' `commission_effective`, read through the gateway query port with the same fill ids as the reconciliation. `commission_source` is `platform`, `configured` or `none` when every fill agrees, else `mixed`.
+  - If a fill is unknown, it uses rate × quantity for that side, with source `configured` (or `none` without a rate), plus `trades.reconcile_mismatch`.
+  - **Manual:** the user's typed commission (`manual`), else rate × quantity × 2 sides (`configured`), else 0 (`none`, warning).
+  - Fixed at capture, like the other numbers.
 - **The adapter's `trade_completed` message** (protocol 1.3, Esquadro; reliable and acked) supplies:
   - `plugin_trade_id`, the plugin's uuid. It is deduplicated like `event_id` through `trade_plugin_id_key`, so a trade is never stored twice;
   - the plugin's computed numbers (S21 AC-2): duration, P&L (gross), and `mae`/`mfe`. A partial excursion is sent **absent** (Esquadro, 1.3), so NULL `mae`/`mfe` means "not observed or not provided", and S22 excludes them from averages;
@@ -1665,6 +1726,22 @@ CREATE INDEX trade_user_duration_idx      ON trades.trade (user_id, duration_sec
      - a JSON-number `amount` fails;
      - another user's account is refused by the composite FK and invisible under RLS;
      - apply rewrites the account and its rows atomically (a forced failure leaves both unchanged);
+   - rev. 15, commission and net:
+     - a fill with reported 0.50 and a rate of 0.37 × 2 → effective 0.74, `configured`;
+     - reported 1.00 → 1.00, `platform`;
+     - neither → 0, `none`;
+     - a non-fill report with a commission source fails;
+     - `pnl_net` = gross − commission;
+     - the sort by P&L uses net;
+     - a mixed trade → `mixed`;
+     - a rate change does not alter past fills or trades, and it does bump `limits_version` (the plugin gets the new floor);
+     - live daily-loss usage deducts rate × open quantity, while end-of-day and realized values do not;
+     - `evaluation_start` does bump it;
+     - the risk daily loss uses `realized_pnl_net`;
+     - the drawdown on a sim account with no reported commission uses the adjusted balance;
+     - evaluation progress uses the baseline from the snapshot, else the account size, plus `evaluation_earned_before`;
+     - "reiniciar contagem" bumps `limits_version`, writes the audit row, and yields fresh progress with `target_reached_at` NULL;
+     - reaching the target sets `target_reached_at` once and takes no action;
    - rev. 14, trades:
      - a routed trade without a source or instruction fails;
      - a manual trade with `captured_at`, `command_id` or `plugin_trade_id` fails;
