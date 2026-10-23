@@ -1,6 +1,10 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 7.1; **rev. 8 proposed** (contracts S5 2.1.0, S7 2.2.0, S6 2.3.0 by Compasso; Architect/Code Review pending). Rev. 8 adds:
+- **Status:** Accepted (2026-10-23), rev. 8; **rev. 9 proposed** (S10 audit contract 2.4.0 by Compasso; Code Review pending). Rev. 9:
+  - adds `outcome`, `is_exit`, `message_id`, `source_name` and `safe_to_display` to `audit.audit_entry`, in forward migration #7b (§6.4, §8);
+  - widens the no-secret `CHECK` to the text snapshots;
+  - **corrects rev. 8**: `account.*_rule_version_id` are plain `uuid`, not FKs to `catalog`, because the only cross-module FK is to `identity.app_user` (§1, rule 1).
+- Rev. 8 (5dd2d45, 09cd281) adds:
   - on `accounts.account`: `firm_name`, `firm_platform`, `*_pending_reason`, the create idempotency key, and the preset-or-manual `CHECK` (§5.2);
   - `catalog.opt_in_rule_version`, with the generic versions seeded in S5 (§5.1);
   - `row_version`/`origin`/`copied_at`/`customized` on `account_bracket_profile` (§5.4);
@@ -554,7 +558,7 @@ CREATE UNIQUE INDEX opt_in_rule_version_generic_key ON catalog.opt_in_rule_versi
 ```
 
 - **S5 seeds** two generic rows, `automation` and `copy`, at version 1, inside migration #5. They hold no text: no quotes, and the UI shows its own generic warning. So the seed has no product content to wait for.
-- `account.automation_rule_version_id` / `copy_rule_version_id` reference this table. A cross-module foreign key to `catalog` is allowed, like `instrument`. That the referenced row has the matching `kind` is a Core rule plus a §9 test; a composite FK would need constant generated columns on `account` for little gain.
+- `account.automation_rule_version_id` / `copy_rule_version_id` hold ids of this table as **plain `uuid`**, with no foreign key (§1, rule 1; rev. 9 corrects rev. 8). The `accounts` module checks through the catalog query port that the id exists and has the matching `kind`, in the same request that records the choice. Rows are append-only and never deleted, so an id once valid stays valid. Both rules have §9 tests.
 
 ### 5.2 Trading accounts
 
@@ -580,13 +584,13 @@ CREATE TABLE accounts.account (
   automation_state  text NOT NULL DEFAULT 'not_required'
                     CHECK (automation_state IN ('not_required','chosen','pending_review')),  -- opt-in (decision 2026-10-23, A)
   automation_choice text CHECK (automation_choice IN ('accepted','declined')),  -- no default: NULL until the user chooses
-  automation_rule_version_id uuid REFERENCES catalog.opt_in_rule_version(id),  -- the rule text the user saw
+  automation_rule_version_id uuid,                       -- catalog.opt_in_rule_version (cross-module id): the rule text the user saw
   automation_pending_reason text CHECK (automation_pending_reason IN ('stance_changed','text_changed','preset_attached')),
   automation_chosen_at timestamptz,
   copy_state        text NOT NULL DEFAULT 'not_required'
                     CHECK (copy_state IN ('not_required','chosen','pending_review')),  -- copy opt-in (Q24, approved)
   copy_choice       text CHECK (copy_choice IN ('accepted','declined')),
-  copy_rule_version_id uuid REFERENCES catalog.opt_in_rule_version(id),
+  copy_rule_version_id uuid,                             -- catalog.opt_in_rule_version (cross-module id)
   copy_pending_reason text CHECK (copy_pending_reason IN ('stance_changed','text_changed','preset_attached')),
   copy_chosen_at    timestamptz,
   created_at        timestamptz NOT NULL DEFAULT now(),
@@ -1027,9 +1031,22 @@ CREATE TABLE audit.audit_entry (
   command_id      uuid,
   signal_type     text,                                  -- denormalized for S10 filters
   details         jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- rev. 9 (S10 contract 2.4.0, migration #7b):
+  outcome         text NOT NULL CHECK (outcome IN ('received','routed','executed','partial','skipped','refused',
+                                                   'rejected','expired','unknown','info')),  -- set by the Core, never derived by clients
+  is_exit         boolean CHECK (is_exit IS NULL OR category IN ('routing','execution')),  -- exit action (close, reduce, protective modify/cancel)
+  message_id      text CHECK (message_id ~ '^[A-Za-z0-9._:-]{1,128}$'),                    -- same rule as routing.message_receipt
+  source_name     text CHECK (char_length(source_name) BETWEEN 1 AND 60),                  -- snapshot, like account_name
+  safe_to_display boolean NOT NULL,                      -- raw details may be shown; the Core decides each time (no default)
   PRIMARY KEY (occurred_at, id),
   UNIQUE (occurred_at, source_event_id),
-  CONSTRAINT audit_entry_no_token CHECK (details::text !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
+  CONSTRAINT audit_entry_source_name_check  CHECK (source_id IS NULL OR source_name IS NOT NULL),   -- #7b: NOT VALID
+  CONSTRAINT audit_entry_account_name_check CHECK (account_id IS NULL OR account_name IS NOT NULL), -- #7b: NOT VALID
+  CONSTRAINT audit_entry_no_token CHECK (                -- rev. 9: also the free-text snapshots (immutable operators only)
+        details::text            !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
+    AND coalesce(account_name,'') !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
+    AND coalesce(source_name,'')  !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
+    AND coalesce(message_id,'')   !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')  -- its pattern allows '_' (F2)
 ) PARTITION BY RANGE (occurred_at);
 CREATE INDEX audit_entry_user_time_idx        ON audit.audit_entry (user_id, occurred_at DESC);
 CREATE INDEX audit_entry_user_instruction_idx ON audit.audit_entry (user_id, instruction_id) WHERE instruction_id IS NOT NULL;
@@ -1038,7 +1055,19 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 -- REVOKE UPDATE, DELETE FROM allwin_app; BEFORE UPDATE OR DELETE trigger raises (immutability, S10 AC-3)
 ```
 
-- **Filters (S10 AC-2):** date, account, source, signal type and outcome are served by the user/time and user/account indexes, with the rest filtered inside the user's time range. No further index is added until measured (no speculative indexes).
+- **Filters (S10 AC-2):** date, account, source, signal type and outcome are served by the user/time and user/account indexes, with the rest filtered inside the user's time range. No further index is added until measured (no speculative indexes). `outcome` and `category` filters stay inside the time range too (S10 contract §3).
+- **S10 columns (rev. 9):**
+  - `outcome` is mapped by the Core from the decision or report (S10 contract §2.1), and every new code must state its outcome. The ingress codes map as follows: `received` → `received`, `duplicate_ignored` → `skipped`, `rejected` / `rate_limited` → `rejected`. The `security.*` codes carry masked `details` and need no schema change.
+  - `account_deleted` is computed when reading, from `accounts.account.archived_at` through the accounts query port, and is not stored.
+  - `q` = an instruction id uses `audit_entry_user_instruction_idx`. `q` = a `message_id` is first resolved to its instruction id through `routing.message_receipt` (PK `(user_id, message_id)`), so `message_id` needs no index here.
+  - **`safe_to_display` has no default**, so a producer that forgets it fails on insert instead of exposing raw JSON. Fail-closed was agreed with Compasso, who corrected S10 §3; the API value is unchanged.
+- **No secret in `audit_entry`** (§1 rule 9; CLAUDE.md):
+  - The Core redacts before writing.
+  - The storage `CHECK` refuses an `awk_`/`awd_` token in `details`, in the two free-text snapshots (`account_name`, `source_name`), since a user could paste a token into a name, and in `message_id`. Its pattern allows `_`, so a 61-character token would otherwise match.
+  - Today the S1 credential guard (HTTP 1.1.2 step 5a) already refuses token-shaped strings before insert; the `CHECK` is the storage barrier.
+  - **Recommendation for routing:** the same no-token `CHECK` on `routing.message_receipt.message_id` and `routing.instruction.message_id`. #6 is on `main`, so this would be a forward routing migration (Ferro). It is not part of #7b, because each module migrates only its own schema.
+  - `source_key_id` is the public `key_id` only. Webhook URLs, codes, cookies and hashes are never audit fields.
+- **Q13 retention is unchanged:** the new columns live in the same monthly partitions and go with them (24 months rolling; Q13-b erasure deletes the user's rows). They add about 70–200 bytes per row (`message_id` ≤ 128, `source_name` ≤ 60), which is within the Q13 §9 size margin, to be re-measured with the 1 M-row test.
 - **Dispatcher rules** (Architect decision (A), 2026-10-23; replaces rev. 4 "marked published on the first pass"):
   1. **An event is never marked published unless it was consumed.**
      - Consumers are registered before start.
@@ -1124,6 +1153,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
 | 6b | `routing_create_decision_subscription`: `routing_decision`, `subscription` (with `row_version`, rev. 8) | M1 / S7 |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
+| 7b | `audit_entry_activity_columns` (rev. 9): the S10 columns and constraints on the partitioned table (see below) | S10 (or whichever slice first emits them); version stamped after the latest merged migration |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 9 | `gateway_create_delivery`: `venue_account`, `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
 | 10 | `risk_create_account_limits` | S13 (Wave 3) |
@@ -1135,6 +1165,21 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 - So #2 and #3 (S3, Brasa) merge before #6 and #7. Until then the S1 branch builds on the S3 branch.
 - No branch writes its own copy of another module's table.
 - Provisional versions: `20261023060000` #1, `…060100`/`…060200` #2/#3, `…060300` #4, `…060400` #5, `…060500` #6, `…060600` #7. Final versions are assigned at integration.
+
+**Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
+- Plan:
+  1. `ADD COLUMN outcome text NOT NULL DEFAULT 'info'` and `safe_to_display boolean NOT NULL DEFAULT false`, then `ALTER … DROP DEFAULT`. These are fast metadata defaults (PG ≥ 11), and dropping the defaults makes every new insert set the values.
+  2. Add the nullable `is_exit`, `message_id` and `source_name`.
+  3. Add the `CHECK`s:
+     - the column `CHECK`s on `outcome`, `is_exit`, `message_id` and `source_name`, validated, since only new values can fail them;
+     - `audit_entry_source_name_check` and `audit_entry_account_name_check` added **`NOT VALID` and never validated**. Old rows have `source_id` with a just-added NULL `source_name`, or a NULL `account_name`, and cannot be backfilled. `NOT VALID` enforces the rule on every new insert and exempts the old rows. Verified on PostgreSQL 16.15 in a scratch database:
+       - it is accepted on the partitioned parent;
+       - it propagates to the existing partitions as not validated;
+       - new rows are refused;
+       - a partition created later gets it validated;
+     - `audit_entry_no_token` dropped and re-added **validated**, now also covering `account_name`, `source_name` and `message_id`. Old rows already passed the `details` part, and the new columns are NULL on them.
+- **Existing rows cannot be backfilled.** The immutability trigger refuses `UPDATE`, and a migration must not disable it. Rows written before #7b (dev and test databases only; nothing in production) keep `outcome = 'info'` and `safe_to_display = false`, which is the safe reading.
+- All statements run on the partitioned parent (they cascade to the partitions) under `lock_timeout`. Each `CHECK` validates by scanning the partitions, which is small before production.
 
 **Passwordless change (rev. 6): forward migration #2b `identity_passwordless`** (Architect decision; `20261023060100` is not rewritten, because rewriting would break the sqlx checksum of every database that already applied it).
 - Order inside the file:
@@ -1172,6 +1217,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - cross-user reads and writes return nothing or fail, **with and without** application filters, to prove RLS on its own;
    - a missing `app.user_id` returns zero rows;
    - `UPDATE`/`DELETE` on `audit_entry` fails;
+   - rev. 9, `audit_entry`: an insert without `outcome` or `safe_to_display` fails; an unknown `outcome` fails; `is_exit` on an `ingress` entry fails; `source_id` without `source_name` fails; a token in `source_name`, `account_name` or `message_id` fails; a `message_id` with `_` that is not a token passes; #7b applies on a database with pre-existing S1 audit rows (a `source_id` and no `source_name`), and a new insert of that shape then fails;
    - the token-pattern `CHECK` rejects a planted `awk_`/`awd_` token, and the `key_id` / hash-length `CHECK`s reject malformed rows;
    - fills: a redelivered `event_id` is a no-op; a second `add` for the same `(account_id, fill_id)` fails; an `amend` and a `remove` with new `event_id`s are accepted, and the effective fill is the latest one;
    - `command.step`: `modify:0` with kind `modify` and `orphan_flatten:<uuid>` with kind `flatten` pass; `modify:0` with kind `cancel`, `orphan_flatten:<uuid>` with kind `cancel`, `place:1`, `modify:01` and an upper-case UUID fail;
@@ -1197,7 +1243,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - a second generic version 1 of the same kind fails;
      - `text_changed` without `change_reason` fails;
      - `allwin_app` cannot `UPDATE` or `DELETE`;
-     - an account's `automation_rule_version_id` pointing to a `copy` row is rejected by the Core;
+     - an account's `automation_rule_version_id` pointing to a `copy` row, or to an unknown id, is rejected by the Core (no FK, §1);
    - rev. 8, `account_bracket_profile`:
      - `set_by_user` with `copied_from_size` fails, and so does `set_by_user` with `customized = true`;
      - a copy without `copied_at` fails;
