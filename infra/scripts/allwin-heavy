@@ -75,14 +75,25 @@ if [ -z "${RUSTUP_HOME:-}" ] && [ -d /opt/rust/rustup ]; then
   case ":$PATH:" in *":/opt/rust/cargo/bin:"*) ;; *) export PATH="/opt/rust/cargo/bin:$PATH" ;; esac
 fi
 
-# Shared compile cache (sccache, group-devs directory). No daemon: a background server would inherit the slot.
-# Incremental compilation is off because sccache cannot cache it. ALLWIN_HEAVY_NO_SCCACHE=1 disables the cache.
+# Shared compile cache (sccache, group-devs directory). One sccache server PER JOB, on a unix socket inside the
+# user's runtime dir: the server runs inside this job's scope (its CPU counts against the job's quota), serves only this
+# job, and is stopped when the job ends. Never the default TCP port: a client uses whatever server answers there,
+# whichever account started it. Incremental compilation is off because sccache cannot cache it.
+# OFF by default until QA has verified the per-job server as every account: ALLWIN_HEAVY_SCCACHE_ENABLE=1 turns it on.
 SCCACHE_BIN="${ALLWIN_HEAVY_SCCACHE:-/opt/rust/cargo/bin/sccache}"
-if [ "${ALLWIN_HEAVY_NO_SCCACHE:-0}" != 1 ] && [ -x "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER:-}" ]; then
+SCCACHE_ON=0
+unset SCCACHE_NO_DAEMON SCCACHE_SERVER_PORT SCCACHE_START_SERVER
+RUNDIR="/run/user/$(id -u)"
+if [ "${ALLWIN_HEAVY_SCCACHE_ENABLE:-0}" = 1 ] && [ "${ALLWIN_HEAVY_NO_SCCACHE:-0}" != 1 ] && [ -x "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER:-}" ] \
+   && [ -d "$RUNDIR" ] && [ -w "$RUNDIR" ]; then
   export SCCACHE_DIR="${SCCACHE_DIR:-/srv/www/allwin.worktrees/.sccache}"
-  export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-30G}" SCCACHE_NO_DAEMON=1 CARGO_INCREMENTAL=0
   mkdir -p -- "$SCCACHE_DIR" 2>/dev/null || true
-  if [ -d "$SCCACHE_DIR" ] && [ -w "$SCCACHE_DIR" ]; then export RUSTC_WRAPPER="$SCCACHE_BIN"; fi
+  if [ -d "$SCCACHE_DIR" ] && [ -w "$SCCACHE_DIR" ]; then
+    export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-30G}" CARGO_INCREMENTAL=0 SCCACHE_IDLE_TIMEOUT=0
+    export SCCACHE_SERVER_UDS="$RUNDIR/allwin-sccache-$$.sock"   # short path: SUN_LEN limit
+    export RUSTC_WRAPPER="$SCCACHE_BIN"
+    SCCACHE_ON=1
+  fi
 fi
 
 # dotnet: no resident MSBuild nodes or build servers holding memory (and the slot) after the command.
@@ -100,11 +111,19 @@ else
   run=(nice -n 10 "${run[@]}")
 fi
 
-if [ "$FRESH" != 1 ]; then exec "${run[@]}"; fi
+if [ "$FRESH" != 1 ] && [ "$SCCACHE_ON" != 1 ]; then exec "${run[@]}"; fi
 
-# Fresh target: keep the wrapper alive to remove the directory (the slot stays held until then).
-case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/verify-*) ;; *) echo "allwin-heavy: unexpected target dir" >&2; exit 1 ;; esac
-cleanup() { [ "${ALLWIN_HEAVY_KEEP_TARGET:-0}" = 1 ] || rm -rf -- "$CARGO_TARGET_DIR"; }
+# The wrapper stays alive (the slot stays held) to stop this job's sccache server and remove the fresh target.
+if [ "$FRESH" = 1 ]; then
+  case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/verify-*) ;; *) echo "allwin-heavy: unexpected target dir" >&2; exit 1 ;; esac
+fi
+cleanup() {
+  if [ "$SCCACHE_ON" = 1 ]; then
+    "$SCCACHE_BIN" --stop-server >/dev/null 2>&1 || true
+    rm -f -- "$SCCACHE_SERVER_UDS"
+  fi
+  if [ "$FRESH" = 1 ] && [ "${ALLWIN_HEAVY_KEEP_TARGET:-0}" != 1 ]; then rm -rf -- "$CARGO_TARGET_DIR"; fi
+}
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 rc=0

@@ -96,11 +96,19 @@ The wrapper limits how many heavy jobs run, not how wide each one is. Keep each 
 `dotnet test -m:1`, `pnpm exec vitest run --maxWorkers=2`, `pnpm exec playwright test --workers=2`,
 `cargo test -- --test-threads=2` (`CARGO_BUILD_JOBS=2` and `RUST_TEST_THREADS=2` are already the defaults).
 
-## Shared compile cache (sccache)
+## Shared compile cache (sccache) — OFF by default
+
+The cache is **disabled by default** (a first version let one account's server run another account's compiles). It
+is enabled with `ALLWIN_HEAVY_SCCACHE_ENABLE=1` only after QA has verified the per-job server as `dev2` and `dev3`.
+The description below is how it works when enabled.
 
 `allwin-heavy` sets `RUSTC_WRAPPER=/opt/rust/cargo/bin/sccache` (v0.18.0, prebuilt release, checksum verified) with the
-cache in `/srv/www/allwin.worktrees/.sccache` (group `devs`, setgid, 30 GB cap), run without a daemon (a background
-server would inherit the slot) and with `CARGO_INCREMENTAL=0` (sccache cannot cache incremental builds). The wrapper also
+cache in `/srv/www/allwin.worktrees/.sccache` (group `devs`, setgid, 30 GB cap) and `CARGO_INCREMENTAL=0` (sccache cannot
+cache incremental builds). **One sccache server per job**, on a unix socket in the account's runtime dir
+(`/run/user/<uid>/allwin-sccache-<pid>.sock`, mode 700 per account): it runs inside the job's systemd scope, so its CPU
+counts against the job's quota, and the wrapper stops it (and removes the socket) when the job ends. Never rely on the
+default TCP port 4226: a client uses whichever server answers there, from any account, with that server's account and
+cache directory. The wrapper also
 points every account at the same toolchain (`RUSTUP_HOME=/opt/rust/rustup`, `CARGO_HOME=/opt/rust/cargo`, rustc 1.99.1)
 and runs with `umask 002`, so cache keys match across `dev2` and `dev3` and files stay group-writable.
 
@@ -108,6 +116,7 @@ and runs with `umask 002`, so cache keys match across `dev2` and `dev3` and file
   once per worktree (cheap).
 - A fresh target per SHA (`--fresh-target`, QA verdict runs) is therefore cheap: the dependencies come from the cache
   and nothing from another snapshot can leak in. Use it for every verdict run.
-- `ALLWIN_HEAVY_NO_SCCACHE=1` turns the cache off (for example to rule it out when a build behaves oddly);
-  `sccache --show-stats` (with `SCCACHE_DIR` and `SCCACHE_NO_DAEMON=1` set) shows hits and misses.
+- `ALLWIN_HEAVY_NO_SCCACHE=1` forces the cache off even when enabled;
+  `allwin-heavy bash -c 'cargo build && sccache --show-stats'` shows hits and misses of that job's server (the stats
+  die with it).
 - Outside the wrapper nothing changes: plain `cargo` keeps your own `CARGO_HOME` and no cache.
