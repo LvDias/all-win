@@ -1,10 +1,11 @@
 # V1-S4 — Language and locale — Screen spec
 
-> **Owner:** Product Designer (Aquarela @ Dev3) · **Status:** final for implementation, pending PO review of rev. 2 · **Revision:** 2 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela) · **Status:** final for implementation, pending PO review of rev. 2 · **Revision:** 2.1 · **Date:** 2026-10-23
 > **Slice:** [V1-S4](../../product/release-1/slice-plan.md) (ready) · AC-1..AC-4 · cross-cutting X-3, X-6, X-8.
 > **Foundations:** [foundations.md](../foundations.md) F§5 glossary, F§6 formatting, F§11 accessibility.
 > **Stack:** `next-intl`, locale-prefixed routes `/pt-BR/...` and `/en/...`, default locale `pt-BR`, preference stored in the profile and sent to the plugin in `welcome` (ADR-0001 §9).
 > **Decided by the user on 2026-10-23** ([decisions.md](../../delivery/decisions.md)): **Q23**: language from the browser (pt or en, else pt-BR); display time zone from the profile, defaulting to the browser; 24-hour clock in both languages. **Q11**: the plugin follows the web language.
+> **Rev. 2.1 (2026-10-23):** references updated for the passwordless S3 rev. 4 (no reset links; code challenges disable the switcher).
 > **Rev. 2 changes:** Q23 applied (alternatives removed); plugin language via `welcome.locale` (ADR-0004).
 > **Surfaces:** Web (Frontend), plugin language (Plugin Engineer, §6).
 
@@ -28,7 +29,7 @@ No flags (languages are not countries). Adding a locale later is a configuration
 
 - `/` and any unprefixed path redirect to the resolved locale, keeping path and query.
 - A signed-in user who opens a link with the other prefix is redirected to their profile language (same path), so the persisted choice always wins (AC-1). Switching happens only through the switcher.
-- **Exceptions:** invite and password-reset links (S3-03/S3-05) open in the locale embedded in the link (chosen at invite creation, or the profile language for reset e-mails). The person can still switch on that page.
+- **Exceptions:** the invitation link (S3-03) opens in the locale embedded in the link (chosen at invite creation). The person can still switch on that page **before** the code is requested. Sign-in code and new-device e-mails use the profile language (the invitation language for the sign-up code).
 - On sign-in, if the profile language differs from the page's, the redirect after login lands in the profile language.
 
 ## 3. Language switcher
@@ -46,7 +47,7 @@ No flags (languages are not countries). Adding a locale later is a configuration
 3. While saving: the menu item shows a spinner; further picks are ignored.
 4. On failure (signed in): stay in the current language; toast (in the current language) "Não foi possível salvar o idioma. Tente de novo." + error code. Nothing changes.
 5. Not signed in: no API call; cookie + navigation only.
-6. **Unsaved form data:** if the current page has a dirty form, an `AlertDialog` asks first: "Trocar o idioma recarrega a página e descarta as alterações não salvas." / "Changing the language reloads the page and discards unsaved changes." (`Continuar editando` focused / `Trocar idioma`). Open view-once dialogs (S3-09 step 2, S3-06 step 4) **disable the switcher** until closed, so a secret is never lost by a language change.
+6. **Unsaved form data:** if the current page has a dirty form, an `AlertDialog` asks first: "Trocar o idioma recarrega a página e descarta as alterações não salvas." / "Changing the language reloads the page and discards unsaved changes." (`Continuar editando` focused / `Trocar idioma`). Open view-once dialogs (S3-09 step 2, the S3-08a invitation-link result step) **disable the switcher** until closed, so a secret is never lost by a language change. The same applies while a code challenge is pending in memory (S3-02, S3-03 step 2, S3-04, S3-05): the switcher is disabled with the tooltip "Troque o idioma antes de pedir o código." / "Change the language before requesting the code.", because a reload would drop the challenge.
 7. After switching, focus goes to the page `h1`, and `<html lang>` and the document title update. Nothing is announced beyond the page change itself.
 8. Values never change, only their formatting (AC-2, X-3). Example: `US$ 1.234,50` ⇄ `$1,234.50`; `23/10/2026 17:00` ⇄ `Oct 23, 2026, 17:00`.
 
@@ -63,7 +64,7 @@ No flags (languages are not countries). Adding a locale later is a configuration
 ## 5. Message catalogs and translation rules (for Frontend)
 
 - **Catalogs:** `web/messages/pt-BR.json`, `web/messages/en.json` (path per Frontend scaffold). Keys identical in both, checked in CI (root CLAUDE.md §5).
-- **Key naming:** `<feature>.<screen>.<element>[.<variant>]`, e.g. `sources.create.title`, `sources.rotate.confirm`, `auth.login.error.invalid_credentials`. Shared: `common.actions.cancel`, `common.states.loading`. **Core error codes map 1:1** to `errors.<code>` (e.g. `errors.auth.invalid_credentials`).
+- **Key naming:** `<feature>.<screen>.<element>[.<variant>]`, e.g. `sources.create.title`, `sources.rotate.confirm`, `auth.login.code.error`. Shared: `common.actions.cancel`, `common.states.loading`. **Core error codes map 1:1** to `errors.<code>` (e.g. `errors.auth.code_invalid`).
 - **ICU MessageFormat** for plurals and variables: `{count, plural, one {# contrato} other {# contratos}}`. Never build sentences by concatenation; never embed formatted numbers via string concatenation (use the F§6 formatters as arguments).
 - **Unknown error code** from the Core: `errors.unknown` with the code as a variable ("Erro inesperado (código: {code})").
 - **Text expansion:** layouts tolerate +35 % (en ↔ pt-BR). No fixed widths on buttons, badges or table headers; truncation only with a tooltip and never for status text.
@@ -108,7 +109,7 @@ The user never sees a key name (AC-4: "no silent fallback to the key name").
 | AC | Where |
 |---|---|
 | AC-1 switch + persists across sessions | §2 (profile + cookie), §3 |
-| AC-2 all text/errors/e-mails translated; locale formats, values unchanged | §3 step 8, §5, F§6; e-mail language in S3-04/S3-08 |
+| AC-2 all text/errors/e-mails translated; locale formats, values unchanged | §3 step 8, §5, F§6; e-mail language in S3-07/S3-08a and the code e-mails |
 | AC-3 plugin follows the web language | §3 help text, §6, S3-11 |
 | AC-4 missing translation detectable, no key-name fallback | §7 |
 
