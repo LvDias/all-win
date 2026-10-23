@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 9; **rev. 10 proposed** (S16 presets contract 2.5.0 by Compasso; account/limits consistency = option (B), ADR-0006; Code Review pending). Rev. 10:
+- **Status:** Accepted (2026-10-23), rev. 10; **rev. 11 proposed** (Code Review pending). Rev. 11: `one_time_code.action` gains `route_enable` and `account_binding_change` (HTTP 3.0.0, pending Q35), both targeted (target = account).
+- Rev. 10 (49dbea0):
   - adds the preset catalog: `prop_firm`, `firm_release`, `firm_release_platform`, `firm_plan`, `preset`, `preset_version`, `preset_rule_set` and `firm_stance`;
   - adds `release_id` and the in-catalog FKs on `opt_in_rule_version`;
   - adds `accounts.account_rule_value`;
@@ -282,7 +283,8 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   destination        text NOT NULL,                      -- normalized address the code was sent to; the proof is for this address
   action             text CHECK (action IN ('source_create','source_rotate','connection_create','pairing_code_new',
                                         'connection_unpair','account_opt_in_accept','account_create_opt_in_accept',
-                                        'admin_invitation_create')),  -- step_up only; = HTTP 2.0.0 StepUpAction
+                                        'admin_invitation_create','route_enable','account_binding_change')),
+                                                         -- step_up only; = HTTP 3.0.0 StepUpAction (rev. 11: +2, pending Q35)
   target_id          uuid,                               -- step_up: the source, connection or account acted on (see CHECK)
   session_id         uuid,                               -- step_up / channel_change: only the requesting session may use the code
   code_role          text CHECK (code_role IN ('current_value','new_value','other_channel')),  -- channel_change only; = HTTP 2.0.0 role; other_channel is [Proposed] (S3b, policy §7)
@@ -304,10 +306,12 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   CONSTRAINT one_time_code_final_check CHECK (consumed_at IS NULL OR invalidated_at IS NULL),
   CONSTRAINT one_time_code_step_up_check
     CHECK ((purpose = 'step_up') = (action IS NOT NULL)
-           AND (target_id IS NOT NULL) = COALESCE(action IN ('source_rotate','pairing_code_new',
-                                                            'connection_unpair','account_opt_in_accept'), false)),
-  -- Q35 turns each of these actions on or off by Core setting, with no migration. New values (e.g. enforcement-off,
-  -- max-position changes, "added when Q35 decides" per HTTP 2.0.0) would need a contract change and a migration.
+           AND (target_id IS NOT NULL) = COALESCE(action IN ('source_rotate','pairing_code_new','connection_unpair',
+                                                            'account_opt_in_accept','route_enable',
+                                                            'account_binding_change'), false)),
+  -- route_enable / account_binding_change: target = the account (HTTP 3.0.0). Q35 turns each action on or off by
+  -- Core setting (step_up.q35_persistence_actions), with no migration. Values not in this list need a contract
+  -- change and a migration; these two go straight into #2b, which is not written yet.
   CONSTRAINT one_time_code_role_check
     CHECK ((purpose = 'channel_change') = (code_role IS NOT NULL) AND (code_role IS NULL) = (channel_change_id IS NULL)),
   CONSTRAINT one_time_code_session_check CHECK ((purpose IN ('step_up','channel_change')) = (session_id IS NOT NULL)),
@@ -469,7 +473,7 @@ No password, TOTP seed or recovery code is stored (rev. 6). The plaintext one-ti
   - Signup, step-up and channel-change clients read it per challenge. Login never exposes it: an unknown identifier has no row, so for login the column only drives the audit.
   - A failed send of a registered user also writes an `auth.code_delivery_failed` audit row.
 - **Step-up** (the 8 HTTP 2.0.0 `StepUpAction` values, each on or off by Core setting per Q35; a channel change uses its own codes):
-  1. A `step_up` code is bound to `session_id`, `action` and, for the four targeted actions, `target_id`. Sends count against the per-user hourly limit (`one_time_code_user_created_idx`).
+  1. A `step_up` code is bound to `session_id`, `action` and, for the six targeted actions (`source_rotate`, `pairing_code_new`, `connection_unpair`, `account_opt_in_accept`, `route_enable`, `account_binding_change`), `target_id`. Sends count against the per-user hourly limit (`one_time_code_user_created_idx`).
   2. The action request carries the challenge and code. The Core consumes it in the same transaction as the action, so no "elevated" state is stored.
   3. A channel change uses `purpose = 'channel_change'` instead, and its old-channel code is the step-up.
 - **Channel change / adding WhatsApp later** (HTTP 2.0.0 `ChannelChange`):
@@ -1414,7 +1418,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - opt-in (`automation_*` and `copy_*`): `chosen` with no choice fails; `not_required` with a choice fails; `pending_review` keeping the previous choice passes; a choice without `chosen_at` fails; a real account with `pending_review` fails;
    - `adapter_connection`: a second live connection named `Desk A`/`desk a` fails; reusing the name of an unpaired one passes; `status = 'unpaired'` without `archived_at` fails; after a simulated Core restart, rows left `connected`/`outdated` become `disconnected` with a new `status_changed_at` and an audit entry, before any adapter can connect;
    - `email_registered` and `admin_list_users` return false / no rows for a non-admin `app.user_id`;
-   - `one_time_code` (rev. 6): `expires_at` beyond 10 minutes fails; `failed_attempts = 5` without `invalidated_reason = 'attempts'` fails; consumed and invalidated together fails; `step_up` without `action`, `source_rotate` without `target_id`, `source_create` with a `target_id`, `login` with `session_id` and `channel_change` without `code_role` fail; a second `new_value` code in one change fails; a `new_value` code whose destination is not yet the user's address is accepted; a resend moves `expires_at` to at most `sent_at + 10 min` and keeps `failed_attempts`; 3 logins from an unknown browser do not invalidate the user's open challenge; the 60-s resend cooldown and the send budgets are identical for a registered and an unregistered identifier (counter rows, no code row needed); a `new_value` code is refused once its change is no longer `awaiting_codes`; two concurrent wrong guesses on a code at 4 failures leave it invalidated at 5, never 6; another user's challenge id resolves but its row is invisible under RLS;
+   - `one_time_code` (rev. 6): `expires_at` beyond 10 minutes fails; `failed_attempts = 5` without `invalidated_reason = 'attempts'` fails; consumed and invalidated together fails; `step_up` without `action`, `source_rotate` or `route_enable` without `target_id`, `source_create` with a `target_id`, `login` with `session_id` and `channel_change` without `code_role` fail; a second `new_value` code in one change fails; a `new_value` code whose destination is not yet the user's address is accepted; a resend moves `expires_at` to at most `sent_at + 10 min` and keeps `failed_attempts`; 3 logins from an unknown browser do not invalidate the user's open challenge; the 60-s resend cooldown and the send budgets are identical for a registered and an unregistered identifier (counter rows, no code row needed); a `new_value` code is refused once its change is no longer `awaiting_codes`; two concurrent wrong guesses on a code at 4 failures leave it invalidated at 5, never 6; another user's challenge id resolves but its row is invisible under RLS;
    - `app_user` (rev. 6): no `email_verified_at` fails; a second channel change within 24 h of `channel_changed_at` is refused; `whatsapp_e164` without `whatsapp_verified_at` fails; a second user with the same number fails;
    - `known_device` (rev. 6/7): a cookie valid for another user is kept and a second row with the same hash is inserted for this user; after "forget device" or "sign out everywhere", the next sign-in from that browser gets a new cookie and a new row (no unique violation) and a new-device notice; signup completion creates a device without a notice;
    - `signup_code` (rev. 6): an abandoned signup leaves no `app_user` row; two concurrent confirmations on one invitation create exactly one user; a code on a revoked or expired invitation fails; `channel` other than `email` fails;
@@ -1496,6 +1500,6 @@ Adapter-protocol 1.0 acceptance deltas applied in rev. 2:
 | Q-A5 | Contract rollover: global (admin) or per user? | Global catalog maintained by the admin, with an advance warning |
 | Q-N1 | A dollar distance that is not a whole number of ticks: round which way? | Toward the entry (the tighter distance); the adjustment is shown in the audit |
 | Q32 (PO) | (rev. 6, open) One account per e-mail and per WhatsApp number? The model says yes (`app_user_whatsapp_key`, like e-mail) | **Open**, user; dropping the constraint is the only change if not |
-| Q35 (PO) | (rev. 6, open) Which step-up actions are on (source token create/rotate, pairing code, admin actions…) | **Open**, user. No schema impact for the 8 current HTTP 2.0.0 `StepUpAction` values (rev. 7.1): Q35 switches Core settings. New actions it may add (enforcement-off, max-position changes) need a contract change and a migration extending the `action` CHECK |
+| Q35 (PO) | (rev. 6, open) Which step-up actions are on (source token create/rotate, pairing code, admin actions…) | **Open**, user. No schema impact for the 10 HTTP 3.0.0 `StepUpAction` values (rev. 11 adds `route_enable` and `account_binding_change`, target = account): Q35 switches Core settings (`step_up.q35_persistence_actions`). New actions it may add (enforcement-off, max-position changes) need a contract change and a migration extending the `action` CHECK |
 | Q28 (PO) | (rev. 6, open) Admin-assisted recovery when every channel is lost | **Open**, user; not modelled until decided (§4.3) |
 | Q-O1 | (ADR-0004, open) Double fill of a local bracket while NT8 was down: (a) alert and wait, (b) flatten the orphan position | **Open**, user. The schema already supports (b) (ALIGN-8); nothing changes if the user picks (a) |
