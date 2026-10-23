@@ -16,8 +16,9 @@ export interface paths {
         /**
          * Receive a TradingView alert (V1-S1)
          * @description Processing order (ADR-0003 §7; full table in docs/architecture/contracts/s1-webhook-ingest.md §2):
-         *     per-IP rate limit → authenticate token → per-key rate limit → content type and size → parse →
-         *     validate against instruction schema v1 → apply source policy (ADR-0003 §6) → insert with
+         *     per-IP flood cap (higher cap for TradingView ranges) → authenticate token (failures charge a per-IP failure
+         *     budget; valid tokens are never refused by it) → per-key rate limit → content type and size → parse →
+         *     credential guard → validate against instruction schema v1 → apply source policy (ADR-0003 §6) → insert with
          *     UNIQUE (user_id, message_id) → respond. Routing is asynchronous after commit. Every response must
          *     be produced well under TradingView's ~3 s timeout. The whole path after `/ingress/` is treated as
          *     a secret and never logged (ADR-0001 §5, s1 notes §4). No `Origin` check applies here.
@@ -1127,7 +1128,7 @@ export interface operations {
                     "application/json": components["schemas"]["IngressAccepted"];
                 };
             };
-            /** @description `ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version`. */
+            /** @description `ingress.invalid_json`, `ingress.schema_violation` (with JSON pointer), `ingress.unsupported_version` (pointer `/schema_version`; a minor newer than the Core supports). A body string shaped like an All Win token (`aw[kd]_…`) gives `ingress.schema_violation` with an empty pointer; the body is not stored or logged. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1166,7 +1167,8 @@ export interface operations {
             };
             /**
              * @description Source policy or catalog: `ingress.action_not_allowed_for_source` (modify/cancel/reduce from
-             *     TradingView), `ingress.order_type_not_allowed_for_source`, `ingress.source_mismatch`,
+             *     TradingView), `ingress.order_type_not_allowed_for_source`, `ingress.signal_type_not_allowed_for_source`
+             *     (`signal_type` not allowed for TradingView, e.g. `master_account`), `ingress.source_mismatch`,
              *     `ingress.unsupported_instrument` (symbol not enabled in the instrument catalog, S1 AC-7).
              */
             422: {
@@ -1177,7 +1179,7 @@ export interface operations {
                     "application/json": components["schemas"]["IngressRejected"];
                 };
             };
-            /** @description `ingress.rate_limited` (per key and per IP). Header `Retry-After`. */
+            /** @description `ingress.rate_limited`: per-IP flood cap, per-IP token-failure budget (failures only), or per-key limit. Header `Retry-After`. */
             429: {
                 headers: {
                     "Retry-After": components["headers"]["RetryAfter"];
@@ -1620,7 +1622,7 @@ export interface operations {
                     "application/json": {
                         /** @description otpauth://totp/All%20Win:<email>?secret=…&issuer=All%20Win */
                         otpauth_uri: string;
-                        /** @description Base32 */
+                        /** @description Base32, for manual entry. */
                         secret: string;
                         expires_at: components["schemas"]["Timestamp"];
                     };
@@ -1770,7 +1772,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Changed; current session rotated */
+            /** @description Changed; current session rotated, other sessions ended. */
             204: {
                 headers: {
                     [name: string]: unknown;
