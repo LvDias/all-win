@@ -30,7 +30,7 @@ cd tests/e2e && pnpm install
 # Caddy only, with a stub upstream (before the Core exists):
 E2E_MODE=edge-only pnpm -s test:s1 --reporter=dot
 # Full stack:
-E2E_SEED_CMD='…' E2E_REVOKE_CMD='…' pnpm -s test:s1 --reporter=dot
+pnpm -s test:s1 --reporter=dot   # seed/revoke via the Core's dev commands
 ```
 
 The suite starts its own compose project (`allwin-e2e-<id>`) with a generated env file (random
@@ -45,9 +45,9 @@ Docker calls go through `sg docker -c` when the user is not in the `docker` grou
 | `E2E_STACK` | `managed` | `external`: use a running stack described by `E2E_ENV_FILE` |
 | `E2E_ENV_FILE` | generated | Compose env file |
 | `E2E_KEEP_STACK` | — | `1` keeps the stack and run directory (may contain canary tokens) |
-| `E2E_SEED_CMD` | — | **Required in full mode.** Shell command printing one token `awk_<key_id>_<secret>` on stdout. Gets `SEED_LABEL` (`a`, `b`: two distinct users) and `E2E_COMPOSE` (compose command prefix, e.g. `$E2E_COMPOSE exec -T core allwin-core seed …`). Its stdout is never printed |
-| `E2E_REVOKE_CMD` | — | Revokes a key for M5. Gets `KEY_ID` and `E2E_COMPOSE`. Unset → M5 reported untested |
-| `E2E_METRICS_PATH` | — | Metrics path on the Core's loopback port. Unset → metrics reported untested |
+| `E2E_SEED_CMD` | `allwin-core seed` via `compose exec` | Shell command printing one token `awk_<key_id>_<secret>` on stdout. Gets `SEED_LABEL` (`a`, `b`: two distinct users) and `E2E_COMPOSE` (compose command prefix, e.g. `$E2E_COMPOSE exec -T core allwin-core seed …`). Its stdout is never printed |
+| `E2E_REVOKE_CMD` | `allwin-core revoke-key` via `compose exec` | Revokes a key for M5. Gets `KEY_ID` and `E2E_COMPOSE` |
+| `E2E_METRICS_PATH` | `/metrics` | Metrics path on the Core, fetched inside the compose network (the Core publishes no host port). Empty → metrics reported untested |
 | `E2E_ENABLED_SYMBOLS` | `MNQ` | Symbols enabled by the seed catalog (AC-7) |
 | `E2E_CADDY_LOG_LEVEL` | `DEBUG` | Caddy server/error log level in the generated env file |
 | `E2E_RUST_LOG` | `trace` | Core log filter in the generated env file |

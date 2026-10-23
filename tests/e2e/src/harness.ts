@@ -5,7 +5,7 @@ import { config, INGRESS_PREFIX } from './config.ts';
 import { formatHits, fragmentTerms, M6O_CUTS, maskAll, parseToken, scan, secretTerms, type Hit, type SearchTerm, type Token } from './canary.ts';
 import { JSON_HEADERS, send, type RawResponse } from './http.ts';
 import { readFileSync } from 'node:fs';
-import { composeFiles, loadState, pgDump, serviceLogs, type StackState } from './stack.ts';
+import { compose, composeFiles, loadState, pgDump, serviceLogs, type StackState } from './stack.ts';
 
 export interface Ctx {
   s: StackState;
@@ -78,8 +78,10 @@ export function logSources(since?: string): TextSource[] {
 
 export async function metricsSource(): Promise<TextSource | undefined> {
   if (!isFull() || !config.metricsPath) return undefined;
-  const r = await send(ctx().s.coreOrigin, { method: 'GET', target: config.metricsPath });
-  return { name: `metrics(${r.status})`, text: r.body };
+  // Fetched from inside the compose network (busybox wget in the Caddy container); the Core has no host port.
+  const r = compose(ctx().s, ['exec', '-T', 'caddy', 'wget', '-qO-', `${ctx().s.coreInternal}${config.metricsPath}`], { allowFail: true });
+  expect(r.status, `metrics: GET ${config.metricsPath} failed inside the compose network`).toBe(0);
+  return { name: 'metrics', text: r.stdout ?? '' };
 }
 
 export function responseSources(responses: Array<{ label: string; res: RawResponse }>): TextSource[] {

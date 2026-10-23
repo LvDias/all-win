@@ -11,8 +11,8 @@ export interface StackState {
   envFile: string;
   /** Caddy origin, e.g. https://localhost:8443 */
   origin: string;
-  /** Core direct origin (loopback debug port), e.g. http://127.0.0.1:8080 */
-  coreOrigin: string;
+  /** Core origin inside the compose network (the Core publishes no host port: XFF trust, contract 1.1.2). */
+  coreInternal: string;
   postgresUser: string;
   postgresDb: string;
   /** Canonical tokens by label (a, b). Kept only in the 0600 state file of the run directory. */
@@ -127,7 +127,6 @@ export async function generateEnvFile(): Promise<string> {
     ...base,
     ...passwords,
     POSTGRES_HOST_PORT: String(await freePort()),
-    CORE_HOST_PORT: String(await freePort()),
     CADDY_HTTPS_PORT: String(await freePort()),
     RUST_LOG: process.env.E2E_RUST_LOG ?? 'trace',
     // M1 searches the Caddy debug output too (ignored by infra revisions without the switch).
@@ -149,7 +148,7 @@ export function stackFromEnv(envFile: string): Omit<StackState, 'tokens' | 'star
     project: config.project,
     envFile,
     origin: `https://localhost:${e.CADDY_HTTPS_PORT ?? '8443'}`,
-    coreOrigin: `http://127.0.0.1:${e.CORE_HOST_PORT ?? '8080'}`,
+    coreInternal: `http://core:${e.CORE_PORT ?? '8080'}`,
     postgresUser: e.POSTGRES_USER ?? 'allwin',
     postgresDb: e.POSTGRES_DB ?? 'allwin',
   };

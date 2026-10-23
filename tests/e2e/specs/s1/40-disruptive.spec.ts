@@ -20,7 +20,7 @@ import {
   waitRetryAfter,
 } from '../../src/harness.ts';
 import { send } from '../../src/http.ts';
-import { serviceLogs, startService, stopService } from '../../src/stack.ts';
+import { compose, serviceLogs, startService, stopService } from '../../src/stack.ts';
 
 async function burst(target: () => string, body: string): Promise<{ last: RawResponse; sent: number }> {
   let last: RawResponse | undefined;
@@ -46,6 +46,14 @@ async function waitEdge(expectStatus: number, timeoutMs = 120_000): Promise<void
 }
 
 test.describe('S1 masking — disruptive (contract §4.3)', () => {
+  test('Core publishes no host port (it trusts X-Forwarded-For; reachable only through Caddy)', async () => {
+    test.skip(!isFull(), 'needs the Core (edge-only mode)');
+    const port = ctx().s.coreInternal.split(':').pop()!;
+    const r = compose(ctx().s, ['port', 'core', port], { allowFail: true });
+    const mapped = (r.stdout ?? '').trim();
+    expect(/:[1-9][0-9]*$/.test(mapped), `core container port ${port} is published on the host (${mapped})`).toBe(false);
+  });
+
   test('M8 rate limit with a valid token and with invalid tokens', async () => {
     test.skip(!isFull(), 'rate limiting is a Core feature (edge-only mode)');
     const since = mark();
