@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Run a heavy command (full test suite, clippy --all-targets, e2e stack, full vitest) under a host-wide
+# 2-slot semaphore, a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
+#   allwin-heavy cargo test --workspace
+set -euo pipefail
+
+SLOTS="${ALLWIN_HEAVY_SLOTS:-2}"
+LOCK_DIR="${ALLWIN_HEAVY_LOCK_DIR:-/srv/www/allwin.worktrees/.heavy-locks}"
+CPU_QUOTA="${ALLWIN_HEAVY_CPU_QUOTA:-200%}"
+WAIT_MAX="${ALLWIN_HEAVY_WAIT_S:-1800}"   # seconds to wait for a slot
+
+[ $# -gt 0 ] || { echo "usage: allwin-heavy <command> [args...]" >&2; exit 2; }
+[[ "$SLOTS" =~ ^[1-9][0-9]?$ ]] || { echo "allwin-heavy: ALLWIN_HEAVY_SLOTS must be 1..99" >&2; exit 2; }
+
+# Shared lock dir for every account in group devs (setgid 2770); lock files are 0660.
+( umask 007; mkdir -p -- "$LOCK_DIR" ) 2>/dev/null || true
+[ -d "$LOCK_DIR" ] && [ -w "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] \
+  || { echo "allwin-heavy: lock dir $LOCK_DIR is missing, a symlink or not writable" >&2; exit 1; }
+chmod 2770 -- "$LOCK_DIR" 2>/dev/null || true
+
+# Take any free slot; poll every 5 seconds. The slot is held by this shell's fd until the command ends
+# (the child inherits it too, so the slot stays taken even if this wrapper is killed).
+waited=0 announced=0 held=""
+while [ -z "$held" ]; do
+  for i in $(seq 1 "$SLOTS"); do
+    f="$LOCK_DIR/slot.$i"
+    ( umask 007; : >> "$f" ) 2>/dev/null || true
+    exec {fd}>>"$f" || continue
+    if flock -n "$fd"; then held="$i"; break; fi
+    exec {fd}>&-
+  done
+  [ -n "$held" ] && break
+  if [ "$announced" = 0 ]; then
+    echo "allwin-heavy: all $SLOTS slots busy, waiting (max ${WAIT_MAX}s)..." >&2; announced=1
+  fi
+  [ "$waited" -lt "$WAIT_MAX" ] || { echo "allwin-heavy: gave up waiting for a slot" >&2; exit 75; }
+  sleep 5; waited=$((waited + 5))
+done
+
+# Defaults that keep the build small; the caller can override any of them.
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/allwin/cargo-target}"
+mkdir -p -- "$CARGO_TARGET_DIR"
+
+export RUST_TEST_THREADS="${RUST_TEST_THREADS:-2}"
+
+# --scope runs in the foreground (cwd, env, tty and exit code pass through) and keeps the slot fd.
+# Docker containers run under dockerd, so the quota caps only the client/build side.
+run=(ionice -c2 -n7 "$@")
+if systemd-run --user --scope --quiet --collect -p "CPUQuota=$CPU_QUOTA" -- true >/dev/null 2>&1; then
+  exec systemd-run --user --scope --quiet --collect -p "CPUQuota=$CPU_QUOTA" -p CPUWeight=20 \
+    -p MemoryHigh="${ALLWIN_HEAVY_MEMORY_HIGH:-8G}" --nice=10 -- "${run[@]}"
+fi
+echo "allwin-heavy: no usable systemd --user scope; running with nice only (no CPU quota)" >&2
+exec nice -n 10 "${run[@]}"
