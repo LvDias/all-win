@@ -1,6 +1,6 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 6; **rev. 7 proposed** (Architect/Code Review pending). Rev. 7 aligns with HTTP contract 2.0.0: the channel change becomes an entity, `identity.channel_change`, with status, hold and cancellation, and the code roles become `current_value` / `new_value` / `other_channel` (§3, §4.1, §4.3, §6.5, §8, §9). Rev. 6 (Crivo-approved, 539d45e): passwordless sign-in replaces password + TOTP (user requirement change 2026-10-23, Q21/Q22 superseded). It removes `password_hash`, `totp_credential`, `recovery_code` and `password_reset`, and adds verified channels on `app_user`, `signup_code`, `one_time_code`, `code_send_counter` and `known_device` (§3, §4.1, §4.2, §4.3, §6.5, §8, §9). The account is created only when the signup e-mail code is confirmed (S3 AC-2). It ships as a forward migration #2b, `identity_passwordless` (§8). Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
+- **Status:** Accepted (2026-10-23), rev. 7; **rev. 7.1 proposed**: step-up `action` = the 8 `StepUpAction` values of HTTP 2.0.0, with `target_id` per action (D1); code-role mapping (D2); shared-browser device rule and `device_key_in_use` (C4). Rev. 7 aligns with HTTP contract 2.0.0: the channel change becomes an entity, `identity.channel_change`, with status, hold and cancellation, and the code roles become `current_value` / `new_value` / `other_channel` (§3, §4.1, §4.3, §6.5, §8, §9). Rev. 6 (Crivo-approved, 539d45e): passwordless sign-in replaces password + TOTP (user requirement change 2026-10-23, Q21/Q22 superseded). It removes `password_hash`, `totp_credential`, `recovery_code` and `password_reset`, and adds verified channels on `app_user`, `signup_code`, `one_time_code`, `code_send_counter` and `known_device` (§3, §4.1, §4.2, §4.3, §6.5, §8, §9). The account is created only when the signup e-mail code is confirmed (S3 AC-2). It ships as a forward migration #2b, `identity_passwordless` (§8). Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
@@ -95,6 +95,7 @@ CREATE POLICY account_owner ON accounts.account
   - `identity.resolve_session(token_hash)`
   - `identity.resolve_invitation(token_hash)`
   - `identity.find_user_for_login(email_normalized)` → `(id, status, locale, email, whatsapp_e164)`. The Core answers the same way for an unknown and a non-`active` user and sends nothing, so the login form is not an existence oracle
+  - `identity.device_key_in_use(device_key_hash)` → boolean: a non-revoked `known_device` of any user has it (shared-browser rule, §4.1; rev. 7)
   - `identity.resolve_one_time_code(id)` → `(user_id, purpose)` only. The code row itself is then read and updated under RLS (§4.3)
   - `identity.email_registered(email_normalized)` → boolean (createInvitation). Gated like `admin_list_users`: it returns false unless `app.current_user_id()` is an active platform admin, so it is never an e-mail existence oracle
   - `identity.admin_list_users()`: returns rows only when `app.current_user_id()` is an active platform admin. Rev. 6: `totp_enabled` becomes `whatsapp_verified`, and `last_sign_in_at` is `max(session.login_at)` (no MFA filter) (HTTP contract 2.0.0)
@@ -165,12 +166,17 @@ CREATE TABLE identity.known_device (                     -- browsers the user ha
   UNIQUE (user_id, device_key_hash)
 );
 -- The device cookie is long-lived, HttpOnly and separate from the session cookie, so logout or session
--- expiry does not make a known browser "new". A revoked device's cookie counts as no cookie: a sign-in whose
--- cookie maps to no non-revoked row of that user (absent, unknown, or revoked by "forget device" / "sign out
--- everywhere") gets a NEW random cookie value:
--- a new row is inserted (never a reactivated one, so UNIQUE (user_id, device_key_hash) holds while the
--- revoked row is kept) and the new-device e-mail notice goes through app.outbox in the same transaction (no
--- secret in it). Exception: the device created by signup completion sends no notice (S3 AC-9).
+-- expiry does not make a known browser "new". At sign-in, with the presented cookie's hash:
+--   * a non-revoked row of THIS user → known device (last_seen_at updated, no notice);
+--   * valid only for ANOTHER user (shared browser, C4) → the value is kept and a row with the same hash is
+--     inserted for this user (UNIQUE (user_id, device_key_hash) allows it);
+--   * absent, unknown to every user, or revoked for this user ("forget device" / "sign out everywhere";
+--     a revoked cookie counts as no cookie) → a NEW random value and a new row. The revoked row is never
+--     reactivated and is kept, so the UNIQUE key holds.
+-- Telling "another user's" from "unknown" crosses users: identity.device_key_in_use(hash) → boolean
+-- (SECURITY DEFINER, §3). It reveals nothing the browser holding the cookie does not already have.
+-- A new row emits the new-device e-mail notice through app.outbox in the same transaction (no secret in it).
+-- Exception: the device created by signup completion sends no notice (S3 AC-9).
 
 CREATE TABLE identity.session (
   id                  uuid PRIMARY KEY,
@@ -259,10 +265,12 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   purpose            text NOT NULL CHECK (purpose IN ('login','step_up','channel_change')),
   channel            text NOT NULL CHECK (channel IN ('email','whatsapp')),  -- delivery channel
   destination        text NOT NULL,                      -- normalized address the code was sent to; the proof is for this address
-  action             text CHECK (action IN ('automation_enable','adapter_unpair')),  -- step_up only
-  target_id          uuid,                               -- step_up: the account or connection the action applies to
+  action             text CHECK (action IN ('source_create','source_rotate','connection_create','pairing_code_new',
+                                        'connection_unpair','account_opt_in_accept','account_create_opt_in_accept',
+                                        'admin_invitation_create')),  -- step_up only; = HTTP 2.0.0 StepUpAction
+  target_id          uuid,                               -- step_up: the source, connection or account acted on (see CHECK)
   session_id         uuid,                               -- step_up / channel_change: only the requesting session may use the code
-  code_role          text CHECK (code_role IN ('current_value','new_value','other_channel')),  -- channel_change only
+  code_role          text CHECK (code_role IN ('current_value','new_value','other_channel')),  -- channel_change only; = HTTP 2.0.0 role; other_channel is [Proposed] (S3b, policy §7)
   code_hmac          bytea NOT NULL CHECK (octet_length(code_hmac) = 32),  -- HMAC-SHA-256(k_code, challenge_id ‖ normalized code)
   pepper_version     smallint NOT NULL,
   failed_attempts    smallint NOT NULL DEFAULT 0 CHECK (failed_attempts BETWEEN 0 AND 5),
@@ -280,7 +288,10 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   CONSTRAINT one_time_code_attempts_check CHECK (failed_attempts < 5 OR invalidated_reason = 'attempts'),
   CONSTRAINT one_time_code_final_check CHECK (consumed_at IS NULL OR invalidated_at IS NULL),
   CONSTRAINT one_time_code_step_up_check
-    CHECK ((purpose = 'step_up') = (action IS NOT NULL) AND (purpose = 'step_up') = (target_id IS NOT NULL)),
+    CHECK ((purpose = 'step_up') = (action IS NOT NULL)
+           AND (target_id IS NOT NULL) = COALESCE(action IN ('source_rotate','pairing_code_new',
+                                                            'connection_unpair','account_opt_in_accept'), false)),
+  -- The superset is final: Q35 only turns each action on or off by Core setting, no migration.
   CONSTRAINT one_time_code_role_check
     CHECK ((purpose = 'channel_change') = (code_role IS NOT NULL) AND (code_role IS NULL) = (channel_change_id IS NULL)),
   CONSTRAINT one_time_code_session_check CHECK ((purpose IN ('step_up','channel_change')) = (session_id IS NOT NULL)),
@@ -441,8 +452,8 @@ No password, TOTP seed or recovery code is stored (rev. 6). The plaintext one-ti
   - A send suppressed by a channel clash is set to `sent` and writes no `auth.code_delivery_failed`, so a clash and a free value end in the same state.
   - Signup, step-up and channel-change clients read it per challenge. Login never exposes it: an unknown identifier has no row, so for login the column only drives the audit.
   - A failed send of a registered user also writes an `auth.code_delivery_failed` audit row.
-- **Step-up** (enable automation on an account, unpair an NT8 connection, change e-mail or WhatsApp):
-  1. A `step_up` code is bound to `session_id`, `action` and `target_id` (all required). Sends count against the per-user hourly limit (`one_time_code_user_created_idx`).
+- **Step-up** (the 8 HTTP 2.0.0 `StepUpAction` values, each on or off by Core setting per Q35; a channel change uses its own codes):
+  1. A `step_up` code is bound to `session_id`, `action` and, for the four targeted actions, `target_id`. Sends count against the per-user hourly limit (`one_time_code_user_created_idx`).
   2. The action request carries the challenge and code. The Core consumes it in the same transaction as the action, so no "elevated" state is stored.
   3. A channel change uses `purpose = 'channel_change'` instead, and its old-channel code is the step-up.
 - **Channel change / adding WhatsApp later** (HTTP 2.0.0 `ChannelChange`):
@@ -1058,6 +1069,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - add `device_id`, `login_channel` and `UNIQUE (user_id, id)` with its FK;
      - replace the `end_reason` CHECK.
   6. `CREATE` `channel_change`, then `one_time_code`: both reference `session (user_id, id)`.
+  6b. `CREATE FUNCTION identity.device_key_in_use(bytea)` and `identity.resolve_one_time_code(uuid)`: owner `allwin_owner`, `EXECUTE` to `allwin_app`, owner-read policies on `known_device` and `one_time_code`.
   7. Steps 4 and 6 also cover RLS, the owner-read policy where needed, and grants.
 - **Destructive changes need explicit user authorization** (DBA rule): the `DROP` statements and the session `DELETE`. There is nothing to lose: no production deploy, dev data only.
 - Ferro updates `core/crates/app/src/dev.rs`, whose seed inserts `password_hash`, and the matching `core/.sqlx` query in the same change. No database recreation is needed.
@@ -1083,9 +1095,9 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - opt-in (`automation_*` and `copy_*`): `chosen` with no choice fails; `not_required` with a choice fails; `pending_review` keeping the previous choice passes; a choice without `chosen_at` fails; a real account with `pending_review` fails;
    - `adapter_connection`: a second live connection named `Desk A`/`desk a` fails; reusing the name of an unpaired one passes; `status = 'unpaired'` without `archived_at` fails; after a simulated Core restart, rows left `connected`/`outdated` become `disconnected` with a new `status_changed_at` and an audit entry, before any adapter can connect;
    - `email_registered` and `admin_list_users` return false / no rows for a non-admin `app.user_id`;
-   - `one_time_code` (rev. 6): `expires_at` beyond 10 minutes fails; `failed_attempts = 5` without `invalidated_reason = 'attempts'` fails; consumed and invalidated together fails; `step_up` without `action` or `target_id`, `login` with `session_id` and `channel_change` without `code_role` fail; a second `new_value` code in one change fails; a `new_value` code whose destination is not yet the user's address is accepted; a resend moves `expires_at` to at most `sent_at + 10 min` and keeps `failed_attempts`; 3 logins from an unknown browser do not invalidate the user's open challenge; the 60-s resend cooldown and the send budgets are identical for a registered and an unregistered identifier (counter rows, no code row needed); a `new_value` code is refused once its change is no longer `awaiting_codes`; two concurrent wrong guesses on a code at 4 failures leave it invalidated at 5, never 6; another user's challenge id resolves but its row is invisible under RLS;
+   - `one_time_code` (rev. 6): `expires_at` beyond 10 minutes fails; `failed_attempts = 5` without `invalidated_reason = 'attempts'` fails; consumed and invalidated together fails; `step_up` without `action`, `source_rotate` without `target_id`, `source_create` with a `target_id`, `login` with `session_id` and `channel_change` without `code_role` fail; a second `new_value` code in one change fails; a `new_value` code whose destination is not yet the user's address is accepted; a resend moves `expires_at` to at most `sent_at + 10 min` and keeps `failed_attempts`; 3 logins from an unknown browser do not invalidate the user's open challenge; the 60-s resend cooldown and the send budgets are identical for a registered and an unregistered identifier (counter rows, no code row needed); a `new_value` code is refused once its change is no longer `awaiting_codes`; two concurrent wrong guesses on a code at 4 failures leave it invalidated at 5, never 6; another user's challenge id resolves but its row is invisible under RLS;
    - `app_user` (rev. 6): no `email_verified_at` fails; a second channel change within 24 h of `channel_changed_at` is refused; `whatsapp_e164` without `whatsapp_verified_at` fails; a second user with the same number fails;
-   - `known_device` (rev. 6): after "forget device" or "sign out everywhere", the next sign-in from that browser gets a new cookie and a new row (no unique violation) and a new-device notice; signup completion creates a device without a notice;
+   - `known_device` (rev. 6/7): a cookie valid for another user is kept and a second row with the same hash is inserted for this user; after "forget device" or "sign out everywhere", the next sign-in from that browser gets a new cookie and a new row (no unique violation) and a new-device notice; signup completion creates a device without a notice;
    - `signup_code` (rev. 6): an abandoned signup leaves no `app_user` row; two concurrent confirmations on one invitation create exactly one user; a code on a revoked or expired invitation fails; `channel` other than `email` fails;
    - `channel_change` (rev. 7): a second open change for the user fails; `on_hold` without `hold_until` fails; `cancelled` without `cancelled_at` fails; a code with `code_role` and no `channel_change_id` fails; a second `new_value` code for one change fails; a `new_value` code is refused once its change is cancelled or expired; an `on_hold` change does not alter the address until a worker applies it after `hold_until`; a cancel or an expiry leaves the change's open codes invalidated with `change_closed`; a stale `awaiting_codes` row does not block a new start; a hold applied by the worker ends every session of the user; a cancel from another session of the same user works, and one from another user is invisible under RLS;
    - `delivery_state` (rev. 6): a channel-change send suppressed by a clash and one to a free value both end `sent`, and the clash writes no `auth.code_delivery_failed`; a resend resets it to `pending`; a failed send of a registered user writes `auth.code_delivery_failed`;
@@ -1129,6 +1141,6 @@ Adapter-protocol 1.0 acceptance deltas applied in rev. 2:
 | Q-A5 | Contract rollover: global (admin) or per user? | Global catalog maintained by the admin, with an advance warning |
 | Q-N1 | A dollar distance that is not a whole number of ticks: round which way? | Toward the entry (the tighter distance); the adjustment is shown in the audit |
 | Q32 (PO) | (rev. 6, open) One account per e-mail and per WhatsApp number? The model says yes (`app_user_whatsapp_key`, like e-mail) | **Open**, user; dropping the constraint is the only change if not |
-| Q35 (PO) | (rev. 6, open) Further step-up actions (source token create/rotate, pairing code, admin actions) | **Open**, user. If accepted, `one_time_code.action` needs a follow-up migration; HTTP 2.0.0 `StepUpAction` already lists 8 values (3 without a target, different names), so the `action` CHECK and the `target_id` rule follow C1/Q35 on the contract. Admin "issue invitation" has no uuid target, so `target_id` would need a rule for it |
+| Q35 (PO) | (rev. 6, open) Which step-up actions are on (source token create/rotate, pairing code, admin actions…) | **Open**, user. No schema impact: the `action` CHECK already holds the final superset of HTTP 2.0.0 `StepUpAction` (rev. 7); Q35 only switches Core settings |
 | Q28 (PO) | (rev. 6, open) Admin-assisted recovery when every channel is lost | **Open**, user; not modelled until decided (§4.3) |
 | Q-O1 | (ADR-0004, open) Double fill of a local bracket while NT8 was down: (a) alert and wait, (b) flatten the orphan position | **Open**, user. The schema already supports (b) (ALIGN-8); nothing changes if the user picks (a) |
