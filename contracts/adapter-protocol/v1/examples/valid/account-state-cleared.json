@@ -1,0 +1,13 @@
+{
+  "protocol_version": "1.1",
+  "msg_id": "0192b3c4-0000-7000-8000-000000000e02",
+  "type": "account_state",
+  "sent_at": "2026-10-22T15:02:11.050Z",
+  "payload": {
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "platform_account": "Sim101",
+    "sync_state": "in_sync",
+    "sync_reasons": [],
+    "changed_at": "2026-10-22T15:02:11.000Z"
+  }
+}

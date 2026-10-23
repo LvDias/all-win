@@ -34,7 +34,8 @@
         "position_snapshot",
         "instruction",
         "risk_event",
-        "risk_state"
+        "risk_state",
+        "account_state"
       ]
     },
     "sent_at": {
@@ -249,6 +250,27 @@
         "properties": {
           "payload": {
             "$ref": "#/$defs/risk_state"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "account_state"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "protocol_version": {
+            "not": {
+              "const": "1.0"
+            }
+          },
+          "payload": {
+            "$ref": "#/$defs/account_state"
           }
         }
       }
@@ -618,6 +640,78 @@
           }
         }
       }
+    },
+    "account_state": {
+      "description": "Protocol 1.1, Core -> adapter. Sent whenever an account's sync_state or sync_reasons change during the session, so the plugin can show the change (S11 AC-1). Latest-value-wins: not acknowledged; the adapter applies a message whose changed_at is newer than or equal to the state it holds (equal: the later-received message wins, since WebSocket preserves order) and ignores an older one. The next welcome carries the full state again. Never sent on a 1.0 session.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "platform_account",
+        "sync_state",
+        "sync_reasons",
+        "changed_at"
+      ],
+      "properties": {
+        "account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "platform_account": {
+          "$ref": "#/$defs/platform_account"
+        },
+        "sync_state": {
+          "enum": [
+            "in_sync",
+            "out_of_sync"
+          ]
+        },
+        "sync_reasons": {
+          "description": "Complete current list (empty when in sync); replaces the previous list.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/code"
+          }
+        },
+        "changed_at": {
+          "$ref": "#/$defs/utc_timestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sync_state": {
+                "const": "in_sync"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sync_reasons": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sync_state": {
+                "const": "out_of_sync"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sync_reasons": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "error": {
       "type": "object",
