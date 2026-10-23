@@ -755,6 +755,8 @@
       "unpaired": "Unpaired"
     },
     "notice": {
+      "disconnectedByUser": "Disconnected by the user in the plugin. The pairing is still valid. Orders for this instance's accounts won't run until they connect again.",
+      "disconnectedNetwork": "The plugin lost its connection. Orders for this instance's accounts will not be executed.",
       "disconnected": "The plugin is not connected. Orders for this instance's accounts will not be executed.",
       "outdated": "Update the plugin to connect again."
     },

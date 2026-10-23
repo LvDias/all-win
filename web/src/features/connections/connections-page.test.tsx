@@ -63,6 +63,18 @@ describe("ConnectionsPage", () => {
     expect(screen.getByText("Atualize o plugin para voltar a conectar.")).toBeInTheDocument();
   });
 
+  it("shows the generic text when disconnect_reason is absent and the reason text when it arrives", async () => {
+    list([connection({ status: "disconnected" }), connection({ id: "00000000-0000-4000-8000-0000000000c3", name: "Mac", status: "disconnected", disconnect_reason: "user" }), connection({ id: "00000000-0000-4000-8000-0000000000c4", name: "Net", status: "disconnected", disconnect_reason: "network" })]);
+    renderApp(<ConnectionsPage />);
+    const person = userEvent.setup();
+    await screen.findByText("VPS Chicago");
+    for (const button of screen.getAllByRole("button", { name: /contas?$/ })) await person.click(button);
+    expect(screen.getAllByText("Desconectada")).toHaveLength(3);
+    expect(screen.getByText("O plugin não está conectado. Ordens para as contas desta instância não serão executadas.")).toBeInTheDocument();
+    expect(screen.getByText(/Desconectada pelo usuário no plugin/)).toBeInTheDocument();
+    expect(screen.getByText(/O plugin perdeu a conexão/)).toBeInTheDocument();
+  });
+
   it("shows the empty state with the three steps", async () => {
     list([]);
     renderApp(<ConnectionsPage />);

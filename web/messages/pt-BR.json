@@ -755,6 +755,8 @@
       "unpaired": "Despareada"
     },
     "notice": {
+      "disconnectedByUser": "Desconectada pelo usuário no plugin. O pareamento continua válido. Ordens para as contas desta instância não serão executadas até ele conectar de novo.",
+      "disconnectedNetwork": "O plugin perdeu a conexão. Ordens para as contas desta instância não serão executadas.",
       "disconnected": "O plugin não está conectado. Ordens para as contas desta instância não serão executadas.",
       "outdated": "Atualize o plugin para voltar a conectar."
     },

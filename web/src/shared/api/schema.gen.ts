@@ -2167,7 +2167,7 @@ export interface components {
             commission_per_contract_side?: components["schemas"]["MoneyAmount"];
             /**
              * Format: date
-             * @description Accounts with an evaluation target only (Q46, S13b; Q69 a) — the day the evaluation count starts; default the registration date in the user's time zone. Invariant — an account with an evaluation target always has an `evaluation_start`; when an existing account gains a target (selection or preset change, `applyPresetVersion`, a rule edit), the Core sets a missing start to the same default in that transaction. Sent for an account without an evaluation target → 422 `accounts.evaluation_not_applicable`. Later changes only through `restartEvaluation`.
+             * @description Accounts with an evaluation target only (Q46, S13b; Q69 a) — the day the evaluation count starts; default the registration date in the user's time zone. Invariant — an account with an evaluation target always has an `evaluation_start`; when an existing account gains a target (selection or preset change, `applyPresetVersion`, a rule edit), the Core sets a missing start to the same default in that transaction; that is a rule-input change, so it bumps `account.limits_version` and emits `account.limits_changed` (ADR-0006 §3.1). Sent for an account without an evaluation target → 422 `accounts.evaluation_not_applicable`. Later changes only through `restartEvaluation`.
              */
             evaluation_start?: string;
             /** @description Net profit already made in this evaluation before `evaluation_start` (optional; counts toward the target). Accounts with an evaluation target only (else 422 `accounts.evaluation_not_applicable`). */
@@ -2522,7 +2522,10 @@ export interface components {
          *     entry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0
          *     for the open, and `reverse_closed_qty`; flat → skipped with the gate code, no
          *     `reverse_closed_qty`; already on the reverse side → `routing.position_conflict` (rejected and
-         *     notified, never a flatten).
+         *     notified, never a flatten). The same holds when the open leg of a reverse with an opposite
+         *     position expires at routing (gate `expired`, TTL; 5.1.0): the close leg runs (no expiry; audited as
+         *     late if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty` = 0 for
+         *     the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies to the command as it stands (`expired`, audited as `execution.expired`, account flagged out of sync). Whether that case keeps the out-of-sync flag and gets `routing.reverse_close_only` is Esquadro's next ADR-0004 delta; the contract will follow it.
          */
         DetailsRoutingDecision: {
             sizing?: components["schemas"]["DetailsSizing"];
@@ -2539,7 +2542,7 @@ export interface components {
             instrument_ids?: components["schemas"]["Uuid"][];
             /** @description With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006). */
             limits_version?: number;
-            /** @description Q74: contracts flattened by the close leg of a reverse whose open leg was skipped with this code. */
+            /** @description Q74: abs(position) read at the decision, i.e. the quantity the close leg of a reverse is sent to flatten when its open leg is skipped with this code. The executed result is in the execution entries. */
             reverse_closed_qty?: number;
             ttl_ms?: number;
             expiry_base?: components["schemas"]["Timestamp"];
@@ -3004,8 +3007,12 @@ export interface components {
          *     (`DetailsRoutingDecision.reverse_closed_qty`).
          */
         ParamsReverseCloseOnly: {
-            /** @enum {string} */
-            reason_code: "routing.out_of_sync" | "routing.risk_blocked" | "routing.limits_pending" | "routing.no_bracket_profile" | "routing.max_position_reached";
+            /**
+             * @description The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL exceeded (5.1.0; an expiry later in the gateway queue follows ADR-0004 §5).
+             * @enum {string}
+             */
+            reason_code: "routing.out_of_sync" | "routing.risk_blocked" | "routing.limits_pending" | "routing.no_bracket_profile" | "routing.max_position_reached" | "routing.expired";
+            /** @description abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`). */
             closed_qty: number;
             /**
              * @description The side of the position that was closed.

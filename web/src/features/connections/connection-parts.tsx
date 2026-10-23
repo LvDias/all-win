@@ -37,7 +37,11 @@ export function StatusBadge({ connection }: { connection: Connection }) {
 /** Consequence wording for the states that stop orders (S3-10). */
 export function StatusNotice({ connection }: { connection: Connection }) {
   const t = useTranslations("connections.notice");
-  if (connection.status === "disconnected") return <Alert tone="danger">{t("disconnected")}</Alert>;
+  if (connection.status === "disconnected") {
+    // `disconnect_reason` can be absent (gateway not yet recording the close code) or unknown: fall back to the generic text.
+    const key = connection.disconnect_reason === "user" ? "disconnectedByUser" : connection.disconnect_reason === "network" ? "disconnectedNetwork" : "disconnected";
+    return <Alert tone="danger">{t(key)}</Alert>;
+  }
   if (connection.status === "outdated") return <Alert tone="warning">{t("outdated")}</Alert>;
   return null;
 }
