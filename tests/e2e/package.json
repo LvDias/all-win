@@ -1,0 +1,18 @@
+{
+  "name": "@allwin/e2e",
+  "private": true,
+  "description": "All Win cross-module E2E and contract tests (owner: QA). Runs against the composed stack.",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "playwright test",
+    "test:s1": "playwright test specs/s1",
+    "test:edge": "E2E_MODE=edge-only playwright test specs/s1",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

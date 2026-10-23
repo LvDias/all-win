@@ -1,0 +1,11 @@
+# E2E overlay for infra/compose/docker-compose.dev.yml (owner: QA). Production config is not changed here.
+# Profile `edge-only`: a stub upstream answering an empty 404 under the network alias `core`, so the
+# Caddy masking rules (R2/R3, M6 routing, M9 502) can be exercised before the Core exists.
+services:
+  fake-core:
+    image: caddy:2.10-alpine
+    profiles: ["edge-only"]
+    command: ["caddy", "respond", "--listen", ":${CORE_PORT:-8080}", "--status", "404", ""]
+    networks:
+      default:
+        aliases: [core]
