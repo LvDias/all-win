@@ -4,7 +4,7 @@ use anyhow::{Context, bail};
 use app::config::{Config, SecretString};
 use app::{App, MIGRATOR, dev, http, telemetry};
 
-/// `allwin-core [serve | migrate | seed [LABEL] | revoke-key KEY_ID]`
+/// `allwin-core [serve | migrate | openapi | seed [LABEL] | revoke-key KEY_ID]`
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -13,6 +13,13 @@ async fn main() -> anyhow::Result<()> {
         Some("migrate") => {
             telemetry::init();
             migrate(&owner_url()?).await
+        }
+        Some("openapi") => {
+            // The generated spec as JSON on stdout (CI diffs it against the contract).
+            let doc = app::openapi::document().context("openapi")?;
+            let text = serde_json::to_string_pretty(&doc).context("openapi json")?;
+            writeln!(std::io::stdout().lock(), "{text}").context("stdout")?;
+            Ok(())
         }
         Some("seed") => {
             let label = args
@@ -38,7 +45,9 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Some(_) => bail!("usage: allwin-core [serve | migrate | seed [LABEL] | revoke-key KEY_ID]"),
+        Some(_) => bail!(
+            "usage: allwin-core [serve | migrate | openapi | seed [LABEL] | revoke-key KEY_ID]"
+        ),
     }
 }
 

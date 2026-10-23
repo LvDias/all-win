@@ -17,6 +17,7 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
 use chrono::NaiveDate;
+use contracts::http::{IngressAccepted, IngressAcceptedStatus, IngressRejected};
 use contracts::instruction::v1::{self, Instruction, ParseError};
 use routing_application::enterprise::{
     IngressEvent, IngressEventKind, InstructionId, IntakeTimes, MessageId, RejectionCode,
@@ -24,7 +25,7 @@ use routing_application::enterprise::{
 use routing_application::{
     IngestInstruction, IngestOutcome, NewInstruction, RecordIngressRejection,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use shared_kernel::Clock;
 use tracing::Span;
 
@@ -69,6 +70,23 @@ pub struct IngressState {
     pub clock: Arc<dyn Clock>,
     /// Take the client IP from the last `X-Forwarded-For` entry (set by Caddy).
     pub trust_forwarded_for: bool,
+}
+
+/// OpenAPI of this adapter; `app` merges it into the Core document.
+#[derive(utoipa::OpenApi)]
+#[openapi(
+    paths(ingress),
+    components(schemas(contracts::http::RetryAfterSeconds))
+)]
+pub struct IngressApi;
+
+#[derive(utoipa::IntoParams)]
+#[into_params(parameter_in = Path)]
+#[allow(dead_code)]
+struct IngressPathParams {
+    /// `awk_<key_id>_<secret>`; any invalid value gets the empty 404.
+    #[param(max_length = 128)]
+    token: String,
 }
 
 pub fn router(state: Arc<IngressState>) -> Router {
@@ -123,6 +141,32 @@ struct Caller {
     key_id: String,
 }
 
+/// Receive a TradingView alert (V1-S1).
+#[utoipa::path(
+    post,
+    path = "/ingress/v1/tradingview/{token}",
+    operation_id = "ingressTradingView",
+    tag = "ingress",
+    security(()),
+    params(IngressPathParams),
+    request_body(
+        content(
+            (contracts::http::InstructionV1 = "application/json"),
+            (contracts::http::PlainInstruction = "text/plain"),
+        ),
+    ),
+    responses(
+        (status = 200, description = "Accepted, or duplicate.", body = contracts::http::IngressAccepted),
+        (status = 400, description = "Invalid JSON, schema violation or unsupported version.", body = contracts::http::IngressRejected),
+        (status = 404, description = "Unknown, revoked or malformed token; any other path or method. Empty body."),
+        (status = 413, description = "Payload too large.", body = contracts::http::IngressRejected),
+        (status = 415, description = "Unsupported media type.", body = contracts::http::IngressRejected),
+        (status = 422, description = "Source policy or catalog.", body = contracts::http::IngressRejected),
+        (status = 429, description = "Rate limited.", body = contracts::http::IngressRejected,
+            headers(("Retry-After" = contracts::http::RetryAfterSeconds, description = "Seconds to wait."))),
+        (status = 500, description = "Internal error.", body = contracts::http::IngressRejected),
+    ),
+)]
 async fn ingress(State(s): State<Arc<IngressState>>, request: Request) -> Response {
     let received_at = s.clock.now();
     let outcome = handle(&s, request, received_at).await;
@@ -189,10 +233,15 @@ async fn handle(
     match accept(s, &caller, request, received_at, &mut size_bytes).await {
         Ok(outcome) => {
             let (status, label) = match outcome {
-                IngestOutcome::Accepted(_) => ("accepted", Outcome::Accepted),
-                IngestOutcome::Duplicate(_) => ("duplicate", Outcome::Duplicate),
+                IngestOutcome::Accepted(_) => (IngressAcceptedStatus::Accepted, Outcome::Accepted),
+                IngestOutcome::Duplicate(_) => {
+                    (IngressAcceptedStatus::Duplicate, Outcome::Duplicate)
+                }
             };
-            let body = json!({ "status": status, "instruction_id": outcome.instruction_id() });
+            let body = IngressAccepted {
+                status,
+                instruction_id: outcome.instruction_id().to_string(),
+            };
             (label, (StatusCode::OK, axum::Json(body)).into_response())
         }
         Err(Failure::Rejected(rejection)) => {
@@ -395,15 +444,8 @@ fn status_of(code: RejectionCode) -> StatusCode {
 }
 
 fn rejected(status: StatusCode, code: RejectionCode, pointer: Option<&str>) -> Response {
-    let mut error = json!({ "code": code.as_str() });
-    if let Some(pointer) = pointer {
-        error["pointer"] = json!(pointer);
-    }
-    (
-        status,
-        axum::Json(json!({ "status": "rejected", "error": error })),
-    )
-        .into_response()
+    let body = IngressRejected::new(code.as_str(), pointer);
+    (status, axum::Json(body)).into_response()
 }
 
 fn rate_limited(retry_after_secs: u64) -> Response {
@@ -426,7 +468,7 @@ pub fn not_found() -> Response {
 
 fn internal(error: &dyn std::fmt::Display) -> (Outcome, Response) {
     tracing::error!(error = %error, "ingress internal error");
-    let body = json!({ "status": "rejected", "error": { "code": "common.internal" } });
+    let body = IngressRejected::new("common.internal", None);
     (
         Outcome::Internal,
         (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(body)).into_response(),

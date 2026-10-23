@@ -3,6 +3,7 @@
 pub mod config;
 pub mod dev;
 pub mod http;
+pub mod openapi;
 pub mod outbox;
 pub mod telemetry;
 pub mod wiring;

@@ -38,9 +38,13 @@ tokio = { workspace = true, features = ["full"] }
 tower-http = { workspace = true, features = ["trace", "set-header"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+utoipa.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+serde.workspace = true
+sha2.workspace = true
+yaml_serde.workspace = true
 chrono.workspace = true
 http-body-util.workspace = true
 rust_decimal.workspace = true

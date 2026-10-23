@@ -22,6 +22,7 @@ sha2.workspace = true
 shared-kernel.workspace = true
 subtle.workspace = true
 tracing.workspace = true
+utoipa.workspace = true
 
 [dev-dependencies]
 http-body-util.workspace = true
