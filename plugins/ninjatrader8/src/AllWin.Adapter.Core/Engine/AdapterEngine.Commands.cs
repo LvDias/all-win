@@ -238,8 +238,8 @@ namespace AllWin.Adapter.Core.Engine
 
         /// <summary>
         /// Write-ahead submit: the attempt is durable before the platform sees it, so it is never repeated.
-        /// A live order already on the platform with the exact reference is adopted instead (answer G); two or
-        /// more are ambiguous and nothing is submitted. When the call dies without a platform verdict, the
+        /// An order already on the platform with the exact reference is adopted instead (answer G; live or
+        /// terminal, except flatten closes); two or more are ambiguous and nothing is submitted. When the call dies without a platform verdict, the
         /// platform is asked again; if it does not hold the order the outcome is unknown, never a resubmission.
         /// </summary>
         private void SubmitFor(CommandRecord record, OrderRequest request, string? workingReason)
@@ -249,7 +249,8 @@ namespace AllWin.Adapter.Core.Engine
             Save(record);
             Flush();
             var role = OrderName.TryParse(request.Name, out _, out var letter) ? OrderName.RoleOf(letter, record.Command.Kind == CommandKind.Flatten) : ChildRole.Entry;
-            switch (AdoptExisting(record.PlatformAccount, request.Name))
+            var liveOnly = record.Command.Kind == CommandKind.Flatten; // flatten re-tries re-use the close reference
+            switch (AdoptExisting(record.PlatformAccount, request.Name, liveOnly))
             {
                 case Adoption.Adopted: return;
                 case Adoption.Ambiguous:
@@ -264,7 +265,7 @@ namespace AllWin.Adapter.Core.Engine
             catch (PlatformOutcomeUnknownException e)
             {
                 _log.Write(LogLevel.Error, "platform.submit_unknown", record.CommandId + ": " + e.InnerException?.GetType().Name);
-                switch (AdoptExisting(record.PlatformAccount, request.Name))
+                switch (AdoptExisting(record.PlatformAccount, request.Name, liveOnly))
                 {
                     case Adoption.None: Finish(record, false, ReportStatus.Unknown, null, role); break;
                     case Adoption.Ambiguous: Finish(record, false, ReportStatus.Rejected, ReasonCodes.OrderAmbiguousReference, role); break;

@@ -482,21 +482,24 @@ namespace AllWin.Adapter.Core.Engine
         private enum Adoption { None, Adopted, Ambiguous }
 
         /// <summary>
-        /// Adopts the LIVE platform order carrying the exact reference <paramref name="name"/> (command_id +
-        /// role) as the submission (answer G). Terminal orders are ignored, so a flatten re-try that re-uses
-        /// aw:&lt;cmd&gt;:x still closes the rest. Two or more live orders are ambiguous: none is adopted.
+        /// Adopts the platform order carrying the exact reference <paramref name="name"/> (command_id + role) as
+        /// the submission and reports its last state; it is never submitted again (answer G as corrected). For
+        /// place orders and protective legs any match counts, live or terminal, which covers submit → immediate
+        /// fill → crash before "submitted" was persisted. Only a flatten close (<paramref name="liveOnly"/>)
+        /// ignores terminal matches: its re-tries re-use aw:&lt;cmd&gt;:x and the position is re-evaluated first.
+        /// Two or more adoptable matches are ambiguous: none is adopted and nothing is submitted.
         /// </summary>
-        private Adoption AdoptExisting(string account, string name)
+        private Adoption AdoptExisting(string account, string name, bool liveOnly = false)
         {
-            var live = SafeOrders(account).Where(o => o.Name == name && !o.IsTerminal).ToList();
-            if (live.Count == 0) return Adoption.None;
-            if (live.Count > 1)
+            var matches = SafeOrders(account).Where(o => o.Name == name && (!liveOnly || !o.IsTerminal)).ToList();
+            if (matches.Count == 0) return Adoption.None;
+            if (matches.Count > 1)
             {
-                _log.Write(LogLevel.Error, "order.ambiguous_reference", name + " count=" + live.Count.ToString(CultureInfo.InvariantCulture));
+                _log.Write(LogLevel.Error, "order.ambiguous_reference", name + " count=" + matches.Count.ToString(CultureInfo.InvariantCulture));
                 return Adoption.Ambiguous;
             }
-            _log.Write(LogLevel.Warning, "order.adopted", name);
-            AdoptPlatformOrder(account, live[0]);
+            _log.Write(LogLevel.Warning, "order.adopted", name + " state=" + matches[0].State);
+            AdoptPlatformOrder(account, matches[0]);
             return Adoption.Adopted;
         }
 

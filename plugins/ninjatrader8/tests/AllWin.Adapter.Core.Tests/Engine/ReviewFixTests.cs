@@ -391,15 +391,43 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
-        public void G_terminal_orders_with_the_reference_are_ignored()
+        public void G_a_terminal_order_with_the_reference_counts_as_submitted_for_a_place()
+        {
+            using var h = Ready(price: 21000m);
+            h.Platform.Submit(Sim101, new[] { new OrderRequest { Name = "aw:" + C1 + ":e", Instrument = Mnq, Side = Side.Buy, Type = OrderType.Limit, Quantity = 1, LimitPrice = 20000m } });
+            h.Platform.Cancel(Sim101, new[] { h.Platform.OrderByName(Sim101, "aw:" + C1 + ":e")!.Handle });
+            h.Platform.CallLog.Clear();
+            h.Settle();
+            h.Deliver(Place(C1, Side.Buy, 1, order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20000m }));
+            Assert.DoesNotContain(h.Platform.CallLog, c => c.StartsWith("submit", StringComparison.Ordinal)); // never resubmitted
+            Assert.Equal(ReportStatus.Cancelled, h.Reports(C1).Last().Status); // its last state is reported
+        }
+
+        [Fact]
+        public void G_crash_window_submit_then_immediate_fill_then_death_is_adopted_with_no_second_order()
+        {
+            // ADR-0004 §10 (Crivo): the market order fills at once, the call dies before "submitted" is known.
+            using var h = Ready(price: 21000m);
+            h.Platform.CrashAfterSubmit = true;
+            h.Deliver(Place(C1, Side.Buy, 1, protection: Individual(40, 80)));
+            Assert.Single(h.Platform.CallLog, c => c == "submit aw:" + C1 + ":e");
+            Assert.Equal(1, h.Platform.Position(Sim101, "MNQ"));
+            Assert.Contains(h.Reports(C1), r => r.Status == ReportStatus.Filled && r.ChildRole == ChildRole.Entry);
+            Assert.DoesNotContain(h.Reports(C1), r => r.Status == ReportStatus.Unknown);
+            Assert.NotNull(h.Platform.OrderByName(Sim101, "aw:" + C1 + ":s")); // the bracket follows the adopted fill
+        }
+
+        [Fact]
+        public void G_terminal_and_live_matches_for_a_place_are_ambiguous()
         {
             using var h = Ready(price: 21000m);
             h.Platform.Submit(Sim101, new[] { new OrderRequest { Name = "aw:" + C1 + ":e", Instrument = Mnq, Side = Side.Buy, Type = OrderType.Market, Quantity = 1 } });
-            h.Platform.ExternalFill(Sim101, Mnq, Side.Sell, 1, 21000m); // back to flat; the old order is filled (terminal)
+            h.Platform.Submit(Sim101, new[] { new OrderRequest { Name = "aw:" + C1 + ":e", Instrument = Mnq, Side = Side.Buy, Type = OrderType.Limit, Quantity = 1, LimitPrice = 20000m } });
             h.Platform.CallLog.Clear();
             h.Settle();
             h.Deliver(Place(C1, Side.Buy, 1));
-            Assert.Single(h.Platform.CallLog, c => c == "submit aw:" + C1 + ":e");
+            Assert.Equal(ReasonCodes.OrderAmbiguousReference, h.Reports(C1).Last().ReasonCode);
+            Assert.DoesNotContain(h.Platform.CallLog, c => c.StartsWith("submit", StringComparison.Ordinal));
         }
 
         [Fact]
