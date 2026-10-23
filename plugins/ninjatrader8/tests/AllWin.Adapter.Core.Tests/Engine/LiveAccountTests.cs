@@ -352,6 +352,25 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
+        public void Shared_row_6_cap_ignores_entries_of_earlier_closed_positions()
+        {
+            // QA LN1: an earlier consented shared position must not raise the cap of the current one.
+            using var h = LiveHarness();
+            h.Deliver(Place(F1, Side.Buy, 2, protection: Shared()));
+            h.Deliver(Flatten("0192b3c4-0000-7000-8000-000000000d21"));
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.ExternalFill(Sim101, Mnq, Side.Buy, 1, 21000m); // a manual add: row 7, refused on A
+            h.Settle();
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(3, h.Platform.Position(Sim101, "MNQ"));
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity); // E1 + E2, not the manual add
+        }
+
+        [Fact]
         public void Shared_growth_from_a_non_consented_fill_on_A_is_still_refused()
         {
             using var h = LiveHarness();

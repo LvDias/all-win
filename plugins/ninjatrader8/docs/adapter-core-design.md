@@ -163,7 +163,7 @@ NT8 callbacks ──copy──▶ EngineLoop (one thread) ◀── WebSocketCon
 | G | Adopt an order with the exact reference before submitting (any state for place/legs, live only for flatten closes). Several matches → `order.ambiguous_reference` |
 | U13 | Protocol 1.2 position-identity guard on `reduce` (§4, §5a). `flatten` unchanged |
 | N11 | Live-account opt-in and decision table (§5b). U19/U19.1 behind `EngineOptions`, recommended defaults |
-| N11+ | `order.live_consent_cancelled` (cancelled, entry/exit) for the plugin's own row-2 cancels; emitted now, registry entry in the 1.3 delta |
+| N11+ | `order.live_consent_cancelled` (cancelled, entry/exit) for the plugin's own row-2 cancels; code-only registry addition (all protocol versions) |
 
 ## 7. Limits of this step
 

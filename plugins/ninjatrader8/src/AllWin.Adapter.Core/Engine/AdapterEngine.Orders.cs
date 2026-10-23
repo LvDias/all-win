@@ -520,14 +520,15 @@ namespace AllWin.Adapter.Core.Engine
 
         /// <summary>
         /// What row 6 may protect outside state B: the consented entry's own open quantity; in shared mode, the consented
-        /// shared entries on the owner's side (owner and adds) less what the owner's legs closed.
+        /// shared entries on the owner's side (owner and later adds of the current position) less what the owner's legs
+        /// closed. Entries of earlier, closed positions are older than the owner and never count (QA LN1).
         /// </summary>
         private int ConsentedOpenQuantity(CommandRecord owner, bool shared)
         {
             if (!shared) return owner.ConsentedLive ? OpenQuantity(owner) : 0;
             var filled = _commands.Values.Where(r => r.PlatformAccount == owner.PlatformAccount && r.Command.Kind == CommandKind.Place && r.ConsentedLive
                 && r.Command.Instrument.Equals(owner.Command.Instrument) && r.Command.Place!.Side == owner.Command.Place!.Side
-                && r.Command.Place.Protection?.Mode == ProtectionMode.Shared).Sum(r => r.EntryFilled);
+                && r.Command.Place.Protection?.Mode == ProtectionMode.Shared && r.Seq >= owner.Seq).Sum(r => r.EntryFilled);
             return Math.Max(0, filled - LegFilled(owner.PlatformAccount, owner.CommandId, 's') - LegFilled(owner.PlatformAccount, owner.CommandId, 't'));
         }
 
