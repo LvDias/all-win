@@ -1,0 +1,71 @@
+# All Win — dev stack (PostgreSQL 16 + Core + Caddy). Simulation/dev only.
+# Every published port is bound to 127.0.0.1; nothing is exposed to the network. The Core publishes none.
+# Usage: infra/scripts/dev-stack.sh up   (needs infra/compose/.env, see .env.example)
+name: allwin-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      # Superuser: used only by the init script; the Core never connects as it.
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/compose/.env}
+      POSTGRES_DB: postgres
+      ALLWIN_OWNER_PASSWORD: ${ALLWIN_OWNER_PASSWORD:?set ALLWIN_OWNER_PASSWORD in infra/compose/.env}
+      ALLWIN_APP_PASSWORD: ${ALLWIN_APP_PASSWORD:?set ALLWIN_APP_PASSWORD in infra/compose/.env}
+      ALLWIN_WORKER_PASSWORD: ${ALLWIN_WORKER_PASSWORD:?set ALLWIN_WORKER_PASSWORD in infra/compose/.env}
+      ALLWIN_MAINT_PASSWORD: ${ALLWIN_MAINT_PASSWORD:?set ALLWIN_MAINT_PASSWORD in infra/compose/.env}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d allwin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  core:
+    build:
+      context: ../..
+      dockerfile: infra/docker/core.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://allwin_app:${ALLWIN_APP_PASSWORD}@postgres:5432/allwin
+      WORKER_DATABASE_URL: postgres://allwin_worker:${ALLWIN_WORKER_PASSWORD}@postgres:5432/allwin
+      # When set, the binary applies the migrations at startup as the owner role.
+      MIGRATION_DATABASE_URL: postgres://allwin_owner:${ALLWIN_OWNER_PASSWORD}@postgres:5432/allwin
+      # Core is reachable only through Caddy: the client IP is the last X-Forwarded-For.
+      INGRESS_TRUST_FORWARDED_FOR: "true"
+      # Dev/E2E only: enables the seed and revoke-key commands. Never set outside dev.
+      ALLWIN_ENABLE_DEV_COMMANDS: "true"
+      CORE_BIND: 0.0.0.0:${CORE_PORT:-8080}
+      RUST_LOG: ${RUST_LOG:-info}
+    # No published port: with INGRESS_TRUST_FORWARDED_FOR=true anything that reaches the Core directly
+    # (even from loopback) could forge X-Forwarded-For. Reachable only through Caddy on the compose network.
+    # A debug/E2E overlay that publishes it must set INGRESS_TRUST_FORWARDED_FOR=false (contract 1.1.2).
+    profiles: ["core"]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      CADDY_HTTPS_PORT: ${CADDY_HTTPS_PORT:-8443}
+      CADDY_LOG_LEVEL: ${CADDY_LOG_LEVEL:-INFO}
+      CORE_PORT: ${CORE_PORT:-8080}
+    ports:
+      - "127.0.0.1:${CADDY_HTTPS_PORT:-8443}:${CADDY_HTTPS_PORT:-8443}"
+    volumes:
+      - ../caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
