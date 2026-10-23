@@ -1,7 +1,8 @@
 # Design Foundations — All Win Web
 
-> **Owner:** Product Designer (Aquarela, design-system owner) · **Status:** proposed, pending PO review of rev. 3 · **Revision:** 3 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela, design-system owner) · **Status:** proposed, pending PO review of rev. 4 · **Revision:** 4 · **Date:** 2026-10-23
 > **Inputs:** [product-vision.md](../product/product-vision.md) rev. 3, [slice-plan.md](../product/release-1/slice-plan.md) (X-1..X-8, S3, S4, S5, S16), [ADR-0001](../architecture/adr/0001-technology-stack.md) §8–§9, [ADR-0004](../architecture/adr/0004-adapter-protocol-v1.md) §8–§9, [auth-and-session-policy.md](../architecture/security/auth-and-session-policy.md), PO answers of 2026-10-23 (Bússola), user decisions of 2026-10-23 in [decisions.md](../delivery/decisions.md) (Q17–Q23, firms that forbid automation).
+> **Rev. 4 change (2026-10-23, user UX rule in decisions.md):** long forms become step by step; the limit, the edit rule and the per-step behavior are in §10.1; glossary rows for step, review and skip (§5).
 > **Rev. 3 changes (2026-10-23, slice-plan rev. 7, passwordless S3):** `StepUpDialog` now asks a **new code** instead of a password (§8.2); `SecretField` no longer serves TOTP (§8.1); glossary drops TOTP/recovery codes and adds code, channel and replication terms (§5); AC references renumbered (S3 AC-3 → AC-14); keyboard/autocomplete and accessible-authentication notes updated (§9, §11); new shared components live in [components.md](components.md).
 > **Rev. 2 changes:** Q23 decided (§6.4); step-up pattern (§8.2); `outdated` connection state and automation states (§7.2); preset provenance: verified / not confirmed / edited, and the official rule quote (§7.4).
 > **Scope:** shared, cross-screen decisions for the web application. Screen behavior lives in [specs/](specs/). Business rules are only cited, never introduced here; anything not decided is marked **[Open]** (user decision, tracked by the PO) or **[Proposal]** (design recommendation for review).
@@ -142,6 +143,10 @@ The same term is used everywhere (web, plugin, errors, audit). The Plugin Engine
 | Execution platform (e.g. NinjaTrader) | Plataforma de execução | Execution platform |
 | Step-up re-authentication | Confirme que é você | Confirm it's you |
 | Accepts / doesn't accept replication (copy opt-in) | Aceita replicação / Sem replicação | Accepts replication / No replication |
+| Step of a multi-step form | Etapa | Step |
+| Final check before saving a multi-step form | Revisar / Revisão | Review |
+| Skip an optional step | Pular etapa | Skip step |
+| Go to the previous / next step | Voltar / Continuar | Back / Continue |
 
 ## 6. Numbers, money, prices, dates
 
@@ -308,6 +313,47 @@ The web must "work well in mobile browsers" (vision §3). Target: iOS Safari and
 | Submitting | Primary button shows spinner + "Salvando…", is disabled, and the form ignores further submits until the response (duplicate-submit prevention). Write endpoints are expected to be idempotent server-side as the real guarantee |
 | Session expired (401 on any call) | Redirect to login with `?reason=session_expired&returnTo=<path>`; login shows an info `Alert`. Unsaved form data is lost; the message says so |
 | Unknown error code from the Core | Generic translated message + the code (`Erro inesperado (código: x.y)`) |
+
+### 10.1 Long forms: stepper or sections (user UX rule, decisions.md 2026-10-23)
+
+The user wants a long "add something" form to be step by step, so filling many fields in one go is not tiring. A form is **long** when the create flow meets **any** of these (count the controls the user must fill or choose; read-only lines, fixed values and untouched defaults do not count; a `RadioGroup`, a checkbox group or a date + time pair counts as one):
+
+| Test | Limit |
+|---|---|
+| Controls in the create form | **more than 6** |
+| Sections (a heading with its own purpose) | **3 or more** |
+| One section gates another (a choice changes which fields, texts or options appear next) | **any** |
+| A section must be read before it can be answered (rule text, warning, risk) | **any** |
+
+**Long = `Stepper` (C§2) in "form flow" mode.** Otherwise a single page or dialog with `Card` sections is enough (no stepper for a form of 6 controls or fewer, and never for a one-field dialog).
+
+**Per step**
+- At most **6 controls** per step; if a step passes that, split it. Flows have **2 to 6 steps** (C§2). If more would be needed, the form is too big: move optional fields to the edit page.
+- A step groups fields that answer one question ("Que conta é esta?"), and its title is that question or a noun ("Dados da conta"). The first step is the one that decides which later steps exist (for example the account type).
+- Steps that do not apply to the user's choice are **left out of the list** (the count says "Etapa 2 de 5" for that user), never shown disabled.
+- The last step is always **`Revisar`**: a read-only summary of every step (definition list, grouped by step) with `Editar` next to each group and the single `Criar …` / `Salvar …` button. The only write happens here. Steps before it never save.
+- **Optional steps** show `Pular etapa` next to `Continuar`; skipped means "nothing set", and the review says so.
+
+**Navigation and data**
+- Buttons: `Voltar` (secondary, hidden on step 1; `Cancelar` is there instead) and `Continuar` (primary). In the review: `Voltar` and the final button. Enter in a text field presses `Continuar`.
+- `Continuar` validates **that step only** (inline errors, focus on the first invalid field, F§10). It is never disabled to hide an error; the user is told what is wrong.
+- Going back **never loses data** (3.3.7): every step's values live in one form state until save or cancel. Changing an earlier answer that gates later steps (for example the firm) clears only the affected later values and says so in an `Alert` on that later step: "A regra mudou com a sua seleção. Escolha de novo." The review is recomputed.
+- From the review, `Editar` on a group goes to that step; after `Continuar` there it returns **straight to the review** (the stepper shows the review as current), unless the change added or removed steps in between.
+- Server errors that point to a field (422 with `pointer`) send the user back to the step that owns the field, focus it and show the error there; the review shows a destructive `Alert` "Corrija a etapa {n}: …" with a link. Errors without a field stay in the review above the button; values are kept.
+- Leaving with unsaved data (`Cancelar`, browser back, close of the dialog) asks `AlertDialog` "Descartar alterações?" (F§10). Nothing is persisted as a draft in V1 **[Proposal]**; a reload loses the form, and the page says it with `beforeunload` only while the form is dirty.
+- A step that needs the Core to answer before continuing (for example the preset list) shows a `Skeleton` and keeps `Continuar` available only when the data is there; a failure uses `ErrorState` inside the step with retry, and `Voltar` still works.
+- Idempotency key and duplicate-submit rules (F§10) are on the final button only.
+- Step-up (F§8.2) is asked **at the final button** only if the saved state requires it, and cancelling it returns to the review with every value kept.
+
+**Layout:** page forms: stepper above the card (`full` ≥ `md`, `compact` below), content max 720 px, sticky footer with `Voltar` / `Continuar` that never hides the focused field (2.4.11). Dialog forms: `compact` stepper inside the `ResponsiveDialog` (a `Drawer` below `md`) and only when the flow has ≤ 4 steps with ≤ 3 controls each; a dialog that needs more becomes a page.
+
+**Edit** (the entity already exists)
+- **Default: one page with sections** (`Card`s in the same order as the create steps), one `Salvar` in the sticky footer, `Cancelar` with the unsaved guard. The user opens an edit to change one thing and needs to reach it directly, so no stepper.
+- On ≥ `lg` a sticky "Nesta página" list of anchors (`nav`, current section marked `aria-current`) helps in pages with 4 or more sections; below `lg` it collapses to a `Select`-like jump control or is omitted.
+- **Exception: a change that reopens a gated decision** (for example the firm or plan changed and the rule text now differs, or a rule version changed) opens that decision as a **short `Stepper` flow** (review the new rule → choose → review) in a dialog, while the other sections stay as they are. The edit page itself never turns into a stepper.
+- Frequent, repeated entry (for example manual trades, S21) still uses the stepper when it is long by the tests above, and offers `Salvar e registrar outro` on the review so repeat use is not slower than a plain form **[Proposal]**.
+
+**Accessibility:** C§2 focus and live-region rules apply. The step title is the `h2` that receives focus; the review is a `dl` per group with `Editar {group}` links that name the group for screen readers ("Editar Dados da conta"). Per-step `fieldset`/`legend` for grouped controls. 3.3.7: nothing the user already typed is asked again; the review does not re-ask. 3.3.8: no step uses a cognitive test.
 
 ## 11. Accessibility baseline (WCAG 2.2 AA)
 
