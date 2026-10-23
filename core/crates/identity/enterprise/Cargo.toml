@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 shared-kernel.workspace = true
+access.workspace = true
 chrono = { workspace = true, features = ["clock", "std"] }
 chrono-tz.workspace = true
 uuid = { workspace = true, features = ["v7"] }

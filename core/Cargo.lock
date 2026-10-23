@@ -1073,6 +1073,7 @@ dependencies = [
 name = "identity-application"
 version = "0.1.0"
 dependencies = [
+ "access",
  "async-trait",
  "chrono",
  "identity-enterprise",
@@ -1086,6 +1087,7 @@ dependencies = [
 name = "identity-enterprise"
 version = "0.1.0"
 dependencies = [
+ "access",
  "base64",
  "chrono",
  "chrono-tz",

@@ -2,8 +2,12 @@
 //! operation that creates them; HTTP adapters map these to the contract schemas.
 
 use chrono::{DateTime, Utc};
+use identity_enterprise::channel::Channel;
+use identity_enterprise::channel_change::ChangeStatus;
 use identity_enterprise::connection::{Connection, ConnectionStatus};
-use identity_enterprise::ids::ConnectionId;
+use identity_enterprise::ids::{ChannelChangeId, ConnectionId, DeviceId};
+use identity_enterprise::otp::CodeRole;
+use identity_enterprise::user::User;
 use identity_enterprise::invitation::{Invitation, InvitationStatus};
 use identity_enterprise::secret::SecretString;
 use identity_enterprise::source::Source;
@@ -18,6 +22,73 @@ pub struct SessionCookie {
     pub expires_at: DateTime<Utc>,
 }
 
+/// New device cookie value (`__Host-aw_device`, Max-Age 400 days).
+#[derive(Clone, Debug)]
+pub struct DeviceCookie {
+    pub value: identity_enterprise::secret::SecretString,
+}
+
+/// `ChallengeIssued`: the sealed challenge token goes only to the requester.
+#[derive(Clone, Debug)]
+pub struct ChallengeIssued {
+    pub challenge_id: SecretString,
+    pub expires_at: DateTime<Utc>,
+    pub resend_after_s: i64,
+}
+
+/// A successful sign-in or sign-up.
+#[derive(Clone, Debug)]
+pub struct SignedIn {
+    pub user: User,
+    /// True when this sign-in registered a new device (never on sign-up).
+    pub new_device: bool,
+    pub session: SessionCookie,
+    /// Set when the browser gets a (new or renewed) device cookie.
+    pub device: DeviceCookie,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeliveryView {
+    Pending,
+    Sent,
+    Failed,
+    NotReported,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceView {
+    pub id: DeviceId,
+    pub label: String,
+    pub first_seen_at: DateTime<Utc>,
+    pub last_seen_at: DateTime<Utc>,
+    pub current: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ChangeCodeView {
+    pub role: CodeRole,
+    pub challenge_id: SecretString,
+    pub confirmed: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ChannelChangeView {
+    pub id: ChannelChangeId,
+    pub channel: Channel,
+    pub status: ChangeStatus,
+    pub masked_new_value: String,
+    pub codes: Vec<ChangeCodeView>,
+    pub expires_at: DateTime<Utc>,
+    pub hold_until: Option<DateTime<Utc>>,
+}
+
+/// Result of a verified channel-change code; `session` is set when the current session rotated.
+#[derive(Clone, Debug)]
+pub struct ChannelChangeVerified {
+    pub change: ChannelChangeView,
+    pub session: Option<SessionCookie>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionInfo {
     pub persistent: bool,
@@ -25,11 +96,14 @@ pub struct SessionInfo {
     pub absolute_timeout_s: i64,
     pub idle_expires_at: DateTime<Utc>,
     pub absolute_expires_at: DateTime<Utc>,
-    pub step_up_valid_until: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct SecurityView {
+    pub email: String,
+    pub whatsapp: Option<String>,
+    pub channel_change_allowed_at: DateTime<Utc>,
+    pub pending_channel_change: Option<ChannelChangeView>,
     pub session: SessionInfo,
 }
 
@@ -50,12 +124,6 @@ pub struct CreatedInvitation {
 pub struct InvitationLookup {
     pub email: String,
     pub locale: identity_enterprise::profile::Locale,
-    pub expires_at: DateTime<Utc>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ResetLink {
-    pub reset_url: SecretString,
     pub expires_at: DateTime<Utc>,
 }
 

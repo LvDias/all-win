@@ -176,7 +176,7 @@ impl ListInvitations {
 
 /// Resolves a presented invitation token to a pending invitation; every other case is the
 /// single `auth.invitation_invalid`.
-async fn pending_invitation(deps: &IdentityDeps, token: &str) -> Result<Invitation, IdentityError> {
+pub(crate) async fn pending_invitation(deps: &IdentityDeps, token: &str) -> Result<Invitation, IdentityError> {
     let now = deps.clock.now();
     let Some(hash) = deps.hash_presented_token(token) else {
         return Err(IdentityError::InvitationInvalid);

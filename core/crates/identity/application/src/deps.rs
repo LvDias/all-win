@@ -8,16 +8,20 @@ use identity_enterprise::tokens::{KeyId, SecretBytes, TokenHash};
 use shared_kernel::Clock;
 
 use crate::ports::{
-    AdapterCompatibility, ConnectionPresence, IdentityStore, Mailer, RandomSource, SecretHasher,
-    SourceActivity, SourceKeyListener,
+    AccountTargets, AdapterCompatibility, ConnectionPresence, DeliveryQueue, IdentityStore, Mailer, RandomSource,
+    SecretHasher, SecurityAlerts, SourceActivity, SourceKeyListener,
 };
-use crate::throttle::{PairingThrottle, PublicEndpointThrottle};
+use crate::throttle::{CodeThrottle, PairingThrottle, PublicEndpointThrottle};
 
 #[derive(Clone, Debug)]
 pub struct IdentitySettings {
     /// Public origin of the app, e.g. `https://app.example.com` (no trailing slash). Used to build
     /// invitation and webhook URLs.
     pub public_origin: String,
+    /// `step_up.q35_persistence_actions` (server configuration only; missing or invalid = on).
+    pub step_up_q35_persistence_actions: bool,
+    /// WhatsApp codes and channel (S3b, U17). Off until a provider exists.
+    pub whatsapp_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -33,6 +37,10 @@ pub struct IdentityDeps {
     pub adapters: Arc<dyn AdapterCompatibility>,
     pub pairing_throttle: Arc<dyn PairingThrottle>,
     pub public_throttle: Arc<dyn PublicEndpointThrottle>,
+    pub code_throttle: Arc<dyn CodeThrottle>,
+    pub delivery: Arc<dyn DeliveryQueue>,
+    pub alerts: Arc<dyn SecurityAlerts>,
+    pub account_targets: Arc<dyn AccountTargets>,
     pub settings: IdentitySettings,
 }
 

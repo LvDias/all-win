@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use identity_enterprise::ids::SourceId;
+use identity_enterprise::otp::StepUpAction;
 use identity_enterprise::secret::SecretString;
 use identity_enterprise::source::{DisplayName, Source, SourceType};
 use identity_enterprise::tokens::{KeyId, PrefixedToken, PrefixedTokenKind, SecretBytes};
@@ -14,6 +15,7 @@ use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
 use crate::ports::{StoreConflict, StoreError};
 use crate::usecases::common::user_audit;
+use crate::usecases::step_up::{self, StepUpProof};
 use crate::views::{SourceView, SourceWithUrl};
 
 /// A collision on a random 12-character key id is retried with a new one.
@@ -126,13 +128,15 @@ impl CreateSource {
         ctx: &AuthContext,
         name: &str,
         source_type: SourceType,
+        proof: Option<&StepUpProof>,
         meta: &RequestMeta,
     ) -> Result<SourceWithUrl, IdentityError> {
         let deps = &self.deps;
         let now = deps.clock.now();
         let name = DisplayName::parse(name)
             .map_err(|_| IdentityError::InvalidRequest { pointer: "/name" })?;
-        ctx.require_step_up(now)?;
+        let grant =
+            step_up::authorize(deps, ctx, StepUpAction::SourceCreate, None, proof, meta).await?;
         let source_id = SourceId::new_v7();
         for _ in 0..KEY_ID_ATTEMPTS {
             let (token, key) = new_source_token(deps);
@@ -146,7 +150,7 @@ impl CreateSource {
                 key_id: key.key_id.clone(),
                 rotated_at: None,
             };
-            let changes = ChangeSet::new(ctx.user.id)
+            let changes = step_up::with_grant(ctx.user.id, grant.clone())
                 .write(Write::InsertSource {
                     source: source.clone(),
                     key: key.clone(),
@@ -156,6 +160,7 @@ impl CreateSource {
                     Actor::User(ctx.user.id),
                     AuditAction::SourceCreated {
                         source_id,
+                        source_name: name.as_str().to_owned(),
                         key_id: key.key_id,
                     },
                     now,
@@ -212,7 +217,12 @@ impl RenameSource {
             .audit(user_audit(
                 ctx.user.id,
                 Actor::User(ctx.user.id),
-                AuditAction::SourceRenamed { source_id },
+                AuditAction::SourceRenamed {
+                    source_id,
+                    source_name: name.as_str().to_owned(),
+                    previous_name: source.name.as_str().to_owned(),
+                    key_id: source.key_id.clone(),
+                },
                 now,
                 Some(meta.ip),
             ));
@@ -241,19 +251,28 @@ impl RotateSource {
         &self,
         ctx: &AuthContext,
         source_id: SourceId,
+        proof: Option<&StepUpProof>,
         meta: &RequestMeta,
     ) -> Result<SourceWithUrl, IdentityError> {
         let deps = &self.deps;
         let now = deps.clock.now();
         let mut source = owned_source(deps, ctx, source_id).await?;
-        ctx.require_step_up(now)?;
+        let grant = step_up::authorize(
+            deps,
+            ctx,
+            StepUpAction::SourceRotate,
+            Some(source_id.as_uuid()),
+            proof,
+            meta,
+        )
+        .await?;
         source
             .ensure_active()
             .map_err(|_| IdentityError::SourceRevoked)?;
         let old_key_id: KeyId = source.key_id.clone();
         for _ in 0..KEY_ID_ATTEMPTS {
             let (token, key) = new_source_token(deps);
-            let changes = ChangeSet::new(ctx.user.id)
+            let changes = step_up::with_grant(ctx.user.id, grant.clone())
                 .write(Write::RotateSourceKey {
                     user_id: ctx.user.id,
                     source_id,
@@ -265,8 +284,9 @@ impl RotateSource {
                     Actor::User(ctx.user.id),
                     AuditAction::SourceRotated {
                         source_id,
-                        old_key_id: old_key_id.clone(),
-                        new_key_id: key.key_id.clone(),
+                        source_name: source.name.as_str().to_owned(),
+                        key_id: key.key_id.clone(),
+                        previous_key_id: old_key_id.clone(),
                     },
                     now,
                     Some(meta.ip),
@@ -329,6 +349,7 @@ impl RevokeSource {
                 Actor::User(ctx.user.id),
                 AuditAction::SourceRevoked {
                     source_id,
+                    source_name: source.name.as_str().to_owned(),
                     key_id: source.key_id,
                 },
                 now,

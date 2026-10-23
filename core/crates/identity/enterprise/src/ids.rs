@@ -29,3 +29,13 @@ uuid_id!(InvitationId);
 uuid_id!(SourceId);
 uuid_id!(ConnectionId);
 uuid_id!(PairingCodeId);
+uuid_id!(
+    /// A browser that signed in (`known_device`).
+    DeviceId
+);
+uuid_id!(
+    /// A one-time code challenge (`one_time_code.id` or `signup_code.id`); the uuid inside the
+    /// sealed `challenge_id` token.
+    CodeId
+);
+uuid_id!(ChannelChangeId);

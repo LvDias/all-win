@@ -14,14 +14,29 @@ pub enum IdentityError {
     Forbidden,
     #[error("auth.step_up_required")]
     StepUpRequired,
-    #[error("auth.invalid_code")]
-    InvalidCode,
+    /// One answer for every code failure (wrong, expired, used, exhausted, foreign, forged).
+    #[error("auth.code_invalid")]
+    CodeInvalid,
+    #[error("auth.channel_unavailable")]
+    ChannelUnavailable,
+    #[error("auth.step_up_channel_not_allowed")]
+    StepUpChannelNotAllowed,
     #[error("auth.rate_limited")]
     RateLimited { retry_after: Duration },
     #[error("auth.invitation_invalid")]
     InvitationInvalid,
     #[error("me.invalid_time_zone")]
     InvalidTimeZone,
+    #[error("me.invalid_channel_value")]
+    InvalidChannelValue,
+    #[error("me.channel_unchanged")]
+    ChannelUnchanged,
+    #[error("me.channel_change_too_soon")]
+    ChannelChangeTooSoon,
+    #[error("me.channel_change_pending")]
+    ChannelChangePending,
+    #[error("me.channel_change_closed")]
+    ChannelChangeClosed,
     /// Unknown resource or another user's resource (never 403, S3 AC-2).
     #[error("common.not_found")]
     NotFound,
@@ -61,6 +76,7 @@ impl IdentityError {
     pub fn pointer(&self) -> Option<&'static str> {
         match self {
             Self::InvalidRequest { pointer } => Some(pointer),
+            Self::InvalidChannelValue => Some("/new_value"),
             _ => None,
         }
     }
@@ -82,6 +98,8 @@ impl IdentityError {
 impl From<StoreError> for IdentityError {
     fn from(err: StoreError) -> Self {
         match err {
+            // A step-up code consumed with the action was used meanwhile.
+            StoreError::Conflict(crate::ports::StoreConflict::CodeGone) => Self::CodeInvalid,
             StoreError::Conflict(conflict) => {
                 Self::internal(format!("unexpected store conflict: {conflict:?}"))
             }

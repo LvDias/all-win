@@ -27,15 +27,6 @@ impl AuthContext {
             Err(IdentityError::Forbidden)
         }
     }
-
-    /// Sensitive operations need a password(+TOTP) proof younger than 15 minutes.
-    pub fn require_step_up(&self, now: DateTime<Utc>) -> Result<(), IdentityError> {
-        if self.session.requires_step_up(now) {
-            Err(IdentityError::StepUpRequired)
-        } else {
-            Ok(())
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,15 +59,15 @@ impl AuthenticateSession {
         };
         match session.status(now) {
             SessionStatus::Active => {}
-            SessionStatus::Expired | SessionStatus::PendingExpired => {
+            SessionStatus::Expired => {
                 self.end_expired(&session, now).await?;
                 return Err(IdentityError::Unauthenticated);
             }
-            _ => return Err(IdentityError::Unauthenticated),
+            SessionStatus::Ended => return Err(IdentityError::Unauthenticated),
         }
         let user = match self.deps.store.user(session.user_id).await? {
             Some(user) if user.is_active() => user,
-            _ => return Err(IdentityError::Unauthenticated),
+            SessionStatus::Ended => return Err(IdentityError::Unauthenticated),
         };
         if activity == Activity::UserInitiated
             && now - session.last_activity_at >= ACTIVITY_WRITE_INTERVAL
@@ -127,6 +118,5 @@ pub(crate) fn activity_write(session: &Session) -> Write {
         session_id: session.id,
         last_activity_at: session.last_activity_at,
         idle_expires_at: session.idle_expires_at,
-        authenticated_at: session.authenticated_at,
     }
 }

@@ -1,5 +1,6 @@
 //! Human-typed codes in Crockford Base32 (ADR-0004 §8, auth policy §2):
-//! pairing code (8 characters, 40 bits, shown `XXXX-XXXX`). Input ignores case, spaces and hyphens and maps
+//! pairing code and one-time sign-in/step-up code (U16 format 1), both 8 characters, 40 bits, shown
+//! `XXXX-XXXX`. Input ignores case, spaces and hyphens and maps
 //! O→0 and I/L→1. Codes are stored as HMAC of the normalized form, never in clear.
 
 use std::fmt;
@@ -11,19 +12,21 @@ const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CodeKind {
     Pairing,
+    /// Sign-up, login, step-up and channel-change codes.
+    OneTime,
 }
 
 impl CodeKind {
     pub fn chars(self) -> usize {
         match self {
-            Self::Pairing => 8,
+            Self::Pairing | Self::OneTime => 8,
         }
     }
 
     /// Random bytes needed to generate one code (40 bits).
     pub fn random_bytes(self) -> usize {
         match self {
-            Self::Pairing => 5,
+            Self::Pairing | Self::OneTime => 5,
         }
     }
 
