@@ -1,0 +1,113 @@
+# allwin-heavy — heavy jobs on the shared dev host
+
+> User directive (2026-10-24): the host is saturated. At most **3** heavy jobs run at once, host-wide, and every one of them
+> goes through this wrapper.
+
+The dev host is shared by every agent account (`dev2`, `dev3`, ...). Cold builds and full suites saturated it.
+
+**Rule: heavy jobs run only through `allwin-heavy`:** `cargo build/test/clippy`, `dotnet build/test`, `pnpm build`,
+full `vitest`/`pnpm test`, `playwright`, the e2e stack. Small targeted checks (`cargo fmt --check`, one small unit-test
+file, `tsc` on one file) may run directly. While you wait for a slot, work on code, specs or review; do not poll.
+No performance or latency measurement until the SRE says the host is quiet.
+
+```bash
+infra/scripts/allwin-heavy cargo test --workspace
+infra/scripts/allwin-heavy cargo clippy --all-targets -- -D warnings
+infra/scripts/allwin-heavy pnpm test
+```
+
+## What it does
+
+1. **Semaphore:** 3 slots (`ALLWIN_HEAVY_SLOTS`) (`flock` on `slot.1`, `slot.2`) in `/srv/www/allwin.worktrees/.heavy-locks`
+   (group `devs`, setgid, mode 2770, files 0660), shared by all accounts. It waits (polling every 5 s, up to
+   30 min, then exit 75) when both are taken. The slot is held until the command ends, even if the wrapper is killed.
+2. **systemd scope** (`systemd-run --user --scope`, no root): `CPUQuota=200%`, `CPUWeight=20`,
+   `MemoryHigh=8G` (throttles, never kills), `--nice=10`, and `ionice -c2 -n7`. The command runs in the foreground:
+   cwd, environment, tty and exit code pass through. Without a user bus it falls back to `nice -n 10` only
+   and says so.
+3. **Defaults** (override by exporting first): `CARGO_BUILD_JOBS=2`, `RUST_TEST_THREADS=2`,
+   `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target`, `PLAYWRIGHT_PORT` = a free port in 3200-3899 chosen per
+   worktree, and `PLAYWRIGHT_BASE_URL=http://localhost:$PLAYWRIGHT_PORT` (see "Playwright ports").
+4. **Shared toolchain and compile cache** (see below): `RUSTUP_HOME`/`CARGO_HOME` under `/opt/rust` and `RUSTC_WRAPPER=sccache`.
+5. **dotnet:** `MSBUILDDISABLENODEREUSE=1` and no MSBuild server, so nothing stays resident.
+6. **`--fresh-target`** (or `ALLWIN_HEAVY_FRESH_TARGET=1`): see "QA verdict runs" below.
+
+Do not leave background processes behind (a dev server, a container client): they inherit the slot and hold it
+until they exit. To see who holds a slot: `fuser -v /srv/www/allwin.worktrees/.heavy-locks/slot.*`.
+
+Settings: `ALLWIN_HEAVY_SLOTS`, `ALLWIN_HEAVY_WAIT_S`, `ALLWIN_HEAVY_CPU_QUOTA`, `ALLWIN_HEAVY_MEMORY_HIGH`,
+`ALLWIN_HEAVY_LOCK_DIR`, `ALLWIN_HEAVY_TARGET_ROOT`, `ALLWIN_HEAVY_KEEP_TARGET`.
+
+Limit: Docker containers (PostgreSQL, the e2e stack) run under `dockerd`, so the quota caps the client and build
+side only.
+
+A test that times out only while the host is loaded is not a finding until it passes or fails alone.
+
+## One cargo target directory per account
+
+Each worktree used to build its own `core/target` (63 GB in total, every dependency cold). Use one directory per
+account instead; it needs no sudo and `allwin-heavy` sets it by default. For plain `cargo` runs, put this in `~/.profile`:
+
+```bash
+export CARGO_TARGET_DIR="$HOME/.cache/allwin/cargo-target"
+```
+
+- **One target per account is enough, not one per branch family.** Third-party crates (the expensive part) are keyed
+  by crate, version, features and toolchain, so every worktree on the same `rust-toolchain.toml` reuses them. Our own
+  crates are keyed by path and are rebuilt per worktree (cheap); artifacts from different worktrees coexist.
+- The shared target is for day-to-day builds only. Our own crates have the same relative layout in every
+  worktree, hence the same metadata hash, so artifacts of two snapshots can mix and produce a **false compile
+  failure** (seen by QA). The uplifted top-level binaries (`target/debug/allwin-core`, examples) are also
+  overwritten by the last worktree that built them.
+- Cargo's build-directory lock serializes concurrent builds in the same directory ("Blocking waiting for file lock"),
+  which is what we want on this host.
+- Accounts do not share a target directory (separate home, no cross-account write access).
+- Nothing in the repo depends on `core/target`. To trim the directory: `cargo clean -p <our-crate>`; delete the
+  whole directory when the toolchain changes (`rm -rf "$HOME/.cache/allwin/cargo-target"`).
+- Old per-worktree `core/target` directories can be removed once the owner no longer needs them.
+
+## QA verdict runs: fresh target per SHA
+
+Verification runs in a disposable worktree at an exact SHA must not share artifacts with anything else:
+
+```bash
+cd /srv/www/allwin.worktrees/qa-<slice>-<sha7>-<agent>
+infra/scripts/allwin-heavy --fresh-target cargo test --workspace
+```
+
+`--fresh-target` sets `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target/verify-<sha12>[-dirty]-<pid>`, runs the
+command (the slot stays held), and removes that directory when the command ends, whatever its exit code.
+Several commands on the same SHA that should reuse the build: set `ALLWIN_HEAVY_KEEP_TARGET=1` and delete
+`verify-*` yourself afterwards (`rm -rf "$HOME"/.cache/allwin/cargo-target/verify-<sha12>*`). Without
+`allwin-heavy`, use `CARGO_TARGET_DIR=$PWD/core/target` in the verification worktree.
+
+## Playwright ports
+
+`web/playwright.config.ts` starts the app on `PLAYWRIGHT_PORT` (default 3100) and, outside CI, **reuses a server that
+is already listening there** (`reuseExistingServer`). Two worktrees on the same port can therefore test each other's
+build (false green or false red). `allwin-heavy` exports a free `PLAYWRIGHT_PORT` per worktree (start from a hash of the
+worktree path, first port not listening) and a matching `PLAYWRIGHT_BASE_URL`; no change to the config is needed.
+Outside the wrapper: `PLAYWRIGHT_PORT=<a free port> pnpm exec playwright test`, and stop the server afterwards.
+The API-level suite in `tests/e2e` uses a fresh compose project per run and is not affected.
+
+## Parallelism flags for the other tools
+
+The wrapper limits how many heavy jobs run, not how wide each one is. Keep each job narrow:
+`dotnet test -m:1`, `pnpm exec vitest run --maxWorkers=2`, `pnpm exec playwright test --workers=2`,
+`cargo test -- --test-threads=2` (`CARGO_BUILD_JOBS=2` and `RUST_TEST_THREADS=2` are already the defaults).
+
+## Shared compile cache (sccache)
+
+`allwin-heavy` sets `RUSTC_WRAPPER=/opt/rust/cargo/bin/sccache` (v0.18.0, prebuilt release, checksum verified) with the
+cache in `/srv/www/allwin.worktrees/.sccache` (group `devs`, setgid, 30 GB cap), run without a daemon (a background
+server would inherit the slot) and with `CARGO_INCREMENTAL=0` (sccache cannot cache incremental builds). The wrapper also
+points every account at the same toolchain (`RUSTUP_HOME=/opt/rust/rustup`, `CARGO_HOME=/opt/rust/cargo`, rustc 1.99.1)
+and runs with `umask 002`, so cache keys match across `dev2` and `dev3` and files stay group-writable.
+
+- Third-party crates hit the cache across worktrees and accounts. Our own workspace crates are keyed by path and miss
+  once per worktree (cheap).
+- A fresh target per SHA (`--fresh-target`, QA verdict runs) is therefore cheap: the dependencies come from the cache
+  and nothing from another snapshot can leak in. Use it for every verdict run.
+- `ALLWIN_HEAVY_NO_SCCACHE=1` turns the cache off (for example to rule it out when a build behaves oddly);
+  `sccache --show-stats` (with `SCCACHE_DIR` and `SCCACHE_NO_DAEMON=1` set) shows hits and misses.
+- Outside the wrapper nothing changes: plain `cargo` keeps your own `CARGO_HOME` and no cache.
