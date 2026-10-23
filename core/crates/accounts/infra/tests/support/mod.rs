@@ -19,11 +19,12 @@ use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../../migrations");
 
-const ROLES: [(&str, &str, &str); 4] = [
+const ROLES: [(&str, &str, &str); 5] = [
     ("allwin_owner", "owner-test-only", "NOBYPASSRLS"),
     ("allwin_app", "app-test-only", "NOBYPASSRLS"),
     ("allwin_worker", "worker-test-only", "BYPASSRLS"),
     ("allwin_maint", "maint-test-only", "BYPASSRLS"),
+    ("allwin_publisher", "publisher-test-only", "NOBYPASSRLS"),
 ];
 
 pub struct TestDb {

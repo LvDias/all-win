@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO catalog.preset_rule_set (preset_version_id, firm_platform, rules, stored_only)\n                   VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Jsonb",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0570cf599fbba4c755cea6311fb7bdc19819ca53499c46e6d9e644e51088b4b5"
+}

@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT kind, value, quotes, research FROM catalog.firm_stance WHERE release_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "value",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "value"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "quotes",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "quotes"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "research",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_stance",
+            "name": "research"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "32c6ff177f48a0b03100d836aedcb16547949c485c7c39935153d502e265a424"
+}

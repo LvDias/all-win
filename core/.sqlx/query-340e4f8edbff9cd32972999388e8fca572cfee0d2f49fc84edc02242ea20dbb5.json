@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT pv.preset_id, rs.firm_platform, rs.rules\n           FROM catalog.preset_version pv\n           JOIN catalog.preset_rule_set rs ON rs.preset_version_id = pv.id\n           WHERE pv.release_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "preset_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_version",
+            "name": "preset_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "firm_platform",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_rule_set",
+            "name": "firm_platform"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "rules",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.preset_rule_set",
+            "name": "rules"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "340e4f8edbff9cd32972999388e8fca572cfee0d2f49fc84edc02242ea20dbb5"
+}

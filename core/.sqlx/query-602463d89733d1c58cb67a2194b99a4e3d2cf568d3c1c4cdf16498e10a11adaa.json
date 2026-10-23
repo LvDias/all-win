@@ -1,0 +1,37 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO catalog.firm_release\n             (id, firm_id, version_number, verified_on, research_file, source_sha256, published_by,\n              changes, manual_only, excluded_plans)\n           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n           RETURNING publish_seq",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "publish_seq",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "catalog.firm_release",
+            "name": "publish_seq"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Date",
+        "Text",
+        "Bytea",
+        "Text",
+        "Jsonb",
+        "Jsonb",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "602463d89733d1c58cb67a2194b99a4e3d2cf568d3c1c4cdf16498e10a11adaa"
+}

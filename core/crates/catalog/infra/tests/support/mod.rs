@@ -19,11 +19,12 @@ use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../../migrations");
 
-const ROLES: [(&str, &str, &str); 4] = [
+const ROLES: [(&str, &str, &str); 5] = [
     ("allwin_owner", "owner-test-only", "NOBYPASSRLS"),
     ("allwin_app", "app-test-only", "NOBYPASSRLS"),
     ("allwin_worker", "worker-test-only", "BYPASSRLS"),
     ("allwin_maint", "maint-test-only", "BYPASSRLS"),
+    ("allwin_publisher", "publisher-test-only", "NOBYPASSRLS"),
 ];
 
 pub struct TestDb {
@@ -31,6 +32,8 @@ pub struct TestDb {
     /// Superuser on the test database: seeds rows of other modules (identity users) and
     /// inspects every row regardless of RLS.
     pub admin: PgPool,
+    /// `allwin_publisher` (publish-release CLI): catalog writes only.
+    pub publisher: PgPool,
 }
 
 static DATABASE: OnceLock<Option<(String, String)>> = OnceLock::new();
@@ -80,6 +83,15 @@ pub async fn db() -> Option<TestDb> {
     Some(TestDb {
         app: pool(with(admin, Some(("allwin_app", "app-test-only")), name), 8).await,
         admin: pool(with(admin, None, name), 2).await,
+        publisher: pool(
+            with(
+                admin,
+                Some(("allwin_publisher", "publisher-test-only")),
+                name,
+            ),
+            1,
+        )
+        .await,
     })
 }
 

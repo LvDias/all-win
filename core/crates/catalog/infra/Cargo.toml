@@ -23,10 +23,13 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 utoipa.workspace = true
-uuid = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["serde", "v7"] }
+# S16 (publish-release): release file schema and canonical hash.
+jsonschema.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-jsonschema.workspace = true
 async-trait.workspace = true
 http-body-util.workspace = true
 shared-kernel.workspace = true

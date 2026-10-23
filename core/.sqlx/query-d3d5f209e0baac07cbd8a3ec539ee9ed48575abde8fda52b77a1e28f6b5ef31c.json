@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO catalog.firm_release_platform (release_id, code, label, manual_only) VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d3d5f209e0baac07cbd8a3ec539ee9ed48575abde8fda52b77a1e28f6b5ef31c"
+}
