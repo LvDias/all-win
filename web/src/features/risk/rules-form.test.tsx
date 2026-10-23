@@ -322,4 +322,54 @@ describe("RulesForm", () => {
     expect(await screen.findByText("Não encontrado.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument();
   });
+
+  it("a second rules edit after a partial failure is saved too, at the version the first save returned (N1)", async () => {
+    serve();
+    const rulesBodies: Record<string, unknown>[] = [];
+    let accountCalls = 0;
+    server.use(preview(), http.put(`*/api/v1/accounts/${accountId}/risk-rules`, async ({ request }) => {
+      rulesBodies.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(rules({ version: 4 + rulesBodies.length }));
+    }), http.put(`*/api/v1/accounts/${accountId}`, () => {
+      accountCalls += 1;
+      return accountCalls === 1 ? HttpResponse.json({ error: { code: "common.invalid_request", pointer: "/commission_per_contract_side" } }, { status: 400 }) : HttpResponse.json(account({ row_version: 8 }));
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    const loss = await screen.findByLabelText("Limite de perda diária, em dólares");
+    await person.clear(loss);
+    await person.type(loss, "900");
+    const fee = screen.getByLabelText("Comissão por contrato e lado, em dólares");
+    await person.clear(fee);
+    await person.type(fee, "1");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    expect(await screen.findByText("As regras foram salvas, mas a comissão não. Corrija o campo e salve de novo.")).toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
+
+    // The user keeps editing the rules before retrying the commission (focus was moved to the commission field).
+    await person.click(loss);
+    await person.clear(loss);
+    await person.type(loss, "800");
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/pt-BR/accounts/${accountId}/risk`));
+    expect(rulesBodies).toHaveLength(2);
+    expect(rulesBodies[0]).toMatchObject({ version: 4, rules: { daily_loss_limit: { amount: "900" } } });
+    expect(rulesBodies[1]).toMatchObject({ version: 5, rules: { daily_loss_limit: { amount: "800" } } });
+  });
+
+  it("drops the firm's drawdown description when the type is no longer 'other' (nit)", async () => {
+    serve(rules({ rules: { drawdown: { type: "other", amount: "3000.00", description: "By closed balance" }, daily_loss_limit: { kind: "hard", amount: "1000.00" }, profit_target_on_reach: "notify" } }));
+    const saved: Record<string, unknown>[] = [];
+    server.use(preview(), http.put(`*/api/v1/accounts/${accountId}/risk-rules`, async ({ request }) => {
+      saved.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(rules({ version: 5 }));
+    }));
+    renderApp(<RulesForm accountId={accountId} />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("combobox", { name: /Tipo de drawdown/ }));
+    await person.click(await screen.findByRole("option", { name: "Estático" }));
+    await person.click(screen.getByRole("button", { name: "Salvar regras" }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect((saved[0]?.rules as { drawdown: Record<string, unknown> }).drawdown).toEqual({ type: "static", amount: "3000.00" });
+  });
 });

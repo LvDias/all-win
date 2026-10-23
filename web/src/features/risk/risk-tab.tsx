@@ -149,7 +149,7 @@ function RiskBody({ accountId, risk, editHref }: { accountId: string; risk: Acco
         <Alert tone="info">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>{t("commission.none")}</span>
-            <Link href={editHref} className="font-medium underline underline-offset-4">
+            <Link href={`${editHref}#commission`} className="font-medium underline underline-offset-4">
               {t("commission.inform")}
             </Link>
           </div>

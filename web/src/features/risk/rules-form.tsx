@@ -24,6 +24,7 @@ import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Spinner } from "@/shared/ui/spinner";
+import { focusOnMount } from "@/shared/lib/focus";
 import { canonicalAmount } from "./account-update";
 import { useAccount, useAccountRiskRules, usePreviewRiskRules, useRefreshAfterEdit, useSaveRiskRules, useUpdateCommission } from "./api";
 
@@ -108,8 +109,11 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
   const updateCommission = useUpdateCommission(accountId);
   const refresh = useRefreshAfterEdit();
   const submitting = useRef(false);
-  /** The rules call may succeed and the commission call fail: a retry then only repeats the commission. */
-  const rulesSaved = useRef(false);
+  /** What the Core stores now: a rules PUT that succeeds moves both forward, so a later edit sends the new version, never skips. */
+  const storedVersion = useRef(current.version);
+  const storedRules = useRef(stable(dropUndefined(current.rules)));
+  /** True when this submission already saved the rules (and the commission then failed). */
+  const rulesSavedNow = useRef(false);
   const ids = { drawdownAmount: useId(), drawdownType: useId(), dailyLoss: useId(), profitTarget: useId(), profitTargetOnReach: useId(), consistency: useId(), commission: useId(), resetTime: useId() };
   const rules = current.rules;
   const dailyLossNone = rules.daily_loss_limit?.kind === "none";
@@ -155,6 +159,11 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
+
+  // "Informar comissão" on the Risk tab lands here with #commission: put the cursor in the field.
+  useEffect(() => {
+    if (window.location.hash === "#commission") document.getElementById(fieldIds.current.commission)?.focus();
+  }, []);
 
   function focusFirst(found: Errors) {
     const first = fieldOrder.find((field) => found[field]);
@@ -206,17 +215,17 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
       ...rules,
       profit_target_on_reach: pt.value ? onReach : "notify",
       // An "other" drawdown keeps its published description; a "none" daily loss stays "none" (the firm states it).
-      drawdown: dd.value && drawdownType ? { ...rules.drawdown, type: drawdownType, amount: dd.value } : undefined,
+      drawdown: dd.value && drawdownType ? drawdownValue(rules.drawdown, drawdownType, dd.value) : undefined,
       daily_loss_limit: dailyLossNone ? rules.daily_loss_limit : dl.value ? { kind: rules.daily_loss_limit?.kind === "soft_pause" ? "soft_pause" : "hard", amount: dl.value } : undefined,
       daily_profit_target: pt.value ? { amount: pt.value } : undefined,
       consistency_threshold_pct: threshold,
       trading_day_reset: reset && resetTime !== reset.local_time ? { local_time: resetTime, time_zone: reset.time_zone } : reset,
     };
-    const rulesBody = { version: current.version, rules: dropUndefined(next) };
+    const rulesBody = { version: storedVersion.current, rules: dropUndefined(next) };
     const before = account.commission_per_contract_side;
     // `undefined` keeps the floor, `null` removes it (contract: absent = unchanged).
     const commissionChange: string | null | undefined = fee.value === undefined ? (before === undefined ? undefined : null) : before !== undefined && canonicalAmount(before) === fee.value ? undefined : fee.value;
-    const changed = stable(rulesBody.rules) !== stable(dropUndefined(rules));
+    const changed = stable(rulesBody.rules) !== storedRules.current;
     return { pending: { rules: changed ? rulesBody : null, commission: commissionChange }, errors: found };
   }
 
@@ -228,13 +237,14 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
       setErrors({ [field]: message });
       focusFirst({ [field]: message });
     }
-    if (rulesSaved.current) setFailure({ message: field ? t("errors.rulesSavedCommissionFailed") : t("errors.rulesSavedCommissionFailedWith", { message }), reload: false });
+    if (rulesSavedNow.current) setFailure({ message: field ? t("errors.rulesSavedCommissionFailed") : t("errors.rulesSavedCommissionFailedWith", { message }), reload: false });
     else if (!field) setFailure({ message, reload: false });
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (submitting.current) return;
+    rulesSavedNow.current = false;
     const built = build();
     setErrors(built.errors);
     setFailure(null);
@@ -243,7 +253,7 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
     submitting.current = true;
     setPending(true);
     try {
-      if (built.pending.rules && !rulesSaved.current) {
+      if (built.pending.rules) {
         const effect = await preview.mutateAsync(built.pending.rules);
         if (effect.would_be_reached) {
           setConfirmReached({ rules: { ...built.pending.rules, acknowledge_reached: true }, commission: built.pending.commission });
@@ -261,9 +271,11 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
 
   /** Rules first (the commission change bumps the limits version they were read at), then the account's commission floor. */
   async function persist(work: Pending) {
-    if (work.rules && !rulesSaved.current) {
-      await save.mutateAsync(work.rules);
-      rulesSaved.current = true;
+    if (work.rules) {
+      const saved = await save.mutateAsync(work.rules);
+      storedVersion.current = saved.version;
+      storedRules.current = stable(work.rules.rules);
+      rulesSavedNow.current = true;
     }
     if (work.commission !== undefined) await updateCommission.mutateAsync({ account, commission: work.commission });
     refresh();
@@ -292,12 +304,12 @@ function Editor({ accountId, current, account, onReload }: { accountId: string; 
     <form onSubmit={(event) => void submit(event)} className="grid max-w-180 gap-4" noValidate>
       <PageHeader title={t("title")} description={t("description")} />
       {errorList.length >= 3 ? (
-        <Alert tone="danger" tabIndex={-1} ref={(node) => node?.focus()}>
+        <Alert tone="danger" tabIndex={-1} ref={focusOnMount}>
           {t("summary", { count: errorList.length })}
         </Alert>
       ) : null}
       {failure ? (
-        <Alert tone="danger" tabIndex={-1} ref={(node) => node?.focus()}>
+        <Alert tone="danger" tabIndex={-1} ref={focusOnMount}>
           <div className="grid gap-2">
             <p>{failure.message}</p>
             {failure.reload ? (
@@ -503,6 +515,13 @@ function FieldRow({ id, label, error, help, parsed, children }: { id: string; la
       ) : null}
     </div>
   );
+}
+
+/** A drawdown rewritten with a chosen type and amount: only the firm's own `other` rule keeps its description. */
+function drawdownValue(base: RiskRules["drawdown"], type: DrawdownType, amount: string): NonNullable<RiskRules["drawdown"]> {
+  const next = { ...base, type, amount };
+  if (type !== "other") delete next.description;
+  return next;
 }
 
 /** The contract rejects `null`; an absent rule means "not set". */

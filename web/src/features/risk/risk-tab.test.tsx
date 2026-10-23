@@ -83,7 +83,7 @@ describe("RiskTab", () => {
     serve(risk({ commission_source: "none" }));
     renderApp(<RiskTab accountId={accountId} />);
     expect(await screen.findByText(/Comissão não informada: os limites podem estar folgados demais/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Informar comissão" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Informar comissão" })).toHaveAttribute("href", `/pt-BR/accounts/${accountId}/risk/edit#commission`);
   });
 
   it("refetches and announces only a change of state from the stream", async () => {

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Spinner } from "@/shared/ui/spinner";
+import { focusOnMount } from "@/shared/lib/focus";
 import { isZeroAmount } from "./amounts";
 import { riskQueryKey, useAccount, useRestartEvaluation } from "./api";
 
@@ -92,7 +93,7 @@ export function RestartEvaluationDialog({ accountId, currentStart, currentEarned
               <DialogDescription>{t("description")}</DialogDescription>
             </DialogHeader>
             {failure ? (
-              <Alert tone="danger" tabIndex={-1} ref={(node) => node?.focus()}>
+              <Alert tone="danger" tabIndex={-1} ref={focusOnMount}>
                 <div className="grid gap-2">
                   <p>{failure.message}</p>
                   {failure.reload ? (
