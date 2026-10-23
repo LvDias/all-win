@@ -1648,10 +1648,12 @@ name = "routing-infra"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "routing-application",
  "serde_json",
  "shared-kernel",
  "sqlx",
+ "tokio",
  "uuid",
 ]
 

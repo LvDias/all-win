@@ -16,3 +16,8 @@ serde_json.workspace = true
 shared-kernel = { workspace = true, features = ["sqlx"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "macros"] }
 uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+chrono.workspace = true
+sqlx = { workspace = true, features = ["migrate"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
