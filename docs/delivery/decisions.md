@@ -133,3 +133,11 @@
 
 ## 2026-10-23 — Correction: Q73/Q74 canonical contract version
 - **Correction (not a new decision):** the Q73/Q74 entry above lists "HTTP contract 4.4.0 queue" as a canonical document. The change shipped as HTTP contract **5.0.0** (major, ba676fd), extended by 5.1.0 (66f77f0). Q73 applies to any prop account outside the standard size list, manual or preset (slice-plan S6 AC-8, d/product c94caa8).
+
+## 2026-10-23 — Q75 close on an out-of-sync account that All Win believes is flat
+- **Decision (Q75): (b).** A close (including the closing leg of a barred reverse, Q74) on an out-of-sync account is always sent to the platform as a flatten, even when All Win believes the account is flat; the plugin checks the real position and reports `already_flat`. Extends P1 (exits are never blocked). Option (a), trust All Win's position and send nothing, rejected.
+- **Canonical docs:** ADR-0003 / ADR-0004 and adapter protocol (Architect); slice-plan S7 (PO); HTTP contract if exposed (Compasso).
+
+## 2026-10-23 — VPS Phase 2 progress (user report)
+- **Fact:** RDP reachable only over the tailnet (rules restricted to 100.64.0.0/10, public IP refuses); `allwin-agent` created (Remote Desktop Users, not admin); NinjaTrader 8 installed, not logged in; OpenSSH Server present, stopped, manual start. Not yet done: Tailscale policy/tag, Tailnet Lock, Forja's scripts.
+- **Decision:** migration 061300 is brought to the user when it is due.
