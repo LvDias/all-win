@@ -13,3 +13,9 @@ workspace = true
 async-trait.workspace = true
 catalog-enterprise.workspace = true
 thiserror.workspace = true
+chrono = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

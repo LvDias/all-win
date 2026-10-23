@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (\n                 SELECT 1 FROM accounts.account\n                  WHERE user_id = $1 AND archived_at IS NULL AND lower(display_name) = lower($2)\n                    AND id IS DISTINCT FROM $3) AS \"taken!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "taken!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "0e8a7ec0db66c80033e11ab55fe923eb2a6c87569f8ff3e31dd01645e29df983"
+}

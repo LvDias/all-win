@@ -1,0 +1,785 @@
+{
+ "FirmPlatform": {
+  "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+  "pattern": "^[a-z][a-z0-9_]{0,31}$",
+  "type": "string"
+ },
+ "OptInRules": {
+  "additionalProperties": false,
+  "properties": {
+   "automation": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "else": {
+       "required": [
+        "firm_id",
+        "firm_name"
+       ]
+      },
+      "if": {
+       "properties": {
+        "is_generic": {
+         "const": true
+        }
+       }
+      },
+      "then": {
+       "not": {
+        "anyOf": [
+         {
+          "required": [
+           "firm_id"
+          ]
+         },
+         {
+          "required": [
+           "firm_name"
+          ]
+         },
+         {
+          "required": [
+           "research"
+          ]
+         },
+         {
+          "required": [
+           "firm_platform"
+          ]
+         }
+        ]
+       },
+       "properties": {
+        "firm_stance": {
+         "const": "unknown"
+        },
+        "quotes": {
+         "maxItems": 0
+        }
+       }
+      }
+     }
+    ],
+    "properties": {
+     "change": {
+      "additionalProperties": false,
+      "description": "Present when this version replaced an earlier one for the same preset selection and kind.",
+      "properties": {
+       "cause": {
+        "description": "`stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the\ntext case is Q42: the publisher flagged it as material). `not_material` never\nsuspends (typo or format fix).\n",
+        "enum": [
+         "stance_changed",
+         "text_changed",
+         "not_material"
+        ],
+        "type": "string"
+       },
+       "previous_firm_stance": {
+        "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+        "enum": [
+         "allowed",
+         "forbidden",
+         "conditional",
+         "unknown",
+         "not_confirmed"
+        ],
+        "type": "string"
+       },
+       "previous_rule_version_id": {
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       "reason": {
+        "additionalProperties": false,
+        "description": "The publisher's explanation shown to the user, present with `text_changed` (Q42 a: the publisher flags the change and records why); optional in the schema for compatibility.",
+        "properties": {
+         "en": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+         },
+         "pt-BR": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+         }
+        },
+        "required": [
+         "pt-BR",
+         "en"
+        ],
+        "type": "object"
+       }
+      },
+      "required": [
+       "previous_rule_version_id",
+       "previous_firm_stance",
+       "cause"
+      ],
+      "type": "object"
+     },
+     "firm_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "firm_name": {
+      "maxLength": 120,
+      "type": "string"
+     },
+     "firm_platform": {
+      "description": "The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules.",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$",
+      "type": "string"
+     },
+     "firm_stance": {
+      "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+      "enum": [
+       "allowed",
+       "forbidden",
+       "conditional",
+       "unknown",
+       "not_confirmed"
+      ],
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "is_generic": {
+      "description": "True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning).",
+      "type": "boolean"
+     },
+     "kind": {
+      "enum": [
+       "automation",
+       "copy"
+      ],
+      "type": "string"
+     },
+     "published_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "type": "string"
+     },
+     "quotes": {
+      "description": "Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the\nconflicting quotes, each with its own source and date.\n",
+      "items": {
+       "additionalProperties": false,
+       "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text \u2014 clients render it as text, never as HTML or Markdown (QA Security I2).",
+       "properties": {
+        "accessed_at": {
+         "description": "Date the page was read (YYYY-MM-DD).",
+         "format": "date",
+         "type": "string"
+        },
+        "language": {
+         "description": "BCP 47, e.g. 'en'.",
+         "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+         "type": "string"
+        },
+        "page_title": {
+         "maxLength": 300,
+         "type": "string"
+        },
+        "section": {
+         "description": "Heading of the quoted part of the page, if any.",
+         "maxLength": 300,
+         "type": "string"
+        },
+        "text": {
+         "maxLength": 20000,
+         "minLength": 1,
+         "type": "string"
+        },
+        "url": {
+         "format": "uri",
+         "maxLength": 2048,
+         "pattern": "^https://",
+         "type": "string"
+        }
+       },
+       "required": [
+        "text",
+        "language",
+        "page_title",
+        "url",
+        "accessed_at"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "research": {
+      "additionalProperties": false,
+      "description": "With `unknown` (not generic) \u2014 where the publisher looked and found no rule.",
+      "properties": {
+       "searched_on": {
+        "format": "date",
+        "type": "string"
+       },
+       "sources": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "page_title": {
+           "maxLength": 300,
+           "type": "string"
+          },
+          "url": {
+           "format": "uri",
+           "maxLength": 2048,
+           "pattern": "^https://",
+           "type": "string"
+          }
+         },
+         "required": [
+          "page_title",
+          "url"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       }
+      },
+      "required": [
+       "searched_on",
+       "sources"
+      ],
+      "type": "object"
+     },
+     "version_number": {
+      "minimum": 1,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "kind",
+     "firm_stance",
+     "is_generic",
+     "version_number",
+     "published_at",
+     "quotes"
+    ],
+    "type": "object"
+   },
+   "copy": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "else": {
+       "required": [
+        "firm_id",
+        "firm_name"
+       ]
+      },
+      "if": {
+       "properties": {
+        "is_generic": {
+         "const": true
+        }
+       }
+      },
+      "then": {
+       "not": {
+        "anyOf": [
+         {
+          "required": [
+           "firm_id"
+          ]
+         },
+         {
+          "required": [
+           "firm_name"
+          ]
+         },
+         {
+          "required": [
+           "research"
+          ]
+         },
+         {
+          "required": [
+           "firm_platform"
+          ]
+         }
+        ]
+       },
+       "properties": {
+        "firm_stance": {
+         "const": "unknown"
+        },
+        "quotes": {
+         "maxItems": 0
+        }
+       }
+      }
+     }
+    ],
+    "properties": {
+     "change": {
+      "additionalProperties": false,
+      "description": "Present when this version replaced an earlier one for the same preset selection and kind.",
+      "properties": {
+       "cause": {
+        "description": "`stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the\ntext case is Q42: the publisher flagged it as material). `not_material` never\nsuspends (typo or format fix).\n",
+        "enum": [
+         "stance_changed",
+         "text_changed",
+         "not_material"
+        ],
+        "type": "string"
+       },
+       "previous_firm_stance": {
+        "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+        "enum": [
+         "allowed",
+         "forbidden",
+         "conditional",
+         "unknown",
+         "not_confirmed"
+        ],
+        "type": "string"
+       },
+       "previous_rule_version_id": {
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       "reason": {
+        "additionalProperties": false,
+        "description": "The publisher's explanation shown to the user, present with `text_changed` (Q42 a: the publisher flags the change and records why); optional in the schema for compatibility.",
+        "properties": {
+         "en": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+         },
+         "pt-BR": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+         }
+        },
+        "required": [
+         "pt-BR",
+         "en"
+        ],
+        "type": "object"
+       }
+      },
+      "required": [
+       "previous_rule_version_id",
+       "previous_firm_stance",
+       "cause"
+      ],
+      "type": "object"
+     },
+     "firm_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "firm_name": {
+      "maxLength": 120,
+      "type": "string"
+     },
+     "firm_platform": {
+      "description": "The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules.",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$",
+      "type": "string"
+     },
+     "firm_stance": {
+      "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+      "enum": [
+       "allowed",
+       "forbidden",
+       "conditional",
+       "unknown",
+       "not_confirmed"
+      ],
+      "type": "string"
+     },
+     "id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "is_generic": {
+      "description": "True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning).",
+      "type": "boolean"
+     },
+     "kind": {
+      "enum": [
+       "automation",
+       "copy"
+      ],
+      "type": "string"
+     },
+     "published_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "type": "string"
+     },
+     "quotes": {
+      "description": "Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the\nconflicting quotes, each with its own source and date.\n",
+      "items": {
+       "additionalProperties": false,
+       "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text \u2014 clients render it as text, never as HTML or Markdown (QA Security I2).",
+       "properties": {
+        "accessed_at": {
+         "description": "Date the page was read (YYYY-MM-DD).",
+         "format": "date",
+         "type": "string"
+        },
+        "language": {
+         "description": "BCP 47, e.g. 'en'.",
+         "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+         "type": "string"
+        },
+        "page_title": {
+         "maxLength": 300,
+         "type": "string"
+        },
+        "section": {
+         "description": "Heading of the quoted part of the page, if any.",
+         "maxLength": 300,
+         "type": "string"
+        },
+        "text": {
+         "maxLength": 20000,
+         "minLength": 1,
+         "type": "string"
+        },
+        "url": {
+         "format": "uri",
+         "maxLength": 2048,
+         "pattern": "^https://",
+         "type": "string"
+        }
+       },
+       "required": [
+        "text",
+        "language",
+        "page_title",
+        "url",
+        "accessed_at"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "research": {
+      "additionalProperties": false,
+      "description": "With `unknown` (not generic) \u2014 where the publisher looked and found no rule.",
+      "properties": {
+       "searched_on": {
+        "format": "date",
+        "type": "string"
+       },
+       "sources": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "page_title": {
+           "maxLength": 300,
+           "type": "string"
+          },
+          "url": {
+           "format": "uri",
+           "maxLength": 2048,
+           "pattern": "^https://",
+           "type": "string"
+          }
+         },
+         "required": [
+          "page_title",
+          "url"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       }
+      },
+      "required": [
+       "searched_on",
+       "sources"
+      ],
+      "type": "object"
+     },
+     "version_number": {
+      "minimum": 1,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "kind",
+     "firm_stance",
+     "is_generic",
+     "version_number",
+     "published_at",
+     "quotes"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "automation",
+   "copy"
+  ],
+  "type": "object"
+ },
+ "RuleVersion": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "else": {
+     "required": [
+      "firm_id",
+      "firm_name"
+     ]
+    },
+    "if": {
+     "properties": {
+      "is_generic": {
+       "const": true
+      }
+     }
+    },
+    "then": {
+     "not": {
+      "anyOf": [
+       {
+        "required": [
+         "firm_id"
+        ]
+       },
+       {
+        "required": [
+         "firm_name"
+        ]
+       },
+       {
+        "required": [
+         "research"
+        ]
+       },
+       {
+        "required": [
+         "firm_platform"
+        ]
+       }
+      ]
+     },
+     "properties": {
+      "firm_stance": {
+       "const": "unknown"
+      },
+      "quotes": {
+       "maxItems": 0
+      }
+     }
+    }
+   }
+  ],
+  "properties": {
+   "change": {
+    "additionalProperties": false,
+    "description": "Present when this version replaced an earlier one for the same preset selection and kind.",
+    "properties": {
+     "cause": {
+      "description": "`stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the\ntext case is Q42: the publisher flagged it as material). `not_material` never\nsuspends (typo or format fix).\n",
+      "enum": [
+       "stance_changed",
+       "text_changed",
+       "not_material"
+      ],
+      "type": "string"
+     },
+     "previous_firm_stance": {
+      "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+      "enum": [
+       "allowed",
+       "forbidden",
+       "conditional",
+       "unknown",
+       "not_confirmed"
+      ],
+      "type": "string"
+     },
+     "previous_rule_version_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "reason": {
+      "additionalProperties": false,
+      "description": "The publisher's explanation shown to the user, present with `text_changed` (Q42 a: the publisher flags the change and records why); optional in the schema for compatibility.",
+      "properties": {
+       "en": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+       },
+       "pt-BR": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "pt-BR",
+       "en"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "previous_rule_version_id",
+     "previous_firm_stance",
+     "cause"
+    ],
+    "type": "object"
+   },
+   "firm_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "firm_name": {
+    "maxLength": 120,
+    "type": "string"
+   },
+   "firm_platform": {
+    "description": "The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules.",
+    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+    "type": "string"
+   },
+   "firm_stance": {
+    "description": "Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.",
+    "enum": [
+     "allowed",
+     "forbidden",
+     "conditional",
+     "unknown",
+     "not_confirmed"
+    ],
+    "type": "string"
+   },
+   "id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "is_generic": {
+    "description": "True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning).",
+    "type": "boolean"
+   },
+   "kind": {
+    "enum": [
+     "automation",
+     "copy"
+    ],
+    "type": "string"
+   },
+   "published_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   },
+   "quotes": {
+    "description": "Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the\nconflicting quotes, each with its own source and date.\n",
+    "items": {
+     "additionalProperties": false,
+     "description": "A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text \u2014 clients render it as text, never as HTML or Markdown (QA Security I2).",
+     "properties": {
+      "accessed_at": {
+       "description": "Date the page was read (YYYY-MM-DD).",
+       "format": "date",
+       "type": "string"
+      },
+      "language": {
+       "description": "BCP 47, e.g. 'en'.",
+       "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+       "type": "string"
+      },
+      "page_title": {
+       "maxLength": 300,
+       "type": "string"
+      },
+      "section": {
+       "description": "Heading of the quoted part of the page, if any.",
+       "maxLength": 300,
+       "type": "string"
+      },
+      "text": {
+       "maxLength": 20000,
+       "minLength": 1,
+       "type": "string"
+      },
+      "url": {
+       "format": "uri",
+       "maxLength": 2048,
+       "pattern": "^https://",
+       "type": "string"
+      }
+     },
+     "required": [
+      "text",
+      "language",
+      "page_title",
+      "url",
+      "accessed_at"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "research": {
+    "additionalProperties": false,
+    "description": "With `unknown` (not generic) \u2014 where the publisher looked and found no rule.",
+    "properties": {
+     "searched_on": {
+      "format": "date",
+      "type": "string"
+     },
+     "sources": {
+      "items": {
+       "additionalProperties": false,
+       "properties": {
+        "page_title": {
+         "maxLength": 300,
+         "type": "string"
+        },
+        "url": {
+         "format": "uri",
+         "maxLength": 2048,
+         "pattern": "^https://",
+         "type": "string"
+        }
+       },
+       "required": [
+        "page_title",
+        "url"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "searched_on",
+     "sources"
+    ],
+    "type": "object"
+   },
+   "version_number": {
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "id",
+   "kind",
+   "firm_stance",
+   "is_generic",
+   "version_number",
+   "published_at",
+   "quotes"
+  ],
+  "type": "object"
+ }
+}

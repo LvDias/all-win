@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 access = { workspace = true, features = ["axum"] }
 adapter-tradingview.workspace = true
+accounts-infra.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 audit-application.workspace = true

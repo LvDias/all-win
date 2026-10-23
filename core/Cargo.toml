@@ -30,6 +30,9 @@ identity-infra = { path = "crates/identity/infra" }
 catalog-enterprise = { path = "crates/catalog/enterprise" }
 catalog-application = { path = "crates/catalog/application" }
 catalog-infra = { path = "crates/catalog/infra" }
+accounts-enterprise = { path = "crates/accounts/enterprise" }
+accounts-application = { path = "crates/accounts/application" }
+accounts-infra = { path = "crates/accounts/infra" }
 routing-enterprise = { path = "crates/routing/enterprise" }
 routing-application = { path = "crates/routing/application" }
 routing-infra = { path = "crates/routing/infra" }

@@ -32,6 +32,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     let mut doc = CoreApi::openapi();
     doc.merge(adapter_tradingview::IngressApi::openapi());
     doc.merge(identity_infra::http::IdentityApi::openapi());
+    doc.merge(accounts_infra::http::AccountsApi::openapi());
+    doc.merge(catalog_infra::rule_version_http::RuleVersionApi::openapi());
     add_security_schemes(&mut doc);
     mark_public_operations(&mut doc);
     doc
@@ -47,6 +49,13 @@ pub fn document() -> Result<Value, serde_json::Error> {
         .and_then(Value::as_object_mut)
     {
         schemas.insert(INSTRUCTION_COMPONENT.to_owned(), instruction);
+        // Contract components with if/then/not rules utoipa cannot model (accounts, S5).
+        for (name, schema) in accounts_infra::http::schemas::raw_components()
+            .into_iter()
+            .chain(catalog_infra::rule_version_http::raw_components())
+        {
+            schemas.insert(name.to_owned(), schema);
+        }
     }
     Ok(doc)
 }
