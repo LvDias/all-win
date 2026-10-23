@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.14 (3452f0f); **rev. 16.15 proposed** (Ferro; Esmeril nits on 16.14): the `instruction_purge_receipt_hash` statement trigger clears the receipt hash on every instruction delete (§6.1, §6.5, §8); a duplicated sentence removed.
+- **Status:** Accepted (2026-10-24), rev. 16.15 (187f218); **rev. 16.16 proposed**: `gateway.intake_dead_letter` (#9c `…061620`, Bigorna; ADR-0004 r5 §4, Esquadro): the only copy of a frame, never purged before an operator decision, recovery by Core re-process (§6.3, §6.5, §8); 061300 and 061310 authorized by the user on 2026-10-24 (§8).
+- Rev. 16.15 (187f218) (Ferro; Esmeril nits on 16.14): the `instruction_purge_receipt_hash` statement trigger clears the receipt hash on every instruction delete (§6.1, §6.5, §8); a duplicated sentence removed.
 - Rev. 16.14 (3452f0f) (Esquadro FINAL, duplicate after the purge): `body_sha256` lives only as long as the content; the Q13-b purge clears it and stamps `content_purged_at` in the same batch; a re-send after the purge is `ingress.duplicate_ignored` with `content_not_retained: true`; no HMAC, no per-field hashes (§6.1, §8); the `presets.version_available` UUIDv5 namespace and test vector (§5.7).
 - Rev. 16.13 (590e5bb) (Esquadro; Esmeril L1/L2 on 16.12): the publish CLI refuses `not_material` releases until the re-point path exists, and the job never skips one silently; the UUIDv5 namespace and name bytes for `presets.version_available` (§5.7).
 - Rev. 16.12 (c2b143a) (S16 job, Torno; Esquadro): #11d `…061730` worker column grant on `accounts.account`; conditional-UPDATE idempotency; `not_material` re-point with `accounts.opt_in_rule_updated`; deterministic outbox id for `presets.version_available` (§5.7, §8).
@@ -1552,6 +1553,50 @@ CREATE INDEX deferred_inbound_pending_idx ON gateway.deferred_inbound (type, seq
   - **Erasure (rev. 16.11, Esmeril L2):** Q13-b erasure deletes the user's `deferred_inbound` rows, **unprocessed ones included**. They hold user payloads (risk events, trade P&L) that would otherwise wait for a consumer slice. `allwin_maint` already has `DELETE`.
   - A frame that fails the schema stays `protocol.invalid_message`, without ack and without a row. Nothing reaches the user before the consumer slices exist.
   - A new deferred type widens the `type` `CHECK` in a forward migration.
+
+```sql
+-- rev. 16.16, migration #9c `…061620` gateway_create_intake_dead_letter (Bigorna; ADR-0004 r5 §4, Crivo R2,
+-- Esquadro + Pêndulo): after 3 consecutive intake_retry closes for one msg_id, the Core stores the frame here,
+-- acks it and lets the connection's queue move on.
+CREATE TABLE gateway.intake_dead_letter (
+  id               uuid PRIMARY KEY,
+  connection_id    uuid NOT NULL,
+  msg_id           uuid NOT NULL,
+  user_id          uuid NOT NULL,                        -- the session's resolved user
+  account_id       uuid,                                 -- when the frame names one (sync.command_unknown goes there)
+  type             text NOT NULL CHECK (type ~ '^[a-z][a-z_]*$'),
+  protocol_version text NOT NULL CHECK (protocol_version ~ '^1\.(0|[1-9][0-9]*)$'),
+  frame            text NOT NULL,                        -- the frame as received: after the ack it is the ONLY copy
+  frame_redacted   boolean NOT NULL DEFAULT false,       -- true: a token shape was masked, so it cannot be replayed
+  failures         smallint NOT NULL CHECK (failures >= 3),
+  last_error       text NOT NULL CHECK (char_length(last_error) <= 500),   -- error class, never payload
+  dead_lettered_at timestamptz NOT NULL DEFAULT now(),
+  status           text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','applied','discarded')),
+  decided_at       timestamptz,
+  decided_by       text CHECK (decided_by ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),   -- operator label, never an e-mail
+  decision_reason  text CHECK (char_length(decision_reason) <= 500),
+  UNIQUE (connection_id, msg_id),
+  CONSTRAINT intake_dead_letter_decision_check CHECK ((status = 'pending') = (decided_at IS NULL)
+             AND (decided_at IS NULL) = (decided_by IS NULL)),
+  CONSTRAINT intake_dead_letter_replay_check CHECK (status <> 'applied' OR NOT frame_redacted),
+  CONSTRAINT intake_dead_letter_no_token CHECK (frame !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
+             AND last_error !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
+             AND coalesce(decision_reason, '') !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
+);
+CREATE INDEX intake_dead_letter_pending_idx ON gateway.intake_dead_letter (dead_lettered_at) WHERE status = 'pending';
+-- RLS owner policy. allwin_app: INSERT, SELECT, UPDATE (status, decided_at, decided_by, decision_reason), no DELETE;
+-- allwin_worker: SELECT (alert on pending rows); allwin_maint: SELECT, DELETE (decided rows only, see below).
+```
+
+- **Intake dead letter (rev. 16.16, #9c `…061620`; ADR-0004 r5 §4, Esquadro):**
+  - **It is the only copy.** After the ack, the adapter deletes the frame from its outbox and its journal marks the fill as reported, so no catch-up reports it again. So a `pending` row is **never purged** (no automatic purge, no retention job) until an operator decides: `applied` (re-processed after the cause is fixed) or `discarded` (with audit and a reason).
+  - **Recovery is a Core re-process of the stored `frame`** through the normal intake path, never a request to the plugin. The result must equal a normal intake. `execution_report.event_id` and the fill dedupe make a second application a no-op. Test: a frame goes to the dead letter, is acked, and its later re-process gives the same rows as a normal intake.
+  - The same transaction inserts the `inbound_receipt`, so a retransmission is a duplicate. It also flags the named account `out_of_sync` with `sync.command_unknown`, with the instrument in the details; a frame without `command_id` uses the same reason. A critical operator alert fires in every case.
+  - The 3-failure count is kept in the gateway's memory per `(connection_id, msg_id)`. A gateway restart resets it, which only adds retries.
+  - **A frame with a token shape** fails the no-token `CHECK`. It is then stored with the token masked and `frame_redacted = true`. It cannot be applied (`CHECK`); the operator discards it with audit. A secret is never stored.
+  - **Decisions** run as `allwin_app` with `app.user_id` = the row's user (operator command, as for admin recovery), and are audited.
+  - **Retention:** a decided row is purged 90 days after `decided_at` (`allwin_maint`); `pending` rows never are. Q13-b erasure deletes the user's rows, pending included, together with the account's other data.
+  - Tests: pending is never purged by the retention job; applied with a redacted frame fails; the decision fields come as a set; cross-user reads return 0 rows.
   - Tests: a retransmitted frame is a no-op (receipt and PK); the app cannot `UPDATE payload` or `DELETE`; cross-user reads return 0 rows; the worker reads pending rows and cannot write.
 
 - **Rev. 16.6 (migration #9 `…061600`, Bigorna; S11 storage, Compasso; Esquadro B4 = b):**
@@ -1790,6 +1835,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
 | `app.outbox` (done for every registered consumer, or of an allowlisted no-consumer type; §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
 | `risk.applied_fill` (rev. 16.6) | `(account_id, fill_id)` | no | 30 days after its `trading_date` (`allwin_maint`) |
+| `gateway.intake_dead_letter` (rev. 16.16) | `(connection_id, msg_id)` | no | `pending`: **never purged** until an operator decision; decided: 90 days after `decided_at` |
 | `gateway.deferred_inbound` (processed; rev. 16.10) | `(connection_id, msg_id)` | no | 7 days after `processed_at`; unprocessed rows are kept |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 | `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
@@ -1970,8 +2016,8 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 5c | `accounts_create_bracket_profiles` (`…061100`, rev. 16): `default_bracket_profile`, `account_bracket_profile` | S6 (Torno); after #5 |
 | 6 | `routing_create_instruction`: `message_receipt`, `instruction` | S1 |
 | 6b | `routing_create_decision_subscription` (`…061200`): `routing_decision`, `subscription` (with `row_version`, rev. 8) | S7 (Ferro); after #6 |
-| 6c | `routing_message_id_no_token_check` (`…061300`, reserved): the §6.4 no-token `CHECK` on `routing.message_receipt` / `routing.instruction`; narrowing, so it needs explicit user authorization first | Ferro |
-| 2d | `identity_source_name_check` (`…061310`, reserved, rev. 16.4): `CHECK` `source_name_shape_check` on `identity.source.name`: 1..60 chars as the contract `DisplayName`, not blank, no token shape (`NOT VALID` + `VALIDATE`); an empty or token-shaped name would dead-letter every ingress audit event of the source; narrowing, so it needs explicit user authorization first | Brasa (identity) |
+| 6c | `routing_message_id_no_token_check` (`…061300`, **authorized by the user 2026-10-24**): the §6.4 no-token `CHECK` on `routing.message_receipt` / `routing.instruction` (`NOT VALID` + `VALIDATE`; no data deleted) | Ferro |
+| 2d | `identity_source_name_check` (`…061310`, reserved, rev. 16.4): `CHECK` `source_name_shape_check` on `identity.source.name`: 1..60 chars as the contract `DisplayName`, not blank, no token shape (`NOT VALID` + `VALIDATE`); an empty or token-shaped name would dead-letter every ingress audit event of the source; **authorized by the user 2026-10-24** (no data deleted); lands after the domain `DisplayName` rule | Brasa (identity) |
 | 7 | `audit_create_audit_entry`: partitioned table, first partitions, default partition, immutability trigger and grants | S1 (M1 shows "received") |
 | 1c | `app_outbox_seq` (`…060610`, rev. 16.2): `app.outbox.seq` identity column (§6.4) | Ferro (`s/v1-audit-codes--core`); before #7b |
 | 7b | `audit_entry_activity_columns` (`…060620`, rev. 16.2): the S10 columns and constraints on the partitioned table (see below) | Ferro (`s/v1-audit-codes--core`); after #1c |
@@ -1981,6 +2027,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 10 | `risk_create_account_limits` (`…061500`, rev. 13/16.6): `account_limits`, `scheduled_limit` (derived), `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block`, with RLS; the rev. 16.6 grants (§5.6) | S13 (Malha) |
 | 10b | `risk_create_applied_fill` (`…061510`, rev. 16.6): `risk.applied_fill` + maint grants (§5.6) | S13 (Malha); after #10 |
 | 6d | `routing_message_receipt_body_hash` (`…061250`, rev. 16.8/16.14): `body_sha256` + `content_purged_at` + `NOT VALID` hash-or-purged `CHECK`, maint column `UPDATE`, the `instruction_purge_receipt_hash` statement trigger (rev. 16.15) (§6.1) | Ferro; expand-only |
+| 9c | `gateway_create_intake_dead_letter` (`…061620`, rev. 16.16): `gateway.intake_dead_letter` (§6.3) | Bigorna; after #9b |
 | 9b | `gateway_create_deferred_inbound` (`…061610`, rev. 16.10): `gateway.deferred_inbound` (§6.3) | Bigorna; after #9 |
 | 9 | `gateway_create_delivery` (`…061600`, rev. 16.6): `venue_account` (without the binding, rev. 16), `command` (with `frame`, `position_effect`, contract), `execution_report` (with `seq`, contract), `account_sync` (with `version`), `account_sync_reason` (per occurrence), `outbound_message` (with `frame`), `inbound_receipt` | Bigorna (gateway); S2 / M1 |
 | 11 | `catalog_create_presets` (`…061700`, rev. 10/16.8): the §5.7 catalog tables, `publish_seq`, `allwin_publisher` grants; #11b `catalog_opt_in_rule_version_release` (`…061710`) is the forward change on `opt_in_rule_version` | S16 (Torno); after S5 (#5a) |
@@ -1998,7 +2045,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
