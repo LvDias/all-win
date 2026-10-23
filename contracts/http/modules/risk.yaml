@@ -63,6 +63,13 @@ paths:
       description: |
         An absent optional rule means "not set" (no warning, no refusal for it). Provisional (Q48):
         a stricter value applies at once, a looser one from the next trading day (`AccountRisk.pending_changes`).
+        Looser means a higher limit or target, and also: removing a rule (absent = no limit), changing
+        `profit_target_on_reach` from `flatten_and_block` to `notify`, and changing `daily_loss_limit.kind`
+        from `hard` to `soft_pause` or `none` (QA Security L1); each is audited and listed in
+        `pending_changes` until it applies. The latest save of a rule wins over an earlier pending value
+        (ADR-0006 §3.7). Any write of the account's limits (this operation, `applyPresetVersion`,
+        `restorePresetValue`, a preset re-selection in `updateAccount`) bumps the version, so a form
+        opened before it gets 409 `common.version_conflict`.
         When the new rules would already be reached today, the body must carry `acknowledge_reached: true`
         (the dialog of the edit form; `previewAccountRiskRules` tells beforehand), else 409
         `risk.reached_not_acknowledged` and nothing is saved. The rule values belong to the account
@@ -183,7 +190,7 @@ components:
           description: Default `notify` (Q3). `flatten_and_block` only with enforcement on (Q49, provisional); it falls back to `notify` if enforcement is turned off later (Q63, provisional).
         consistency_threshold_pct:
           type: string
-          pattern: '^(100|[0-9]{1,2})(\.[0-9])?$'
+          pattern: '^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$'
           description: Prop with a consistency rule only; the tracked threshold, 0–100 with at most one decimal (Q-S13-7). Never enforced (S13 AC-6).
         trading_day_reset:
           description: Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the CME session close.
@@ -235,11 +242,13 @@ components:
         kind: { $ref: '#/components/schemas/RiskRuleKind' }
         state: { $ref: '#/components/schemas/RiskState' }
         limit:
-          description: The limit or target in force today (for `consistency` the threshold, as a percent string).
+          description: The limit or target in force today — money (`Money` pattern), or for `consistency` the threshold as a percent string.
           type: string
+          pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
         used:
-          description: Today's value against the limit (loss used, drawdown used, profit made; for `consistency` the largest day's share of total profit, as a percent string).
+          description: Today's value against the limit (loss used, drawdown used, profit made — money; for `consistency` the largest day's share of total profit, as a percent string).
           type: string
+          pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
         percent:
           type: integer
           minimum: 0
@@ -311,7 +320,11 @@ components:
             properties:
               kind: { $ref: '#/components/schemas/RiskRuleKind' }
               effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
-              new_limit: { type: string, description: 'The new limit (decimal string; a percent for consistency).' }
+              new_limit:
+                type: string
+                pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
+                description: The new limit (money as a decimal string; a percent for consistency). Absent when the change removes the rule or changes only a kind or `profit_target_on_reach`.
+              change: { type: string, enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened] }
     RiskSummaryList:
       type: object
       additionalProperties: false
@@ -341,7 +354,7 @@ components:
       type: object
       additionalProperties: false
       required: [type, at, account_id, state, stale]
-      description: The risk state, staleness, block or trading day of an account changed (not on every tick); the client refetches `getAccountRisk` / `listRiskSummaries`.
+      description: The risk state, staleness, block or trading day of an account changed (not on every tick); sent only to the account's owner, like every SSE event; the client refetches `getAccountRisk` / `listRiskSummaries`.
       properties:
         type: { const: risk.state_changed }
         at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }

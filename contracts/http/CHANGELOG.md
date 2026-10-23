@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 3.2.0 — 2026-10-23 (V1-S18 notifications; additive) — notes: docs/architecture/contracts/s18-notifications.md
+- Module `notifications`: `listNotifications` (status, category, account; MAC cursor; critical unread first), `getUnreadCount`, `markNotificationRead`, `markNotificationsRead` (ids or `up_to`); SSE `notification.created`, `.updated`, `.read`. Fields identical to adapter protocol 1.3 (Esquadro): `notification_id`, `revision`, `code`, `category`, `severity` (info, success, warning, danger, critical), `params`, `count`, `source_event_ids`, `target` (structured, never a URL).
+- New `contracts/notifications/v1/registry.json` (codes, category, severity, grouping, target, params) and the generated `params.schema.json` (JSON Schema `$defs` from the bundle); `check_openapi.py` checks registry ↔ `NotificationParamsByCode` and the drift of `params.schema.json`.
+- S13 review notes (Crivo / Vigia on 3.1.0): consistency threshold pattern refuses 100.5 (A3); money patterns on `RiskMeter.limit`/`used`, `pending_changes.new_limit` and `DetailsRiskState` (A4); "looser" defined (removed rule, `flatten_and_block` → `notify`, `hard` → `soft_pause`/`none`) with `pending_changes[].change` (L1); any limits write → 409 on an open form (A2); `risk.state_changed` only to the owner (I2); ownership per ADR-0006 §3.7 (A1, notes only).
+
 ## 3.1.0 — 2026-10-23 (V1-S13 risk; additive) — notes: docs/architecture/contracts/s13-risk.md
 - Module `risk`: `getAccountRisk` (trading day, meters with used / limit / truncated percent / state, unset and untracked rules, block, staleness, `limits_pending`, pending changes), `listRiskSummaries`, `getAccountRiskRules`, `putAccountRiskRules` (account limits version, `acknowledge_reached`), `previewAccountRiskRules`; SSE `risk.state_changed`.
 - Audit codes `risk.rules_changed`, `risk.warning`, `risk.limit_reached`, `risk.target_reached`, `risk.consistency_warning`.

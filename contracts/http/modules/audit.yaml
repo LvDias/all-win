@@ -789,8 +789,8 @@ components:
       description: '`risk.warning`, `risk.limit_reached`, `risk.target_reached` (+ `action`), `risk.consistency_warning`.'
       properties:
         kind: { $ref: 'risk.yaml#/components/schemas/RiskRuleKind' }
-        limit: { type: string, maxLength: 32 }
-        used: { type: string, maxLength: 32 }
+        limit: { type: string, pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$', description: 'Money, or a percent string for consistency.' }
+        used: { type: string, pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$', description: 'Money, or a percent string for consistency.' }
         percent: { type: integer, minimum: 0 }
         action: { type: string, enum: [notify, flatten_and_block] }
     AuditDetailsByCode:

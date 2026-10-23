@@ -29,14 +29,14 @@ SSE: `risk.state_changed` (state, stale, block, trading-day reset, rules changed
    - Absent rules are `unset_rules` (UI "sem limite definido").
 3. **Concurrency token = the account's limits version** (`account.limits_version`, ADR-0006). Each save bumps it; the plugin receives the derived limits after the risk module catches up (§3).
 4. **Q48 (provisional):**
-   - a stricter value applies at once, a looser one from the next trading day (`pending_changes`);
+   - a stricter value applies at once, a looser one from the next trading day (`pending_changes`). Looser (3.2.0, QA Security L1) also covers removing a rule, `flatten_and_block` → `notify`, and `daily_loss` `hard` → `soft_pause` / `none`;
    - the preview reports `effective` / `effective_from` per change and `would_be_reached`;
    - the save needs `acknowledge_reached: true` when it would already be reached, else 409 `risk.reached_not_acknowledged`. This guards against a race between the dialog and the save.
 5. **Q47 (provisional):** prop accounts need a daily loss limit unless the preset says `none` (422 `risk.daily_loss_required`). Real accounts may leave every rule unset.
 6. **Q49 / Q63 (provisional):** `flatten_and_block` needs enforcement on (422 `risk.flatten_requires_enforcement`). If enforcement is turned off later, the Core treats it as `notify` (S15 owns the switch).
 7. **Q-S13-2 (PO):** prop accounts may edit their copy of the reset time. Real accounts may not (422 `risk.reset_not_editable`; they use the CME session close, `trading_day.source = cme_session_close`).
 8. **Q-S13-5:** for trailing drawdowns, `floor` is the account balance at which the drawdown is breached, as it stands now.
-9. **Q-S13-7:** the consistency threshold has at most one decimal (`^(100|[0-9]{1,2})(\.[0-9])?$`).
+9. **Q-S13-7:** the consistency threshold has at most one decimal, 0–100 (`^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$`, fixed in 3.2.0).
 10. **Playback (S15 AC-7):** `trading_day.playback_clock` carries the simulated clock the day and P&L follow.
 11. **Staleness:** `stale` + `stale_reason` (`connection_down` / `no_recent_data`). The UI never shows stale values as current.
 12. **No step-up in V1** (Q35 list). If the wider list is approved later, the body gains `step_up` (`x-step-up` on the PUT) with no other change.
@@ -71,11 +71,13 @@ SSE: `risk.state_changed` (state, stale, block, trading-day reset, rules changed
 - `risk.warning`, `risk.limit_reached`, `risk.target_reached` (+ `action`), `risk.consistency_warning` (category `risk`): kind, limit, used, percent.
 - S15 adds `risk.flatten` and `risk.blocked`.
 
-## 6. For the Database Architect (through the Maestro)
+## 6. Data ownership (ADR-0006 §3.7, data model rev. 13)
 
-- `risk.account_limits`:
-  - `consistency_threshold_pct NUMERIC(4,1)`;
-  - the account's `trading_day_reset` copy for prop accounts (or read from `accounts.account_rule_value`);
-  - `daily_loss_kind` (`hard` / `soft_pause` / `none`).
-- `risk.pending_limit_change` (account, kind, new value, `effective_from`) for looser values (Q48).
-- The trading-day and live state tables were left to S13 in rev. 4 §5.6. The response needs, per account and day: used per rule, the trailing floor, `as_of`, and the block (until, cause).
+- **Inputs (accounts):** the user's value of each rule, plus its own `saved_at` per kind. The latest save of a kind wins, even over an earlier pending value. This includes `profit_target_on_reach` and `consistency_threshold_pct`. Every save bumps `account.limits_version`, a pending one included, so a rules form opened earlier gets 409 (A2).
+- **Derived (risk):** the effective limits (stricter → now) and `risk.scheduled_limit` (looser → the trading day after `saved_at`). Only the derivation writes them. `AccountRisk.pending_changes` reads `risk.scheduled_limit`.
+- **Reset step:** clear blocks → apply due schedules → re-derive (`effective_as_of`), with no version bump; `limits` go to the plugin afterwards. A looser value never clears a block early ("no early unlock").
+- **Other tables (Lastro):**
+  - `risk.trading_day` per account and day;
+  - `risk.drawdown_tracker` (high water, floor);
+  - `risk.account_block` (cause, until; one active);
+  - `warning_threshold_pct` is dropped (80 % is fixed, D18).

@@ -3,49 +3,49 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 3.1.0
+  version: 3.2.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
     \ the V1-S16 prop firm catalog and\nthe account's preset (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles\
-    \ (`profiles`), V1-S10\nactivity (`audit`) and V1-S13 risk (`risk`). 3.0.0 is the first consumable release of the modules;\
-    \ 2.1.0–2.5.0 were never merged or\ndeployed. Security rules: auth-and-session-policy.md rev. 2.\nVersion 2.0.0 is breaking\
-    \ (password and TOTP removed). Paths stay `/api/v1`: no version was ever deployed\nand there are no external clients,\
-    \ so the path major moves only for breaking changes after the first\nproduction deploy (ADR-0002 §4).\nThe Core generates\
-    \ its own spec from handlers (utoipa); CI fails on any drift from this file.\n\nConventions\n- Base paths: `/api/v1` (web,\
-    \ cookie session), `/ingress/v1` (webhooks), `/adapter/v1` (plugin HTTP;\n  the WebSocket `/adapter/v1` is specified by\
-    \ ADR-0004 and contracts/adapter-protocol/v1).\n- Authentication: the root `security` requires a full `session` for every\
-    \ operation. Public\n  operations declare `security: []`. There are no passwords: a session starts only from a one-time\
-    \ code\n  (`verifyLoginCode`, `completeSignup`).\n  Every session operation answers 401 `auth.unauthenticated` without\
-    \ a valid session.\n- JSON only (`application/json; charset=utf-8`), except the ingress which also accepts `text/plain`.\n\
-    - Decimals are strings; timestamps are RFC 3339 UTC with `Z`; ids are lowercase UUIDs.\n- Errors: `{\"error\": {\"code\"\
-    : \"<stable.code>\", ...}}`. Clients translate codes; never rely on text.\n  - Any `/api/v1` or `/adapter/v1` request\
-    \ that does not match its schema (malformed JSON, unknown or\n    missing property, pattern/length/enum violation, malformed\
-    \ path or query parameter) gets\n    400 `common.invalid_request` with `error.pointer` (JSON pointer to the first offending\
-    \ field;\n    `/path/<name>` or `/query/<name>` for parameters). Framework default error bodies are never sent.\n  - Unexpected\
-    \ failures get 500 `common.internal` with no detail (no path, query, stack or SQL).\n  - The ingress is the exception:\
-    \ its token and path-parameter violations are always the empty 404\n    (S1 AC-2), and its body errors use the `ingress.*`\
-    \ codes.\n- CSRF: state-changing `/api/v1` requests (POST, PUT, PATCH, DELETE), public ones included, require\n  `SameSite=Lax`\
-    \ cookies plus a strict `Origin` check (must equal the app origin); a missing or\n  different `Origin` gets 403 `common.forbidden_origin`.\
-    \ The rule does not apply to `/ingress/v1`\n  (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not\
-    \ a browser).\n- Sensitive operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition\n \
-    \ in `x-step-up-when`. Every such operation is POST or PUT, and its JSON body has an optional `step_up`\n  property (`StepUpProof`:\
-    \ `challenge_id` + `code`). The client first calls `requestStepUp` for that\n  action and target; one code authorizes\
-    \ one action (auth policy §6). Missing proof → 403\n  `auth.step_up_required`; a wrong, expired, used or mismatched proof\
-    \ → 403 `auth.code_invalid`.\n  The proof travels in the body, never in a header, so access logs cannot record it.\n-\
-    \ One-time codes: every verification failure is the single `auth.code_invalid` (401 when signing in or up,\n  403 on an\
-    \ authenticated operation); code requests always answer 202 (auth policy §3).\n- Check precedence (first failure wins):\
-    \ 401 `auth.unauthenticated` → 403 `common.forbidden_origin`\n  → 403 `auth.forbidden` (admin operations, non-admin caller)\
-    \ → 400 `common.invalid_request` →\n  404 `common.not_found` → 403 `auth.step_up_required` / `auth.code_invalid` → operation-specific\
-    \ 409/422.\n  A non-admin therefore never sees `auth.step_up_required` on an admin operation.\n- Secrets (session and\
-    \ device cookies, ingress token, invitation tokens, one-time codes, challenge\n  tokens, pairing codes, device tokens)\
-    \ are never logged; e-mail addresses and phone numbers are masked (ADR-0001 §5, auth policy §3). One-time values are\n\
-    \  returned exactly once.\n- Response headers (ADR-0001 §9): every Core response (`/api`, `/ingress`, `/adapter`) carries\n\
-    \  `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`. Responses that carry a one-time\n  secret also declare\
-    \ `Cache-Control` explicitly. HSTS is set by Caddy; page headers (CSP etc.) by Next.js.\n- Rate-limited responses are\
-    \ 429 with a `Retry-After` header (seconds).\n- Audit: every automatic action and every security-relevant change is written\
-    \ to the affected\n  user's visible audit log with its reason. Admin actions on a user are written to **that user's**\n\
-    \  audit log, with the acting admin's id.\n"
+    \ (`profiles`), V1-S10\nactivity (`audit`), V1-S13 risk (`risk`) and V1-S18\nnotifications (`notifications`; codes in\
+    \ contracts/notifications/v1/registry.json). 3.0.0 is the first consumable release of the modules; 2.1.0–2.5.0 were never\
+    \ merged or\ndeployed. Security rules: auth-and-session-policy.md rev. 2.\nVersion 2.0.0 is breaking (password and TOTP\
+    \ removed). Paths stay `/api/v1`: no version was ever deployed\nand there are no external clients, so the path major moves\
+    \ only for breaking changes after the first\nproduction deploy (ADR-0002 §4).\nThe Core generates its own spec from handlers\
+    \ (utoipa); CI fails on any drift from this file.\n\nConventions\n- Base paths: `/api/v1` (web, cookie session), `/ingress/v1`\
+    \ (webhooks), `/adapter/v1` (plugin HTTP;\n  the WebSocket `/adapter/v1` is specified by ADR-0004 and contracts/adapter-protocol/v1).\n\
+    - Authentication: the root `security` requires a full `session` for every operation. Public\n  operations declare `security:\
+    \ []`. There are no passwords: a session starts only from a one-time code\n  (`verifyLoginCode`, `completeSignup`).\n\
+    \  Every session operation answers 401 `auth.unauthenticated` without a valid session.\n- JSON only (`application/json;\
+    \ charset=utf-8`), except the ingress which also accepts `text/plain`.\n- Decimals are strings; timestamps are RFC 3339\
+    \ UTC with `Z`; ids are lowercase UUIDs.\n- Errors: `{\"error\": {\"code\": \"<stable.code>\", ...}}`. Clients translate\
+    \ codes; never rely on text.\n  - Any `/api/v1` or `/adapter/v1` request that does not match its schema (malformed JSON,\
+    \ unknown or\n    missing property, pattern/length/enum violation, malformed path or query parameter) gets\n    400 `common.invalid_request`\
+    \ with `error.pointer` (JSON pointer to the first offending field;\n    `/path/<name>` or `/query/<name>` for parameters).\
+    \ Framework default error bodies are never sent.\n  - Unexpected failures get 500 `common.internal` with no detail (no\
+    \ path, query, stack or SQL).\n  - The ingress is the exception: its token and path-parameter violations are always the\
+    \ empty 404\n    (S1 AC-2), and its body errors use the `ingress.*` codes.\n- CSRF: state-changing `/api/v1` requests\
+    \ (POST, PUT, PATCH, DELETE), public ones included, require\n  `SameSite=Lax` cookies plus a strict `Origin` check (must\
+    \ equal the app origin); a missing or\n  different `Origin` gets 403 `common.forbidden_origin`. The rule does not apply\
+    \ to `/ingress/v1`\n  (TradingView sends no `Origin`) nor to `/adapter/v1` (the plugin is not a browser).\n- Sensitive\
+    \ operations are marked `x-step-up: true`, or `x-step-up: conditional` with the condition\n  in `x-step-up-when`. Every\
+    \ such operation is POST or PUT, and its JSON body has an optional `step_up`\n  property (`StepUpProof`: `challenge_id`\
+    \ + `code`). The client first calls `requestStepUp` for that\n  action and target; one code authorizes one action (auth\
+    \ policy §6). Missing proof → 403\n  `auth.step_up_required`; a wrong, expired, used or mismatched proof → 403 `auth.code_invalid`.\n\
+    \  The proof travels in the body, never in a header, so access logs cannot record it.\n- One-time codes: every verification\
+    \ failure is the single `auth.code_invalid` (401 when signing in or up,\n  403 on an authenticated operation); code requests\
+    \ always answer 202 (auth policy §3).\n- Check precedence (first failure wins): 401 `auth.unauthenticated` → 403 `common.forbidden_origin`\n\
+    \  → 403 `auth.forbidden` (admin operations, non-admin caller) → 400 `common.invalid_request` →\n  404 `common.not_found`\
+    \ → 403 `auth.step_up_required` / `auth.code_invalid` → operation-specific 409/422.\n  A non-admin therefore never sees\
+    \ `auth.step_up_required` on an admin operation.\n- Secrets (session and device cookies, ingress token, invitation tokens,\
+    \ one-time codes, challenge\n  tokens, pairing codes, device tokens) are never logged; e-mail addresses and phone numbers\
+    \ are masked (ADR-0001 §5, auth policy §3). One-time values are\n  returned exactly once.\n- Response headers (ADR-0001\
+    \ §9): every Core response (`/api`, `/ingress`, `/adapter`) carries\n  `X-Content-Type-Options: nosniff` and `Cache-Control:\
+    \ no-store`. Responses that carry a one-time\n  secret also declare `Cache-Control` explicitly. HSTS is set by Caddy;\
+    \ page headers (CSP etc.) by Next.js.\n- Rate-limited responses are 429 with a `Retry-After` header (seconds).\n- Audit:\
+    \ every automatic action and every security-relevant change is written to the affected\n  user's visible audit log with\
+    \ its reason. Admin actions on a user are written to **that user's**\n  audit log, with the acting admin's id.\n"
 servers:
 - url: https://{host}
   variables:
@@ -68,6 +68,7 @@ tags:
 - name: profiles
 - name: audit
 - name: risk
+- name: notifications
 paths:
   /ingress/v1/tradingview/{token}:
     post:
@@ -3351,6 +3352,20 @@ paths:
 
         a stricter value applies at once, a looser one from the next trading day (`AccountRisk.pending_changes`).
 
+        Looser means a higher limit or target, and also: removing a rule (absent = no limit), changing
+
+        `profit_target_on_reach` from `flatten_and_block` to `notify`, and changing `daily_loss_limit.kind`
+
+        from `hard` to `soft_pause` or `none` (QA Security L1); each is audited and listed in
+
+        `pending_changes` until it applies. The latest save of a rule wins over an earlier pending value
+
+        (ADR-0006 §3.7). Any write of the account''s limits (this operation, `applyPresetVersion`,
+
+        `restorePresetValue`, a preset re-selection in `updateAccount`) bumps the version, so a form
+
+        opened before it gets 409 `common.version_conflict`.
+
         When the new rules would already be reached today, the body must carry `acknowledge_reached: true`
 
         (the dialog of the edit form; `previewAccountRiskRules` tells beforehand), else 409
@@ -3456,6 +3471,174 @@ paths:
           $ref: '#/components/responses/RiskRulesRejected'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/notifications:
+    get:
+      tags:
+      - notifications
+      operationId: listNotifications
+      summary: The caller's notifications, critical unread first, then newest first, with a cursor
+      description: 'One set of notifications per user, shared by the Web and the plugin (Q-S18-4): the same
+
+        `notification_id` and `revision` on both channels. Order: unread `critical` items first, then by
+
+        `updated_at` (last occurrence), newest first, ties by `notification_id`. `next_cursor` is opaque,
+
+        authenticated by the Core (MAC) and bound to the filters (a tampered or mismatching cursor gets
+
+        400, pointer `/query/cursor`). Retention equals the audit''s (24 months; Q-S18-6). Every response
+
+        carries the current unread count, so the bell never counts.
+
+        '
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - all
+          - unread
+          - read
+          default: all
+      - name: category
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/AuditCategory'
+      - name: account_id
+        in: query
+        required: false
+        explode: true
+        schema:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Uuid'
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 512
+          pattern: ^[A-Za-z0-9_-]+$
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPage'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/notifications/unread-count:
+    get:
+      tags:
+      - notifications
+      operationId: getUnreadCount
+      summary: Unread count and worst unread severity (bell and shell)
+      description: The same pair the adapter protocol 1.3 snapshot carries; authoritative (the client never counts).
+      responses:
+        '200':
+          description: The count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnreadCount'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/notifications/{notification_id}/read:
+    post:
+      tags:
+      - notifications
+      operationId: markNotificationRead
+      summary: Mark one notification read (idempotent)
+      description: 'Sets `read_at` and bumps `revision` (so the plugin''s upsert sees it); already read → 200 with the
+
+        item unchanged. Reading never changes or hides the state it reports (a block, a risk level, an out-
+
+        of-sync flag stays visible in banners and badges). A later occurrence of a grouped item does not
+
+        make it unread again. Emits `notification.read`.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: The item and the new unread count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarkReadResult'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/notifications/read:
+    post:
+      tags:
+      - notifications
+      operationId: markNotificationsRead
+      summary: Mark several notifications read — a list of ids, or everything up to an instant (idempotent)
+      description: 'Either `notification_ids` (≤ 200; unknown or foreign ids are ignored, never reported) or `up_to`
+
+        (every unread item, optionally limited by `category` / `account_id`, whose `updated_at` is at or
+
+        before `up_to`, so an item that arrives while the user clicks "mark all" stays unread). Returns the
+
+        new unread count. Emits one `notification.read`.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkManyRequest'
+            examples:
+              all:
+                value:
+                  up_to: '2026-10-23T14:31:05Z'
+      responses:
+        '200':
+          description: The new unread count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnreadCount'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrigin'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     session:
@@ -3548,6 +3731,12 @@ components:
       in: header
       required: true
       description: UUID generated by the client once per create submission; reused on retries (not a secret).
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    NotificationId:
+      name: notification_id
+      in: path
+      required: true
       schema:
         $ref: '#/components/schemas/Uuid'
     FirmId:
@@ -4349,6 +4538,9 @@ components:
       - $ref: modules/audit.yaml#/components/schemas/AuditEntryRecordedEvent
       - $ref: modules/presets.yaml#/components/schemas/PresetVersionAvailableEvent
       - $ref: modules/risk.yaml#/components/schemas/RiskStateChangedEvent
+      - $ref: modules/notifications.yaml#/components/schemas/NotificationCreatedEvent
+      - $ref: modules/notifications.yaml#/components/schemas/NotificationUpdatedEvent
+      - $ref: modules/notifications.yaml#/components/schemas/NotificationReadEvent
       - type: object
         additionalProperties: false
         required:
@@ -6319,10 +6511,12 @@ components:
           $ref: '#/components/schemas/RiskRuleKind'
         limit:
           type: string
-          maxLength: 32
+          pattern: ^-?[0-9]{1,14}(\.[0-9]{1,4})?$
+          description: Money, or a percent string for consistency.
         used:
           type: string
-          maxLength: 32
+          pattern: ^-?[0-9]{1,14}(\.[0-9]{1,4})?$
+          description: Money, or a percent string for consistency.
         percent:
           type: integer
           minimum: 0
@@ -6484,6 +6678,337 @@ components:
           $ref: '#/components/schemas/DetailsRiskState'
         risk.consistency_warning:
           $ref: '#/components/schemas/DetailsRiskState'
+    NotificationSeverity:
+      type: string
+      enum:
+      - info
+      - success
+      - warning
+      - danger
+      - critical
+      description: 'Set by the Core from the registry. Web behaviour (S18 §3/§5): `info` / `warning` update the bell
+
+        silently; `success` uses the success colour; `danger` raises a destructive toast; `critical` is the
+
+        top severity of the ADRs and shows the `CriticalBanner`, which stays until the item is read
+
+        (Q51, provisional). The plugin may map `success` → `info` and `danger` → `warning` in its UI; the
+
+        protocol carries the five values unchanged.
+
+        '
+    NotificationCode:
+      type: string
+      pattern: ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$
+      maxLength: 96
+      description: A code of the registry (`contracts/notifications/v1/registry.json`); `NotificationParamsByCode` lists them
+        with their params. Unknown codes are shown with the fallback "Aviso {code}".
+    NotificationTarget:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - id
+      description: Structured link; the client builds the URL (Web route; plugin `welcome.app_url` + route). Never a URL in
+        the payload.
+      properties:
+        kind:
+          type: string
+          enum:
+          - account
+          - connection
+          - instruction
+          - route
+          - activity_entry
+        id:
+          $ref: '#/components/schemas/Uuid'
+    Notification:
+      type: object
+      additionalProperties: false
+      required:
+      - notification_id
+      - revision
+      - code
+      - category
+      - severity
+      - params
+      - count
+      - created_at
+      - updated_at
+      properties:
+        notification_id:
+          $ref: '#/components/schemas/Uuid'
+        revision:
+          type: integer
+          minimum: 1
+          description: Monotonic per `notification_id`; every change (new occurrence, read) bumps it. Clients upsert only
+            with a higher revision.
+        code:
+          $ref: '#/components/schemas/NotificationCode'
+        category:
+          $ref: '#/components/schemas/AuditCategory'
+        severity:
+          $ref: '#/components/schemas/NotificationSeverity'
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        account_name:
+          type: string
+          maxLength: 80
+          description: Snapshot (Web only; the plugin shows its platform account name).
+        params:
+          type: object
+          description: Typed per code — `NotificationParamsByCode[code]` (the same schemas as `params.schema.json`). For grouped
+            items, the params of the last occurrence.
+        count:
+          type: integer
+          minimum: 1
+          description: Occurrences grouped into this item (same code + account + trading day; registry `grouping`). The audit
+            keeps one entry per occurrence.
+        source_event_ids:
+          type: array
+          maxItems: 50
+          description: event_ids of the adapter→Core messages aggregated (only for notifications caused by plugin events).
+          items:
+            $ref: '#/components/schemas/Uuid'
+        audit_entry_id:
+          description: The audit entry of the last occurrence (Web link "Ver no registro").
+          $ref: '#/components/schemas/Uuid'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          description: The last occurrence (equals `created_at` while `count` is 1) or the last change.
+          $ref: '#/components/schemas/Timestamp'
+        read_at:
+          $ref: '#/components/schemas/Timestamp'
+        target:
+          $ref: '#/components/schemas/NotificationTarget'
+    UnreadCount:
+      type: object
+      additionalProperties: false
+      required:
+      - unread_count
+      properties:
+        unread_count:
+          type: integer
+          minimum: 0
+        worst_severity:
+          description: The worst severity among unread items; absent when there are none.
+          $ref: '#/components/schemas/NotificationSeverity'
+    NotificationPage:
+      type: object
+      additionalProperties: false
+      required:
+      - notifications
+      - unread
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        next_cursor:
+          type: string
+          description: Absent on the last page.
+        unread:
+          $ref: '#/components/schemas/UnreadCount'
+    MarkReadResult:
+      type: object
+      additionalProperties: false
+      required:
+      - notification
+      - unread
+      properties:
+        notification:
+          $ref: '#/components/schemas/Notification'
+        unread:
+          $ref: '#/components/schemas/UnreadCount'
+    MarkManyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        notification_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Uuid'
+        up_to:
+          $ref: '#/components/schemas/Timestamp'
+        category:
+          type: array
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/AuditCategory'
+        account_id:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Uuid'
+      oneOf:
+      - required:
+        - notification_ids
+        not:
+          anyOf:
+          - required:
+            - up_to
+          - required:
+            - category
+          - required:
+            - account_id
+      - required:
+        - up_to
+        not:
+          required:
+          - notification_ids
+    ParamsOptInSuspendedByFirm:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - firm_id
+      - firm_name
+      - account_count
+      - rule_version_id
+      description: '`accounts.opt_in_suspended` grouped per firm and release (one notification, "{k} contas"); the audit keeps
+        one entry per account.'
+      properties:
+        kind:
+          $ref: '#/components/schemas/OptInKind'
+        firm_id:
+          $ref: '#/components/schemas/Uuid'
+        firm_name:
+          type: string
+          maxLength: 120
+        account_count:
+          type: integer
+          minimum: 1
+        rule_version_id:
+          $ref: '#/components/schemas/Uuid'
+        cause:
+          type: string
+          enum:
+          - stance_changed
+          - text_changed
+          - preset_attached
+    ParamsPresetNewVersion:
+      type: object
+      additionalProperties: false
+      required:
+      - firm_id
+      - firm_name
+      - version_number
+      - account_count
+      description: '`presets.new_version` — one per firm (Q-S16-5): a newer release affects `account_count` of the caller''s
+        accounts.'
+      properties:
+        firm_id:
+          $ref: '#/components/schemas/Uuid'
+        firm_name:
+          type: string
+          maxLength: 120
+        version_number:
+          type: integer
+          minimum: 1
+        account_count:
+          type: integer
+          minimum: 1
+    NotificationParamsByCode:
+      type: object
+      additionalProperties: false
+      description: 'Type map, not a payload: `params` of a notification with code `<code>` matches property `<code>`.
+
+        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S11
+
+        (`sync.*`) and S15 (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
+
+        are added with those contracts.
+
+        '
+      properties:
+        routing.quantity_capped:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.max_position_reached:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.position_conflict:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.risk_blocked:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.out_of_sync:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.expired:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.no_bracket_profile:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        risk.warning:
+          $ref: '#/components/schemas/DetailsRiskState'
+        risk.limit_reached:
+          $ref: '#/components/schemas/DetailsRiskState'
+        risk.target_reached:
+          $ref: '#/components/schemas/DetailsRiskState'
+        risk.consistency_warning:
+          $ref: '#/components/schemas/DetailsRiskState'
+        connection.status_changed:
+          $ref: '#/components/schemas/DetailsConnectionStatus'
+        accounts.opt_in_suspended:
+          $ref: '#/components/schemas/ParamsOptInSuspendedByFirm'
+        presets.new_version:
+          $ref: '#/components/schemas/ParamsPresetNewVersion'
+    NotificationCreatedEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - at
+      - notification
+      - unread
+      properties:
+        type:
+          const: notification.created
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        notification:
+          $ref: '#/components/schemas/Notification'
+        unread:
+          $ref: '#/components/schemas/UnreadCount'
+    NotificationUpdatedEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - at
+      - notification
+      - unread
+      description: A grouped item got a new occurrence (count, last time, params), or another change; upsert by revision.
+      properties:
+        type:
+          const: notification.updated
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        notification:
+          $ref: '#/components/schemas/Notification'
+        unread:
+          $ref: '#/components/schemas/UnreadCount'
+    NotificationReadEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - at
+      - unread
+      description: Items were read on any channel (Web tab or plugin); `notification_ids` lists them (absent after a large
+        `up_to` read, then refetch).
+      properties:
+        type:
+          const: notification.read
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        notification_ids:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Uuid'
+        unread:
+          $ref: '#/components/schemas/UnreadCount'
     LocalizedText:
       type: object
       additionalProperties: false
@@ -8270,7 +8795,7 @@ components:
             to `notify` if enforcement is turned off later (Q63, provisional).
         consistency_threshold_pct:
           type: string
-          pattern: ^(100|[0-9]{1,2})(\.[0-9])?$
+          pattern: ^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$
           description: Prop with a consistency rule only; the tracked threshold, 0–100 with at most one decimal (Q-S13-7).
             Never enforced (S13 AC-6).
         trading_day_reset:
@@ -8361,12 +8886,15 @@ components:
         state:
           $ref: '#/components/schemas/RiskState'
         limit:
-          description: The limit or target in force today (for `consistency` the threshold, as a percent string).
+          description: The limit or target in force today — money (`Money` pattern), or for `consistency` the threshold as
+            a percent string.
           type: string
+          pattern: ^-?[0-9]{1,14}(\.[0-9]{1,4})?$
         used:
-          description: Today's value against the limit (loss used, drawdown used, profit made; for `consistency` the largest
-            day's share of total profit, as a percent string).
+          description: Today's value against the limit (loss used, drawdown used, profit made — money; for `consistency` the
+            largest day's share of total profit, as a percent string).
           type: string
+          pattern: ^-?[0-9]{1,14}(\.[0-9]{1,4})?$
         percent:
           type: integer
           minimum: 0
@@ -8504,7 +9032,16 @@ components:
                 $ref: '#/components/schemas/Timestamp'
               new_limit:
                 type: string
-                description: The new limit (decimal string; a percent for consistency).
+                pattern: ^-?[0-9]{1,14}(\.[0-9]{1,4})?$
+                description: The new limit (money as a decimal string; a percent for consistency). Absent when the change
+                  removes the rule or changes only a kind or `profit_target_on_reach`.
+              change:
+                type: string
+                enum:
+                - limit_raised
+                - rule_removed
+                - profit_target_to_notify
+                - daily_loss_softened
     RiskSummaryList:
       type: object
       additionalProperties: false
@@ -8554,8 +9091,8 @@ components:
       - account_id
       - state
       - stale
-      description: The risk state, staleness, block or trading day of an account changed (not on every tick); the client refetches
-        `getAccountRisk` / `listRiskSummaries`.
+      description: The risk state, staleness, block or trading day of an account changed (not on every tick); sent only to
+        the account's owner, like every SSE event; the client refetches `getAccountRisk` / `listRiskSummaries`.
       properties:
         type:
           const: risk.state_changed
