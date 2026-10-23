@@ -1629,7 +1629,7 @@
                     "$ref": "#/$defs/money"
                   },
                   "balance_adjustment": {
-                    "description": "1.3+. Σ(effective − platform-reported commission) cumulative since the account's tracking start up to the previous trading-day close, computed by the Core (≥ 0). Plugin adjusted equity = platform balance − balance_adjustment − the day's Σ(effective − reported) − expected closing commission + unrealized; compared with floor_balance / high_water_balance (Pêndulo M9).",
+                    "description": "1.3+. Σ(effective − platform-reported commission) cumulative since the account's tracking start up to the previous trading-day close, computed by the Core (≥ 0). Plugin adjusted equity = platform balance − balance_adjustment − the day's Σ(effective − reported) − expected closing commission + unrealized; compared with floor_balance / high_water_balance (Pêndulo M9). The day's Σ(effective − reported) is kept by the adapter in its durable journal, reset at the trading-day boundary; if the adapter cannot vouch for it (e.g. after a restart without the journal), it alerts the user and uses the Core's value at the next limits push, never a smaller one (Pêndulo LA2).",
                     "$ref": "#/$defs/non_negative_money"
                   }
                 }
@@ -2469,7 +2469,7 @@
           "$ref": "#/$defs/money"
         },
         "commission": {
-          "description": "Effective commission allocated to this trade (floor applied). A fill shared by several trades (a flip, or a FIFO partial close in individual mode) is allocated pro rata by the quantity each trade takes from it: share = round(fill effective commission × quantity / fill quantity, 4 decimals, half away from zero), and the trade allocated LAST from that fill gets the remainder, so the shares always sum to the fill's effective commission. gross_pnl and net_pnl use the same quantities.",
+          "description": "Effective commission allocated to this trade (floor applied). A fill shared by several trades (a flip, or a FIFO partial close in individual mode) is allocated pro rata by the quantity each trade takes from it: share = round(fill effective commission × quantity / fill quantity, 4 decimals, half away from zero), and the trade allocated LAST from that fill gets the remainder. Allocation order = consumption order: closing quantities first (FIFO, oldest entry first in individual mode), then the flip remainder (the new trade) last. A trade already emitted keeps its rounded share, so the shares always sum to the fill's effective commission. gross_pnl and net_pnl use the same quantities.",
           "$ref": "#/$defs/non_negative_money"
         },
         "mae": {

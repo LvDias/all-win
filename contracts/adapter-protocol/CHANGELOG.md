@@ -1,5 +1,10 @@
 # Adapter protocol — changelog
 
+## 1.3.1 — 2026-10-23 (documentation only; no schema shape change, no version bump on the wire)
+- `trade_completed.commission`: allocation order = consumption order (closing quantities first, FIFO; the flip remainder last); an emitted trade keeps its rounded share (Pêndulo LA1).
+- `limits.drawdown.balance_adjustment`: the adapter journals the day's Σ(effective − reported), reset at the trading-day boundary; without it, it alerts and uses the Core's value at the next `limits`, never a smaller one (Pêndulo LA2).
+- Fixture `valid/trade-completed-flip-opening-part.json`: the trade opened by the flip remainder (exec-2002, 1 contract, commission share 0.37 + the closing fill's 0.37 = 0.74; Crivo).
+
 ## 1.3 — 2026-10-23 (additive; Proposed until Code Review) — plugin panels G1–G8, net P&L (U20), evaluation target (Q46), trades (S21), user disconnect
 - **Notifications (S18, G1):** C→A `notifications` (snapshot after `welcome`, ≤ 200 items + authoritative `unread_count` / `worst_unread_severity`; latest wins, not acked), C→A `notification` (reliable upsert by `notification_id` + monotonic `revision`; a reopen is a higher revision without `read_at`), A→C `notification_read` (reliable). Items mirror the HTTP `Notification`; codes and `params` schemas come from `contracts/notifications/v1/registry.json`; severities `info | success | warning | danger | critical`; `source_event_ids` (≤ 50) lets the plugin replace its local not-yet-synced copies; `target {kind, id}`, never a URL.
 - **`welcome` (G2–G4, G6):** `connection_name`, `time_zone` (IANA), `app_url` (https origin only), `accounts[].display_name`. Renames apply at the next `welcome`. G5 = notifications; G7 documented in ADR-0004 §7; G8 is a build constant (close 4003 precedes `welcome`).
