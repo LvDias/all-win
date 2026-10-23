@@ -21,7 +21,8 @@ CREATE TABLE catalog.prop_firm (
 CREATE TABLE catalog.firm_release (                      -- versioning unit: one researched, published firm (S16 §2.1)
   id             uuid PRIMARY KEY,
   -- Publication order read by the accounts job (cursor). The CLI, the only writer, takes
-  -- pg_advisory_xact_lock(hashtext('catalog.publish')) as the first statement of its transaction,
+  -- pg_advisory_xact_lock(hashtext('catalog'), hashtext('publish')) (two-key space, apart from the
+  -- one-key outbox consumer locks) as the first statement of its transaction,
   -- so publications are serial and commit in publish_seq order: a reader never sees seq n+1 before
   -- seq n, and a rollback only leaves a gap (the cursor reads > last). No table lock, so the
   -- publisher needs no UPDATE/DELETE privilege.
