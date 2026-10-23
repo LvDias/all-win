@@ -122,7 +122,7 @@ function Get-ExposedRule {
             $tcpUdp = ($protocols.Count -eq 0) -or ($protocols | Where-Object { $_ -in 'TCP', 'UDP', 'Any', '6', '17' })
             $ports = @($pf | ForEach-Object { $_.LocalPort } | ForEach-Object { $_ })
             $kind = if ($tcpUdp) { Get-PortCoverage $ports } else { $null }
-            if ($rule.Name -like 'RemoteDesktop-*' -or $rule.Name -like 'OpenSSH-Server-*') { if (-not $kind) { $kind = 'literal' } }
+            if ($rule.Name -like 'RemoteDesktop-*' -or $rule.Name -like 'OpenSSH-Server-*') { $kind = 'literal' }   # name-matched rules always fail
             if (-not $kind) { return }
             $remote = @($af | ForEach-Object { $_.RemoteAddress } | ForEach-Object { $_ })
             if (Test-RemoteInsideTailnet $remote) { return }

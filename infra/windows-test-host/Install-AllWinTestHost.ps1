@@ -185,6 +185,29 @@ try {
     }
 
     # ---- 4. sshd ------------------------------------------------------------------------------------------------
+    if ($PSCmdlet.ShouldProcess($sshdConfig, 'Create sshd_config and host keys if missing (without starting sshd)')) {
+        if (-not (Test-Path -LiteralPath $sshDir)) { New-Item -ItemType Directory -Path $sshDir -Force | Out-Null }
+        # ProgramData\ssh may not exist yet (sshd never started): do not keep the inherited ACL (Users can create files).
+        & icacls.exe $sshDir /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" '*S-1-5-11:(OI)(CI)RX' | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "icacls failed on $sshDir" }
+        if (-not (Test-Path -LiteralPath $sshdConfig)) {
+            $default = Join-Path $env:WINDIR 'System32\OpenSSH\sshd_config_default'
+            if (-not (Test-Path -LiteralPath $default)) { throw "$default not found; cannot create $sshdConfig." }
+            Copy-Item -LiteralPath $default -Destination $sshdConfig
+        }
+        & (Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe') -A
+        if ($LASTEXITCODE -ne 0) { throw 'ssh-keygen -A failed.' }
+        # Host PRIVATE keys: SYSTEM and Administrators only. Verified, not assumed.
+        foreach ($k in @(Get-ChildItem -LiteralPath $sshDir -Filter 'ssh_host_*_key' -File)) {
+            & icacls.exe $k.FullName /inheritance:r /grant:r "${sidSystem}:F" "${sidAdmins}:F" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "icacls failed on $($k.FullName)" }
+            $allowed = @('S-1-5-18', 'S-1-5-32-544')
+            foreach ($ace in (Get-Acl -LiteralPath $k.FullName).Access) {
+                $aceSid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                if ($allowed -notcontains $aceSid) { throw "Host key $($k.Name) is accessible to $($ace.IdentityReference). Fix its ACL, then rerun." }
+            }
+        }
+    }
     if ($PSCmdlet.ShouldProcess($keysFile, "Write the agents public key (from=$tailnetRange) with owner-only ACL")) {
         Set-Content -LiteralPath $keysFile -Value ('from="{0}",no-agent-forwarding,no-X11-forwarding {1}' -f $tailnetRange, $PublicKey) -Encoding ascii
         & icacls.exe $keysFile /inheritance:r /grant:r "${sidSystem}:F" "${sidAdmins}:F" "${AgentUser}:R" | Out-Null
@@ -212,29 +235,6 @@ try {
         'DisableForwarding yes',
         $end
     )
-    if ($PSCmdlet.ShouldProcess($sshdConfig, 'Create sshd_config and host keys if missing (without starting sshd)')) {
-        if (-not (Test-Path -LiteralPath $sshDir)) { New-Item -ItemType Directory -Path $sshDir -Force | Out-Null }
-        # ProgramData\ssh may not exist yet (sshd never started): do not keep the inherited ACL (Users can create files).
-        & icacls.exe $sshDir /inheritance:r /grant:r "${sidSystem}:(OI)(CI)F" "${sidAdmins}:(OI)(CI)F" '*S-1-5-11:(OI)(CI)RX' | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "icacls failed on $sshDir" }
-        if (-not (Test-Path -LiteralPath $sshdConfig)) {
-            $default = Join-Path $env:WINDIR 'System32\OpenSSH\sshd_config_default'
-            if (-not (Test-Path -LiteralPath $default)) { throw "$default not found; cannot create $sshdConfig." }
-            Copy-Item -LiteralPath $default -Destination $sshdConfig
-        }
-        & (Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe') -A
-        if ($LASTEXITCODE -ne 0) { throw 'ssh-keygen -A failed.' }
-        # Host PRIVATE keys: SYSTEM and Administrators only. Verified, not assumed.
-        foreach ($k in @(Get-ChildItem -LiteralPath $sshDir -Filter 'ssh_host_*_key' -File)) {
-            & icacls.exe $k.FullName /inheritance:r /grant:r "${sidSystem}:F" "${sidAdmins}:F" | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "icacls failed on $($k.FullName)" }
-            $allowed = @('S-1-5-18', 'S-1-5-32-544')
-            foreach ($ace in (Get-Acl -LiteralPath $k.FullName).Access) {
-                $aceSid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-                if ($allowed -notcontains $aceSid) { throw "Host key $($k.Name) is accessible to $($ace.IdentityReference). Fix its ACL, then rerun." }
-            }
-        }
-    }
     if ($PSCmdlet.ShouldProcess($sshdConfig, 'Apply the AllWin sshd block (backup, validate with sshd -t; sshd is started only after the firewall audit)')) {
         $backup = "$sshdConfig.allwin-backup-{0:yyyyMMdd-HHmmss}" -f (Get-Date)
         Copy-Item -LiteralPath $sshdConfig -Destination $backup
@@ -314,7 +314,7 @@ try {
                 $task.SetSecurityDescriptor($rsd.GetSddlForm([System.Security.AccessControl.AccessControlSections]::Access), 0)
             }
             # The agent must be able to run the task, never to change it: no write/delete/WRITE_DAC/WRITE_OWNER bits.
-            $writeBits = 0x2 -bor 0x4 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000
+            $writeBits = 0x2 -bor 0x4 -bor 0x10 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000 -bor 0x40000000
             $now = New-Object System.Security.AccessControl.RawSecurityDescriptor($svc.GetFolder('\').GetTask($t.Name).GetSecurityDescriptor(4))
             foreach ($a in @($now.DiscretionaryAcl | Where-Object { $_.SecurityIdentifier -eq $sidObj -and $_.AceQualifier -eq 'AccessAllowed' })) {
                 if ($a.AccessMask -band $writeBits) { throw "Task $($t.Name) grants $AgentUser write access (mask 0x{0:X}). Remove it." -f $a.AccessMask }
