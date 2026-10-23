@@ -48,7 +48,7 @@
   - plugin delta acc038806e60 (Elo; Code Review approved, QA Plugins re-check pending) and protocol 1.3 next;
   - outbox purge + per-consumer tracking (Brasa, after S3).
 - VPS Phase 2: 86df87c APPROVED; guide sent; the user is running it (RDP tailnet-only; allwin-agent and NT8 installed). Dev server joins at step 7 (Forja relays the login URL to the user only).
-- Waiting for the user: VPS Phase 2 (policy + tag, dev server join, Tailnet Lock, scripts); later 061300. Q75 decided (b).
+- Waiting for the user: VPS Phase 2 (policy + tag, dev server join, Tailnet Lock, scripts); later 061300 (brought when due). Q75 (b) and Q76 (a) decided. 196a30a merge gated on latency explanation + QA PG tests in Docker.
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.
 
 ## Environment notes
@@ -91,6 +91,7 @@
 | U21 | Rebased working branches on GitHub | (a) allow `--force-with-lease` only on `s/*` slice working branches (never `main` or `d/*`), each logged · (b) never force: a rebased branch is pushed under a new name (`-r2`, `-r3`…) | (a) — rebases are routine; (b) multiplies stale branches | DECIDED by the user 2026-10-23: (a) |
 | Q74 | Reverse on an account barred for entries (out of sync, risk blocked, limits pending, no bracket profile) | (a) skip the whole reverse (current ADR-0003 text) · (b) flatten and cancel protections, skip the opening, reason audited and notified | (b) — P1: exits are never blocked; consistent with the M = 0 reverse (Architect Esquadro, Maestro) | DECIDED by the user 2026-10-23: (b) |
 | Q75 | Close (or the closing leg of a barred reverse, Q74) on an out-of-sync account that All Win believes is flat | (a) trust All Win's position and send nothing (current rule) · (b) always send the flatten to the platform; the plugin checks the real position and reports already_flat | (b) — P1; the plugin check makes the extra command safe (Architect, Maestro) | DECIDED by the user 2026-10-23: (b) |
+| Q76 | Reduce on an out-of-sync account that All Win believes is flat (split from Q75) | (a) do not send; routing.nothing_to_reduce, audited, user notified · (b) send a flatten | (a) | DECIDED by the user 2026-10-23: (a) |
 | Q28–Q36 | Passwordless S3 open questions (slice-plan rev. 7 §7): Q28 loss of both channels, Q29 session/remember device, Q30 step-up per action vs window, Q31 WhatsApp mandatory?, Q32 one channel per account, Q33 send limits, Q34 new-device notice content, Q35 step-up list (QA Security adds: switching on an automated route on a real or "allows" prop account, and changing the platform binding of an account that receives automation — recommended to require a code), Q36 invite e-mail = account e-mail | see slice-plan §7 | PO recommendations; Architect reviews Q33–Q35 | DECIDED by the user 2026-10-23 (see decisions.md) |
 | U17 | WhatsApp code provider | Meta Cloud API · Twilio · Zenvia · other | Meta Cloud API direct (est. US$4–110/month for 100–1,000 users); 2nd Twilio WhatsApp; critical path = Meta business verification (weeks) + dedicated number (user) — docs/product/research/whatsapp-otp-providers.md | DECIDED by the user 2026-10-23: Meta Cloud API direct; the user is starting the Meta business verification |
 

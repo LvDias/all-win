@@ -141,3 +141,14 @@
 ## 2026-10-23 — VPS Phase 2 progress (user report)
 - **Fact:** RDP reachable only over the tailnet (rules restricted to 100.64.0.0/10, public IP refuses); `allwin-agent` created (Remote Desktop Users, not admin); NinjaTrader 8 installed, not logged in; OpenSSH Server present, stopped, manual start. Not yet done: Tailscale policy/tag, Tailnet Lock, Forja's scripts.
 - **Decision:** migration 061300 is brought to the user when it is due.
+
+## 2026-10-23 — Q76 reduce on an out-of-sync account that All Win believes is flat (split from Q75)
+- **Decision (Q76): (a).** A reduce (partial exit) reaching an out-of-sync account where All Win believes the position is flat is NOT sent to the platform; it is recorded as `routing.nothing_to_reduce`, audited, and the user is notified. A reduce never becomes a flatten, and the U13 guard needs a `position_ref` that a flat position does not have. Option (b), send a flatten anyway, rejected.
+- **Scope note:** Q75 (b) covers only a close / the closing leg of a reverse (always sent as a flatten). Q76 is a separate decision; the user asked for distinct numbers.
+- **Canonical docs:** ADR-0003 r4 (Architect); slice-plan S7 (PO); HTTP contract 5.2.0 (Compasso).
+
+## 2026-10-23 — Merge gate for the audit-codes delta (196a30a) and QA test database
+- **Decision:** 196a30a merges only after (1) the S1 p95 latency increase (≈11 ms → 130 ms in the QA run) is explained and, if the delta causes it, fixed; and (2) QA runs the Core PostgreSQL integration tests on an isolated test database in Docker.
+- **Decision:** DevOps provides an isolated Docker PostgreSQL test environment for QA, reused by every slice.
+- **Decision:** agents not reconnected within 10 minutes are replaced with a state handoff; if Esquadro does not return, ADR-0003/0004 r4 goes to Compasso.
+- **Canonical doc:** this log.
