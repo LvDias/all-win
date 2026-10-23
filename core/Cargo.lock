@@ -84,6 +84,7 @@ dependencies = [
  "chrono",
  "contracts",
  "http-body-util",
+ "jsonschema",
  "rand 0.10.3",
  "routing-application",
  "routing-infra",

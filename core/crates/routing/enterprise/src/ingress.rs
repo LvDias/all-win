@@ -46,6 +46,10 @@ pub enum IngressEventKind {
         instruction_id: InstructionId,
         message_id: MessageId,
         signal_type: String,
+        action: String,
+        instrument_symbol: String,
+        quantity: Option<i32>,
+        sent_at: DateTime<Utc>,
     },
     DuplicateIgnored {
         instruction_id: InstructionId,
@@ -59,6 +63,8 @@ pub enum IngressEventKind {
         /// Body size in bytes when known (Q13 §8); never the body itself.
         size_bytes: Option<u64>,
     },
+    /// The source key's own rate limit (`ingress.rate_limited`); nothing was read.
+    RateLimited { retry_after_s: u64 },
 }
 
 /// One ingress outcome for an authenticated source key.
@@ -67,6 +73,8 @@ pub struct IngressEvent {
     pub user_id: UserId,
     pub at: DateTime<Utc>,
     pub source_id: SourceId,
+    /// Snapshot of the source's name (audit `source_name`, required with `source_id`).
+    pub source_name: String,
     /// Public part of the token; the only identifying value allowed in audit (ALIGN-3).
     pub key_id: String,
     pub kind: IngressEventKind,
@@ -74,10 +82,11 @@ pub struct IngressEvent {
 
 impl IngressEvent {
     /// Every outbox `event_type` this module emits; each must have a consumer at startup.
-    pub const TYPES: [&'static str; 3] = [
+    pub const TYPES: [&'static str; 4] = [
         "ingress.received",
         "ingress.duplicate_ignored",
         "ingress.rejected",
+        "ingress.rate_limited",
     ];
 
     /// Outbox `event_type` and audit `code`.
@@ -86,6 +95,7 @@ impl IngressEvent {
             IngressEventKind::Received { .. } => "ingress.received",
             IngressEventKind::DuplicateIgnored { .. } => "ingress.duplicate_ignored",
             IngressEventKind::Rejected { .. } => "ingress.rejected",
+            IngressEventKind::RateLimited { .. } => "ingress.rate_limited",
         }
     }
 }

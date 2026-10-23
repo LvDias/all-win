@@ -88,6 +88,7 @@ mod tests {
             id: InstructionId::new_v7(),
             user_id: user,
             source_id: SourceId::new_v7(),
+            source_name: "TV main".into(),
             source_type: "tradingview".into(),
             source_key_id: Some("AbCdEf123456".into()),
             message_id: MessageId::parse(msg).unwrap(),
@@ -147,6 +148,7 @@ mod tests {
             user_id: UserId::new_v7(),
             at: Utc::now(),
             source_id: SourceId::new_v7(),
+            source_name: "TV main".into(),
             key_id: "AbCdEf123456".into(),
             kind: IngressEventKind::Rejected {
                 code: RejectionCode::SchemaViolation,
@@ -156,11 +158,14 @@ mod tests {
             },
         };
         let p = event_payload(&event);
-        assert_eq!(p["kind"], "ingress.rejected");
-        assert_eq!(p["code"], "ingress.schema_violation");
-        assert_eq!(p["pointer"], "/quantity");
-        assert_eq!(p["key_id"], "AbCdEf123456");
-        assert_eq!(p["size_bytes"], 212);
-        assert!(p.get("message_id").is_none());
+        assert_eq!(p["actor"], "system");
+        assert_eq!(
+            p["details"],
+            serde_json::json!({"error_code": "ingress.schema_violation", "pointer": "/quantity", "body_size": 212})
+        );
+        assert_eq!(p["refs"]["source_key_id"], "AbCdEf123456");
+        assert_eq!(p["refs"]["source_name"], "TV main");
+        assert!(p["refs"].get("message_id").is_none());
+        assert!(!p.to_string().contains("awk_"));
     }
 }

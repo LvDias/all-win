@@ -42,6 +42,7 @@ utoipa.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+jsonschema.workspace = true
 serde.workspace = true
 sha2.workspace = true
 yaml_serde.workspace = true
