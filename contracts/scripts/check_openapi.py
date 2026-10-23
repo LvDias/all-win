@@ -5,7 +5,7 @@
 # - every example validates against its schema (operations and components/responses);
 # - contract conventions: root session security, 401 on session operations, 500 everywhere,
 #   400 where there is input, 403 on state-changing /api/v1 operations and on x-step-up operations,
-#   x-step-up values, ingress has no 400/401/403.
+#   x-step-up values, ingress has no 400/401/403; no null values (stray keys from unquoted commas).
 # Usage: python3 contracts/scripts/check_openapi.py contracts/http/openapi.yaml
 import os
 import sys
@@ -76,6 +76,17 @@ def main(p):
     if not str(doc.get('openapi', '')).startswith('3.1'):
         errs.append('openapi must be 3.1.x')
     check_refs(doc, base, errs)
+
+    def find_nulls(o, path):  # an unquoted comma in a flow mapping yields a stray key with a null value
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if v is None:
+                    errs.append(f'null value at {path}/{k} (quote the text?)')
+                find_nulls(v, f'{path}/{k}')
+        elif isinstance(o, list):
+            for i, v in enumerate(o):
+                find_nulls(v, f'{path}/{i}')
+    find_nulls(doc, '')
     validator = make_validator_factory(doc)
 
     ops = list(operations(doc))
