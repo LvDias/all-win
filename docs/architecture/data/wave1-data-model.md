@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 10; **rev. 11 proposed** (Code Review pending). Rev. 11: `one_time_code.action` gains `route_enable` and `account_binding_change` (HTTP 3.0.0, pending Q35), both targeted (target = account).
+- **Status:** Accepted (2026-10-23), rev. 11; **rev. 12 proposed** (Code Review pending). Rev. 12: `audit_entry.actor` (`user` / `system` / `platform_admin`, HTTP 3.0.0 `AuditEntry.actor`), in #7b (§6.4).
+- Rev. 11 (7b976d6): `one_time_code.action` gains `route_enable` and `account_binding_change` (HTTP 3.0.0, pending Q35), both targeted (target = account).
 - Rev. 10 (49dbea0):
   - adds the preset catalog: `prop_firm`, `firm_release`, `firm_release_platform`, `firm_plan`, `preset`, `preset_version`, `preset_rule_set` and `firm_stance`;
   - adds `release_id` and the in-catalog FKs on `opt_in_rule_version`;
@@ -1209,10 +1210,12 @@ CREATE TABLE audit.audit_entry (
   source_name     text CHECK (char_length(source_name) BETWEEN 1 AND 60),                  -- snapshot, like account_name
   safe_to_display boolean NOT NULL,                      -- raw details may be shown; the Core decides each time (no default)
   event_seq       bigint NOT NULL,                       -- rev. 10 (S10-3): app.outbox.seq of the source event
+  actor           text CHECK (actor IN ('user','system','platform_admin')),  -- rev. 12: who caused it; NULL only on rows before #7b
   PRIMARY KEY (occurred_at, id),
   UNIQUE (occurred_at, source_event_id),
   CONSTRAINT audit_entry_source_name_check  CHECK (source_id IS NULL OR source_name IS NOT NULL),   -- #7b: NOT VALID
   CONSTRAINT audit_entry_account_name_check CHECK (account_id IS NULL OR account_name IS NOT NULL), -- #7b: NOT VALID
+  CONSTRAINT audit_entry_actor_check        CHECK (actor IS NOT NULL),                              -- #7b: NOT VALID (rev. 12)
   CONSTRAINT audit_entry_no_token CHECK (                -- rev. 9: also the free-text snapshots (immutable operators only)
         details::text            !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
     AND coalesce(account_name,'') !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'
@@ -1253,6 +1256,13 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
     - Before production, a plain `CREATE INDEX` on the partitioned parent, then `DROP INDEX` of the old one, is acceptable.
   - The rejected alternative was a declared non-causal `(occurred_at, recorded_at, id)`.
   - **Rule:** every `audit_entry` row comes from an `app.outbox` event. This is already implied by `source_event_id NOT NULL` and the dedupe key, and today's audit consumer (`core/crates/audit`) only maps events. A producer that wants an audit row (e.g. `security.*` from auth) writes an outbox event in its own transaction, never an audit row directly. So `event_seq` is always available, and the user-visible log keeps the outbox's crash safety (X-5).
+- **`actor` (rev. 12; HTTP 3.0.0 `AuditEntry.actor`):** who caused the entry.
+  - `user`: the account owner's own action.
+  - `system`: an automatic action (route, skip, cap, expire, flatten…).
+  - `platform_admin`: reserved for admin actions on the user's data (Q28 recovery).
+  - It is **stored, not derived**. The same code (e.g. `accounts.updated`, `security.channel_changed`) can come from the user or an admin, so the code alone cannot tell. The producer puts it in the outbox payload.
+  - The admin's identity is not a column; if a code needs it, it goes into `details`, masked per policy.
+  - Nullable only for rows written before #7b, which the contract shows as absent. `audit_entry_actor_check` is added `NOT VALID`, so every new row must set it, and the old rows stay exempt (same pattern as the snapshot checks).
 - **No secret in `audit_entry`** (§1 rule 9; CLAUDE.md):
   - The Core redacts before writing.
   - The storage `CHECK` refuses an `awk_`/`awd_` token in `details`, in the two free-text snapshots (`account_name`, `source_name`), since a user could paste a token into a name, and in `message_id`. Its pattern allows `_`, so a 61-character token would otherwise match.
@@ -1363,10 +1373,10 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
 - Plan:
   1. `ADD COLUMN outcome text NOT NULL DEFAULT 'info'` and `safe_to_display boolean NOT NULL DEFAULT false`, then `ALTER … DROP DEFAULT`. These are fast metadata defaults (PG ≥ 11), and dropping the defaults makes every new insert set the values.
-  2. Add the nullable `is_exit`, `message_id` and `source_name`, and `event_seq bigint NOT NULL DEFAULT 0` then `DROP DEFAULT` (rev. 10). Replace `audit_entry_user_time_idx` with `(user_id, occurred_at DESC, event_seq DESC, id DESC)`. `app.outbox.seq` comes first, in its own forward `app` migration.
+  2. Add the nullable `is_exit`, `message_id`, `source_name` and `actor` (with its `IN` check validated, since all existing values are NULL), and `event_seq bigint NOT NULL DEFAULT 0` then `DROP DEFAULT` (rev. 10). Replace `audit_entry_user_time_idx` with `(user_id, occurred_at DESC, event_seq DESC, id DESC)`. `app.outbox.seq` comes first, in its own forward `app` migration.
   3. Add the `CHECK`s:
      - the column `CHECK`s on `outcome`, `is_exit`, `message_id` and `source_name`, validated, since only new values can fail them;
-     - `audit_entry_source_name_check` and `audit_entry_account_name_check` added **`NOT VALID` and never validated**. Old rows have `source_id` with a just-added NULL `source_name`, or a NULL `account_name`, and cannot be backfilled. `NOT VALID` enforces the rule on every new insert and exempts the old rows. Verified on PostgreSQL 16.15 in a scratch database:
+     - `audit_entry_source_name_check`, `audit_entry_account_name_check` and (rev. 12) `audit_entry_actor_check` added **`NOT VALID` and never validated**. Old rows have `source_id` with a just-added NULL `source_name`, or a NULL `account_name`, and cannot be backfilled. `NOT VALID` enforces the rule on every new insert and exempts the old rows. Verified on PostgreSQL 16.15 in a scratch database:
        - it is accepted on the partitioned parent;
        - it propagates to the existing partitions as not validated;
        - new rows are refused;
@@ -1411,7 +1421,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - cross-user reads and writes return nothing or fail, **with and without** application filters, to prove RLS on its own;
    - a missing `app.user_id` returns zero rows;
    - `UPDATE`/`DELETE` on `audit_entry` fails;
-   - rev. 9, `audit_entry`: an insert without `outcome` or `safe_to_display` fails; an unknown `outcome` fails; `is_exit` on an `ingress` entry fails; `source_id` without `source_name` fails; a token in `source_name`, `account_name` or `message_id` fails; a `message_id` with `_` that is not a token passes; #7b applies on a database with pre-existing S1 audit rows (a `source_id` and no `source_name`), and a new insert of that shape then fails;
+   - rev. 9, `audit_entry`: an insert without `outcome` or `safe_to_display` fails; (rev. 12) an insert without `actor`, or with an unknown one, fails, while pre-#7b rows with NULL `actor` remain; an unknown `outcome` fails; `is_exit` on an `ingress` entry fails; `source_id` without `source_name` fails; a token in `source_name`, `account_name` or `message_id` fails; a `message_id` with `_` that is not a token passes; #7b applies on a database with pre-existing S1 audit rows (a `source_id` and no `source_name`), and a new insert of that shape then fails;
    - the token-pattern `CHECK` rejects a planted `awk_`/`awd_` token, and the `key_id` / hash-length `CHECK`s reject malformed rows;
    - fills: a redelivered `event_id` is a no-op; a second `add` for the same `(account_id, fill_id)` fails; an `amend` and a `remove` with new `event_id`s are accepted, and the effective fill is the latest one;
    - `command.step`: `modify:0` with kind `modify` and `orphan_flatten:<uuid>` with kind `flatten` pass; `modify:0` with kind `cancel`, `orphan_flatten:<uuid>` with kind `cancel`, `place:1`, `modify:01` and an upper-case UUID fail;
