@@ -250,10 +250,15 @@ components:
         - profiles.account_changed
         - presets.version_applied
         - presets.value_restored
+        - risk.rules_changed
+        - risk.warning
+        - risk.limit_reached
+        - risk.target_reached
+        - risk.consistency_warning
       description: |
         Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
         auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
-        `sync.*` (S11), `risk.*` (S13–S15), `notifications.*` (S18).
+        `sync.*` (S11), `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
     AuditEntry:
       type: object
       additionalProperties: false
@@ -760,6 +765,34 @@ components:
         adapter_version: { type: string, maxLength: 32 }
         code_expires_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         open_positions_acknowledged: { type: boolean, description: With `connections.unpaired`. }
+    DetailsRiskRulesChanged:
+      type: object
+      additionalProperties: false
+      required: [changes, limits_version]
+      properties:
+        changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
+        limits_version: { type: integer, minimum: 1 }
+        effective:
+          type: array
+          description: When each changed rule applies (Q48, provisional).
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, effective_from]
+            properties:
+              kind: { $ref: 'risk.yaml#/components/schemas/RiskRuleKind' }
+              effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    DetailsRiskState:
+      type: object
+      additionalProperties: false
+      required: [kind, limit, used, percent]
+      description: '`risk.warning`, `risk.limit_reached`, `risk.target_reached` (+ `action`), `risk.consistency_warning`.'
+      properties:
+        kind: { $ref: 'risk.yaml#/components/schemas/RiskRuleKind' }
+        limit: { type: string, maxLength: 32 }
+        used: { type: string, maxLength: 32 }
+        percent: { type: integer, minimum: 0 }
+        action: { type: string, enum: [notify, flatten_and_block] }
     AuditDetailsByCode:
       type: object
       additionalProperties: false
@@ -834,3 +867,8 @@ components:
         profiles.account_changed: { $ref: '#/components/schemas/DetailsProfileChanged' }
         presets.version_applied: { $ref: '#/components/schemas/DetailsPresetApplied' }
         presets.value_restored: { $ref: '#/components/schemas/DetailsPresetValueRestored' }
+        risk.rules_changed: { $ref: '#/components/schemas/DetailsRiskRulesChanged' }
+        risk.warning: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.limit_reached: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.target_reached: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }

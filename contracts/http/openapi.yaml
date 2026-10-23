@@ -1,14 +1,14 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 3.0.0
+  version: 3.1.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
     sessions, devices, channel changes, sources, NinjaTrader connections and pairing) in this root, and in
     `modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`), the V1-S16 prop firm catalog and
-    the account's preset (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`) and V1-S10
-    activity (`audit`). 3.0.0 is the first consumable release of the modules; 2.1.0–2.5.0 were never merged or
+    the account's preset (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`), V1-S10
+    activity (`audit`) and V1-S13 risk (`risk`). 3.0.0 is the first consumable release of the modules; 2.1.0–2.5.0 were never merged or
     deployed. Security rules: auth-and-session-policy.md rev. 2.
     Version 2.0.0 is breaking (password and TOTP removed). Paths stay `/api/v1`: no version was ever deployed
     and there are no external clients, so the path major moves only for breaking changes after the first
@@ -79,6 +79,7 @@ tags:
   - name: routing
   - name: profiles
   - name: audit
+  - name: risk
 
 paths:
   /ingress/v1/tradingview/{token}:
@@ -1226,6 +1227,11 @@ paths:
   /api/v1/accounts/{account_id}/preset-diff: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-diff' }
   /api/v1/accounts/{account_id}/preset-version: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-version' }
   /api/v1/accounts/{account_id}/preset-values/{field}/restore: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-values~1{field}~1restore' }
+  # V1-S13 (module risk); owner Compasso.
+  /api/v1/accounts/{account_id}/risk: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1risk' }
+  /api/v1/risk-summaries: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1risk-summaries' }
+  /api/v1/accounts/{account_id}/risk-rules: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1risk-rules' }
+  /api/v1/accounts/{account_id}/risk-rules/preview: { $ref: 'modules/risk.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1risk-rules~1preview' }
 
 components:
   securitySchemes:
@@ -1671,6 +1677,7 @@ components:
         - $ref: 'modules/routing.yaml#/components/schemas/RouteChangedEvent'
         - $ref: 'modules/audit.yaml#/components/schemas/AuditEntryRecordedEvent'
         - $ref: 'modules/presets.yaml#/components/schemas/PresetVersionAvailableEvent'
+        - $ref: 'modules/risk.yaml#/components/schemas/RiskStateChangedEvent'
         - type: object
           additionalProperties: false
           required: [type, at, connection_id, status]

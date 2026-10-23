@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 3.1.0 — 2026-10-23 (V1-S13 risk; additive) — notes: docs/architecture/contracts/s13-risk.md
+- Module `risk`: `getAccountRisk` (trading day, meters with used / limit / truncated percent / state, unset and untracked rules, block, staleness, `limits_pending`, pending changes), `listRiskSummaries`, `getAccountRiskRules`, `putAccountRiskRules` (account limits version, `acknowledge_reached`), `previewAccountRiskRules`; SSE `risk.state_changed`.
+- Audit codes `risk.rules_changed`, `risk.warning`, `risk.limit_reached`, `risk.target_reached`, `risk.consistency_warning`.
+- Rule values stay owned by `accounts`; risk derives its limits from `account.limits_changed` (ADR-0006).
+
 ## 3.0.0 — 2026-10-23 (BREAKING for 2.1.0–2.5.0 readers; Code Review fixes of 2.4.0 and 2.5.0)
 - **Versioning:** 2.1.0 changed response shapes (`OptInState.firm_stance` / `current_rule_version_id` became optional; `copy` may be `not_required`), and 2.5.0 changed `updateAccount` semantics. Following ADR-0002 §4 (before the first deploy, a breaking change bumps the document major; paths stay `/api/v1`), the modules are released as 3.0.0. 2.1.0–2.5.0 were never merged or deployed; 3.0.0 is the first consumable release of the modules (agreed with Esquadro).
 - **accounts:**
