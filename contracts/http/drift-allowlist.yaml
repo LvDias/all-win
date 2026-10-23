@@ -1,5 +1,5 @@
 # OpenAPI drift allowlist (Architect-owned). Rules: core/crates/app/tests/openapi_drift.rs.
-# Checked against contracts/http/openapi.bundled.yaml (HTTP contract 3.4.1, 87 operations).
+# Checked against contracts/http/openapi.bundled.yaml (HTTP contract 4.3.0, 88 operations).
 # not_implemented: contract operations without a Core handler yet. The check fails when one
 # gains a handler while still listed, or when it is not in the contract. Each slice's core
 # merge gate removes its own operations.
@@ -73,6 +73,7 @@ not_implemented:
   - requestLoginCode
   - requestStepUp
   - resendCode
+  - restartEvaluation
   - restoreAccountProfile
   - restorePresetValue
   - revokeInvitation
