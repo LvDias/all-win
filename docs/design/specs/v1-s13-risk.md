@@ -122,7 +122,7 @@
 - **Prefilled from the preset** when the firm publishes it, with the provenance mark of F§7.4 (verified popover with source and date, `Editado` when changed, `Restaurar valor do preset`); when the firm does not publish it the field is empty and shows the warning below. Real accounts have no preset: empty, no marks.
 - Help: "O All Win usa, em cada execução, o maior valor entre a comissão informada pela plataforma e este valor × quantidade. Os limites usam o resultado líquido." / "For each fill, All Win uses the greater of the platform-reported commission and this value × quantity. Limits use the net result."
 - **Empty:** inline warning "Comissão não informada. Sem ela o resultado líquido é igual ao bruto e os limites podem ficar folgados demais." (account-level wording; the per-trade label of S21 is "comissões não informadas", keep both exact).
-- **Effect on save:** a **higher** value applies at once; a **lower** value (or clearing it) applies from the next trading day, because it would loosen the net limits (contract `AccountRisk.pending_commission_change`). The form says so under the field: "Uma comissão menor vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the pending line. The Core publishes a new limits version (S13 pending flow, `limits_pending` states as elsewhere).
+- **Effect on save [Proposal, Q85 to the user; not a decided rule]:** a **higher** value applies at once; a **lower** value (or clearing it) applies from the next trading day, because it would loosen the net limits (contract `AccountRisk.pending_commission_change`). The form says so under the field: "Uma comissão menor vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the pending line. The Core publishes a new limits version (S13 pending flow, `limits_pending` states as elsewhere).
 
 ### 4.3 Section "Regra de consistência" (prop accounts only)
 
@@ -283,9 +283,10 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 - Count line: "Contagem desde {start}{; inclui US$ {earned_before} já ganhos antes}. Só entram operações capturadas pelo All Win a partir dessa data, mais o valor informado. Operações lançadas à mão não contam." (AC-2, AC-4).
 - Source line for the target (from the preset): "Meta da firma: US$ 6.000,00 · fonte {page title}, verificado em {date}" with the F§7.4 popover.
 - Actions: `Ajustar contagem` (S13b-02).
-- **Not confirmed or absent target (AC-3):** the card shows no progress and says why: "A meta desta avaliação não está confirmada nas páginas oficiais da firma, então não mostramos o progresso." with `Resolver` (S16 `ConflictPicker`) — the product never picks a value. A preset with no evaluation target (funded phase) has no card.
+- **Header line (PO, Q-S13b-2):** the account detail header shows "Avaliação: faltam {remaining}"; **hidden** when the target is not confirmed or absent.
+- **Not confirmed or absent target (AC-3):** the card shows no progress and says why: "A meta desta avaliação não está confirmada nas páginas oficiais da firma, então não mostramos o progresso." with `Resolver` (S16 `ConflictPicker`) — the product never picks a value. **Absent target on an evaluation account** (the preset has no published evaluation target): the card is shown with the explanation "Esta avaliação não tem meta publicada, então não mostramos o progresso." (no `Resolver`, there is nothing to resolve). A funded or live phase has no card.
 - Stale data: `Sem dados recentes` badge (F§7.2) like the meters; `as_of` shown as absolute time.
-- Net-commission note: when `commission_source` is `none`, `configured` or `mixed` (the commission was not fully reported by the platform), the card repeats "Comissão não informada: o acumulado pode estar acima do real." (the S22 suggestion; keeps the user from being misled).
+- Net-commission note (keeps the user from being misled): `commission_source = none` → "Comissão não informada: o acumulado pode estar acima do real."; `configured` or `mixed` (estimated from the configured minimum) → "Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real." `platform` and `manual`: no note.
 
 ### 12.2 Dialog "Ajustar contagem da avaliação" (AC-4)
 
@@ -294,7 +295,7 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 | Field | Component | Validation | API |
 |---|---|---|---|
 | Início da contagem / Count start | date `Input` (F§6.4, user time zone), default the current start | required; not in the future (422 `accounts.evaluation_start_invalid`, pointer `/evaluation_start`) | `evaluation_start` |
-| Já ganho antes do início (líquido) / Already earned before the start (net) | money `Input`, optional | ≥ 0; decimals as `MoneyAmount` (see §4.2b) | `evaluation_earned_before` |
+| Já ganho antes do início (líquido) / Already earned before the start (net) | money `Input`, optional | ≥ 0 (V1: a loss already made before the start is not recorded; if the user wants it, that is a PO/contract change); decimals as `MoneyAmount` (see §4.2b) | `evaluation_earned_before` |
 
 - Text above the fields: "Só entra o que o All Win capturou a partir da data de início, mais o valor que você informar aqui. Uma reinicialização da simulação ou do Playback não reinicia a contagem." (AC-4, S11 AC-6).
 - Button `Reiniciar contagem` opens an `AlertDialog` "Reiniciar a contagem da avaliação?": "A contagem passa a valer a partir da data e do valor acima. O histórico anterior continua no registro de atividade." Confirm → `restartEvaluation` `{evaluation_start, evaluation_earned_before?, row_version}`; audited as `accounts.evaluation_restarted` (previous and new start). No step-up (not in the S3 list).
@@ -319,4 +320,4 @@ Keys `risk.evaluation.*` (pt-BR = en). The bar has a text equivalent ("80 % da m
 |---|---|---|
 | Q-S13b-1 | The registration-date default of `evaluation_start` and the `evaluation_earned_before` field in the **create** account form (S5 step "Regras") — spec proposes both optional in the S5 rules step, defaults as in the contract. S5 needs a one-line addition (Nanquim/Aquarela after the S5 delta commit). | Aquarela |
 | Q-S13b-3 | Edit the earned amount or start without restarting: no contract operation (only `restartEvaluation`). | Architect |
-| Q-S13b-2 | Whether the header line on the account detail shows the "faltam" amount or only a link; proposal: amount, hidden when not confirmed. | PO |
+| Q-S13b-2 | **Answered by the PO:** the header shows "faltam", hidden when not confirmed or absent (§12.1). | PO |

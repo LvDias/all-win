@@ -41,7 +41,7 @@ No new route, no new menu item. Nothing else is drawn: the browser never decides
 |---|---|---|---|
 | Modo / Mode | `RadioGroup` | required; one of `individual`, `shared` | read: account detail; write: `PUT updateAccount` **[Contract gap: the account field (e.g. `bracket_mode`); the values `individual` / `shared` already exist in `DetailsBracketCalculated.mode`]** |
 
-**Changing the mode while a position or working orders exist** is a decision the PO has not made (the slice plan is silent): see §6 Q-S8-1. Until answered, the proposal is **[Proposal]**: the change is allowed, applies **from the next entry**, open positions and working orders are not modified, and the dialog says so ("Vale para as próximas entradas. Posições e ordens abertas não são alteradas.") using the same wording as the S6 profile edit.
+**Changing the mode while a position or working orders exist** is **Q86, provisional**, for the user: the PO recommends (b) *refused until the account is flat and has no working orders* (shared mode recalculates from the average price, so a mid-position switch silently changes protection); my earlier proposal was (a). Drawn as (a) until the user decides: the change is allowed, applies **from the next entry**, open positions and working orders are not modified, and the dialog says so ("Vale para as próximas entradas. Posições e ordens abertas não são alteradas.") using the same wording as the S6 profile edit.
 
 **Actions and flow:** `Salvar` (disabled until the value differs; no-op save is not sent) → pending state on the button (`aria-busy`, disabled, so a double click sends once) → success: `Toast` "Modo de stop e alvo atualizado." and the card shows the new value → the change is audited (S10).
 **Cancel / dirty guard:** leaving the tab with an unsaved selection opens `Descartar alterações?` (F§10).
@@ -56,6 +56,7 @@ No new route, no new menu item. Nothing else is drawn: the browser never decides
 | Save error | inline `Alert` in the card (stable code translated by key); selection kept; retry possible |
 | Conflict (`409`/stale) | `Alert` "A conta mudou. Recarregue para ver o valor atual." + `Recarregar`; selection kept until reload |
 | Success | toast + card shows saved value |
+| Manual-only or unlinked account (no orders placed by All Win: S5 AC-12, S16 AC-7) | the card is **hidden**; the Perfil tab shows only the profile |
 | Account paused/disabled | radios are enabled (the mode is a setting, not an order); the card does not claim anything about running orders |
 
 **Accessibility:** `fieldset`/`legend` "Modo de stop e alvo"; each option card is a real radio with its explanation as `aria-describedby`; arrow keys move the choice; the selected state is text ("Selecionado" sr-only) plus border, not color alone; 44 px touch targets (F§9).
@@ -77,6 +78,8 @@ S8 adds no screen; it fixes the **wording and fields** S10 shows for the actions
 | Partial exit (individual) | 4b | "{account}: saída parcial de {q}; stops e alvos reduzidos pela entrada mais antiga" | per-entry quantities removed (strings) |
 | Shared mode recalculation | 5 | "{account}: stop e alvo recalculados a partir do preço médio {price}" | average price, stop and target prices, distances and unit used (S6 rounding fields) |
 | `modify` / `cancel` from TradingView | 6 | "Instrução {modify\|cancel} não é suportada na V1" (status *Rejeitada*) | contract: ingress 422 `ingress.action_not_allowed_for_source`, audited `ingress.rejected` with outcome `rejected` (S10 label *Rejeitada*, danger); reason shown as text; master replication is S20 |
+| `close` on an out-of-sync account believed flat (Q75) | 2 | "{account}: fechamento enviado à plataforma; resultado: {fechado\|já estava zerada}" | flatten sent; result `flattened`, or `already_flat` audited as `routing.out_of_sync_flatten` (**TODO**: Q75 and that code are in the 5.2.0 draft only, not in 5.1.1) |
+| Reduce with nothing to reduce (Q76) | 4b | "{account}: nada para reduzir em {instrument}" (status *Ignorada*) | `routing.nothing_to_reduce`; the **notification** (S18 *warning*, not in the reopen list) and its use for an out-of-sync believed-flat account are **TODO** until Q76 is in the contract (5.2.0 draft) |
 | **`reverse` on a barred account or with no room** (Q74 b) | 3 | "{account}: inversão só fechou a posição ({closed_qty} {long\|short}); a nova entrada não foi aberta: {reason}" | gate code (`routing.out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`, `max_position_reached`, or `routing.expired`), outcome *Parcial*, `reverse_closed_qty`; the open leg's quantity executed is 0. Notification `routing.reverse_close_only` (S7 §5.4) |
 | `reverse` when already on the reverse side | 3 | "{account}: já está {comprada\|vendida}; nada foi alterado" | `routing.position_conflict`, never a flatten (status *Recusada*) |
 
@@ -84,7 +87,7 @@ All prices and quantities are strings formatted per F§6; the browser does no ar
 
 ## S8-03 Rejection notice (AC-4)
 
-"The user is notified" is fulfilled through the S18 notification center, not a new surface: the existing S18 notification `routing.position_conflict` (*warning*, registry grouping `account_trading_day`, params `DetailsRoutingDecision`), with the S8-02 text and link `Ver na atividade` to the S10 row. Severity and grouping follow the registry; asking for one notification per instruction across accounts would be a **registry change request to the Architect**, not drawn here. Whether it should be **critical** is Q-S8-2 (proposal: no, ordinary).
+"The user is notified" is fulfilled through the S18 notification center, not a new surface: the existing S18 notification `routing.position_conflict` (*warning*, registry grouping `account_trading_day`, params `DetailsRoutingDecision`), with the S8-02 text and link `Ver na atividade` to the S10 row. Severity and grouping follow the registry; asking for one notification per instruction across accounts would be a **registry change request to the Architect**, not drawn here. It is an **ordinary warning**, never critical (PO: critical is only Q27 orphan-leg flatten and U19 failed flatten, S18 AC-5); grouping stays as decided (S18 AC-6: same code + account + trading day).
 
 ---
 
@@ -103,10 +106,10 @@ The card is one column at every width; option cards stack below `md` and sit sid
 
 | Id | Question | Owner | Blocks |
 |---|---|---|---|
-| Q-S8-1 | Is changing the mode allowed while the account has an open position or working orders? Proposal: allowed, applies from the next entry; alternative: blocked with an explanation until flat. | PO | S8-01 save rules |
-| Q-S8-2 | Is the opposite-entry rejection (AC-4) an ordinary or a critical notification? Proposal: ordinary, as in the registry. | PO | S8-03 |
+| Q86 (Q-S8-1, provisional; PO rec. (b) refuse until flat) | Is changing the mode allowed while the account has an open position or working orders? Proposal: allowed, applies from the next entry; alternative: blocked with an explanation until flat. | PO | S8-01 save rules |
+| Q-S8-2 | **Answered by the PO:** ordinary warning, registry grouping. | PO | closed |
 | Q-S8-3 | Contract: account field for the mode and the audit codes for S8-02 (`routing.position_conflict` and `routing.nothing_to_close` exist). | Architect | whole spec |
-| Q-S8-4 | In `shared` mode, what does the user expect to see about the recalculated orders on the account (a "current stop/target" line)? The slice has no AC for it; **not drawn**. | PO | none (optional) |
+| Q-S8-4 | Current stop/target line in `shared` mode: **not drawn** (PO). | PO | none |
 
 ## 7. Implementation handoff
 

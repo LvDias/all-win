@@ -27,7 +27,7 @@ The user is always told what happened and what All Win did or did not do. All Wi
 **Layout:** `Alert` (danger, `OctagonX`) in the alerts area:
 
 - Title "Conta fora de sincronia" / "Account out of sync".
-- Body: "Novas entradas não são enviadas para esta conta até você limpar o alerta. Saídas continuam permitidas, e uma inversão só fecha a posição." / "New entries are not sent to this account until you clear the alert. Exits are still allowed, and a reverse only closes the position." *(AC-4; exits per S7 AC-8.)*
+- Body: "Novas entradas não são abertas. Fechamentos continuam, inclusive o de uma inversão, e o fechamento é sempre enviado à plataforma." / "New entries are not opened. Closings continue, including the closing leg of a reverse, and a close is always sent to the platform." (Q74, Q75; the Q75 sentence is **[TODO until Q75 is recorded in decisions.md]**) *(AC-4; exits per S7 AC-8.)*
 - **Reason** (from the Core, text + date-time): one of the table below; with details when present (what was missed, expected vs reported position).
 - **What All Win did** (when applicable): "Cancelamos automaticamente {n} ordens órfãs: {list}." / "We automatically flattened the position created by the orphan leg ({qty})." Exactly what the Core reports; the browser invents nothing.
 - Actions: `Limpar alerta` (primary, see S11-02) and `Ver atividade` (link to the S10 timeline filtered by the account and the reason's time window).
@@ -46,7 +46,8 @@ The user is always told what happened and what All Win did or did not do. All Wi
 | Entry command expired | S12 AC-2b | "Uma ordem de entrada expirou sem ser executada." | `execution.expired`; **does not** flag when it is the open leg of a reverse that never left the Core (5.1.1 exception, ADR-0004 §5) |
 | Order state unknown after recovery | — | "Não sabemos o estado de uma ordem depois da reconexão." | `execution.state_unknown` (S10 *Indeterminada*) |
 | Orphan cancellation failed | S9 AC-3 | "Não conseguimos cancelar uma ordem órfã." | which order, platform message as text |
-| Flatten failed after legs were cancelled | U19 | "Falhou o fechamento da posição depois do cancelamento das ordens." | **top severity**, critical like 5 iii |
+| Any flatten failure that leaves a position after the legs were cancelled | U19 (user decision 2026-10-23, residual risk accepted; covers whichever flow sent the flatten: close/reverse, enforcement, orphan leg: **Q-S11-6** asks Compasso/Esquadro to confirm the flows) | "Falhou o fechamento da posição depois do cancelamento das ordens." | **top severity: critical** (`CriticalBanner`) + out of sync, like 5 iii |
+| Cancel/flatten of the reactive block that fails while **no unprotected position remains** | S15 AC-6 | "Não foi possível fechar ou cancelar tudo em {account}." | `danger`; the plugin panel already shows it. Exclusive with the U19 row: if a position is left after the legs were cancelled it is U19, critical |
 | External order or fill | 7 | "Uma ordem ou execução fora do All Win foi detectada nesta conta." | only on master-replication destinations (S19, V1.1); TradingView-only destinations are audited only, no flag |
 | Disconnected by the user in the plugin | — | "Você desconectou este computador no plugin com posição aberta." | `sync.disconnected_by_user` (S10, proposal already in plugin panels) |
 
@@ -69,7 +70,7 @@ More than one reason can be active; the alert lists the **most severe first** an
 `Limpar alerta` opens an `AlertDialog` "Limpar o alerta de {account}?":
 
 - Body: "Confirme que você conferiu a posição e as ordens na plataforma. Depois de limpar, esta conta volta a receber novas entradas." / "Confirm that you checked the position and orders on the platform. After clearing, this account receives new entries again."
-- If the Core reports that the account is **not observable** or its position is unknown (AC-5 iv), the dialog adds an `Alert` warning "A integridade do bracket ainda é desconhecida." **[Provisional, Q-S11-1: whether clearing is allowed then.]**
+- If the Core reports that the account is **not observable** or its position is unknown (AC-5 iv), the dialog adds an `Alert` warning "A integridade do bracket ainda é desconhecida." **[Provisional, Q83 (was Q-S11-1): PO rec. (a) not until the account is observable and the reconnect check has reported; Compasso proposes (b) allowed with this warning and the required confirmation. Drawn as (b) until the user decides; under (a) the button is `aria-disabled` with the reason.]**
 - A required `Checkbox` "Conferi a posição e as ordens na plataforma." gates the confirm button (a deliberate speed bump; the same pattern as S5 acknowledgement). Buttons `Cancelar` / `Limpar alerta` (destructive-neutral style, not danger).
 - Duplicate-submit: button busy and disabled after the first click; the request carries an idempotency key.
 - Success: toast "Alerta limpo. Os motivos ficam no registro de atividade." and the alert disappears; audit entry with who and when. Failure: inline `Alert` in the dialog with the translated code, dialog stays open; `409` (state changed) → "O estado da conta mudou. Recarregue para ver o motivo atual." + `Recarregar`.
@@ -82,7 +83,7 @@ More than one reason can be active; the alert lists the **most severe first** an
 
 - While an account **cannot be observed** (broker connection lost with NinjaTrader open, AC-5 iv, or the check has not finished): a `Badge` warning `Integridade do bracket desconhecida` / `Bracket integrity unknown` (`CircleHelp`) on the account detail header and an `Alert` explaining: "Não conseguimos confirmar se o stop e o alvo desta conta estão ativos. Confira na plataforma." The badge disappears when the check reports.
 - After the check, the result is shown as the **reason and "what All Win did"** of S11-01 (cases i–iii). Case (i) alone (orphan leg cancelled, position flat) still leaves the account out of sync until cleared (AC-5 last line, Q14), so the alert shows "Cancelamos {n} ordens órfãs" with the list.
-- New commands are not accepted before the check completes: the route status shows the reason `connection_disconnected` / `Verificando a conta` **[Contract gap: reason for "check in progress"; today `connection_disconnected` never skips an instruction and the command waits]**.
+- New commands are not accepted before the check completes: the route status shows the reason `connection_disconnected` / `Verificando a conta` **[Contract gap: reason for "check in progress"]**. While disconnected: **entries that cannot be sent expire per TTL (`routing.expired`) and are reported as missed; exits wait for the connection and run late, audited as late** (S12 AC-2/AC-2b, T1: exits never expire). The route status says "NinjaTrader desconectado".
 
 ## S11-04 Notifications (S18) and audit (S10)
 
@@ -94,10 +95,11 @@ Notifications are one pointer per event with a link to the account; the current 
 | Disconnect with position/orders | 1, 2 | danger | "{account}: desconectou com posição aberta. Nada será reenviado sozinho." | account detail |
 | Orphan legs cancelled | 5 i | warning | "Ordens órfãs canceladas em {account}: {list}" | S10 |
 | Bracket incomplete | 5 ii | danger | "{account}: posição sem stop/alvo ou ordens em estado desconhecido" | account detail |
-| Opposite position flattened | 5 iii | **critical** (`CriticalBanner`, C§8, maximum priority per AC-5 iii) | "{account}: fechamos {qty} criados pela perna órfã. Confira a conta." | account detail |
+| Opposite position flattened | 5 iii | **critical** (`CriticalBanner`, C§8; one of **two** critical cases, with U19 below: S18 AC-5 / Q51, Q27) | "{account}: fechamos {qty} criados pela perna órfã. Confira a conta." | account detail |
 | `reverse` with an opposite position on an out-of-sync account | 4 | danger | "Inversão em {account}: só a posição foi fechada ({closed_qty} {long\|short})" (`routing.reverse_close_only`, one per occurrence, S7 §5.4) | S10 row |
 | Entry command expired / state unknown / orphan cancellation failed | S12 AC-2b, S9 AC-3 | danger | "{account}: {reason}" | account detail |
-| Flatten failed after legs were cancelled | U19 | **critical** (`CriticalBanner`) | "{account}: não foi possível fechar a posição. Confira a conta agora." | account detail |
+| Any flatten failure leaving a position after the legs were cancelled (U19) | U19 | **critical** (`CriticalBanner`, C§8) | "{account}: não foi possível fechar a posição. Confira a conta agora." | account detail |
+| Cancel/flatten of the reactive block failed, no unprotected position remains | S15 AC-6 | danger | "{account}: não foi possível fechar ou cancelar tudo." | account detail |
 | Entry skipped on an out-of-sync account | 4 | per the S18 reopen rule (`routing.out_of_sync`, danger, Q68 b) | "Entrada recusada em {account}: conta fora de sincronia" | S10 row |
 | Flag cleared | 3 | none (audit only) | — | — |
 
@@ -117,8 +119,9 @@ Keys: `accounts.sync.*`, `activity.sync.*`, `notifications.sync.*` (pt-BR = en).
 
 | Id | Question | Owner | Blocks |
 |---|---|---|---|
-| Q-S11-1 | May the user clear the flag while the account is not observable (bracket integrity unknown), or must the plugin report first? Proposal: allowed with the extra warning (the user decides, vision §8 "wait for the user"). | PO | S11-02 |
-| Q-S11-2 | Should clearing be offered while a position is still open per the last data? Proposal: yes, with the same confirmation (the user may keep the position). | PO | S11-02 |
+| Q83 (Q-S11-1) | May the user clear the flag while the account is not observable (bracket integrity unknown), or must the plugin report first? Proposal: allowed with the extra warning (the user decides, vision §8 "wait for the user"). | PO | S11-02 |
+| Q84 (Q-S11-2, provisional; PO rec. (a) yes) | Should clearing be offered while a position is still open per the last data? Proposal: yes, with the same confirmation (the user may keep the position). | PO | S11-02 |
+| Q-S11-6 | Which flows does U19 cover (close/reverse flatten, enforcement flatten, orphan-leg flatten), and is the S15 AC-6 "não foi possível fechar tudo" the same event when the legs were already cancelled? Spec: exclusive split above. | Architect / PO | S11-01, S11-04 |
 | Q-S11-3 | Contract: sync state object (reasons[], what the Core did), clear operation, reason codes, check-in-progress reason, notification codes. | Architect | whole spec |
 | Q-S11-4 | Audit/notification entries for reconnect-check results (S11 AC-5 i–iv) and missed instructions while disconnected (S12 AC-2) are requested by the PO for the S10/S18 catalogs; this spec lists them, the catalogs must follow. | Aquarela (S10/S18) | S10, S18 |
 
