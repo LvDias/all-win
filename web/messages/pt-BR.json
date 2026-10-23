@@ -576,7 +576,8 @@
     "signOutFailed": "Não foi possível sair. Sua sessão pode continuar ativa.",
     "accounts": "Contas",
     "userMenuName": "{email}, menu do usuário",
-    "trades": "Trades"
+    "trades": "Trades",
+    "performance": "Desempenho"
   },
   "security": {
     "title": "Segurança",
@@ -1335,6 +1336,90 @@
       "saved": "Trade atualizado.",
       "conflict": "Este trade mudou em outro lugar.",
       "reload": "Recarregar"
+    }
+  },
+  "performance": {
+    "title": "Desempenho",
+    "asOf": "Dados até",
+    "loadError": "Não foi possível carregar o desempenho.",
+    "seeTrades": "Ver os trades deste filtro",
+    "howCalculated": "Como é calculado: {figure}",
+    "filters": {
+      "label": "Filtros",
+      "period": "Período",
+      "periods": {
+        "today": "Hoje",
+        "7d": "7 dias",
+        "30d": "30 dias",
+        "custom": "Personalizado"
+      },
+      "from": "De ({zone})",
+      "to": "Até ({zone})",
+      "accounts": "Contas",
+      "clear": "Limpar filtros",
+      "updated": "Resultados atualizados: {count, plural, =0 {nenhum trade} one {# trade} other {# trades}}"
+    },
+    "groupBy": {
+      "label": "Agrupar por",
+      "source_signal": "Fonte e tipo",
+      "source": "Fonte",
+      "signal_type": "Tipo de sinal"
+    },
+    "fresh": {
+      "banner": "Há novos trades desde {time}.",
+      "refresh": "Atualizar"
+    },
+    "figures": {
+      "label": "Resumo",
+      "trades": "Trades",
+      "totalPnl": "P&L total (líquido)",
+      "avgPnl": "P&L médio por trade (líquido)",
+      "winRate": "Taxa de acerto",
+      "avgDuration": "Tempo médio na operação",
+      "avgMae": "MAE médio",
+      "avgMfe": "MFE médio",
+      "percent": "{value} %",
+      "counts": "{wins} vitórias · {losses} derrotas · {zero} zero",
+      "secondary": "Bruto {gross} · Comissões {commission}",
+      "basis": "Base: {k} de {n} trades",
+      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele o líquido é igual ao bruto.} other {# trades sem comissão informada: neles o líquido é igual ao bruto.}}"
+    },
+    "definitions": {
+      "trades": "Número de trades do filtro.",
+      "totalPnl": "Soma do resultado líquido (depois das comissões) de todos os trades do filtro.",
+      "avgPnl": "P&L total dividido pelo número de trades.",
+      "winRate": "Trades com resultado positivo divididos pelo total de trades. Um trade com resultado zero não conta como vitória.",
+      "avgDuration": "Média do tempo entre a entrada e a saída de cada trade.",
+      "excursion": "Média da maior oscilação contra (MAE) ou a favor (MFE) de cada trade, informada pelo NinjaTrader/plugin ou digitada por você. Trades sem este valor não entram na média."
+    },
+    "table": {
+      "caption": "Desempenho por grupo, do maior ao menor P&L total. {count, plural, one {# grupo} other {# grupos}}.",
+      "group": "Grupo",
+      "total": "Total",
+      "see": "Ver",
+      "mae": "MAE médio",
+      "mfe": "MFE médio"
+    },
+    "group": {
+      "manual": "Manual",
+      "platform": "Plataforma (sem sinal)",
+      "master": "Replicação · {account}",
+      "revoked": "(revogada)",
+      "separator": " · ",
+      "signal": {
+        "trigger": "Gatilhos",
+        "trade_plan": "Trade Plan",
+        "nq_trigger": "Gatilhos NQ",
+        "master_account": "Master"
+      }
+    },
+    "empty": {
+      "title": "Ainda não há trades para analisar.",
+      "body": "Conecte uma conta ou registre um trade manual para ver o desempenho.",
+      "connections": "Ver conexões",
+      "add": "Registrar trade",
+      "filteredTitle": "Nenhum trade com estes filtros.",
+      "filteredBody": "Mude ou limpe os filtros para ver o desempenho."
     }
   }
 }

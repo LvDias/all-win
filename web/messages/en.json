@@ -576,7 +576,8 @@
     "signOutFailed": "Could not sign out. Your session may still be active.",
     "accounts": "Accounts",
     "userMenuName": "{email}, user menu",
-    "trades": "Trades"
+    "trades": "Trades",
+    "performance": "Performance"
   },
   "security": {
     "title": "Security",
@@ -1335,6 +1336,90 @@
       "saved": "Trade updated.",
       "conflict": "This trade changed somewhere else.",
       "reload": "Reload"
+    }
+  },
+  "performance": {
+    "title": "Performance",
+    "asOf": "Data as of",
+    "loadError": "Could not load performance.",
+    "seeTrades": "See the trades for this filter",
+    "howCalculated": "How it is calculated: {figure}",
+    "filters": {
+      "label": "Filters",
+      "period": "Period",
+      "periods": {
+        "today": "Today",
+        "7d": "7 days",
+        "30d": "30 days",
+        "custom": "Custom"
+      },
+      "from": "From ({zone})",
+      "to": "To ({zone})",
+      "accounts": "Accounts",
+      "clear": "Clear filters",
+      "updated": "Results updated: {count, plural, =0 {no trades} one {# trade} other {# trades}}"
+    },
+    "groupBy": {
+      "label": "Group by",
+      "source_signal": "Source and type",
+      "source": "Source",
+      "signal_type": "Signal type"
+    },
+    "fresh": {
+      "banner": "New trades since {time}.",
+      "refresh": "Refresh"
+    },
+    "figures": {
+      "label": "Summary",
+      "trades": "Trades",
+      "totalPnl": "Net P&L total",
+      "avgPnl": "Avg net P&L per trade",
+      "winRate": "Win rate",
+      "avgDuration": "Avg time in trade",
+      "avgMae": "Avg MAE",
+      "avgMfe": "Avg MFE",
+      "percent": "{value}%",
+      "counts": "{wins} wins · {losses} losses · {zero} zero",
+      "secondary": "Gross {gross} · Commissions {commission}",
+      "basis": "Based on {k} of {n} trades",
+      "uncommissioned": "{count, plural, one {# trade without commission data: its net equals gross.} other {# trades without commission data: their net equals gross.}}"
+    },
+    "definitions": {
+      "trades": "Number of trades in the filter.",
+      "totalPnl": "Sum of the net result (after commissions) of all trades in the filter.",
+      "avgPnl": "Total P&L divided by the number of trades.",
+      "winRate": "Trades with a positive result divided by all trades. A trade with a zero result is not a win.",
+      "avgDuration": "Average time between entry and exit of each trade.",
+      "excursion": "Average of the largest move against (MAE) or in favor (MFE) of each trade, reported by NinjaTrader/the plugin or typed by you. Trades without this value are left out of the average."
+    },
+    "table": {
+      "caption": "Performance by group, largest total P&L first. {count, plural, one {# group} other {# groups}}.",
+      "group": "Group",
+      "total": "Total",
+      "see": "See",
+      "mae": "Avg MAE",
+      "mfe": "Avg MFE"
+    },
+    "group": {
+      "manual": "Manual",
+      "platform": "Platform (no signal)",
+      "master": "Replication · {account}",
+      "revoked": "(revoked)",
+      "separator": " · ",
+      "signal": {
+        "trigger": "Triggers",
+        "trade_plan": "Trade Plan",
+        "nq_trigger": "NQ Triggers",
+        "master_account": "Master"
+      }
+    },
+    "empty": {
+      "title": "There are no trades to analyze yet.",
+      "body": "Connect an account or add a manual trade to see performance.",
+      "connections": "View connections",
+      "add": "Add trade",
+      "filteredTitle": "No trades match these filters.",
+      "filteredBody": "Change or clear the filters to see performance."
     }
   }
 }

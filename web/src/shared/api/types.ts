@@ -37,6 +37,9 @@ export type ManualTradeFields = Omit<Schemas["ManualTradeRequest"], never>;
 export type ManualTradePreview = Schemas["ManualTradePreview"];
 export type Instrument = Schemas["Instrument"];
 export type AuditSignalType = Schemas["AuditSignalType"];
+export type Performance = Schemas["Performance"];
+export type PerformanceGroup = Schemas["PerformanceGroup"];
+export type PerformanceFigures = Schemas["PerformanceFigures"];
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 /** Response bodies and request bodies taken from the generated paths, so contract drift breaks the build. */
