@@ -835,5 +835,28 @@
   "stepper": {
     "progress": "Etapa {current} de {total} · {label}",
     "done": "concluída"
+  },
+  "forms": {
+    "back": "Voltar",
+    "continue": "Continuar",
+    "skip": "Pular etapa",
+    "cancel": "Cancelar",
+    "errorsSummary": "{count, plural, one {Corrija # campo para continuar.} other {Corrija # campos para continuar.}}",
+    "step": {
+      "announce": "Etapa {n} de {total}: {label}"
+    },
+    "review": {
+      "title": "Revisar",
+      "edit": "Editar {group}",
+      "editShort": "Editar",
+      "notSet": "Não definido",
+      "fixStep": "Corrija a etapa {n}"
+    },
+    "discard": {
+      "title": "Descartar alterações?",
+      "body": "O que você preencheu será perdido.",
+      "stay": "Continuar editando",
+      "confirm": "Descartar"
+    }
   }
 }

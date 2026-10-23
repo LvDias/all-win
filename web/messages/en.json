@@ -835,5 +835,28 @@
   "stepper": {
     "progress": "Step {current} of {total} · {label}",
     "done": "completed"
+  },
+  "forms": {
+    "back": "Back",
+    "continue": "Continue",
+    "skip": "Skip step",
+    "cancel": "Cancel",
+    "errorsSummary": "{count, plural, one {Fix # field to continue.} other {Fix # fields to continue.}}",
+    "step": {
+      "announce": "Step {n} of {total}: {label}"
+    },
+    "review": {
+      "title": "Review",
+      "edit": "Edit {group}",
+      "editShort": "Edit",
+      "notSet": "Not set",
+      "fixStep": "Fix step {n}"
+    },
+    "discard": {
+      "title": "Discard changes?",
+      "body": "What you filled in will be lost.",
+      "stay": "Keep editing",
+      "confirm": "Discard"
+    }
   }
 }
