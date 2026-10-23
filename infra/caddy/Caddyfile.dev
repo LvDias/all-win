@@ -48,7 +48,8 @@ https://localhost:{$CADDY_HTTPS_PORT:8443} {
 
 	encode zstd gzip
 
-	handle /ingress/* {
+	# Same matcher as log_skip: every ingress-like path (/ingress, /ingressfoo, //ingress, /INGRESS, /%69ngress) goes to the Core, which answers the empty 404.
+	handle @ingress_rx {
 		# Hard transport cap, above the 16 KiB contract limit so the Core answers 413.
 		request_body {
 			max_size 64KB
