@@ -13,9 +13,9 @@
 
 | Code | Status | child_role | Terminal | depends_on | Meaning / adapter behavior |
 |---|---|---|---|---|---|
-| `command.duplicate` | `duplicate` | as in the repeated report | — | Same as the original command's outcome | The `command_id` was already handled. The report repeats the latest known state; nothing is executed (ADR-0004 §4) |
+| `command.duplicate` | `duplicate` | as in the repeated report | — | Same as the original command's outcome | The `command_id` was already handled. The report repeats the latest known state; nothing is executed (ADR-0004 §4). Also the answer to a stale re-delivery (§1 `command.stale`) of a `command_id` that **has** a dedupe record: the original outcome is repeated, never replaced. The Core treats `duplicate` as a non-transition |
 | `command.expired` | `expired` | `entry` | yes | failure | `expires_at` passed, checked on receipt **and** right before submitting to the platform, with the skew-corrected clock. Already-submitted orders are never cancelled because of expiry |
-| `command.stale` | `rejected` | as the command | yes | failure | Envelope `sent_at` (creation time, unchanged on retransmission) is older than 6 days on the skew-corrected clock (retention 7 d minus a 1-day margin). Checked on every command before execution, whether or not a dedupe record exists; the `command_id` is then recorded as handled. Never executes a re-delivery after the dedupe record was pruned (ADR-0004 §4 "Bounded re-delivery") |
+| `command.stale` | `rejected` | as the command | yes | failure | Envelope `sent_at` (creation time, unchanged on retransmission) is older than 6 days on the skew-corrected clock (retention 7 d minus a 1-day margin). Checked on every command before execution. Used only when **no** dedupe record exists for the `command_id` (a record means `command.duplicate` with the original outcome); the `command_id` is then recorded as handled. Never executes a re-delivery after the dedupe record was pruned (ADR-0004 §4 "Bounded re-delivery") |
 | `command.prerequisite_failed` | `rejected` | as the command | yes | failure | The `depends_on` command ended in failure |
 | `command.account_not_mapped` | `rejected` | as the command | yes | failure | `account_id` / `platform_account` is not among the mapped accounts of this session |
 | `command.account_not_destination` | `rejected` | as the command | yes | failure | The account is mapped, but not with role `destination` |
@@ -27,15 +27,17 @@
 | `command.nothing_to_reduce` | `cancelled` | `exit` | yes | failure | `place` with `position_effect: reduce` while the account is flat or the position is on the same side as the order (for example, a race with a stop/target fill). The adapter never opens or flips a position. `cancelled`, not `rejected`, so a benign race does not trip the out-of-sync rule for rejected commands. The Core still compares the outcome with its expected state: if it expected an open position on the opposite side, the account goes `out_of_sync` at once (`sync.*`), without waiting for the 60-s snapshot |
 | `risk.account_blocked` | `rejected` | `entry` | yes | failure | Position-increasing command on an account blocked by local enforcement (second barrier, ADR-0004 §7) |
 | `order.platform_rejected` | `rejected` | the order's role | yes | failure | The platform rejected the order. The platform's native text is never sent: it may contain account data |
-| `order.protection_failed` | `rejected` | `stop` / `target` | yes (for that leg) | failure | Submitting, resizing or re-pricing a protective order failed. The entry stays as filled. The Core raises `sync.bracket_incomplete` with a top-severity alert and waits; nobody retries automatically beyond the platform itself |
-| `order.cancel_failed` | `rejected` | the target's role | yes | failure | A cancel (from `cancel`, `flatten` or orphan protection) failed |
+| `order.protection_failed` | `rejected` | `stop` / `target` | yes (for that leg) | failure | Submitting, resizing or re-pricing a protective order failed. The entry stays as filled. The Core raises `sync.bracket_incomplete` with a top-severity alert and waits; nobody retries automatically beyond the platform itself. When the leg already existed (failed resize/re-price), `rejected` refers to the **operation**: the order keeps its last lifecycle state and is not gone. On initial submission it means the leg never existed |
+| `order.protection_not_submitted` | `rejected` | `stop` / `target` | yes (for that leg) | failure | Catch-up after a plugin/NT8 restart found an entry that filled while the plugin was down. The adapter deliberately does **not** submit a late protective leg (the old fill price may be through the market): one report per leg it did not submit. The Core then sets `sync.bracket_incomplete` with a top-severity alert and waits for the user |
+| `order.ambiguous_reference` | `rejected` | as the command | yes | failure | Before submitting, the adapter found **two or more** platform orders with the same `(command_id, child_role)` reference that would be adopted (any state for `place` and protective legs; live ones for `flatten`). It adopts none and submits nothing; the Core sets the account `out_of_sync` with an alert (alert and wait) |
+| `order.cancel_failed` | `rejected` | the target's role | yes | failure | A cancel (from `cancel`, `flatten` or orphan protection) failed. `rejected` refers to the **cancel operation**: the order keeps its last lifecycle state (still working) and the Core must not treat it as gone |
 
 ## 2. Informational codes on other statuses
 
 | Code | Status | child_role | Meaning |
 |---|---|---|---|
-| `order.orphan_cancelled` | `cancelled` | `stop` / `target` | The position became flat, so the remaining All Win protective orders were cancelled (orphan-order protection, ADR-0004 §5) |
-| `order.quantity_capped` | `working` | `exit` | The reduce quantity exceeded the position and was capped to it. The report carries the capped quantity |
+| `order.orphan_cancelled` | `cancelled` | `stop` / `target` | A protective leg no longer protects the position, so it was cancelled: the position became flat, the leg was resized to 0 (partial exit), or the leg is on the wrong side after a flip (orphan-order protection, ADR-0004 §5) |
+| `order.quantity_capped` | `working` | `exit`, `stop`, `target` | A quantity exceeded what the position allows and was capped: a reduce larger than the position, or a `modify` of a protective leg above \|position\| (then on the modify outcome report). The report carries the capped quantity |
 
 ## 3. Report attribution and success rules
 
@@ -52,6 +54,11 @@
   - `flatten`: flat (`filled`, or `cancelled` + `command.already_flat`).
   - `modify` / `cancel`: every target applied.
   - Every other terminal outcome is a failure, so the dependent command gets `command.prerequisite_failed`.
+- **No second submission (crash window):** before submitting, the adapter looks on the platform for orders with the same `(command_id, child_role)` reference.
+  - `place` (entry or reduce exit) and protective legs: **any** match, live or terminal, counts as already submitted. The adapter adopts it and reports its last state (filled → `filled`, cancelled/rejected → that outcome) and never resubmits. This covers submit → immediate fill → crash before "submitted" was persisted.
+  - `flatten` is the only exception. A terminal match is ignored and the adapter re-evaluates the **current** position (flat → `command.already_flat`, otherwise a new close), so a retry that reuses the name still closes what remains. A live match is adopted.
+  - Two or more matches that would be adopted (any state for `place`/legs, live for `flatten`) → `order.ambiguous_reference`.
+- **Protective quantity invariant:** a protective leg's quantity never exceeds |position|. After any partial exit (All Win `reduce`, or an external/manual partial close in the platform), individual mode resizes legs FIFO (oldest entry first) and shared mode resizes to |position|. A leg reduced to 0 or left on the wrong side is cancelled (`order.orphan_cancelled`). A resize that fails is `order.protection_failed` (→ `sync.bracket_incomplete`).
 - **Fill corrections** (`fill.operation` `amend` / `remove`): status is the order-level label recomputed after the correction (`filled` if filled quantity equals order quantity, else `partially_filled`, even when a removal brings it to 0). The report carries the original `fill_id`, and `position_after` is authoritative. Protocol 1.1 may add a dedicated status.
 
 ## 4. Protocol errors (`error.code`)
