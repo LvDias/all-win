@@ -22,6 +22,10 @@ CREATE INDEX subscription_source_idx ON routing.subscription (user_id, source_id
 
 -- One decision per (instruction, account), with the account values it used, so the audit trail
 -- stays explainable after an edit. Immutable at runtime; purged with its instruction.
+-- A `reverse` against an opposite position may be decided in two legs (ADR-0003 §4.1 r4): the
+-- close leg is committed at once (`close`), the opening later (`open`); every other decision is
+-- one `whole` row. `whole` and `close` exclude each other, and an `open` row only follows a
+-- `close` row of the same pair (Core rule; a CHECK cannot see the other row).
 CREATE TABLE routing.routing_decision (
   id               uuid PRIMARY KEY,
   user_id          uuid NOT NULL,
@@ -36,9 +40,11 @@ CREATE TABLE routing.routing_decision (
   requested_qty    integer,                              -- quantity × multiplier
   executed_qty     integer,                              -- after the cap
   decided_at       timestamptz NOT NULL,
-  FOREIGN KEY (user_id, instruction_id) REFERENCES routing.instruction (user_id, id) ON DELETE CASCADE,
-  UNIQUE (instruction_id, account_id)
+  leg              text NOT NULL DEFAULT 'whole' CHECK (leg IN ('whole','close','open')),
+  FOREIGN KEY (user_id, instruction_id) REFERENCES routing.instruction (user_id, id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX routing_decision_leg_key ON routing.routing_decision
+  (instruction_id, account_id, (CASE leg WHEN 'open' THEN 'open' ELSE 'first' END));
 CREATE INDEX routing_decision_user_account_idx ON routing.routing_decision (user_id, account_id, decided_at DESC);
 
 ALTER TABLE routing.subscription ENABLE ROW LEVEL SECURITY;
