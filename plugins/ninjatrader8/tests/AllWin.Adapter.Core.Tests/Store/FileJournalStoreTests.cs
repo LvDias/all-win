@@ -89,6 +89,19 @@ namespace AllWin.Adapter.Core.Tests.Store
             }
         }
 
+        [Theory]
+        [InlineData("{\"f\":1,\"s\":\"x\",\"ops\":[]}")]
+        [InlineData("{\"f\":1,\"s\":1}")]
+        [InlineData("[1,2,3]")]
+        [InlineData("{\"f\":1,\"s\":1,\"ops\":[{\"c\":1}]}")]
+        public void Checksum_valid_but_malformed_record_is_corruption_even_as_the_last_line(string body)
+        {
+            Directory.CreateDirectory(_dir);
+            var crc = AllWin.Adapter.Core.Store.Crc32.Compute(Encoding.UTF8.GetBytes(body)).ToString("x8", System.Globalization.CultureInfo.InvariantCulture);
+            File.WriteAllText(Path.Combine(_dir, FileJournalStore.JournalFile), crc + " " + body + "\n");
+            Assert.Throws<StoreCorruptException>(() => new FileJournalStore(_dir));
+        }
+
         [Fact]
         public void Compaction_keeps_state_and_tolerates_crash_before_truncate()
         {

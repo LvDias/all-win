@@ -26,10 +26,15 @@ namespace AllWin.Adapter.Core.Transport
         private readonly CancellationTokenSource _stop = new CancellationTokenSource();
         private Task? _run;
 
-        public WebSocketConnector(Uri uri, Func<string?> deviceToken, EngineLoop loop, IAdapterLog? log = null, Backoff? backoff = null)
+        /// <param name="build">
+        /// Release builds accept only wss://. Development builds also accept ws:// on loopback, for the fake
+        /// Core harness (QA Security I2).
+        /// </param>
+        public WebSocketConnector(Uri uri, Func<string?> deviceToken, EngineLoop loop, AdapterBuild build, IAdapterLog? log = null, Backoff? backoff = null)
         {
-            if (uri.Scheme != "wss" && !(uri.Scheme == "ws" && uri.IsLoopback))
-                throw new ArgumentException("The Core endpoint must use wss:// (ws:// only on loopback for the test harness).", nameof(uri));
+            var allowed = uri.Scheme == "wss" || (build == AdapterBuild.Development && uri.Scheme == "ws" && uri.IsLoopback);
+            if (!allowed)
+                throw new ArgumentException("The Core endpoint must use wss:// (ws:// only on loopback, in development builds).", nameof(uri));
             _uri = uri;
             _token = deviceToken;
             _loop = loop;

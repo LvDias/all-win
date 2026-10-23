@@ -8,6 +8,13 @@
     <Deterministic>true</Deterministic>
     <InvariantGlobalization>true</InvariantGlobalization>
     <ImplicitUsings>disable</ImplicitUsings>
-    <NoWarn>$(NoWarn);NU1900</NoWarn>
+    <!-- Supply chain (QA Security L1): exact dependency graph in packages.lock.json, CI restores with
+         locked mode, and every package (transitive included) is audited. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <!-- NU1900 = the vulnerability feed could not be reached. Tolerated offline on dev machines, never in CI. -->
+    <NoWarn Condition="'$(CI)' != 'true'">$(NoWarn);NU1900</NoWarn>
   </PropertyGroup>
 </Project>
