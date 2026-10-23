@@ -9,10 +9,10 @@ test('S1 p95 latency of accepted instructions', async () => {
   test.skip(!isFull(), 'needs the Core (edge-only mode)');
   const { samples, pauseMs, p95Ms } = config.latency;
   // Warm-up: TLS handshake and connection pool are not part of the budget.
-  expectAccepted('warm-up', await post(ingress(ctx().a.value), validInstruction()), 'accepted');
+  expectAccepted('warm-up', await post(ingress(ctx().d.value), validInstruction()), 'accepted');
   const ms: number[] = [];
   for (let i = 0; i < samples; i++) {
-    const res = await post(ingress(ctx().a.value), validInstruction(), undefined, { retry429: false });
+    const res = await post(ingress(ctx().d.value), validInstruction(), undefined, { retry429: false });
     expect(res.status, `sample ${i}: rate limited (raise E2E_LATENCY_PAUSE_MS to the configured limit)`).not.toBe(429);
     expectAccepted(`sample ${i}`, res, 'accepted');
     ms.push(res.ms);

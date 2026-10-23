@@ -17,6 +17,13 @@ export interface SearchTerm {
   text: string;
 }
 
+/**
+ * One seeded user per label (contract §2 M1 seed): a = masking and functional tests (revoked in M5),
+ * b = second user (AC-5) and disruptive tests, c = concurrency, d = latency. Separate keys keep the per-key
+ * rate limit (60/min) from coupling tests.
+ */
+export const TOKEN_LABELS = ['a', 'b', 'c', 'd'] as const;
+
 export const WINDOW = 16;
 export const FRAGMENT_MIN = 8;
 

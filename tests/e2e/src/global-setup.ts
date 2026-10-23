@@ -1,6 +1,6 @@
 // Brings up the composed stack (managed mode), waits for the edge, and provisions the canary tokens.
 import { config, INGRESS_PREFIX, TOKEN_RE } from './config.ts';
-import { parseToken, syntheticToken } from './canary.ts';
+import { parseToken, syntheticToken, TOKEN_LABELS } from './canary.ts';
 import { send } from './http.ts';
 import { compose, composeShellPrefix, ensureRunDir, generateEnvFile, saveState, shell, stackFromEnv, type StackState } from './stack.ts';
 
@@ -55,7 +55,7 @@ export default async function globalSetup(): Promise<void> {
     await waitForEdge(base.origin);
 
     const tokens: Record<string, string> = {};
-    for (const label of ['a', 'b']) {
+    for (const label of TOKEN_LABELS) {
       tokens[label] = config.mode === 'full' ? parseToken(label, seed(envFile, label)).value : syntheticToken(label).value;
     }
     const state: StackState = { ...base, tokens, startedAt: new Date().toISOString() };

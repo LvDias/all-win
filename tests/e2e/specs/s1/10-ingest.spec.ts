@@ -148,8 +148,8 @@ test.describe('S1 ingest', () => {
       expect(second, 'same instruction_id').toBe(first);
       expect(instructionRows(msg), 'one instruction row').toBe(1);
       expect(receiptRows(msg), 'one receipt row').toBe(1);
-      // Contract §3 kind; wave1-data-model §6.1 prose says 'ingress.duplicate' (open question, reported).
-      expect(await waitAuditCode(msg, 'ingress.duplicate'), 'audit duplicate entry').toBe(true);
+      // Contract §3 kind (wave1-data-model §6.1 prose says 'ingress.duplicate'; the contract wins).
+      expect(await waitAuditCode(msg, 'ingress.duplicate_ignored'), 'audit ingress.duplicate_ignored').toBe(true);
     });
 
     test('a different body with the same message_id is still a duplicate', async () => {
@@ -162,7 +162,7 @@ test.describe('S1 ingest', () => {
 
     test('20 parallel posts → exactly 1 accepted, 19 duplicate, one row', async () => {
       const body = validInstruction();
-      const results = await Promise.all(Array.from({ length: 20 }, () => post(ingress(ctx().a.value), body, JSON_HEADERS, { retry429: false })));
+      const results = await Promise.all(Array.from({ length: 20 }, () => post(ingress(ctx().c.value), body, JSON_HEADERS, { retry429: false })));
       const statuses = results.map((r) => r.status);
       expect(statuses.filter((s) => s === 429), 'no 429 during the concurrency test (rate limit below 20 parallel posts?)').toHaveLength(0);
       const parsed = results.map((r) => JSON.parse(r.body) as { status: string; instruction_id: string });

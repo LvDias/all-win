@@ -38,12 +38,15 @@ export const config = {
   /** Prefix docker calls with `sg docker -c` when the user is not in the docker group (auto|1|0). */
   dockerSg: env.E2E_DOCKER_SG ?? 'auto',
 
-  /** Seed command: must print a token `awk_<key_id>_<secret>` on stdout. Gets SEED_LABEL=a|b and E2E_COMPOSE. */
-  seedCmd: env.E2E_SEED_CMD,
+  /**
+   * Seed command: prints one token `awk_<key_id>_<secret>` on stdout. Gets SEED_LABEL (a distinct user per label)
+   * and E2E_COMPOSE. Default: the Core's dev command (needs ALLWIN_ENABLE_DEV_COMMANDS=true in the compose).
+   */
+  seedCmd: env.E2E_SEED_CMD ?? '$E2E_COMPOSE exec -T core allwin-core seed "$SEED_LABEL"',
   /** Revoke command for M5. Gets KEY_ID and E2E_COMPOSE. */
-  revokeCmd: env.E2E_REVOKE_CMD,
-  /** Metrics path on the Core's direct port (e.g. /metrics). Unset = metrics not searched (reported). */
-  metricsPath: env.E2E_METRICS_PATH,
+  revokeCmd: env.E2E_REVOKE_CMD ?? '$E2E_COMPOSE exec -T core allwin-core revoke-key "$KEY_ID"',
+  /** Metrics path on the Core's direct loopback port. Empty string = metrics not searched (reported). */
+  metricsPath: env.E2E_METRICS_PATH ?? '/metrics',
   /** Instrument symbols enabled in the seeded catalog (AC-7). */
   enabledSymbols: (env.E2E_ENABLED_SYMBOLS ?? 'MNQ').split(',').map((s) => s.trim()).filter(Boolean),
   /** Route templates the Core may report in `http.route` besides the ingress ones (M10). */
@@ -59,7 +62,8 @@ export const config = {
   auditWaitMs: int('E2E_AUDIT_WAIT_MS', 15_000),
 
   latency: {
-    samples: int('E2E_LATENCY_SAMPLES', 60),
+    // Below the per-key burst (60/min) of the dedicated latency key, warm-up included.
+    samples: int('E2E_LATENCY_SAMPLES', 50),
     pauseMs: int('E2E_LATENCY_PAUSE_MS', 50),
     p95Ms: int('E2E_LATENCY_P95_MS', 300),
   },

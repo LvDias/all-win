@@ -11,6 +11,8 @@ export interface Ctx {
   s: StackState;
   a: Token;
   b: Token;
+  c: Token;
+  d: Token;
   terms: SearchTerm[];
   coreService: string;
 }
@@ -21,8 +23,10 @@ export function ctx(): Ctx {
   const s = loadState();
   const a = parseToken('a', s.tokens.a!);
   const b = parseToken('b', s.tokens.b!);
-  const terms = [...secretTerms(a), ...fragmentTerms(a, M6O_CUTS), ...secretTerms(b), ...fragmentTerms(b, M6O_CUTS)];
-  cached = { s, a, b, terms, coreService: config.mode === 'full' ? 'core' : 'fake-core' };
+  const c = parseToken('c', s.tokens.c!);
+  const d = parseToken('d', s.tokens.d!);
+  const terms = [a, b, c, d].flatMap((t) => [...secretTerms(t), ...fragmentTerms(t, M6O_CUTS)]);
+  cached = { s, a, b, c, d, terms, coreService: config.mode === 'full' ? 'core' : 'fake-core' };
   return cached;
 }
 
