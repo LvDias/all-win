@@ -114,6 +114,16 @@ pub struct Decision {
 }
 
 impl Decision {
+    /// Notification of a `reverse` that ran only its close leg (HTTP 5.1.0, registry
+    /// `routing.reverse_close_only`, params `reason_code` = the gate's code, including
+    /// `routing.expired` for the routing TTL gate, and `reverse_closed_qty`). One per occurrence.
+    pub const REVERSE_CLOSE_ONLY: &'static str = "routing.reverse_close_only";
+
+    /// The notification this decision raises on its own, if any.
+    pub fn notification_code(&self) -> Option<&'static str> {
+        self.reverse_closed_qty.map(|_| Self::REVERSE_CLOSE_ONLY)
+    }
+
     fn not_executed(outcome: Outcome, code: &'static str, requested: Option<u32>) -> Self {
         Self {
             outcome,
@@ -504,12 +514,18 @@ mod tests {
             assert_eq!(d.steps, [Step::Flatten], "{code}");
             assert_eq!(d.executed_qty, Some(0), "{code}");
             assert_eq!(d.reverse_closed_qty, Some(3), "{code}");
+            assert_eq!(
+                d.notification_code(),
+                Some("routing.reverse_close_only"),
+                "{code}"
+            );
             // Flat: nothing to close, skipped with the code.
             f.position = 0;
             let d = decide(T, rev, &f);
             assert_eq!(d.reason_code, Some(code), "{code}");
             assert!(d.steps.is_empty(), "{code}");
             assert_eq!(d.reverse_closed_qty, None, "{code}");
+            assert_eq!(d.notification_code(), None, "{code}");
             // Already on the reverse side: a conflict, never a flatten.
             f.position = 2;
             let d = decide(T, rev, &f);
