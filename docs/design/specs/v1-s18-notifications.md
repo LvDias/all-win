@@ -108,6 +108,7 @@ Texts are examples (pt-BR / en); the Core sends `code` + `details`, and the web 
 | Roteamento | `routing.quantity_capped` (S7 AC-4) | warning | "Quantidade cortada em {account}" / "{executed} de {requested} contratos; o excedente foi ignorado." | S10 instruction timeline |
 | Roteamento | `routing.max_position_reached` | warning | "Posição máxima atingida em {account}" / "Nada foi executado nesta conta." | S10 timeline |
 | Roteamento | `routing.position_conflict` (S8 AC-4) | warning | "Entrada recusada em {account}" / "A entrada é oposta à posição atual. A fonte precisa enviar fechar ou reverter." | S10 timeline |
+| Roteamento | `routing.reverse_close_only` (Q74, contract 5.0.0+) | danger | "Inversão em {account}: só fechou a posição" / "{closed_qty} {long\|short} fechados; a nova entrada não foi aberta ({reason})." | S10 timeline, S7 §5.4 |
 | Roteamento | `routing.risk_blocked` (S14 AC-1) | danger | "Entrada recusada em {account}: limite de risco atingido" / "Saídas continuam permitidas." | account Risk tab |
 | Roteamento | `routing.out_of_sync` | danger | "Entrada recusada em {account}: conta fora de sincronia" | account detail |
 | Roteamento | `routing.expired` (S12) | danger | "Comando expirado em {account}" / "Não foi executado." | S10 timeline |

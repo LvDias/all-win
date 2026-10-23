@@ -1,9 +1,10 @@
 # V1-S21 — Trade capture and trade list — Screen spec
 
-> **Owner:** Product Designer (Aquarela; written by Traço @ Dev3 in rev. 1) · **Status:** proposed, pending PO review · **Revision:** 2 · **Date:** 2026-10-23
-> **Slice:** [V1-S21](../../product/release-1/slice-plan.md) AC-1 … AC-4 (slice-plan rev. 7); vision §10; consumer: S22 (metrics). Touch points: S2/S5 (accounts, capture by the plugin), S7 (source and signal type), S10 (audit).
+> **Owner:** Product Designer (Nanquim; written by Traço @ Dev3 in rev. 1, rev. 2/2b by Aquarela) · **Status:** proposed, PO review (Rumo) applied · **Revision:** 3 · **Date:** 2026-10-23
+> **Slice:** [V1-S21](../../product/release-1/slice-plan.md) AC-1 … AC-11 (slice-plan rev. 7 plus the decisions of 2026-10-23); vision §10; consumer: S22 (metrics). Touch points: S2/S5 (accounts, capture by the plugin), S7 (source and signal type), S10 (audit).
 > **Foundations and components:** [foundations.md](../foundations.md) (F§6 numbers and time, F§7 status, F§10 feedback), [components.md](../components.md) (C§3 `EmptyState`, C§4 `DataTable`). **Related:** [S10](v1-s10-audit-log.md) (filters and time rules), [S6](v1-s6-stop-target-profiles.md) (price/tick input rules), [S18](v1-s18-notifications.md).
-> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/trades.yaml` and the notes [s21-trades](../../architecture/contracts/s21-trades.md). Operations `listTrades`, `getTrade`, `getTradesSummary`, `createManualTrade`, `updateManualTrade`, `deleteManualTrade`, `previewManualTrade`. **Where this spec and the contract differ, the contract wins.**
+> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9): `contracts/http/modules/trades.yaml` and the notes [s21-trades](../../architecture/contracts/s21-trades.md). Operations `listTrades`, `getTrade`, `getTradesSummary`, `createManualTrade`, `updateManualTrade`, `deleteManualTrade`, `previewManualTrade`. **Where this spec and the contract differ, the contract wins.**
+> **Rev. 3 (2026-10-23, Rumo's PO review):** stale "provisional" tags replaced by decision cites (Q52–Q56, Q71); exact Q71 commission labels; AC-11 note on the entry form; Q79 (archived accounts) as a TODO; field names aligned to the contract (`pnl`, `gross_pnl`, `commission`, `commission_source`, `editable`).
 > **Rev. 2b (2026-10-23, Bisturi M2, S21 AC-1/AC-7, Q71, contract 4.3.0):** P&L is **net** (after commissions) with gross beside it; manual entry has an optional **Comissão** control in step 2; the "Calculado" block shows net first, gross, and where the commission came from; `/commission` maps to step 2. The earlier "gross, no commissions" text (Q54 rec. a) is removed.
 > **Rev. 2 (2026-10-23, user UX rule, F§10.1):** manual entry (S21-03) is a **step-by-step flow**: Trade · Entrada e saída · Excursões (opcional) · Revisar, with the "Calculado" block and `Salvar e registrar outro`. Edit (S21-04) stays one page with sections. Fields and validation follow the contract; the commission control was added in rev. 2b.
 > **Surfaces:** Web (Frontend). Capture and metric computation are the plugin's (AC-2); storing, filtering and totals are the Core's. QA owns the checks.
@@ -17,7 +18,7 @@
 | S21-01 | Trade list with filters and totals | `/[locale]/trades` (sidebar `Trades`) |
 | S21-02 | Trade detail (side panel) | over S21-01 |
 | S21-03 | Manual trade entry (AC-3) | `/[locale]/trades/new` |
-| S21-04 | Edit / delete a manual trade — **provisional (Q56)** | S21-02 |
+| S21-04 | Edit / delete a manual trade (AC-8, Q56) | S21-02 |
 
 Sidebar: `Trades` and `Desempenho` (S22) after `Atividade`. (confirmed by Aquarela, foundations §3.4).
 
@@ -44,8 +45,8 @@ Sidebar: `Trades` and `Desempenho` (S22) after `Atividade`. (confirmed by Aquare
 
 | Filter | Component | Values |
 |---|---|---|
-| Período / Period | chips `Hoje`, `7 dias`, `30 dias`, `Personalizado` (two date pickers, zone shown) | default `30 dias`. Filters by **exit time** in the profile's time zone **[Provisional, Q53 rec. (a)]** |
-| Conta / Account | multi-select `Combobox` including deleted accounts `(excluída)` | |
+| Período / Period | chips `Hoje`, `7 dias`, `30 dias`, `Personalizado` (two date pickers, zone shown) | default `30 dias`. Filters by **exit time** in the profile's time zone (AC-6, Q53) [Decision 2026-10-23] |
+| Conta / Account | multi-select `Combobox` including deleted accounts `(excluída)` | TODO Q79 (pending): whether trades of archived accounts stay in the list. Recommendation: kept, hidden by default, with an `Arquivadas` filter. Not hard-coded: the answer changes only that filter's default (S22 follows the same answer). |
 | Fonte / Source | multi-select: the user's sources (incl. revoked), plus `Manual` and `Plataforma (sem sinal)` | see §3.4 |
 | Tipo de sinal / Signal type | `Gatilhos`, `Trade Plan`, `Gatilhos NQ`, `Master` (only if the Core returns master trades, S19) | as S7/S10 |
 
@@ -104,7 +105,7 @@ The table scrolls horizontally inside its container with a sticky first column (
 `Sheet` from the right (≥ `md`) or full-screen `Drawer` (< `md`); title "Trade {account} · {direction} {quantity}"; focus moves to the title and returns to the row on close. Sections:
 1. **Resumo:** all AC-1 fields in a definition list, same formatting as the table, times with the zone.
 2. **Origem:** source, signal type, `Ver instrução` (S10 timeline), `Ver conta`; for manual trades "Registrado por você em {date-time}".
-3. **Como foi calculado:** one line for captured trades, "Calculado pelo NinjaTrader/plugin com os seus dados. O All Win guarda só os números." (AC-2). For manual: "Valores digitados por você." with the P&L line explained (§4.3). Beside the net P&L the summary shows **Bruto**, **Comissão** and the commission origin (`commission_source`): `platform` "informada pela plataforma", `configured` "estimada pelo piso da conta", `mixed` "parte da plataforma, parte estimada", `manual` "digitada por você", `none` "comissões não informadas" (warning badge; net equals gross).
+3. **Como foi calculado:** one line for captured trades, "Calculado pelo NinjaTrader/plugin com os seus dados. O All Win guarda só os números." (AC-2). For manual: "Valores digitados por você." with the P&L line explained (§4.3). Beside the net P&L the summary shows **Bruto**, **Comissão** and the commission origin (`commission_source`): `platform` "informada pela plataforma", `configured` "estimada a partir da configuração da conta", `mixed` "parte da plataforma, parte estimada", `manual` "digitada por você", `none` "comissões não informadas" (warning badge; net equals gross).
 4. **Dados técnicos** (`Collapsible`, closed): trade id, `instruction_id`, `command_id`, captured-at time, account id; mono; `Copiar id`.
 
 ### 4.2 Manual entry — `/[locale]/trades/new`
@@ -133,14 +134,15 @@ The table scrolls horizontally inside its container with a sticky first column (
 | Saída — data e hora | same | required; after the entry time → "A saída deve ser depois da entrada." | `exit_time` |
 | Saída — preço | same | same | `exit_price` |
 | Comissão total / Total commission (optional) | money `Input` (USD, ≥ 0, ≤ 2 decimals, F§6.3), empty by default; help under it: "Deixe em branco para o All Win calcular com a comissão por contrato desta conta." / "Leave empty and All Win computes it from this account's per-contract commission." | optional; invalid → "Use um valor em dólares, com até 2 casas." | `commission` (Q71; sent only when typed) |
-| MAE | money `Input` (≥ 0, ≤ 2 decimals), in USD **[Provisional, Q52]** | optional **[Provisional, Q55]** | `mae` |
+| MAE | money `Input` (≥ 0, ≤ 2 decimals), in USD (AC-5, Q52) | optional (AC-7, Q55) | `mae` |
 | MFE | money `Input` (≥ 0) | optional | `mfe` |
 
 - **Tempo na operação**, **P&L líquido**, **P&L bruto** and **Comissão** (when not typed) are not typed: after the required fields of step 2 are valid, a read-only block "Calculado" shows them under the fields of step 2 (so a typo is caught before the review) and again, from the same request, in the review. Values come from the Core preview (`previewManualTrade`; debounced 300 ms, re-run when the commission field changes; skeleton while loading; on failure "Não foi possível calcular agora. Você ainda pode salvar." and the Core computes at save). The browser does no arithmetic (X-3).
   - **Order:** `P&L líquido` (main, signed, `--pnl-*` plus sign) → `P&L bruto` → `Comissão` with its origin → `Tempo na operação`.
-  - **Commission origin** from `commission_source`: `manual` "digitada por você"; `configured` **"estimada"**: "Estimada pelo piso da conta ({valor} por contrato, por lado × quantidade × 2). Digite a comissão real para substituir."; `none` warning: "Comissões não informadas: o líquido é igual ao bruto. Defina a comissão por contrato da conta ou digite a comissão."
+  - **Commission origin** from `commission_source`: `manual` "digitada por você"; `configured` **"estimada a partir da configuração da conta"** (en: "estimated from account setting"): "Comissão por contrato {valor} × lado × quantidade × 2. Digite a comissão real para substituir." (Q71, AC-7 [Decision 2026-10-23]); `none` warning **"comissões não informadas"** (en: "commissions not entered"): zero commission, net = gross, "Defina a comissão por contrato da conta ou digite a comissão." This trade label (plural) is distinct from the account warning "comissão não informada" (singular, S13 AC-11); both strings stay exact.
   - Typing a commission replaces the estimate; clearing the field returns to the Core's estimate.
   - Help: "Calculado a partir dos preços, da quantidade, do valor do tick do instrumento e da comissão."
+- **Note on the form (AC-11):** a persistent info `Alert` at the top of every step: "Trades manuais não alteram limites nem bloqueios." (en: "Manual trades do not change limits or blocks.")
 - Source is fixed: a read-only line "Origem: Manual" in the review.
 - Time zone: typed values are interpreted in the display zone (profile, F§6.4); the zone is shown next to each label.
 - **Review (step 4):** `dl` groups Trade · Entrada e saída (including Comissão: the typed value or "Estimada pelo All Win") · Excursões with `Editar {group}`; empty MAE/MFE read "Não informado" (§4.4); the "Calculado" block; "Origem: Manual"; the time zone next to every time. Buttons: `Voltar`, **`Salvar e registrar outro`** (secondary) and **`Salvar trade`** (primary).
@@ -153,11 +155,11 @@ For manual trades the detail says how the P&L was obtained (net after the commis
 
 ### 4.4 Missing MAE/MFE
 
-Manual trades may have no MAE/MFE **[Provisional, Q55 rec. (a)]**. The list and detail show `—` with the tooltip "Não informado". S22 excludes them from MAE/MFE averages and shows how many trades entered each average (S22 spec).
+Manual trades may have no MAE/MFE (AC-7, Q55) [Decision 2026-10-23]. The list and detail show `—` with the tooltip "Não informado". S22 excludes them from MAE/MFE averages and shows how many trades entered each average (S22 spec).
 
-### 4.5 S21-04 Edit and delete a manual trade **[Provisional, Q56 rec. (a); user decides]**
+### 4.5 S21-04 Edit and delete a manual trade (AC-8, Q56) [Decision 2026-10-23]
 
-Not in the ACs, but wrong manual entries would pollute S22. The detail panel of a **manual** trade shows `Editar` and `Excluir`; **captured trades never have them** (the panel says "Trade capturado: não pode ser alterado.").
+Wrong manual entries would pollute S22, so they can be corrected. The detail panel of a **manual** trade shows `Editar` and `Excluir`; **captured trades never have them** (the panel says "Trade capturado: não pode ser alterado.").
 - `Editar`: **one page with sections** `Trade` · `Entrada` · `Saída` · `Excursões`, prefilled (F§10.1: edit is not a stepper; same validation, same "Calculado" preview, a single `Salvar`, route `/[locale]/trades/[id]/edit`, new idempotency key, `row_version` for concurrency → `common.version_conflict` "Este trade mudou em outro lugar."). Success toast "Trade atualizado."
 - `Excluir`: `AlertDialog` (cancel focused): "Excluir este trade manual? Ele sai da lista e das métricas. Esta ação não pode ser desfeita." / confirm `Excluir trade` (destructive). Toast "Trade excluído."
 - Both are audited with **before and after** values (S10, category `config`). Deleting keeps the audit entry; the trade disappears from S21/S22.
@@ -186,9 +188,9 @@ Not in the ACs, but wrong manual entries would pollute S22. The detail panel of 
 
 | Event (code, proposed) | Entry text | Details |
 |---|---|---|
-| `trades.captured` (category `execution`) | "Trade concluído em {account}: {direction} {quantity}" | trade id, P&L (string), source link |
+| `trades.captured` (category `execution`) | "Trade concluído em {account}: {direction} {quantity}" | trade id, net and gross P&L and commission (strings), source link |
 | `trades.manual_created` (`config`) | "Trade manual registrado em {account}" | fields entered, user |
-| `trades.manual_changed` / `.manual_deleted` (`config`, Q56 provisional) | "Trade manual alterado / excluído" | previous values |
+| `trades.manual_changed` / `.manual_deleted` (`config`, AC-8) | "Trade manual alterado / excluído" | previous values |
 
 ## 7. Accessibility
 
@@ -206,12 +208,12 @@ Not in the ACs, but wrong manual entries would pollute S22. The detail panel of 
 | Need | Notes |
 |---|---|
 | `listTrades`: filters `from`, `to`, `account_ids`, `source_ids` (incl. `manual`, `platform`), `signal_types`; sort (`exit_time`, `pnl`, `duration`) and direction; cursor; limit 50 | Instants (X-8) |
-| Trade fields: `id`, `account_id`, `account_name` (snapshot), `account_deleted`, `instrument`, `direction`, `quantity`, `entry_time`, `entry_price`, `exit_time`, `exit_price`, `duration_seconds`, `pnl`, `mae`, `mfe` (nullable), `origin` (`routed` / `master` / `manual` / `platform`), `source_id`/`source_name`, `signal_type`, `instruction_id`, `command_id`, `created_at`, `created_by` (manual) | Money and prices as strings; no raw price data |
-| `getTradesSummary` with the same filters: `count`, `total_pnl` | Same numbers S22 uses |
+| Trade fields: `id`, `account_id`, `account_name` (snapshot), `account_deleted`, `instrument`, `direction`, `quantity`, `entry_time`, `entry_price`, `exit_time`, `exit_price`, `duration_seconds`, `pnl` (net, `pnl_basis`), `gross_pnl`, `commission`, `commission_source`, `editable`, `mae`, `mfe` (nullable), `origin` (`routed` / `master` / `manual` / `platform`), `source_id`/`source_name`, `signal_type`, `instruction_id`, `command_id`, `created_at`, `created_by` (manual) | Money and prices as strings; no raw price data |
+| `getTradesSummary` with the same filters: `count`, `total_pnl` (net), `total_gross_pnl`, `total_commission`, `uncommissioned_count` (names per the contract) | Same numbers S22 uses |
 | Instruments with tick size and value | for input validation messages |
 | **Manual-trade preview** (`previewManualTrade`, stateless): duration, net and gross P&L, commission and `commission_source` for given account, instrument, direction, quantity, times, prices and optional commission | no persistence |
 
-**Writes:** `createManualTrade` (idempotency key; 422 pointers `/entry_time`, `/exit_time`, `/entry_price`, `/exit_price`, `/quantity`, `/account_id`; codes `trades.exit_before_entry`, `trades.not_tick_multiple`, `trades.in_future`, names proposed); `updateManualTrade` / `deleteManualTrade` (Q56, provisional; `row_version`).
+**Writes:** `createManualTrade` (idempotency key; 422 pointers `/entry_time`, `/exit_time`, `/entry_price`, `/exit_price`, `/quantity`, `/account_id`; codes `trades.exit_before_entry`, `trades.not_tick_multiple`, `trades.in_future`, names proposed); `updateManualTrade` / `deleteManualTrade` (AC-8; `row_version`).
 
 **Events (SSE):** `trade.captured` (id, account) for the "novos trades" banner.
 
@@ -221,18 +223,20 @@ Not in the ACs, but wrong manual entries would pollute S22. The detail panel of 
 
 **Closed by the PO (Rumo, 2026-10-23):** duration = exit − entry (derived); the P&L of a manual trade is exact arithmetic in the Core from prices, quantity and tick value; a trade placed directly in the platform without a signal has its own origin, distinct from `Manual`, labeled `Plataforma (sem sinal)`. Sidebar position: Aquarela (foundations §3.4).
 
-**User questions drawn as recommendation (a), provisional:**
+**Decided by the user (2026-10-23); Q79 is pending:**
 
-| ID | Question | Spec default (provisional) |
+| ID | Question | Decision |
 |---|---|---|
 | Q52 | Unit of MAE and MFE | USD |
-| Q53 | Date filter | By **exit time**, in the profile's time zone |
+| Q53 | Date filter | By **exit time**, in the profile's time zone (AC-6) |
 | Q54 | P&L definition | **Closed:** net (after commissions) is the main value, gross beside it (S21 AC-1, decision 2026-10-23e); Q71 commission: typed, else the account floor × quantity × 2 |
 | Q55 | MAE/MFE in manual entry | Optional; `—` and left out of the averages, with the count of trades that entered each average (S22) |
 | Q56 | Edit/delete manual trades | Allowed, audited before/after; captured trades are never editable |
+| Q71 | Manual-trade commission (AC-7) | Optional; blank → account commission per contract per side × quantity × 2, labeled "estimada a partir da configuração da conta"; none configured → zero, net = gross, "comissões não informadas" |
+| Q79 (**pending**) | Trades of archived accounts | TODO in §3.1; recommendation: kept, hidden by default, `Arquivadas` filter |
 | Q57 | What one "trade" is | One per entry with FIFO exits in individual mode; flat-to-flat in shared mode (the Core sends the trades; the UI shows what it receives) |
 
-Q52–Q57 define the numbers that S22 reconciles with this list.
+Q52–Q57 and Q71 define the numbers that S22 reconciles with this list.
 
 ## 10. AC traceability
 
@@ -242,4 +246,7 @@ Q52–Q57 define the numbers that S22 reconciles with this list.
 | AC-2 computed by the plugin; only numbers; no raw price data | §2, §4.1, §8 |
 | AC-3 manual entry, same fields, source "manual" | §4.2 |
 | AC-4 list and filter by account, date, source, signal type | §3.1 |
+| AC-5, AC-6, AC-7 MAE/MFE in USD, date filter by exit time, optional MAE/MFE and commission (Q71) | §3.1, §4.2, §4.4 |
+| AC-8 edit/delete manual trades | §4.5 |
+| AC-11 manual trades never affect risk | §4.2 note |
 | X-2, X-3, X-6, X-8 | permissions, exact values, pt-BR/en, instants |

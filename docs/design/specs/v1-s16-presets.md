@@ -1,7 +1,7 @@
 # V1-S16 — Prop firm presets: model and UI — Screen spec
 
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
-> **Slice:** [V1-S16](../../product/release-1/slice-plan.md) AC-1 … AC-9 (slice-plan rev. 7); touch points: S5 (account form, opt-ins, Q40–Q42), S7 (stance in routing, manual-only), S13 (rules editing), S18 (notification).
+> **Slice:** [V1-S16](../../product/release-1/slice-plan.md) AC-1 … AC-12 (slice-plan rev. 8); touch points: S5 (account form, opt-ins, Q40–Q42), S7 (stance in routing, manual-only), S13 (rules editing), S18 (notification).
 > **Foundations:** [foundations.md](../foundations.md) (F§7.4 provenance, `FirmRuleQuote`, `ConflictPicker`; F§5 terms) · **Related:** [S5 spec](v1-s5-automation-opt-in.md) §5, §6, §9; [S7 spec](v1-s7-routing.md) §6, §7.
 > **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/presets.yaml` and the notes [s16-presets.md](../../architecture/contracts/s16-presets.md): `listFirms`, `getFirm`, `listFirmReleases`, `getPresetVersion`, `getOptInRules`, `getRuleVersion`, `getAccountPreset`, `getAccountPresetDiff`, `applyPresetVersion`, `restorePresetValue`. **Where this spec and the contract differ, the contract wins.**
 > **Data source:** [preset-research-format.md](../../product/presets/preset-research-format.md) (fields and YAML), research files in `docs/product/presets/research/`, conflicts in [r1](../../product/presets/r1-conflicts-for-user.md) / [r2](../../product/presets/r2-conflicts-for-user.md). 
@@ -83,7 +83,8 @@ Four `StanceBlock`s (§7): **Automação**, **Replicação**, **Servidor/VPS**, 
 - Each value: `Info` icon-button with the source popover (F§7.4 verified); `Não confirmado` badge and the list of published values with their sources (read-only here; the choice is made on the account, S16-03).
 - Dense table: horizontal scroll inside the container with a sticky first column (F§9). Money exactly as published, strings (X-3).
 - **Excluded plans note** at the bottom (AC-9): "Estes planos não estão disponíveis como preset: {list}. Cadastre-os manualmente." (list from the Core, not hard-coded) + link `Cadastrar conta sem preset` (S5 form, Q40 path).
-- Fields that exist in the research file but are not in AC-1 (minimum trading days, evaluation profit target, payout rules) are **not drawn** until the user decides **Q46** (recommendation (a): not shown in V1). The *daily* profit target (S13 AC-5) is part of AC-1 and is shown.
+- **Evaluation profit target (AC-10, Q46 decided 2026-10-23e):** for presets of an **evaluation** phase the table has the column `Meta da avaliação` (amount, with the F§7.4 source popover and access date; `Não confirmado` + published values when the pages conflict; `—` for funded and live phases). It feeds the S13b progress card ([S13 spec §12](v1-s13-risk.md)). **Minimum trading days and payout rules are stored in the preset and not shown in V1.** The *daily* profit target (S13 AC-5) is part of AC-1 and stays shown.
+- **Commission (AC-12):** column `Comissão por contrato/lado` (USD as published, source and date). It prefills the account's commission floor (S13 §4.2b). When the firm does not publish it: `—` with the note "A firma não publica a comissão. A conta mostrará o aviso 'comissão não informada' até você informar um valor." / "The firm does not publish its commission. The account will show 'commission not informed' until you enter a value."
 
 ### 4.3 Tab "Versões"
 
@@ -124,8 +125,9 @@ For a firm whose platforms cannot be reached by any V1 output (for example Topst
 
 - **Catalog and firm detail:** `Só acompanhamento manual` badge and an info `Alert` with the reason from the preset ("A Topstep só aceita ordens originadas do seu dispositivo pessoal…" — the preset's own text wins) and a two-column explanation: **O que funciona:** regras de risco, alertas de 80 %, operações manuais e desempenho. **O que não funciona:** roteamento de sinais e replicação.
 - **Picker:** the same `Alert` appears when the firm is chosen, before the user fills the rest; the form still saves normally. Link `Ver regra oficial`.
-- **Account detail:** the same `Alert` stays at the top; `Rotas` tab shows the S7 §7 explanation; the platform-account binding is optional (Q37 provisional).
+- **Account detail:** the same `Alert` stays at the top; `Rotas` tab shows the S7 §7 explanation; the platform-account binding is optional (Q37, S5 AC-12).
 - The account never appears in routing or as master/follower choices (S7 AC-7b).
+- **Driven by preset data, not by a firm flag:** the manual-only state, its reason and the `Alert` come from the preset (and the platform of the preset when the rule differs by platform). Research decision S-R3-4 (pending) may make "manual-only" apply **per platform**, not per firm: the UI must read it per preset so that change needs no redesign.
 
 ---
 
@@ -141,7 +143,7 @@ For a firm whose platforms cannot be reached by any V1 output (for example Topst
 | `unknown` | Desconhecida / Unknown | neutral, `CircleHelp` |
 | `not_confirmed` | Não confirmada / Not confirmed | warning, `CircleHelp` |
 
-For **VPS/server**: `allowed` / `forbidden` / `conditional` / `unknown`, plus `not_confirmed` when the firm's pages conflict (PO, S16 AC-5/AC-8), with the same badges (`Permitido` / `Proibido` / …). For **personal device required**: `yes` / `no` / `unknown` → `Exigido` / `Não exigido` / `Desconhecido` (neutral/warning). Verbatim text, source and date as for the other stances. *(Value names in the contract: Architect.)*
+For **VPS/server**: `allowed` / `forbidden` / `conditional` / `unknown`, plus `not_confirmed` when the firm's pages conflict (PO, S16 AC-5/AC-8), with the same badges (`Permitido` / `Proibido` / …). For **personal device required**: contract values `required` / `not_required` / `unknown` → `Exigido` / `Não exigido` / `Desconhecido` (neutral/warning). **`not_confirmed` for this subject is not in contract 5.1.1** (`presets.yaml` enum is `required`, `not_required`, `unknown`); S16 AC-5 says every conflicting field ships as not confirmed, so this is a **contract request to the Architect (Q-S16-7)**; until it exists the UI shows `Desconhecido` plus the published conflicting texts, never a chosen value. Verbatim text, source and date as for the other stances. *(Value names in the contract: Architect.)*
 
 `StanceBlock` = heading + badge + All Win summary (labeled "Resumo do All Win (não é aconselhamento jurídico)") + `FirmRuleQuote`(s) + the verification line "Verificado em {date}". Used by the catalog, the picker, the S5 opt-in section and the S7 route dialog (in compact form).
 
@@ -197,9 +199,9 @@ On any screen that shows an account rule copied from a preset (S13 risk tab, acc
 
 **Architect (Compasso):** Q-S16-3 stored provenance for a value the user resolved among conflicting ones.
 
-**User question, not drawn until decided:** **Q46** show evaluation profit target, minimum trading days and payout rules (recommendation (a): do not show in V1).
+**Closed by the user (Q46, 2026-10-23e):** the evaluation profit target is shown with source and date for evaluation phases; minimum trading days and payout rules are stored and not shown in V1.
 
-Depends on user questions already open: Q37 (binding optional), Q40 (no-preset path), Q41 (attaching a preset gives `pending_review`), Q42 (material text change flagged by the publisher with a reason) — all drawn as provisional recommendations.
+**Decided by the user (2026-10-23e), no longer provisional:** Q37 the platform link is optional (S5 AC-12; an unlinked account is tracked manually only and never receives routing, automation or enforcement; manual-only firms cannot be linked); Q40 before the catalog a prop account's firm, plan and phase are free text and the stance is "unknown" (S5 AC-15); Q41 attaching a preset later puts the account in review pending (S5 AC-16); Q42 a material text change flagged by the publisher with a reason suspends automated sources until the user confirms again (S16 AC-11).
 
 ## 11. Accessibility
 
@@ -222,4 +224,7 @@ Depends on user questions already open: Q37 (binding optional), Q40 (no-preset p
 | AC-7 manual-only | §6 |
 | AC-8 VPS rule and personal device recorded and shown | §4.1, §7 |
 | AC-9 excluded plans registered manually | §4.2, §5 footer |
+| AC-10 evaluation profit target shown with source and date | §4.2, S13 §12 |
+| AC-11 new version changing a stance suspends automation until confirmed | §8.2 |
+| AC-12 commission per contract per side, prefill, empty + warning | §4.2, S13 §4.2b |
 | X-3, X-5, X-6 | strings for money, audit of apply/restore (S10 catalog), pt-BR/en |
