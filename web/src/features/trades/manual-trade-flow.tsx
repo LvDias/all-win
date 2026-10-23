@@ -28,7 +28,8 @@ import { previewManualTrade, useCreateManualTrade, useInstruments, useTradeAccou
 import { emptyValues, excursionsSchema, pointerToField, stepFields, timesSchema, toRequest, tradeSchema, type ManualTradeValues } from "./manual-trade-model";
 import { Calculated, DateTime, Field, TextField } from "./trade-fields";
 
-const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+// Production is https, where randomUUID always exists; a missing one must fail loudly, never produce a non-UUID key.
+const newKey = () => crypto.randomUUID();
 
 /** S21-03: record a trade the platform did not capture, step by step (F§10.1). */
 export function ManualTradeFlow() {

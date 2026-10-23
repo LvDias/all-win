@@ -160,4 +160,18 @@ describe("ManualTradeFlow", () => {
     expect(await screen.findByText("Cadastre uma conta para registrar trades.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Continuar" })).not.toBeInTheDocument();
   });
+
+  it("tells the user to check the list when the Core reports the key was already used (no duplicate is created)", async () => {
+    server.use(http.post("*/api/v1/trades", () => HttpResponse.json({ error: { code: "trades.idempotency_key_reused" } }, { status: 409 })));
+    renderApp(<ManualTradeFlow />);
+    const person = userEvent.setup();
+    await fillTrade(person);
+    await screen.findByRole("heading", { level: 2, name: "Entrada e saída" });
+    setTimes();
+    await person.click(screen.getByRole("button", { name: "Continuar" }));
+    await person.click(await screen.findByRole("button", { name: "Pular etapa" }));
+    await person.click(await screen.findByRole("button", { name: "Salvar trade" }));
+    expect(await screen.findByText("Este formulário já registrou um trade. Confira a lista de trades antes de tentar de novo.")).toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
 });

@@ -10,7 +10,7 @@ import { errorMessage } from "@/shared/api/error-message";
 import { segment } from "@/shared/api/ids";
 import type { CommissionSource, Trade } from "@/shared/api/types";
 import { focusOnMount } from "@/shared/lib/focus";
-import { formatDateTime, formatMoney } from "@/shared/format";
+import { formatDateTime, formatMoney, formatPrice } from "@/shared/format";
 import { useLocalePath } from "@/shared/i18n/navigation";
 import { useDisplay } from "@/shared/session/display";
 import { Alert } from "@/shared/ui/alert";
@@ -100,11 +100,11 @@ function Body({ trade, onClose }: { trade: Trade; onClose: () => void }) {
           </dd>
           <dt className="text-muted-foreground">{origin("table.entry")}</dt>
           <dd>
-            <time dateTime={trade.entry_time}>{at(trade.entry_time)}</time>{" · "}<span className="tabular-nums">{trade.entry_price}</span>
+            <time dateTime={trade.entry_time}>{at(trade.entry_time)}</time>{" · "}<span className="tabular-nums">{formatPrice(trade.entry_price, locale, 2)}</span>
           </dd>
           <dt className="text-muted-foreground">{origin("table.exit")}</dt>
           <dd>
-            <time dateTime={trade.exit_time}>{at(trade.exit_time)}</time>{" · "}<span className="tabular-nums">{trade.exit_price}</span>
+            <time dateTime={trade.exit_time}>{at(trade.exit_time)}</time>{" · "}<span className="tabular-nums">{formatPrice(trade.exit_price, locale, 2)}</span>
           </dd>
           <dt className="text-muted-foreground">{origin("table.duration")}</dt>
           <dd>{formatDuration(trade.duration_seconds)}</dd>

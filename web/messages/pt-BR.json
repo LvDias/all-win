@@ -215,6 +215,9 @@
     },
     "sync": {
       "account_not_found_after_repair": "Não encontrada na nova instância."
+    },
+    "trades": {
+      "idempotency_key_reused": "Este formulário já registrou um trade. Confira a lista de trades antes de tentar de novo."
     }
   },
   "accounts": {

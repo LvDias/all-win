@@ -215,6 +215,9 @@
     },
     "sync": {
       "account_not_found_after_repair": "Not found in the new instance."
+    },
+    "trades": {
+      "idempotency_key_reused": "This form already recorded a trade. Check the trades list before trying again."
     }
   },
   "accounts": {

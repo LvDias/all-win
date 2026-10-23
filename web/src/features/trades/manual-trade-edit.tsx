@@ -1,10 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { ApiError } from "@/shared/api/client";
@@ -17,6 +17,7 @@ import { focusOnMount } from "@/shared/lib/focus";
 import { useDebounced } from "@/shared/lib/use-debounced";
 import { useDisplay } from "@/shared/session/display";
 import { Alert } from "@/shared/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { ErrorState } from "@/shared/ui/error-state";
@@ -24,7 +25,7 @@ import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Label } from "@/shared/ui/label";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Spinner } from "@/shared/ui/spinner";
-import { previewManualTrade, useInstruments, useTrade, useUpdateManualTrade } from "./api";
+import { previewManualTrade, tradesQueryKey, useInstruments, useTrade, useUpdateManualTrade } from "./api";
 import { excursionsSchema, pointerToField, timesSchema, toRequest, tradeSchema, type ManualTradeValues } from "./manual-trade-model";
 import { Calculated, DateTime, TextField } from "./trade-fields";
 import type { Trade } from "@/shared/api/types";
@@ -76,6 +77,8 @@ function Editor({ trade, rowVersion, tickSize }: { trade: Trade; rowVersion: num
   const path = useLocalePath();
   const { locale, timeZone } = useDisplay();
   const update = useUpdateManualTrade(trade.trade_id);
+  const queryClient = useQueryClient();
+  const [discarding, setDiscarding] = useState(false);
   const entry = instantToZoned(trade.entry_time, timeZone);
   const exit = instantToZoned(trade.exit_time, timeZone);
   const initial: ManualTradeValues = {
@@ -96,10 +99,20 @@ function Editor({ trade, rowVersion, tickSize }: { trade: Trade; rowVersion: num
   const form = useForm<ManualTradeValues>({ defaultValues: initial });
   const values = form.watch();
   const [clock] = useState(() => ({ now: () => Date.now() }));
-  const env = useMemo(() => ({ locale, timeZone, tick: tickSize, now: clock.now }), [locale, timeZone, tickSize, clock]);
+  const env = useMemo(
+    () => ({ locale, timeZone, tick: tickSize, now: clock.now, unchanged: { commission: trade.commission_source === "manual" ? trade.commission : undefined, mae: trade.mae, mfe: trade.mfe } }),
+    [locale, timeZone, tickSize, clock, trade.commission, trade.commission_source, trade.mae, trade.mfe],
+  );
   const m = (key: string) => t(key);
   const [failure, setFailure] = useState<{ message: string; reload: boolean } | null>(null);
-  useUnsavedChanges(form.formState.isDirty);
+  const dirty = form.formState.isDirty;
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (!dirty) return;
+    const guard = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [dirty]);
 
   const request = toRequest(values, trade.instrument_id, env);
   const settled = useDebounced(request ? JSON.stringify(request) : "", 300);
@@ -167,7 +180,7 @@ function Editor({ trade, rowVersion, tickSize }: { trade: Trade; rowVersion: num
           <div className="grid gap-2">
             <p>{failure.message}</p>
             {failure.reload ? (
-              <Button type="button" size="sm" variant="outline" onClick={() => router.refresh()}>
+              <Button type="button" size="sm" variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: tradesQueryKey })}>
                 {e("reload")}
               </Button>
             ) : null}
@@ -232,14 +245,34 @@ function Editor({ trade, rowVersion, tickSize }: { trade: Trade; rowVersion: num
       </Card>
 
       <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t bg-background p-3">
-        <Button asChild variant="outline">
-          <Link href={path("/trades")}>{root("common.actions.cancel")}</Link>
-        </Button>
+        {dirty ? (
+          <Button type="button" variant="outline" onClick={() => setDiscarding(true)}>
+            {root("common.actions.cancel")}
+          </Button>
+        ) : (
+          <Button asChild variant="outline">
+            <Link href={path("/trades")}>{root("common.actions.cancel")}</Link>
+          </Button>
+        )}
         <Button type="submit" disabled={update.isPending}>
           {update.isPending ? <Spinner /> : null}
           {e("save")}
         </Button>
       </div>
+      <AlertDialog open={discarding} onOpenChange={setDiscarding}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{root("forms.discard.title")}</AlertDialogTitle>
+            <AlertDialogDescription>{root("forms.discard.body")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel autoFocus>{root("forms.discard.stay")}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => router.push(path("/trades"))}>
+              {root("forms.discard.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

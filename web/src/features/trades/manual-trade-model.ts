@@ -41,7 +41,8 @@ export const pointerToField: Record<string, keyof ManualTradeValues> = {
   "/mfe": "mfe",
 };
 
-type Env = { locale: Locale; timeZone: string; tick: string | undefined; now: () => number };
+/** `unchanged`: the Core's own text of a prefilled amount; text equal to it is never re-judged (shared parser option). */
+export type Env = { locale: Locale; timeZone: string; tick: string | undefined; now: () => number; unchanged?: Partial<Record<"commission" | "mae" | "mfe", string>> };
 type Messages = (key: string) => string;
 
 const hasMessage = (path: string[], message: string, ctx: z.RefinementCtx) => ctx.addIssue({ code: "custom", path, message });
@@ -49,8 +50,8 @@ const hasMessage = (path: string[], message: string, ctx: z.RefinementCtx) => ct
 function price(text: string, env: Env) {
   return parseDecimalInput(text, env.locale, { tick: env.tick });
 }
-function money(text: string, env: Env) {
-  return parseDecimalInput(text, env.locale, { scale: 2 });
+function money(text: string, env: Env, field: "commission" | "mae" | "mfe") {
+  return parseDecimalInput(text, env.locale, { scale: 2, unchanged: env.unchanged?.[field] });
 }
 
 export function tradeSchema(m: Messages) {
@@ -78,7 +79,7 @@ export function timesSchema(m: Messages, env: Env) {
         if (!parsed.ok) hasMessage([field], parsed.reason === "tick" ? m("errors.notTickMultiple") : m("errors.priceInvalid"), ctx);
       }
       if (value.commission.trim() !== "") {
-        const parsed = money(value.commission, env);
+        const parsed = money(value.commission, env, "commission");
         if (!parsed.ok) hasMessage(["commission"], parsed.reason === "ambiguous" ? m("errors.amountAmbiguous") : m("errors.moneyInvalid"), ctx);
       }
     });
@@ -88,7 +89,7 @@ export function excursionsSchema(m: Messages, env: Env) {
   return z.object({ mae: z.string(), mfe: z.string() }).superRefine((value, ctx) => {
     for (const field of ["mae", "mfe"] as const) {
       if (value[field].trim() === "") continue;
-      const parsed = money(value[field], env);
+      const parsed = money(value[field], env, field);
       if (!parsed.ok) hasMessage([field], parsed.reason === "ambiguous" ? m("errors.amountAmbiguous") : m("errors.moneyInvalid"), ctx);
     }
   });
@@ -106,7 +107,7 @@ export function toRequest(values: ManualTradeValues, instrumentId: string | unde
   const body: ManualTradeFields = { account_id: values.accountId, instrument_id: instrumentId, direction: values.direction, quantity, entry_time: entry, entry_price: entryPrice.value, exit_time: exit, exit_price: exitPrice.value };
   for (const [key, text] of [["commission", values.commission], ["mae", values.mae], ["mfe", values.mfe]] as const) {
     if (text.trim() === "") continue;
-    const parsed = money(text, env);
+    const parsed = money(text, env, key);
     if (!parsed.ok) return null;
     body[key] = parsed.value;
   }
