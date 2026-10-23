@@ -45,6 +45,12 @@
       "choose": "Choose",
       "search": "Search: {label}",
       "noResults": "No results."
+    },
+    "multiSelect": {
+      "triggerWithCount": "{label}: {count} selected",
+      "withCount": "{label} ({count})",
+      "none": "No options.",
+      "clear": "Clear selection"
     }
   },
   "language": {
@@ -566,7 +572,8 @@
     "notFound": "Not found.",
     "signOutFailed": "Could not sign out. Your session may still be active.",
     "accounts": "Accounts",
-    "userMenuName": "{email}, user menu"
+    "userMenuName": "{email}, user menu",
+    "trades": "Trades"
   },
   "security": {
     "title": "Security",
@@ -1125,5 +1132,204 @@
       "commissionEstimated": "Commission estimated from the configured minimum: the total may be higher than the real figure."
     },
     "editAction": "Edit rules"
+  },
+  "trades": {
+    "title": "Trades",
+    "add": "Add trade",
+    "loadError": "Could not load the trades.",
+    "deleted": "(deleted)",
+    "notProvided": "Not provided",
+    "quantity": "{count, plural, one {# contract} other {# contracts}}",
+    "direction": {
+      "long": "Buy",
+      "short": "Sell"
+    },
+    "origin": {
+      "manual": "Manual",
+      "platform": "Platform (no signal)",
+      "master": "Replication · {account}",
+      "signal": {
+        "trigger": "Triggers",
+        "trade_plan": "Trade Plan",
+        "nq_trigger": "NQ Triggers",
+        "master_account": "Master"
+      }
+    },
+    "filters": {
+      "label": "Filters",
+      "period": "Period",
+      "periods": {
+        "today": "Today",
+        "7d": "7 days",
+        "30d": "30 days",
+        "custom": "Custom"
+      },
+      "from": "From ({zone})",
+      "to": "To ({zone})",
+      "account": "Account",
+      "source": "Source",
+      "signal": "Signal type",
+      "clear": "Clear filters",
+      "active": "{count, plural, one {# active filter} other {# active filters}}",
+      "none": "No filters besides the period."
+    },
+    "totals": {
+      "label": "Filter totals",
+      "count": "{count, plural, =0 {No trades} one {# trade} other {# trades}}",
+      "net": "Net P&L",
+      "secondary": "Gross {gross} · Commissions {commission}",
+      "uncommissioned": "{count, plural, one {# trade without commission data: its net equals gross.} other {# trades without commission data: their net equals gross.}}",
+      "unavailable": "Totals unavailable"
+    },
+    "table": {
+      "caption": "Trades by exit time, newest first. Showing {shown} of {total}.",
+      "account": "Account",
+      "direction": "Direction",
+      "quantity": "Qty",
+      "entry": "Entry",
+      "exit": "Exit",
+      "duration": "Time",
+      "pnl": "Net P&L",
+      "excursions": "MAE / MFE",
+      "origin": "Origin",
+      "mae": "MAE",
+      "mfe": "MFE",
+      "count": "{shown} of {total}",
+      "loadMore": "Load more"
+    },
+    "fresh": {
+      "banner": "{count, plural, one {# new trade} other {# new trades}}",
+      "show": "Show"
+    },
+    "empty": {
+      "title": "No trades yet.",
+      "body": "Completed trades on your connected accounts appear here automatically. You can also add a trade manually.",
+      "connections": "View connections",
+      "filteredTitle": "No trades match these filters.",
+      "filteredBody": "Change or clear the filters to see more."
+    },
+    "detail": {
+      "title": "Trade",
+      "heading": "Trade {account}",
+      "summary": "Summary",
+      "netPnl": "Net P&L",
+      "grossPnl": "Gross P&L",
+      "commission": "Commission",
+      "commissionMissing": "Commissions not provided",
+      "commissionSource": {
+        "platform": "reported by the platform",
+        "configured": "estimated from the account's minimum",
+        "mixed": "partly platform, partly estimated",
+        "manual": "typed by you",
+        "none": "commissions not provided"
+      },
+      "origin": "Origin",
+      "registeredByYou": "Entered by you at {time}",
+      "reconcileMismatch": "The plugin's numbers differ from the executions All Win knows. We kept the plugin's; see the activity log.",
+      "how": "How it was calculated",
+      "howCaptured": "Calculated by NinjaTrader/the plugin from your data. All Win stores only the numbers.",
+      "howManual": "Values you typed. Net is gross, computed from the prices, minus the commission shown.",
+      "technical": "Technical data",
+      "ids": {
+        "trade": "Trade",
+        "account": "Account",
+        "instruction": "Instruction",
+        "command": "Command",
+        "capturedAt": "Captured at"
+      },
+      "copyId": "Copy id",
+      "edit": "Edit",
+      "delete": "Delete",
+      "notEditable": "Captured trade: it cannot be changed."
+    },
+    "delete": {
+      "title": "Delete this manual trade?",
+      "body": "It leaves the list and the metrics. This cannot be undone.",
+      "confirm": "Delete trade",
+      "done": "Trade deleted.",
+      "conflict": "This trade changed somewhere else."
+    },
+    "manual": {
+      "title": "Add trade",
+      "loadError": "Could not load accounts and instruments.",
+      "noAccounts": "Add an account to record trades.",
+      "noAccountsBody": "A manual trade needs an account.",
+      "backToList": "Back to trades",
+      "choose": "Choose",
+      "steps": {
+        "trade": "Trade",
+        "times": "Entry and exit",
+        "excursions": "Excursions (optional)"
+      },
+      "fields": {
+        "account": "Account",
+        "instrument": "Instrument",
+        "direction": "Direction",
+        "quantity": "Quantity",
+        "entryAt": "Entry, date and time ({zone})",
+        "entryPrice": "Entry, price",
+        "exitAt": "Exit, date and time ({zone})",
+        "exitPrice": "Exit, price",
+        "commission": "Total commission, in dollars (optional)",
+        "mae": "Max adverse excursion (MAE), in dollars",
+        "mfe": "Max favorable excursion (MFE), in dollars"
+      },
+      "direction": {
+        "long": "Buy",
+        "short": "Sell"
+      },
+      "tickHelp": "Use multiples of {tick}.",
+      "commissionHelp": "Leave empty and All Win computes it from this account's per-contract commission.",
+      "commissionEstimated": "Estimated by All Win",
+      "notProvided": "Not provided",
+      "save": "Save trade",
+      "saveAnother": "Save and add another",
+      "saved": "Trade added.",
+      "savedAnother": "Trade added. Ready for the next one.",
+      "originManual": "Origin: Manual · Account: {account}",
+      "errors": {
+        "accountRequired": "Choose the account.",
+        "directionRequired": "Choose the direction.",
+        "quantityInvalid": "Use a whole number from 1 to 10000.",
+        "timeRequired": "Enter a valid date and time.",
+        "inFuture": "The date and time cannot be in the future.",
+        "exitBeforeEntry": "Exit must be after entry.",
+        "notTickMultiple": "The price must be a multiple of the instrument's tick.",
+        "priceInvalid": "Enter a valid price.",
+        "moneyInvalid": "Use a dollar amount with up to 2 decimals.",
+        "amountAmbiguous": "Type the decimal part explicitly, for example 2500.00 or 2.5.",
+        "cannotSave": "Review the fields: some values are still invalid."
+      },
+      "calculated": {
+        "title": "Calculated",
+        "waiting": "Fill in this step to see the calculation.",
+        "failed": "Could not calculate now. You can still save.",
+        "loading": "Calculating",
+        "net": "Net P&L",
+        "gross": "Gross P&L",
+        "commission": "Commission",
+        "duration": "Time in trade",
+        "none": "Commissions not provided: net equals gross. Set the account's per-contract commission or type the commission.",
+        "help": "Calculated from the prices, the quantity, the instrument's tick value and the commission.",
+        "source": {
+          "platform": "reported by the platform",
+          "configured": "estimated from the account's minimum",
+          "mixed": "partly platform, partly estimated",
+          "manual": "typed by you",
+          "none": "commissions not provided"
+        }
+      }
+    },
+    "edit": {
+      "title": "Edit manual trade",
+      "description": "Account: {account}. The calculated values are redone by All Win.",
+      "loadError": "Could not load the trade.",
+      "notEditable": "Captured trade: it cannot be changed.",
+      "back": "Back to trades",
+      "save": "Save changes",
+      "saved": "Trade updated.",
+      "conflict": "This trade changed somewhere else.",
+      "reload": "Reload"
+    }
   }
 }

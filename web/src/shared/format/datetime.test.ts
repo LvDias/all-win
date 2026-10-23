@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatDateTime, formatTime } from "./datetime";
+import { formatDate, formatDateTime, formatTime, instantToZoned, startOfDayInstant, zonedToInstant } from "./datetime";
 
 const instant = "2026-10-23T17:31:05Z";
 
@@ -28,5 +28,31 @@ describe("date and time", () => {
 
   it("rejects invalid instants", () => {
     expect(() => formatDate("nope", "en", "UTC")).toThrow(RangeError);
+  });
+});
+
+describe("zoned wall-clock conversion", () => {
+  it("converts a time typed in the display zone to the UTC instant", () => {
+    expect(zonedToInstant("2026-10-23", "14:31:05", "America/Sao_Paulo")).toBe("2026-10-23T17:31:05Z");
+    expect(zonedToInstant("2026-10-23", "14:31", "UTC")).toBe("2026-10-23T14:31:00Z");
+    expect(zonedToInstant("2026-01-15", "09:30:00", "America/New_York")).toBe("2026-01-15T14:30:00Z");
+    expect(zonedToInstant("2026-07-15", "09:30:00", "America/New_York")).toBe("2026-07-15T13:30:00Z");
+  });
+
+  it("rejects text that is not a real date or time", () => {
+    expect(zonedToInstant("2026-02-30", "10:00", "UTC")).toBeNull();
+    expect(zonedToInstant("2026-10-23", "24:00", "UTC")).toBeNull();
+    expect(zonedToInstant("23/10/2026", "10:00", "UTC")).toBeNull();
+  });
+
+  it("round-trips through the zone", () => {
+    expect(instantToZoned("2026-10-23T17:31:05Z", "America/Sao_Paulo")).toEqual({ date: "2026-10-23", time: "14:31:05" });
+    expect(zonedToInstant(...(Object.values(instantToZoned("2026-03-08T07:30:00Z", "America/New_York")) as [string, string]), "America/New_York")).toBe("2026-03-08T07:30:00Z");
+  });
+
+  it("finds the start of a day in the display zone", () => {
+    expect(startOfDayInstant(new Date("2026-10-23T17:31:05Z"), 0, "America/Sao_Paulo")).toBe("2026-10-23T03:00:00Z");
+    expect(startOfDayInstant(new Date("2026-10-23T01:00:00Z"), 0, "America/Sao_Paulo")).toBe("2026-10-22T03:00:00Z");
+    expect(startOfDayInstant(new Date("2026-10-23T17:31:05Z"), 7, "UTC")).toBe("2026-10-16T00:00:00Z");
   });
 });

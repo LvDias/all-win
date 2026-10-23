@@ -51,6 +51,10 @@ type FormStepperProps<V extends FieldValues> = {
   canSubmit?: boolean;
   /** Overrides the breakpoint choice: dialogs use `compact`. */
   variant?: "full" | "compact";
+  /** A second final action next to the primary one (for example "Save and add another"); same validation, same guards. */
+  secondarySubmit?: { label: string; onSubmit: (values: V) => Promise<SubmitError[] | void> };
+  /** Focus the step heading when the flow mounts (used when the flow restarts after "Save and add another"). */
+  focusOnMount?: boolean;
 };
 
 const reviewId = "review";
@@ -63,7 +67,7 @@ function pointerField(pointer: string): string {
  * The step-by-step create flow (components.md C§2.1, foundations F§10.1). It owns the current step, the footer and the
  * review; the feature owns the form (react-hook-form), the step contents and the request.
  */
-export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, submitLabel, onCancel, reviewExtra, canSubmit = true, variant }: FormStepperProps<V>) {
+export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, submitLabel, onCancel, reviewExtra, canSubmit = true, variant, secondarySubmit, focusOnMount }: FormStepperProps<V>) {
   const t = useTranslations("forms");
   const desktop = useIsDesktop();
   const headingId = useId();
@@ -86,6 +90,9 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
   useEffect(() => {
     if (focusTick > 0) heading.current?.focus();
   }, [focusTick]);
+  useEffect(() => {
+    if (focusOnMount) heading.current?.focus();
+  }, [focusOnMount]);
 
   const ids = [...active.map((step) => step.id), reviewId];
   // A step that stopped applying (its gate changed) falls back to the closest remaining one.
@@ -152,7 +159,7 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
     go(id);
   }
 
-  async function submit() {
+  async function submit(handler: (values: V) => Promise<SubmitError[] | void> = onSubmit) {
     if (sending.current || !canSubmit) return;
     for (const step of active) {
       if (!validate(step)) {
@@ -166,7 +173,7 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
     setFormErrors([]);
     setBrokenSteps([]);
     try {
-      const errors = (await onSubmit(form.getValues())) ?? [];
+      const errors = (await handler(form.getValues())) ?? [];
       const loose: string[] = [];
       const broken: string[] = [];
       for (const error of errors) {
@@ -278,6 +285,11 @@ export function FormStepper<V extends FieldValues>({ form, steps, onSubmit, subm
         {!inReview && current?.optional ? (
           <Button type="button" variant="ghost" onClick={skip}>
             {t("skip")}
+          </Button>
+        ) : null}
+        {inReview && secondarySubmit ? (
+          <Button type="button" variant="outline" onClick={() => void submit(secondarySubmit.onSubmit)} disabled={submitting || !canSubmit}>
+            {secondarySubmit.label}
           </Button>
         ) : null}
         {inReview ? (

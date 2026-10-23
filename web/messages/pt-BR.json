@@ -45,6 +45,12 @@
       "choose": "Escolher",
       "search": "Buscar: {label}",
       "noResults": "Nenhum resultado."
+    },
+    "multiSelect": {
+      "triggerWithCount": "{label}: {count, plural, one {# selecionado} other {# selecionados}}",
+      "withCount": "{label} ({count})",
+      "none": "Nenhuma opção.",
+      "clear": "Limpar seleção"
     }
   },
   "language": {
@@ -566,7 +572,8 @@
     "notFound": "Não encontrado.",
     "signOutFailed": "Não foi possível sair. Sua sessão pode continuar ativa.",
     "accounts": "Contas",
-    "userMenuName": "{email}, menu do usuário"
+    "userMenuName": "{email}, menu do usuário",
+    "trades": "Trades"
   },
   "security": {
     "title": "Segurança",
@@ -1125,5 +1132,204 @@
       "commissionEstimated": "Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real."
     },
     "editAction": "Editar regras"
+  },
+  "trades": {
+    "title": "Trades",
+    "add": "Registrar trade",
+    "loadError": "Não foi possível carregar os trades.",
+    "deleted": "(excluída)",
+    "notProvided": "Não informado",
+    "quantity": "{count, plural, one {# contrato} other {# contratos}}",
+    "direction": {
+      "long": "Compra",
+      "short": "Venda"
+    },
+    "origin": {
+      "manual": "Manual",
+      "platform": "Plataforma (sem sinal)",
+      "master": "Replicação · {account}",
+      "signal": {
+        "trigger": "Gatilhos",
+        "trade_plan": "Trade Plan",
+        "nq_trigger": "Gatilhos NQ",
+        "master_account": "Master"
+      }
+    },
+    "filters": {
+      "label": "Filtros",
+      "period": "Período",
+      "periods": {
+        "today": "Hoje",
+        "7d": "7 dias",
+        "30d": "30 dias",
+        "custom": "Personalizado"
+      },
+      "from": "De ({zone})",
+      "to": "Até ({zone})",
+      "account": "Conta",
+      "source": "Fonte",
+      "signal": "Tipo de sinal",
+      "clear": "Limpar filtros",
+      "active": "{count, plural, one {# filtro ativo} other {# filtros ativos}}",
+      "none": "Sem filtros além do período."
+    },
+    "totals": {
+      "label": "Totais do filtro",
+      "count": "{count, plural, =0 {Nenhum trade} one {# trade} other {# trades}}",
+      "net": "P&L líquido",
+      "secondary": "Bruto {gross} · Comissões {commission}",
+      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele o líquido é igual ao bruto.} other {# trades sem comissão informada: neles o líquido é igual ao bruto.}}",
+      "unavailable": "Totais indisponíveis"
+    },
+    "table": {
+      "caption": "Trades por saída, do mais recente ao mais antigo. Mostrando {shown} de {total}.",
+      "account": "Conta",
+      "direction": "Direção",
+      "quantity": "Qtd.",
+      "entry": "Entrada",
+      "exit": "Saída",
+      "duration": "Tempo",
+      "pnl": "P&L líquido",
+      "excursions": "MAE / MFE",
+      "origin": "Origem",
+      "mae": "MAE",
+      "mfe": "MFE",
+      "count": "{shown} de {total}",
+      "loadMore": "Carregar mais"
+    },
+    "fresh": {
+      "banner": "{count, plural, one {# novo trade} other {# novos trades}}",
+      "show": "Mostrar"
+    },
+    "empty": {
+      "title": "Nenhum trade ainda.",
+      "body": "Trades concluídos nas suas contas conectadas aparecem aqui automaticamente. Você também pode registrar um trade manualmente.",
+      "connections": "Ver conexões",
+      "filteredTitle": "Nenhum trade com estes filtros.",
+      "filteredBody": "Mude ou limpe os filtros para ver mais."
+    },
+    "detail": {
+      "title": "Trade",
+      "heading": "Trade {account}",
+      "summary": "Resumo",
+      "netPnl": "P&L líquido",
+      "grossPnl": "P&L bruto",
+      "commission": "Comissão",
+      "commissionMissing": "Comissões não informadas",
+      "commissionSource": {
+        "platform": "informada pela plataforma",
+        "configured": "estimada pelo piso da conta",
+        "mixed": "parte da plataforma, parte estimada",
+        "manual": "digitada por você",
+        "none": "comissões não informadas"
+      },
+      "origin": "Origem",
+      "registeredByYou": "Registrado por você em {time}",
+      "reconcileMismatch": "Os números do plugin diferem das execuções conhecidas pelo All Win. Mantivemos os do plugin; veja o registro de atividade.",
+      "how": "Como foi calculado",
+      "howCaptured": "Calculado pelo NinjaTrader/plugin com os seus dados. O All Win guarda só os números.",
+      "howManual": "Valores digitados por você. O líquido é o bruto, calculado a partir dos preços, menos a comissão mostrada.",
+      "technical": "Dados técnicos",
+      "ids": {
+        "trade": "Trade",
+        "account": "Conta",
+        "instruction": "Instrução",
+        "command": "Comando",
+        "capturedAt": "Capturado em"
+      },
+      "copyId": "Copiar id",
+      "edit": "Editar",
+      "delete": "Excluir",
+      "notEditable": "Trade capturado: não pode ser alterado."
+    },
+    "delete": {
+      "title": "Excluir este trade manual?",
+      "body": "Ele sai da lista e das métricas. Esta ação não pode ser desfeita.",
+      "confirm": "Excluir trade",
+      "done": "Trade excluído.",
+      "conflict": "Este trade mudou em outro lugar."
+    },
+    "manual": {
+      "title": "Registrar trade",
+      "loadError": "Não foi possível carregar contas e instrumentos.",
+      "noAccounts": "Cadastre uma conta para registrar trades.",
+      "noAccountsBody": "Um trade manual precisa de uma conta.",
+      "backToList": "Voltar aos trades",
+      "choose": "Escolha",
+      "steps": {
+        "trade": "Trade",
+        "times": "Entrada e saída",
+        "excursions": "Excursões (opcional)"
+      },
+      "fields": {
+        "account": "Conta",
+        "instrument": "Instrumento",
+        "direction": "Direção",
+        "quantity": "Quantidade",
+        "entryAt": "Entrada, data e hora ({zone})",
+        "entryPrice": "Entrada, preço",
+        "exitAt": "Saída, data e hora ({zone})",
+        "exitPrice": "Saída, preço",
+        "commission": "Comissão total, em dólares (opcional)",
+        "mae": "Excursão adversa máx. (MAE), em dólares",
+        "mfe": "Excursão favorável máx. (MFE), em dólares"
+      },
+      "direction": {
+        "long": "Compra",
+        "short": "Venda"
+      },
+      "tickHelp": "Use múltiplos de {tick}.",
+      "commissionHelp": "Deixe em branco para o All Win calcular com a comissão por contrato desta conta.",
+      "commissionEstimated": "Estimada pelo All Win",
+      "notProvided": "Não informado",
+      "save": "Salvar trade",
+      "saveAnother": "Salvar e registrar outro",
+      "saved": "Trade registrado.",
+      "savedAnother": "Trade registrado. Pronto para o próximo.",
+      "originManual": "Origem: Manual · Conta: {account}",
+      "errors": {
+        "accountRequired": "Escolha a conta.",
+        "directionRequired": "Escolha a direção.",
+        "quantityInvalid": "Use um número inteiro de 1 a 10000.",
+        "timeRequired": "Informe uma data e hora válidas.",
+        "inFuture": "A data e hora não podem estar no futuro.",
+        "exitBeforeEntry": "A saída deve ser depois da entrada.",
+        "notTickMultiple": "O preço deve ser múltiplo do tick do instrumento.",
+        "priceInvalid": "Informe um preço válido.",
+        "moneyInvalid": "Use um valor em dólares, com até 2 casas.",
+        "amountAmbiguous": "Digite a parte decimal explicitamente, por exemplo 2500,00 ou 2,5.",
+        "cannotSave": "Revise os campos: ainda há valores inválidos."
+      },
+      "calculated": {
+        "title": "Calculado",
+        "waiting": "Preencha os dados da etapa para ver o cálculo.",
+        "failed": "Não foi possível calcular agora. Você ainda pode salvar.",
+        "loading": "Calculando",
+        "net": "P&L líquido",
+        "gross": "P&L bruto",
+        "commission": "Comissão",
+        "duration": "Tempo na operação",
+        "none": "Comissões não informadas: o líquido é igual ao bruto. Defina a comissão por contrato da conta ou digite a comissão.",
+        "help": "Calculado a partir dos preços, da quantidade, do valor do tick do instrumento e da comissão.",
+        "source": {
+          "platform": "informada pela plataforma",
+          "configured": "estimada pelo piso da conta",
+          "mixed": "parte da plataforma, parte estimada",
+          "manual": "digitada por você",
+          "none": "comissões não informadas"
+        }
+      }
+    },
+    "edit": {
+      "title": "Editar trade manual",
+      "description": "Conta: {account}. Os valores calculados são refeitos pelo All Win.",
+      "loadError": "Não foi possível carregar o trade.",
+      "notEditable": "Trade capturado: não pode ser alterado.",
+      "back": "Voltar aos trades",
+      "save": "Salvar alterações",
+      "saved": "Trade atualizado.",
+      "conflict": "Este trade mudou em outro lugar.",
+      "reload": "Recarregar"
+    }
   }
 }

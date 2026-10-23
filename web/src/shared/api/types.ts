@@ -28,6 +28,15 @@ export type RiskRulesRequest = Schemas["RiskRulesRequest"];
 export type RiskRulesPreview = Schemas["RiskRulesPreview"];
 export type RiskSummaryList = Schemas["RiskSummaryList"];
 export type Account = Schemas["Account"];
+export type Trade = Schemas["Trade"];
+export type TradePage = Schemas["TradePage"];
+export type TradesSummary = Schemas["TradesSummary"];
+export type TradeOrigin = Schemas["TradeOrigin"];
+export type CommissionSource = Schemas["CommissionSource"];
+export type ManualTradeFields = Omit<Schemas["ManualTradeRequest"], never>;
+export type ManualTradePreview = Schemas["ManualTradePreview"];
+export type Instrument = Schemas["Instrument"];
+export type AuditSignalType = Schemas["AuditSignalType"];
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 /** Response bodies and request bodies taken from the generated paths, so contract drift breaks the build. */
