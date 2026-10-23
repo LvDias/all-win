@@ -1,31 +1,22 @@
-# All Win — Caddy (dev). Contract: docs/architecture/contracts/s1-webhook-ingest.md §4, ADR-0001 §5.
-# The secret part of an ingress token must never reach any log: every logger below
-# passes through the same redaction filter (access log AND error log, which also echoes the request).
+# All Win — Caddy (dev). Contract: docs/architecture/contracts/s1-webhook-ingest.md §4, ADR-0001 §5/§9.
+# Masking rule R2: Caddy never records the request URI.
+#  - access log: request>uri and request>headers>Referer are deleted for EVERY request
+#  - ingress-like requests (case-insensitive, decoded, repeated '/' collapsed, starting /ingress) are also log_skip'd (second layer); the Core logs them
+#  - error/debug/reverse_proxy logs: request>uri and request>headers are deleted for every path
+#  - log_credentials stays OFF (default): Authorization/Cookie are redacted on any line that still logs headers (/adapter carries Bearer awd_...)
 {
 	admin off
 	auto_https disable_redirects
 	# Internal CA for local TLS only; never a public certificate in dev.
 	local_certs
-	# Server errors/info go through the redacting logger; no debug level.
 	log default {
 		level INFO
 		output stdout
 		format filter {
 			wrap json
 			fields {
-				request>uri regexp "(/ingress/v1/tradingview/awk_[A-Za-z0-9]+)_[A-Za-z0-9_-]+" "${1}_REDACTED"
-			}
-		}
-	}
-}
-
-(redacted_log) {
-	log {
-		output stdout
-		format filter {
-			wrap json
-			fields {
-				request>uri regexp "(/ingress/v1/tradingview/awk_[A-Za-z0-9]+)_[A-Za-z0-9_-]+" "${1}_REDACTED"
+				request>uri delete
+				request>headers delete
 			}
 		}
 	}
@@ -33,13 +24,31 @@
 
 # Dev origin. Host port is published on 127.0.0.1 only (see docker-compose.dev.yml).
 https://localhost:{$CADDY_HTTPS_PORT:8443} {
-	import redacted_log
 	tls internal
+
+	@ingress_rx path_regexp (?i)^/+ingress
+	@ingress_glob path /ingress*
+	log_skip @ingress_rx
+	log_skip @ingress_glob
+
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>headers>Referer delete
+			}
+		}
+	}
+
+	# HSTS for the whole origin; CSP, nosniff, Referrer-Policy and Permissions-Policy belong to Next/Core (ADR-0001 §9).
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
 	encode zstd gzip
 
 	handle /ingress/* {
-		# Hard transport cap; the Core enforces the 16 KiB contract limit (413).
+		# Hard transport cap, above the 16 KiB contract limit so the Core answers 413.
 		request_body {
 			max_size 64KB
 		}
