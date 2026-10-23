@@ -224,6 +224,7 @@ namespace AllWin.Adapter.Core.Engine
                 }
 
                 CheckFlattenTimeouts(now);
+                CheckUnknownKinds(now);
                 if (now - _lastPruneAt >= _options.PruneInterval) Prune();
             });
         }

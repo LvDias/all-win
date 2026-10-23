@@ -361,7 +361,7 @@ namespace AllWin.Adapter.Core.Engine
                 }
                 targetRecord.LimitPrice = limit;
                 targetRecord.StopPrice = stop;
-                if (!WriteAllowed(record.PlatformAccount, record.Command.Instrument, record.ReceivedAt, ModifyRows(order, targetRecord), out _))
+                if (!WriteAllowed(record.PlatformAccount, record.Command.Instrument, record.ReceivedAt, ModifyRows(order, targetRecord), out _, byCore: true))
                 {
                     // ADR-0005 §N11: refused by consent or by the table (rows 1, 7, 8 outside state B).
                     FailTarget(record, targetRecord, order.Order.PlatformOrderId, ReasonCodes.CommandAccountNotSimulation);
@@ -411,7 +411,7 @@ namespace AllWin.Adapter.Core.Engine
                 record.Targets.Add(targetRecord);
                 var order = FindLiveOrder(record.PlatformAccount, target.CommandId, target.ChildRole);
                 if (order == null) FailTarget(record, targetRecord, target.PlatformOrderId, ReasonCodes.CommandTargetNotFound);
-                else if (!WriteAllowed(record.PlatformAccount, order.Order.Instrument, record.ReceivedAt, new[] { CancelRowOf(order) }, out _))
+                else if (!WriteAllowed(record.PlatformAccount, order.Order.Instrument, record.ReceivedAt, new[] { CancelRowOf(order) }, out _, byCore: true))
                     FailTarget(record, targetRecord, order.Order.PlatformOrderId, ReasonCodes.CommandAccountNotSimulation); // §N11 rows 3, 5, 11
                 else targetRecord.Handle = order.Handle;
             }

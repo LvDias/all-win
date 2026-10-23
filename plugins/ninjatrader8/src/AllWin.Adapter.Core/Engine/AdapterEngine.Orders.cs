@@ -21,7 +21,8 @@ namespace AllWin.Adapter.Core.Engine
                 {
                     case AccountsChangedEvent _:
                         RefreshTrackedOrders();
-                        EnforceLiveTable(); // a kind change invalidates a confirmation (ADR-0005 N11, Vigia I1)
+                        EnforceLiveTable(); // a known non-live kind invalidates a confirmation (ADR-0005 N11)
+                        CheckUnknownKinds(_clock.UtcNow); // the 10-s unknown alert counts from the change, not the next tick
                         RaiseChanged();
                         return;
                     case AccountConnectionEvent connection:
@@ -380,8 +381,11 @@ namespace AllWin.Adapter.Core.Engine
             var exitSide = entrySide == Side.Buy ? Side.Sell : Side.Buy;
 
             // ADR-0005 §N11 row 6: outside state B only the consented entry's own fills are protected, capped to what it filled.
-            var ownGrowth = trigger == owner && owner.ConsentedLive;
-            if (liveState.HasValue && ownGrowth) covered = Math.Min(covered, OpenQuantity(owner));
+            // In shared mode the owner's legs also protect consented adds (QA M2): their growth is row 6, not row 7.
+            var shared = owner.Command.Place!.Protection!.Mode == ProtectionMode.Shared;
+            var ownGrowth = trigger != null && trigger.ConsentedLive
+                && (trigger == owner || (shared && trigger.Command.Place?.Protection?.Mode == ProtectionMode.Shared && trigger.Command.Place.Side == entrySide));
+            if (liveState.HasValue && ownGrowth) covered = Math.Min(covered, ConsentedOpenQuantity(owner, shared));
 
             if (!owner.BracketSubmitted)
             {
@@ -512,6 +516,19 @@ namespace AllWin.Adapter.Core.Engine
             report.Order = new OrderSpec { Type = request.Type, LimitPrice = request.LimitPrice, StopPrice = request.StopPrice, TimeInForce = request.TimeInForce };
             report.Quantity = request.Quantity;
             Emit(owner, report);
+        }
+
+        /// <summary>
+        /// What row 6 may protect outside state B: the consented entry's own open quantity; in shared mode, the consented
+        /// shared entries on the owner's side (owner and adds) less what the owner's legs closed.
+        /// </summary>
+        private int ConsentedOpenQuantity(CommandRecord owner, bool shared)
+        {
+            if (!shared) return owner.ConsentedLive ? OpenQuantity(owner) : 0;
+            var filled = _commands.Values.Where(r => r.PlatformAccount == owner.PlatformAccount && r.Command.Kind == CommandKind.Place && r.ConsentedLive
+                && r.Command.Instrument.Equals(owner.Command.Instrument) && r.Command.Place!.Side == owner.Command.Place!.Side
+                && r.Command.Place.Protection?.Mode == ProtectionMode.Shared).Sum(r => r.EntryFilled);
+            return Math.Max(0, filled - LegFilled(owner.PlatformAccount, owner.CommandId, 's') - LegFilled(owner.PlatformAccount, owner.CommandId, 't'));
         }
 
         /// <summary>Quantity of this entry not yet closed by its own legs.</summary>

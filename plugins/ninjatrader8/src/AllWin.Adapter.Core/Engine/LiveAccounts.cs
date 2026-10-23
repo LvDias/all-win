@@ -238,10 +238,12 @@ namespace AllWin.Adapter.Core.Engine
                     if (string.IsNullOrEmpty(connection) || string.IsNullOrEmpty(provider) || string.IsNullOrEmpty(name)) return Off();
                     state._confirmed.Add(new LiveAccountKey(connection!, provider!, name!));
                 }
-                return state;
+                // Canonical form only: exactly what Serialize writes (Vigia I1), so no hand-edited variant counts.
+                return state.Serialize() == text ? state : Off();
             }
-            catch (Exception e) when (e is JsonException || e is FormatException || e is InvalidCastException || e is ArgumentException)
+            catch (Exception)
             {
+                // Any failure to read it, e.g. an overflowing "v" (Vigia L2), means off: never an exception to the host.
                 return Off();
             }
         }

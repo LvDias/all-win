@@ -104,10 +104,18 @@ namespace AllWin.Adapter.Core.Tests.Engine
             return h;
         }
 
-        /// <summary>A: the account's kind changes (confirmation invalidated); C*: the user turns the opt-in off.</summary>
+        /// <summary>
+        /// A: the account reports a known non-live kind, which invalidates the confirmation, then live again (unconfirmed);
+        /// C*: the user turns the opt-in off. (A transient unknown is state A for Core writes only: LiveAccountTests.)
+        /// </summary>
         internal static void Enter(EngineHarness h, LiveState state)
         {
-            if (state == LiveState.A) h.Platform.SetKind(Sim101, AccountKind.Unknown);
+            if (state == LiveState.A)
+            {
+                h.Platform.SetKind(Sim101, AccountKind.Simulation);
+                h.Settle();
+                h.Platform.SetKind(Sim101, AccountKind.Live);
+            }
             else
             {
                 h.Consent.Block();

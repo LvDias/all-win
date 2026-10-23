@@ -47,6 +47,11 @@ namespace AllWin.Adapter.Core.Localization
                 "Real account without consent: All Win orders were cancelled or reduced; everything else stays with you in NinjaTrader.",
                 "Conta real sem consentimento: ordens All Win canceladas/reduzidas; o restante fica com você no NinjaTrader.",
             },
+            [AdapterEngine.NoticeKindUnknown] = new[]
+            {
+                "Unknown account type; All Win cannot act on this account (not even to close it).",
+                "Tipo da conta desconhecido; o All Win não consegue agir nesta conta (nem zerar).",
+            },
             [AdapterEngine.NoticeUnprotectedPosition] = new[]
             {
                 "Open position without protection; manage it in NinjaTrader.",

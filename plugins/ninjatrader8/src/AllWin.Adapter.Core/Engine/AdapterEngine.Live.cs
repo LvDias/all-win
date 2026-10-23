@@ -13,6 +13,10 @@ namespace AllWin.Adapter.Core.Engine
     {
         public const string NoticeUnconsentedActions = "live.unconsented_actions";
         public const string NoticeUnprotectedPosition = "live.unprotected_position";
+        public const string NoticeKindUnknown = "live.kind_unknown_alert";
+
+        private static readonly TimeSpan UnknownKindAlertAfter = TimeSpan.FromSeconds(10);
+        private readonly Dictionary<string, DateTime> _unknownSince = new Dictionary<string, DateTime>(StringComparer.Ordinal);
 
         private readonly Dictionary<string, PositionIdentityRecord> _identities = new Dictionary<string, PositionIdentityRecord>(StringComparer.Ordinal);
         private readonly Dictionary<string, HashSet<string>> _liveNotices = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -199,13 +203,17 @@ namespace AllWin.Adapter.Core.Engine
         }
 
         /// <summary>The table state of a non-simulation account in one instrument (release builds).</summary>
-        private LiveState LiveStateOf(PlatformAccountInfo info, Instrument instrument, DateTime? receivedAt = null, bool readOnly = false)
+        /// <remarks>
+        /// Reads the identity without persisting "unknown" (Code Review M1): only the reduce guard does that (ADR-0004 §5
+        /// "at the guard"). A position ahead of its record (a fill still queued) reads as C2 for this check only.
+        /// </remarks>
+        private LiveState LiveStateOf(PlatformAccountInfo info, Instrument instrument, DateTime? receivedAt = null)
         {
             if (!IsConfirmed(info)) return LiveState.A;
             if (IsStateB(info, receivedAt)) return LiveState.B;
             var position = PositionQuantity(info.Name, instrument);
             if (position == 0) return LiveState.C0;
-            var identity = IdentityOf(info.Name, instrument, position, readOnly);
+            var identity = IdentityOf(info.Name, instrument, position, readOnly: true);
             return identity != null && identity != PositionIdentityRecord.External && identity != PositionIdentityRecord.Unknown ? LiveState.C1 : LiveState.C2;
         }
 
@@ -227,10 +235,14 @@ namespace AllWin.Adapter.Core.Engine
             if (IsSimulated(info) || _options.Build == AdapterBuild.Development) return null;
             if (!IsConfirmed(info)) return LiveState.A;
             if (IsStateB(info, null)) return LiveState.B;
-            var states = _platform.GetPositions(info.Name).Where(p => p.Quantity != 0).Select(p => LiveStateOf(info, p.Instrument, readOnly: true)).ToList();
+            var states = _platform.GetPositions(info.Name).Where(p => p.Quantity != 0).Select(p => LiveStateOf(info, p.Instrument)).ToList();
             if (states.Contains(LiveState.C2)) return LiveState.C2;
             return states.Count > 0 ? LiveState.C1 : LiveState.C0;
         }
+
+        /// <summary>State A, or a C state under U19 (b), which behaves as A.</summary>
+        private bool IsEffectivelyA(LiveState state) =>
+            state == LiveState.A || (state != LiveState.B && _options.LiveOffPolicy == LiveOffPolicy.RefuseAll);
 
         private bool TableAllows(LiveRow row, LiveState state) => LiveAccountTable.Allows(row, state, _options.LiveOffPolicy, _options.ProtectiveCancelPolicy);
 
@@ -238,7 +250,11 @@ namespace AllWin.Adapter.Core.Engine
         /// Gate for one platform write (ADR-0005 N4 + N11): simulation accounts always; development builds nothing else;
         /// release builds by the table row, where every row must be allowed.
         /// </summary>
-        private bool WriteAllowed(string account, Instrument instrument, DateTime? receivedAt, LiveRow[] rows, out LiveState? state)
+        /// <param name="byCore">
+        /// The write comes from a Core modify/cancel. On (effective) state A the Core is accepted only for row 2, and rows 3
+        /// and 5 after the plugin's own check; rows 4 and 6 there are the plugin's own initiative (ADR-0005 §N11, QA L1).
+        /// </param>
+        private bool WriteAllowed(string account, Instrument instrument, DateTime? receivedAt, LiveRow[] rows, out LiveState? state, bool byCore = false)
         {
             state = null;
             var info = SafeAccounts().FirstOrDefault(a => a.Name == account);
@@ -247,7 +263,11 @@ namespace AllWin.Adapter.Core.Engine
             if (_options.Build == AdapterBuild.Development) return false;
             var s = LiveStateOf(info, instrument, receivedAt);
             state = s;
-            return rows.All(r => TableAllows(r, s));
+            // A write that names no row cannot be classified: refused outside state B (Vigia L1, fail closed).
+            if (s == LiveState.B) return true;
+            if (byCore && IsEffectivelyA(s) && rows.Any(r => r != LiveRow.CancelEntry && r != LiveRow.CancelOrphanLeg && r != LiveRow.CancelWrongSideLeg))
+                return false;
+            return rows.Length > 0 && rows.All(r => TableAllows(r, s));
         }
 
         /// <summary>Command-level check (consent first, then the table, then the command's own checks).</summary>
@@ -291,6 +311,26 @@ namespace AllWin.Adapter.Core.Engine
             if (effective == LiveState.A) AddLiveNotice(account, NoticeUnconsentedActions);
         }
 
+        /// <summary>
+        /// §N11 transient unknown (Vigia I1): a mapped account whose kind stays unknown for more than 10 s gets the window
+        /// alert; it clears when the kind is known again. Called from the engine timer.
+        /// </summary>
+        private void CheckUnknownKinds(DateTime now)
+        {
+            if (_options.Build == AdapterBuild.Development) return;
+            var unknown = new HashSet<string>(SafeAccounts().Where(a => a.Kind == AccountKind.Unknown && MappingOf(a.Name) != null).Select(a => a.Name), StringComparer.Ordinal);
+            foreach (var account in _unknownSince.Keys.Where(a => !unknown.Contains(a)).ToList())
+            {
+                _unknownSince.Remove(account);
+                if (_liveNotices.TryGetValue(account, out var set) && set.Remove(NoticeKindUnknown)) RaiseChanged();
+            }
+            foreach (var account in unknown)
+            {
+                if (!_unknownSince.TryGetValue(account, out var since)) _unknownSince[account] = since = now;
+                if (now - since > UnknownKindAlertAfter) AddLiveNotice(account, NoticeKindUnknown);
+            }
+        }
+
         private void AddLiveNotice(string account, string notice)
         {
             if (!_liveNotices.TryGetValue(account, out var set))
@@ -310,20 +350,29 @@ namespace AllWin.Adapter.Core.Engine
         private void EnforceLiveTable(string? onlyAccount = null)
         {
             if (_options.Build == AdapterBuild.Development) return; // never writes to a live account anyway (N4)
-            foreach (var info in SafeAccounts())
+            var accounts = SafeAccounts();
+            foreach (var info in accounts)
             {
-                if (onlyAccount != null && info.Name != onlyAccount) continue;
-                if (IsSimulated(info) || MappingOf(info.Name) == null) continue;
+                // Stateless rule (ADR-0005 §N11, Vigia L1): only a KNOWN non-live kind (simulation or playback) invalidates the
+                // confirmation, whether or not the account is mapped or connected (QA M1). A transient unknown never does.
                 var key = KeyOf(info);
-                if (key != null && info.Kind != AccountKind.Live && _consent.IsConfirmed(key))
+                if (key != null && IsSimulated(info) && _consent.IsConfirmed(key))
                 {
                     _consent.Invalidate(key);
                     _log.Write(LogLevel.Warning, "live.confirmation_invalidated", key + " kind=" + info.Kind);
                 }
+            }
+            foreach (var info in accounts)
+            {
+                if (onlyAccount != null && info.Name != onlyAccount) continue;
+                if (IsSimulated(info) || MappingOf(info.Name) == null) continue;
                 if (!info.Connected || IsStateB(info, null)) continue;
 
                 var account = info.Name;
-                foreach (var group in _orders.Values.Where(o => o.Account == account && o.CommandId != null && !o.Order.IsTerminal && !o.CancelRequested
+                // While the kind is unknown, row-2 orders are not self-cancelled: they were submitted with consent (§N11
+                // transient unknown). Rows 3–6 below still apply.
+                var selfCancel = info.Kind != AccountKind.Unknown;
+                foreach (var group in _orders.Values.Where(o => selfCancel && o.Account == account && o.CommandId != null && !o.Order.IsTerminal && !o.CancelRequested
                         && (o.Letter == 'e' || IsPlaceExit(o)))
                     .GroupBy(o => o.Order.Instrument).ToList())
                 {
