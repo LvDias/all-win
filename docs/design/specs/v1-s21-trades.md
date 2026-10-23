@@ -1,9 +1,10 @@
 # V1-S21 — Trade capture and trade list — Screen spec
 
-> **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Aquarela; written by Traço @ Dev3 in rev. 1) · **Status:** proposed, pending PO review · **Revision:** 2 · **Date:** 2026-10-23
 > **Slice:** [V1-S21](../../product/release-1/slice-plan.md) AC-1 … AC-4 (slice-plan rev. 7); vision §10; consumer: S22 (metrics). Touch points: S2/S5 (accounts, capture by the plugin), S7 (source and signal type), S10 (audit).
 > **Foundations and components:** [foundations.md](../foundations.md) (F§6 numbers and time, F§7 status, F§10 feedback), [components.md](../components.md) (C§3 `EmptyState`, C§4 `DataTable`). **Related:** [S10](v1-s10-audit-log.md) (filters and time rules), [S6](v1-s6-stop-target-profiles.md) (price/tick input rules), [S18](v1-s18-notifications.md).
 > **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/trades.yaml` and the notes [s21-trades](../../architecture/contracts/s21-trades.md). Operations `listTrades`, `getTrade`, `getTradesSummary`, `createManualTrade`, `updateManualTrade`, `deleteManualTrade`, `previewManualTrade`. **Where this spec and the contract differ, the contract wins.**
+> **Rev. 2 (2026-10-23, user UX rule, F§10.1):** manual entry (S21-03) is a **step-by-step flow**: Trade · Entrada e saída · Excursões (opcional) · Revisar, with the "Calculado" block and `Salvar e registrar outro`. Edit (S21-04) stays one page with sections. Fields, validation and contract are unchanged.
 > **Surfaces:** Web (Frontend). Capture and metric computation are the plugin's (AC-2); storing, filtering and totals are the Core's. QA owns the checks.
 
 ---
@@ -108,7 +109,17 @@ The table scrolls horizontally inside its container with a sticky first column (
 ### 4.2 Manual entry — `/[locale]/trades/new`
 
 **Purpose:** record a trade the system did not capture (AC-3).
-**Layout:** single column, max 720 px, `Card`s "Trade", "Entrada", "Saída", "Excursões (opcional)". Sticky footer `Cancelar` / `Salvar trade`. Submit: focus first invalid field; summary `Alert` at ≥ 3 errors (F§10). Unsaved-changes guard on Cancel/back.
+**Why a stepper:** 9 controls in 3 groups, with times and prices that are easy to mistype (F§10.1: more than 6 controls, 3 or more sections). The flow uses `FormStepper` (C§2.1), page variant, max 720 px, sticky footer. Edit uses a page with sections (§4.5).
+
+| # | Step (pt-BR / en) | Controls | Fields below |
+|---|---|---|---|
+| 1 | Trade / Trade | Conta, Instrumento (fixed), Direção, Quantidade | rows 1–4 |
+| 2 | Entrada e saída / Entry and exit | Entrada data e hora, Entrada preço, Saída data e hora, Saída preço | rows 5–8 + block "Calculado" |
+| 3 | Excursões (opcional) / Excursions (optional) | MAE, MFE | rows 9–10; `Pular etapa` |
+| 4 | Revisar / Review | – | summary + "Calculado" + `Salvar trade` / `Salvar e registrar outro` |
+
+- `Continuar` validates only its step; the cross-field rule "a saída deve ser depois da entrada" runs on step 2. Going back keeps every value (3.3.7). Cancel / back with typed data asks "Descartar alterações?"; no draft is stored.
+- If the user has no accounts the flow does not start (see States).
 
 | Field | Component | Validation | Data |
 |---|---|---|---|
@@ -123,10 +134,11 @@ The table scrolls horizontally inside its container with a sticky first column (
 | MAE | money `Input` (≥ 0, ≤ 2 decimals), in USD **[Provisional, Q52]** | optional **[Provisional, Q55]** | `mae` |
 | MFE | money `Input` (≥ 0) | optional | `mfe` |
 
-- **Tempo na operação** and **P&L** are not typed: after the required fields are valid, a read-only block "Calculado" shows the duration and the P&L as returned by a Core preview (debounced 300 ms; skeleton while loading; on failure "Não foi possível calcular agora. Você ainda pode salvar." and the Core computes at save). Duration = exit − entry; P&L = exact arithmetic of prices, quantity and the instrument's tick value in the Core (PO). **Gross P&L, without commissions [Provisional, Q54 rec. (a)]**, and the detail says so. Help: "Calculado a partir dos preços, da quantidade e do valor do tick do instrumento." Entries never use floating point (X-3).
-- Source is fixed: a read-only line "Origem: Manual".
+- **Tempo na operação** and **P&L** are not typed: after the required fields of step 2 are valid, a read-only block "Calculado" shows it under the fields of step 2 (so a typo is caught before the review) and again, from the same request, in the review. It shows the duration and the P&L as returned by a Core preview (debounced 300 ms; skeleton while loading; on failure "Não foi possível calcular agora. Você ainda pode salvar." and the Core computes at save). Duration = exit − entry; P&L = exact arithmetic of prices, quantity and the instrument's tick value in the Core (PO). **Gross P&L, without commissions [Provisional, Q54 rec. (a)]**, and the detail says so. Help: "Calculado a partir dos preços, da quantidade e do valor do tick do instrumento." Entries never use floating point (X-3).
+- Source is fixed: a read-only line "Origem: Manual" in the review.
 - Time zone: typed values are interpreted in the display zone (profile, F§6.4); the zone is shown next to each label.
-- **Save:** idempotency key per form (a double click or a retry never creates two trades). Success: toast "Trade registrado." → list with the new row marked `Novo`. 422 `pointer` maps to the field and focuses it. Errors: destructive `Alert` above the footer with the code; values kept.
+- **Review (step 4):** `dl` groups Trade · Entrada e saída · Excursões with `Editar {group}`; empty MAE/MFE read "Não informado" (§4.4); the "Calculado" block; "Origem: Manual"; the time zone next to every time. Buttons: `Voltar`, **`Salvar e registrar outro`** (secondary) and **`Salvar trade`** (primary).
+- **Save:** one idempotency key per form instance (a double click or a retry never creates two trades). `Salvar trade`: toast "Trade registrado." → list with the new row marked `Novo`. `Salvar e registrar outro`: toast "Trade registrado. Pronto para o próximo." (polite), the flow returns to step 1 with a new idempotency key, **keeping Conta only** (everything else cleared), focus on the step 1 heading; the list is not shown. A failed save keeps all values. 422 `pointer` → `/account_id`, `/direction`, `/quantity` step 1; `/entry_*`, `/exit_*` step 2; `/mae`, `/mfe` step 3: the user returns to that step, the field is focused, and the review shows "Corrija a etapa {n}". Errors: destructive `Alert` above the buttons with the code; values kept.
 - **States:** loading of the account list (skeleton), no accounts → `EmptyState` `blocked`: "Cadastre uma conta para registrar trades." + `Nova conta`. Account list error → `ErrorState`.
 
 ### 4.3 Display of derived values
@@ -140,7 +152,7 @@ Manual trades may have no MAE/MFE **[Provisional, Q55 rec. (a)]**. The list and 
 ### 4.5 S21-04 Edit and delete a manual trade **[Provisional, Q56 rec. (a); user decides]**
 
 Not in the ACs, but wrong manual entries would pollute S22. The detail panel of a **manual** trade shows `Editar` and `Excluir`; **captured trades never have them** (the panel says "Trade capturado: não pode ser alterado.").
-- `Editar`: the S21-03 form prefilled (same validation, same preview, new idempotency key, `row_version` for concurrency → `common.version_conflict` "Este trade mudou em outro lugar."). Success toast "Trade atualizado."
+- `Editar`: **one page with sections** `Trade` · `Entrada` · `Saída` · `Excursões`, prefilled (F§10.1: edit is not a stepper; same validation, same "Calculado" preview, a single `Salvar`, route `/[locale]/trades/[id]/edit`, new idempotency key, `row_version` for concurrency → `common.version_conflict` "Este trade mudou em outro lugar."). Success toast "Trade atualizado."
 - `Excluir`: `AlertDialog` (cancel focused): "Excluir este trade manual? Ele sai da lista e das métricas. Esta ação não pode ser desfeita." / confirm `Excluir trade` (destructive). Toast "Trade excluído."
 - Both are audited with **before and after** values (S10, category `config`). Deleting keeps the audit entry; the trade disappears from S21/S22.
 
@@ -158,6 +170,9 @@ Not in the ACs, but wrong manual entries would pollute S22. The detail panel of 
 | Manual badge | Manual | Manual |
 | Not provided | Não informado | Not provided |
 | Exit before entry | A saída deve ser depois da entrada. | Exit must be after entry. |
+| Steps | Trade · Entrada e saída · Excursões (opcional) · Revisar | Trade · Entry and exit · Excursions (optional) · Review |
+| Save and repeat | Salvar e registrar outro | Save and add another |
+| After repeat | Trade registrado. Pronto para o próximo. | Trade added. Ready for the next one. |
 
 ---
 
@@ -176,7 +191,7 @@ Not in the ACs, but wrong manual entries would pollute S22. The detail panel of 
 - Filters labeled; a text summary of active filters precedes the table; changes of the result count are announced politely once per filter change.
 - Date-time inputs accept typing; pickers are optional helpers, fully keyboard operable; errors linked with `aria-describedby`, focus to the first invalid field (3.3.1).
 - Panel/Drawer: focus to the title, trapped, restored to the row; Escape closes.
-- Targets ≥ 44 px on touch; reflow at 320 px (cards).
+- Manual entry flow: `FormStepper` rules (C§2.1): step heading focused, polite "Etapa n de 4", review `dl` with `Editar {group}`; after `Salvar e registrar outro` focus goes to the step 1 heading and the live region says the trade was saved. Targets ≥ 44 px on touch; reflow at 320 px (cards; footer buttons stack).
 
 ## 8. Data and actions this slice needs (for the Architect)
 
