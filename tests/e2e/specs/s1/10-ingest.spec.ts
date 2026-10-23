@@ -5,6 +5,7 @@ import { config } from '../../src/config.ts';
 import { syntheticToken } from '../../src/canary.ts';
 import { JSON_HEADERS, type RawResponse } from '../../src/http.ts';
 import {
+  asTradingView,
   expectedForInvalid,
   expectedForValid,
   loadFixtures,
@@ -46,7 +47,8 @@ test.describe('S1 ingest', () => {
           const receivedAt = psql(ctx().s, `SELECT received_at IS NOT NULL FROM ${config.sql.instruction} WHERE message_id = ${lit(String(body.message_id))};`).trim();
           expect(receivedAt, `${f.name}: received_at stored`).toBe('t');
         } else {
-          expectRejected(f.name, res, exp.status, exp.code);
+          const r = expectRejected(f.name, res, exp.status, exp.code);
+          if (exp.pointer) expect(r.error.pointer, `${f.name}: pointer`).toBe(exp.pointer);
           expect(receiptRows(String(body.message_id)), `${f.name}: rejection creates no receipt`).toBe(0);
         }
       });
@@ -63,14 +65,23 @@ test.describe('S1 ingest', () => {
       expectAccepted('text/plain', await post(ingress(ctx().a.value), body, { 'content-type': 'text/plain' }), 'accepted');
     });
 
-    test('policy: TradingView source with a limit order or reduce is rejected (422)', async () => {
-      const tv = validInstruction().source;
-      for (const name of ['master-buy-limit-entry', 'master-sell-reduce', 'master-cancel']) {
-        const f = loadFixtures('valid').find((x) => x.name === name)!;
-        const body = { ...withFreshMessageId(f.json), source: tv };
-        const exp = expectedForValid(body);
-        expectRejected(`policy ${name}`, await post(ingress(ctx().a.value), body), exp.status, exp.code);
+    test('policy: TradingView alert with a limit order, reduce, cancel or modify is rejected (422)', async () => {
+      const expected: Record<string, string> = {
+        'master-buy-limit-entry': 'ingress.order_type_not_allowed_for_source',
+        'master-sell-reduce': 'ingress.action_not_allowed_for_source',
+        'master-cancel': 'ingress.action_not_allowed_for_source',
+        'master-modify-stop-delta': 'ingress.action_not_allowed_for_source',
+      };
+      for (const [name, code] of Object.entries(expected)) {
+        const body = asTradingView(loadFixtures('valid').find((x) => x.name === name)!.json);
+        expect(expectedForValid(body).code, `${name}: suite expectation`).toBe(code);
+        expectRejected(`policy ${name}`, await post(ingress(ctx().a.value), body), 422, code);
       }
+    });
+
+    test('policy: signal_type master_account from TradingView → 422 with pointer /signal_type', async () => {
+      const r = expectRejected('signal_type', await post(ingress(ctx().a.value), validInstruction({ signal_type: 'master_account' })), 422, 'ingress.signal_type_not_allowed_for_source');
+      expect(r.error.pointer).toBe('/signal_type');
     });
 
     test('AC-7 symbol not enabled in the catalog → 422 ingress.unsupported_instrument', async () => {
@@ -88,6 +99,7 @@ test.describe('S1 ingest', () => {
         const exp = expectedForInvalid(f.name);
         const r = expectRejected(f.name, await post(ingress(ctx().a.value), body), exp.status, exp.code);
         if (exp.code === 'ingress.schema_violation') expect(typeof r.error.pointer, `${f.name}: pointer present`).toBe('string');
+        if (exp.pointer) expect(r.error.pointer, `${f.name}: pointer`).toBe(exp.pointer);
         if (typeof body.message_id === 'string') expect(receiptRows(body.message_id), `${f.name}: no receipt`).toBe(0);
       });
     }
@@ -110,6 +122,9 @@ test.describe('S1 ingest', () => {
       { label: 'missing token (no slash)', target: () => '/ingress/v1/tradingview' },
       { label: '/ingress', target: () => '/ingress' },
       { label: '/ingress/', target: () => '/ingress/' },
+      // §4.1: ingress-like = path starting with /ingress (no segment boundary required).
+      { label: '/ingress with token in query', target: () => `/ingress?t=${ctx().a.value}` },
+      { label: '/ingressfoo prefix', target: () => `/ingressfoo/${ctx().a.value}` },
       { label: 'other version', target: () => `/ingress/v2/tradingview/${ctx().a.value}` },
       { label: 'other platform segment', target: () => `/ingress/v1/other/${ctx().a.value}` },
       { label: 'extra segment', target: () => `${ingress(ctx().a.value)}/extra` },

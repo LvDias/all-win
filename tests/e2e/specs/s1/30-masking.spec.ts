@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 import { config } from '../../src/config.ts';
 import { formatHits, type Token } from '../../src/canary.ts';
 import { JSON_HEADERS } from '../../src/http.ts';
-import { loadFixtures, uniqueMessageId, validInstruction } from '../../src/instructions.ts';
+import { asTradingView, loadFixtures, uniqueMessageId, validInstruction } from '../../src/instructions.ts';
 import {
   allSources,
   caddyDebugExpected,
@@ -134,10 +134,9 @@ test.describe('S1 masking (contract §4.3)', () => {
 
   test('M4 policy rejection (action modify from TradingView)', async () => {
     const { a } = ctx();
-    const modify = loadFixtures('valid').find((f) => f.name === 'master-modify-entry-quantity')!.json;
-    const tvSource = validInstruction().source;
+    const modify = asTradingView(loadFixtures('valid').find((f) => f.name === 'master-modify-entry-quantity')!.json);
     const since = mark();
-    const res = await post(ingress(a.value), { ...modify, message_id: uniqueMessageId(), source: tvSource });
+    const res = await post(ingress(a.value), modify);
     if (isFull()) expectRejected('M4', res, 422, 'ingress.action_not_allowed_for_source');
     expectNoLeak('M4', await allSources(since, [{ label: 'M4', res }]));
   });
@@ -185,9 +184,11 @@ test.describe('S1 masking (contract §4.3)', () => {
     await post(ingress(a.value), validInstruction());
     await post(`/ingress/v1/tradingview//${a.value}`, validInstruction());
     const core = logSources(since).find((s) => s.name === 'core')!.text;
-    const routes = [...core.matchAll(/http\.route["']?\s*[:=]\s*"?([^"\s,}]+)"?/g)].map((m) => m[1]!);
+    // The Core logs JSON lines; route values contain braces, so only the closing quote ends a value.
+    const routes = [...core.matchAll(/"http\.route"\s*:\s*"([^"]*)"/g)].map((m) => m[1]!);
     expect(routes.length, 'M10: no http.route field found in Core trace output').toBeGreaterThan(0);
-    const allowed = new Set(['/ingress/v1/tradingview/{token}', '<unmatched>', '<unmatched-ingress>', ...config.extraRoutes]);
+    // /metrics and /healthz are the Core's own route templates (scraped by this suite).
+    const allowed = new Set(['/ingress/v1/tradingview/{token}', '<unmatched>', '<unmatched-ingress>', '/metrics', '/healthz', ...config.extraRoutes]);
     const bad = [...new Set(routes.filter((r) => !allowed.has(r)))];
     // Values are reported only after masking; an unexpected route could itself be a raw URI.
     const hits = findLeaks([{ name: 'http.route', text: bad.join('\n') }]);

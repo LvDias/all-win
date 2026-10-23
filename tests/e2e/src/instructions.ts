@@ -35,6 +35,11 @@ export function withFreshMessageId(json: Instruction, prefix?: string): Instruct
   return { ...structuredClone(json), message_id: uniqueMessageId(prefix) };
 }
 
+/** A master_account fixture re-shaped as a TradingView alert, so it reaches the intended policy rule. */
+export function asTradingView(json: Instruction): Instruction {
+  return { ...withFreshMessageId(json), source: validInstruction().source, signal_type: 'trigger' };
+}
+
 export function validInstruction(overrides: Partial<Instruction> = {}): Instruction {
   const base = loadFixtures('valid').find((f) => f.name === 'tv-trigger-buy');
   if (!base) throw new Error('fixture tv-trigger-buy missing');
@@ -44,10 +49,19 @@ export function validInstruction(overrides: Partial<Instruction> = {}): Instruct
 export interface Expected {
   status: number;
   code?: string;
+  pointer?: string;
 }
 
-/** Contract §2 step 7 (source policy, in its listed order) applied to a schema-valid instruction. */
+const TV_SIGNAL_TYPES = ['trigger', 'trade_plan', 'nq_trigger'];
+
+/**
+ * Outcome for a schema-valid instruction: contract §2 step 6 (schema minor newer than the Core supports),
+ * then step 7 (source policy, in its listed order).
+ */
 export function expectedForValid(json: Instruction): Expected {
+  if (typeof json.schema_version === 'string' && !config.supportedSchemaVersions.includes(json.schema_version)) {
+    return { status: 400, code: 'ingress.unsupported_version', pointer: '/schema_version' };
+  }
   const source = json.source as { type?: string } | undefined;
   const order = json.order as { type?: string } | undefined;
   const instrument = json.instrument as { symbol?: string } | undefined;
@@ -56,11 +70,16 @@ export function expectedForValid(json: Instruction): Expected {
     return { status: 422, code: 'ingress.action_not_allowed_for_source' };
   }
   if (order?.type !== undefined && order.type !== 'market') return { status: 422, code: 'ingress.order_type_not_allowed_for_source' };
+  if (typeof json.signal_type !== 'string' || !TV_SIGNAL_TYPES.includes(json.signal_type)) {
+    return { status: 422, code: 'ingress.signal_type_not_allowed_for_source', pointer: '/signal_type' };
+  }
   if (!instrument?.symbol || !config.enabledSymbols.includes(instrument.symbol)) return { status: 422, code: 'ingress.unsupported_instrument' };
   return { status: 200 };
 }
 
 /** Invalid fixtures: 400 with schema_violation, except an unsupported major version (contract §2 step 6). */
 export function expectedForInvalid(name: string): Expected {
-  return name === 'unsupported-major-version' ? { status: 400, code: 'ingress.unsupported_version' } : { status: 400, code: 'ingress.schema_violation' };
+  return name === 'unsupported-major-version'
+    ? { status: 400, code: 'ingress.unsupported_version', pointer: '/schema_version' }
+    : { status: 400, code: 'ingress.schema_violation' };
 }

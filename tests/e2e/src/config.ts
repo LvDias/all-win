@@ -47,6 +47,8 @@ export const config = {
   revokeCmd: env.E2E_REVOKE_CMD ?? '$E2E_COMPOSE exec -T core allwin-core revoke-key "$KEY_ID"',
   /** Metrics path on the Core's direct loopback port. Empty string = metrics not searched (reported). */
   metricsPath: env.E2E_METRICS_PATH ?? '/metrics',
+  /** Instruction schema versions the Core supports (contract §2 step 6: S1 supports 1.0). */
+  supportedSchemaVersions: (env.E2E_SCHEMA_VERSIONS ?? '1.0').split(',').map((s) => s.trim()).filter(Boolean),
   /** Instrument symbols enabled in the seeded catalog (AC-7). */
   enabledSymbols: (env.E2E_ENABLED_SYMBOLS ?? 'MNQ').split(',').map((s) => s.trim()).filter(Boolean),
   /** Route templates the Core may report in `http.route` besides the ingress ones (M10). */
