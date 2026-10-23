@@ -2,7 +2,8 @@
 
 - **Status:** Accepted (2026-10-23) — accepted by the user with answers T1–T3 (§11). Delta 2026-10-23 (HTTP 5.1.0 review, Crivo R1(b) and n2):
   - §5, the expiry exception for the never-sent opening leg of a reverse whose flatten completed;
-  - §9, the 1.3.2 note: notification receivers never refuse an unknown code or unknown params.
+  - §9, the 1.3.2 note: notification receivers never refuse an unknown code or unknown params;
+  - (r4) §4, what a `flatten` cancels and how its wait is bounded; §6, a flatten sent on an out-of-sync account the Core believes flat (ADR-0003 Q75); §5, `already_flat` proof also requires no later report (Vigia I2, Pêndulo).
 
   Acceptance deltas, recorded in `contracts/adapter-protocol/CHANGELOG.md`: §6.1 bracket integrity on local-OCO connections (NT8 profile F5); money type with 4 decimals (ALIGN-1); token formats (ALIGN-3); pairing limits and HMAC storage (ALIGN-4); Q18 unpairing; Q-N1 dollar rounding; `fill.operation` and `account_reset` (NT8 profile §6)
 - **Owner:** Software Architect
@@ -117,7 +118,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
   - For `open`, it carries **`protection`**: mode `individual`|`shared`, `stop_ticks`, `target_ticks`. The Core normalizes the profile's points/ticks/dollars into whole ticks using the catalog's exact tick size and tick value. A dollar distance that is not a whole number of ticks is **rounded toward the entry** (the tighter distance), and the adjustment is shown in the audit (Q-N1, decided). Profiles are keyed by instrument (Q-A2).
   - The adapter computes protective prices from the **fill price** (individual) or the **average position price** (shared, re-computed on every add), rounds to tick size, and reports the protective orders as `execution_report`s with `child_role` `stop`/`target` under the same `command_id`.
 - **`modify` / `cancel`:** target orders created by All Win, identified by `(command_id, child_role)`, plus the `platform_order_id` when known. `modify` applies `price_delta` and/or a new total `quantity`.
-- **`flatten`:** closes the account's position in that contract and cancels **all** its working orders (orphan-order protection). The reason is `close` or `reverse`.
+- **`flatten`:** cancels **every** working order on that account and contract, manual and other All Win orders included, waits for the confirmations, then closes the remaining position (orphan-order protection; closing over working orders could flip the position). The wait is bounded by the adapter's flatten step timeout. A cancel refused because the order has just filled is not a failure: the fill is reported and the flatten re-reads the position and closes what remains. A cancel that fails for any other reason, or a step that times out, ends the flatten `rejected` (`order.cancel_failed`), and the Core flags the account `out_of_sync` (with the ADR-0005 top-severity alert when protective legs were already cancelled). A flatten never waits forever and never closes over a working order. The reason is `close` or `reverse`.
 - **Adapter execution rules (clarified 2026-10-23 for V1-S2; reason codes and report attribution in [`reason-codes.md`](../../../contracts/adapter-protocol/v1/reason-codes.md)):**
   - **Shared-mode ownership:** the command that opened the position owns the shared stop/target. Adds get entry reports only, and resize/re-price reports carry the owner's `command_id`. Modify/cancel address `(owner command_id, stop|target)`. Ownership ends when the position goes flat. Re-pricing uses the owner's protection ticks.
   - **Clock skew** is estimated only from fresh messages (`welcome`, `heartbeat`), never from the `sent_at` of a retransmitted frame, which keeps its original value.
@@ -166,7 +167,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
     - **Exception: the opening leg of a reverse** (HTTP 5.1.0, Crivo R1 b and E1). An expired opening `place` that never left the Core, state `pending` with no `sent_at`, is **held**: it is never sent once expired, and it is decided only when its `depends_on` flatten reaches a terminal state. It is **not** flagged when all of these hold at that moment:
       - it never left the Core. **Requirement on the delivery loop** (gateway, S2/M1, not yet implemented; Ferro): the loop commits `sent`/`sent_at` in a transaction **before** writing to the connection. A socket failure after that commit counts as sent, so the command is flagged and never exempt. With that order, `pending` proves that nothing was delivered. A test that crashes between the commit and the write is an acceptance criterion for the gateway;
       - its `depends_on` flatten reached a terminal success, and the flat position is proven:
-        - `cancelled` + `command.already_flat`: the adapter checked a zero position at that moment, so the report itself is the proof (it carries no `position_after`);
+        - `cancelled` + `command.already_flat`: the adapter checked a zero position at that moment, so the report itself is the proof (it carries no `position_after`), provided no later report exists for that account and contract, the same rule as for `filled` (Crivo n1);
         - `filled`: the latest report for that account and contract that carries `position_after` has 0, and no later report exists (Pêndulo L1);
       - the account has no other open sync reason.
 
@@ -204,7 +205,8 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 **While `out_of_sync`:**
 
 - The Core refuses new position-increasing instructions for the account (`routing.out_of_sync`, ADR-0003 §4.1).
-- **It never sends corrective orders on its own:** no reopen, no resync, no catch-up.
+- **It never sends corrective orders on its own:** no reopen, no resync, no catch-up. Forwarding a source's `close`, or a reverse's closing leg, as a `flatten` while the expected position is flat (ADR-0003 Q75) is not a corrective order: it executes the source's instruction.
+- **Such a flatten** is handled like any flatten. `command.already_flat` neither clears `out_of_sync` (Q14) nor adds a sync reason. Fills are applied as usual (`execution.filled`, `position_after`), and their `position_after` of 0 keeps the expected position flat; they add no sync reason. The account stays out of sync until the user clears it. Adapters need no change: `flatten` has no position-identity guard and no expiry. As for every flatten, the adapter first cancels **every** working order on the contract, manual and other All Win orders included, even when the position turns out flat. On an account the user may be fixing by hand this can cancel the user's own resting orders; ADR-0003 Q75 accepts this and notifies it (`routing.out_of_sync_flatten`).
 - The user sees the differences and either fixes the account manually and clears the flag, or flattens and clears.
 - `welcome.accounts[].sync_state` and `sync_reasons` tell the plugin to show the state and its reasons in its window. Changes during the session reach the plugin through the C→A message `account_state` (protocol 1.1, sent only when 1.1 is negotiated). On 1.0 the plugin shows the `welcome` state plus its locally observed reasons until the next `welcome`.
 
