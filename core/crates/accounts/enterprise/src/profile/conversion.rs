@@ -9,6 +9,10 @@ use super::distance::{DistanceProfile, DistanceUnit, ProfileSide};
 /// Structural cap of command distances (contract `DistanceEquivalent.ticks`).
 pub const MAX_TICKS: u32 = 10_000;
 
+/// Most decimals a money string carries on the wire (`MoneyString`). A tick value with more cannot
+/// be shown exactly, so such an instrument is refused, never rounded (contract delta first).
+pub const MAX_MONEY_DECIMALS: u32 = 4;
+
 /// An instrument's exact tick data, as the catalog gives it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickSpec {
@@ -17,7 +21,7 @@ pub struct TickSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("tick size and point value must be positive")]
+#[error("tick size and point value must be positive, tick value at most 4 decimals")]
 pub struct InvalidTickSpec;
 
 impl TickSpec {
@@ -26,6 +30,9 @@ impl TickSpec {
             return Err(InvalidTickSpec);
         }
         let tick_value = tick_size.checked_mul(point_value).ok_or(InvalidTickSpec)?;
+        if tick_value.normalize().scale() > MAX_MONEY_DECIMALS {
+            return Err(InvalidTickSpec);
+        }
         Ok(Self {
             tick_size: tick_size.normalize(),
             tick_value: tick_value.normalize(),
@@ -202,7 +209,7 @@ mod tests {
             ("10", 0),
         ] {
             assert_eq!(
-                TickSpec::new(d(tick), d("1")).unwrap().price_decimals(),
+                TickSpec::new(d(tick), d("32")).unwrap().price_decimals(),
                 dec,
                 "{tick}"
             );
@@ -211,10 +218,16 @@ mod tests {
 
     #[test]
     fn usd_decimals_never_cut() {
-        // tick 0.03125 × 1.0000 = 0.03125 → 5 decimals.
-        let s = TickSpec::new(d("0.03125"), d("1")).unwrap();
-        assert_eq!(s.usd_decimals(), 5);
-        assert_eq!(equivalent(3, false, &s).usd.to_string(), "0.09375");
+        // tick 0.0025 × 5 = 0.0125 → 4 decimals, shown in full.
+        let s = TickSpec::new(d("0.0025"), d("5")).unwrap();
+        assert_eq!(s.usd_decimals(), 4);
+        assert_eq!(equivalent(3, false, &s).usd.to_string(), "0.0375");
+    }
+
+    #[test]
+    fn tick_value_beyond_money_decimals_is_refused() {
+        // tick 0.03125 × 1 = 0.03125: 5 decimals do not fit `MoneyString`.
+        assert_eq!(TickSpec::new(d("0.03125"), d("1")), Err(InvalidTickSpec));
     }
 
     #[test]

@@ -101,11 +101,17 @@ pub fn router(state: Arc<InstrumentsHttpState>) -> Router {
 #[openapi(paths(list_instruments))]
 pub struct InstrumentsApi;
 
-/// Money with at least 2 decimals, never cut (`MoneyString`).
-fn money(value: Decimal) -> String {
+/// Most decimals of `MoneyString`: a value with more is refused, never rounded (Compasso, S6).
+const MAX_MONEY_DECIMALS: u32 = 4;
+
+/// Money with at least 2 decimals, never cut (`MoneyString`); `None` beyond 4 decimals.
+fn money(value: Decimal) -> Option<String> {
     let mut v = value.normalize();
+    if v.scale() > MAX_MONEY_DECIMALS {
+        return None;
+    }
     v.rescale(v.scale().max(2));
-    v.to_string()
+    Some(v.to_string())
 }
 
 fn instrument_json(i: &Instrument) -> Option<Value> {
@@ -116,8 +122,8 @@ fn instrument_json(i: &Instrument) -> Option<Value> {
         "exchange": i.exchange,
         "currency": i.currency,
         "tick_size": i.tick_size.normalize().to_string(),
-        "tick_value": money(i.tick_value()?),
-        "point_value": money(i.point_value),
+        "tick_value": money(i.tick_value()?)?,
+        "point_value": money(i.point_value)?,
         "price_decimals": i.price_decimals(),
     }))
 }
@@ -153,7 +159,7 @@ async fn list_instruments(
         .collect::<Option<Vec<_>>>()
     {
         Some(list) => Json(json!({"instruments": list})).into_response(),
-        None => internal("tick value overflow"),
+        None => internal("an enabled instrument does not fit MoneyString"),
     }
 }
 
@@ -191,5 +197,12 @@ mod tests {
             ),
             (&json!("0.25"), &json!("0.50"), &json!("2.00"), &json!(2))
         );
+        // A tick value beyond 4 decimals is refused, never rounded.
+        let odd = Instrument {
+            tick_size: Decimal::from_str("0.03125").unwrap(),
+            point_value: Decimal::from_str("1").unwrap(),
+            ..mnq
+        };
+        assert_eq!(instrument_json(&odd), None);
     }
 }
