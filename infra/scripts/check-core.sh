@@ -4,7 +4,8 @@
 # Order matters: the sqlx check runs BEFORE the tests, because the test harness alters the allwin_* roles.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rust/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/rust/cargo}"
+# Shared dev host keeps the toolchain in /opt/rust; elsewhere (CI runners) use the default locations.
+if [ -d /opt/rust/rustup ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rust/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/rust/cargo}"; fi
 command -v docker >/dev/null && docker info >/dev/null 2>&1 || { echo "docker is not usable by this user (group docker?)" >&2; exit 1; }
 
 rnd() { python3 -c 'import secrets;print(secrets.token_urlsafe(18).replace("-","a").replace("_","b"))'; }

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Refuses any push whose destination is not the one private All Win repository.
+# The allowed URL is pinned in the local git config (never in the repository):
+#   git config allwin.allowedRemote git@github.com:<account>/allwin.git
+# Until it is set, every push is refused.
+remote_name="$1"; remote_url="$2"
+allowed="$(git config --get allwin.allowedRemote || true)"
+if [ -z "$allowed" ]; then
+  echo "pre-push: allwin.allowedRemote is not set; push refused" >&2; exit 1
+fi
+if [ "$remote_name" != "origin" ] || [ "$remote_url" != "$allowed" ]; then
+  echo "pre-push: destination '$remote_name' ($remote_url) is not the allowed private repository; push refused" >&2; exit 1
+fi
+exit 0
