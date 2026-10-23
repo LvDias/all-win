@@ -371,6 +371,38 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
+        public void Shared_row_6_counts_by_fill_an_add_received_before_the_owner_but_filled_after()
+        {
+            // QA M10 (probe Q8): E2 rests before E1 opens the position as the shared owner; E2 fills in the cancel race on A.
+            using var h = LiveHarness();
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            Assert.Equal(1, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(2, h.Platform.Position(Sim101, "MNQ"));
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+        }
+
+        [Fact]
+        public void Position_numbers_survive_a_restart()
+        {
+            using var h = LiveHarness();
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.AckAll();
+            h.Restart();
+            h.Connect(new Func<WelcomePayload>(() => { var w = DefaultWelcome(); w.SimulationOnly = false; return w; })());
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+        }
+
+        [Fact]
         public void Shared_growth_from_a_non_consented_fill_on_A_is_still_refused()
         {
             using var h = LiveHarness();

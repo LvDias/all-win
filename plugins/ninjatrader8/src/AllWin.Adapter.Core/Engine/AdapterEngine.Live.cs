@@ -16,6 +16,7 @@ namespace AllWin.Adapter.Core.Engine
         public const string NoticeKindUnknown = "live.kind_unknown_alert";
 
         private static readonly TimeSpan UnknownKindAlertAfter = TimeSpan.FromSeconds(10);
+        private readonly Dictionary<string, long> _positionSeqs = new Dictionary<string, long>(StringComparer.Ordinal);
         private readonly Dictionary<string, DateTime> _unknownSince = new Dictionary<string, DateTime>(StringComparer.Ordinal);
 
         private readonly Dictionary<string, PositionIdentityRecord> _identities = new Dictionary<string, PositionIdentityRecord>(StringComparer.Ordinal);

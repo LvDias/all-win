@@ -248,8 +248,10 @@ namespace AllWin.Adapter.Core.Engine
             };
             report.PlatformTime = execution.PlatformTime ?? (execution.Time == default ? (DateTime?)null : execution.Time);
 
+            var after = position?.Quantity ?? 0;
             var fillRecord = new FillRecord
             {
+                PositionSeq = live?.PositionSeq ?? existing?.PositionSeq ?? PositionSeqFor(account, execution, deltaQuantity, after),
                 FillId = execution.ExecutionId,
                 Quantity = operation == FillOperation.Remove ? oldQuantity : execution.Quantity,
                 Price = operation == FillOperation.Remove ? oldPrice : execution.Price,
@@ -526,11 +528,32 @@ namespace AllWin.Adapter.Core.Engine
         private int ConsentedOpenQuantity(CommandRecord owner, bool shared)
         {
             if (!shared) return owner.ConsentedLive ? OpenQuantity(owner) : 0;
-            var filled = _commands.Values.Where(r => r.PlatformAccount == owner.PlatformAccount && r.Command.Kind == CommandKind.Place && r.ConsentedLive
-                && r.Command.Instrument.Equals(owner.Command.Instrument) && r.Command.Place!.Side == owner.Command.Place!.Side
-                && r.Command.Place.Protection?.Mode == ProtectionMode.Shared && r.Seq >= owner.Seq).Sum(r => r.EntryFilled);
+            var consented = new HashSet<string>(_commands.Values.Where(r => r.PlatformAccount == owner.PlatformAccount && r.Command.Kind == CommandKind.Place
+                && r.ConsentedLive && r.Command.Instrument.Equals(owner.Command.Instrument) && r.Command.Place!.Side == owner.Command.Place!.Side
+                && r.Command.Place.Protection?.Mode == ProtectionMode.Shared).Select(r => r.CommandId), StringComparer.Ordinal);
+            // By fill, not by intake (QA M10): only entry fills that applied to the current position count.
+            var current = CurrentPositionSeq(owner.PlatformAccount, owner.Command.Instrument);
+            var prefix = owner.PlatformAccount + "|";
+            var filled = _fills.Where(p => p.Key.StartsWith(prefix, StringComparison.Ordinal) && !p.Value.Removed && p.Value.RoleLetter == "e"
+                && p.Value.PositionSeq == current && p.Value.CommandId != null && consented.Contains(p.Value.CommandId)).Sum(p => p.Value.Quantity);
             return Math.Max(0, filled - LegFilled(owner.PlatformAccount, owner.CommandId, 's') - LegFilled(owner.PlatformAccount, owner.CommandId, 't'));
         }
+
+        /// <summary>The position number for a new fill: a new one from flat or on a flip, else the current one.</summary>
+        private long PositionSeqFor(string account, PlatformExecution execution, int deltaQuantity, int after)
+        {
+            var key = OwnerKey(account, execution.Instrument);
+            var signed = execution.Side == Side.Buy ? deltaQuantity : -deltaQuantity;
+            var before = after - signed;
+            var current = CurrentPositionSeq(account, execution.Instrument);
+            if (after == 0 || (before != 0 && (before > 0) == (after > 0))) return current;
+            _positionSeqs[key] = current + 1;
+            Put(Collections.Meta, "position_seqs", _positionSeqs);
+            return current + 1;
+        }
+
+        private long CurrentPositionSeq(string account, Instrument instrument) =>
+            _positionSeqs.TryGetValue(OwnerKey(account, instrument), out var seq) ? seq : 0;
 
         /// <summary>Quantity of this entry not yet closed by its own legs.</summary>
         private int OpenQuantity(CommandRecord entry) =>

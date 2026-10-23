@@ -581,6 +581,8 @@ namespace AllWin.Adapter.Core.Engine
         {
             StoreRecoveredTornWrite = _store.RecoveredFromTornWrite;
             if (StoreRecoveredTornWrite) _log.Write(LogLevel.Warning, "store.torn_tail_dropped", "an unconfirmed last write was discarded");
+            if (_store.Get(Collections.Meta, "position_seqs") is string seqs)
+                foreach (var pair in StoreJson.Read<Dictionary<string, long>>(seqs)) _positionSeqs[pair.Key] = pair.Value;
             if (_store.Get(Collections.Meta, "connection_epochs") is string epochs)
                 foreach (var pair in StoreJson.Read<Dictionary<string, long>>(epochs)) _connectionEpochs[pair.Key] = pair.Value;
             _instanceId = _store.Get(Collections.Meta, "instance_id") is string id ? StoreJson.Read<string>(id) : "";
