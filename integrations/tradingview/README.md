@@ -42,7 +42,7 @@ Fixed in code: `instrument.symbol` = `MNQ` (V1); no `contract_month` and no `ref
 | `side` | `"long"`/`"short"` for `reverse` (final side), `""` otherwise |
 | `setup` | Short code that identifies the signal (`"s6"`, `"tp"`, `"nq"`); part of `message_id`; 1–16 characters `A-Z a-z 0-9 . _`, anything else is refused (never stripped) |
 | `qty` | Base quantity; ignored for `close` |
-| `details` | `""` or pairs from `aw_kv(key, value)` joined with `","`; hard limit 32 pairs; display only |
+| `details` | `""` or pairs from `aw_kv(key, value)` joined with `","`; hard limit 32 pairs; display only. Values must be deterministic for the event (setup, zone, trigger names; no `timenow`, live price or counters): a re-fire with different details is reported by the Core as a duplicate conflict |
 
 Returns the `message_id` sent, or `""`.
 

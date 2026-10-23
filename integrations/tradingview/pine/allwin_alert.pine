@@ -75,7 +75,8 @@ if barstate.isfirst
 //   setup   : short code that identifies the signal, part of message_id: 1-16 characters
 //             A-Z a-z 0-9 . _ (e.g. "s6", "tp", "nq"); anything else is refused, never stripped
 //   qty     : base quantity in contracts (ignored for close)
-//   details : "" or pairs built with aw_kv(), joined with ","; hard limit 32 pairs (more = nothing sent)
+//   details : "" or pairs built with aw_kv(), joined with ","; hard limit 32 pairs (more = nothing sent).
+//             Values must be deterministic for the event (no timenow, live price or counters).
 // Returns the message_id, or "" when nothing was sent.
 aw_send(string kind, string action, string side, string setup, int qty, string details) =>
     string sentId = ""
