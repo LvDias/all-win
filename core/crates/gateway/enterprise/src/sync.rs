@@ -129,6 +129,12 @@ pub enum ReasonScope {
 /// Facts kept with a reason (HTTP `SyncReason`; never platform text).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReasonDetails {
+    /// Protocol symbol and `YYYY-MM` of the contract (HTTP 5.3.0, Compasso); filled from an
+    /// instrument scope by `ReasonEntry::new`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instrument_symbol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract_month: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instruction_id: Option<InstructionId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -163,8 +169,12 @@ impl ReasonEntry {
         code: SyncReason,
         scope: ReasonScope,
         detected_at: DateTime<Utc>,
-        details: ReasonDetails,
+        mut details: ReasonDetails,
     ) -> Self {
+        if let ReasonScope::Instrument(i) = &scope {
+            details.instrument_symbol = Some(i.symbol().to_owned());
+            details.contract_month = Some(i.contract_month().to_owned());
+        }
         Self {
             code,
             scope,
@@ -188,6 +198,22 @@ pub fn dedupe_key(code: SyncReason, scope: &ReasonScope) -> String {
         }
         ReasonScope::Command(c) => format!("{}:{c}", code.as_str()),
     }
+}
+
+/// Inverse of [`dedupe_key`], for rows read back from `account_sync_reason`.
+pub fn parse_dedupe_key(key: &str) -> Option<(SyncReason, ReasonScope)> {
+    let mut parts = key.splitn(3, ':');
+    let code = SyncReason::parse(parts.next()?)?;
+    let scope = match (parts.next(), parts.next()) {
+        (None, _) => ReasonScope::Account,
+        (Some(a), None) => {
+            ReasonScope::Command(CommandId::from_uuid(uuid::Uuid::parse_str(a).ok()?))
+        }
+        (Some(symbol), Some(month)) => {
+            ReasonScope::Instrument(Instrument::new(symbol, month).ok()?)
+        }
+    };
+    Some((code, scope))
 }
 
 /// Core rule: at most 32 active and 32 resolved reasons per account (HTTP `AccountSync`).
@@ -540,6 +566,33 @@ mod tests {
             assert!(dedupe_key(code, &ReasonScope::Instrument(i.clone())).len() <= 200);
             assert!(dedupe_key(code, &ReasonScope::Command(cmd(u128::MAX))).len() <= 200);
         }
+    }
+
+    #[test]
+    fn instrument_scope_fills_symbol_and_month() {
+        let i = Instrument::new("MNQ", "2026-12").unwrap();
+        let e = entry(SyncReason::SnapshotMismatch, ReasonScope::Instrument(i), 0);
+        assert_eq!(e.details.instrument_symbol.as_deref(), Some("MNQ"));
+        assert_eq!(e.details.contract_month.as_deref(), Some("2026-12"));
+        assert_eq!(e.dedupe_key(), "sync.snapshot_mismatch:MNQ:2026-12");
+    }
+
+    #[test]
+    fn dedupe_keys_parse_back() {
+        let i = Instrument::new("MNQ", "2026-12").unwrap();
+        for scope in [
+            ReasonScope::Account,
+            ReasonScope::Instrument(i),
+            ReasonScope::Command(cmd(7)),
+        ] {
+            let key = dedupe_key(SyncReason::CommandRejected, &scope);
+            assert_eq!(
+                parse_dedupe_key(&key),
+                Some((SyncReason::CommandRejected, scope))
+            );
+        }
+        assert_eq!(parse_dedupe_key("sync.nope"), None);
+        assert_eq!(parse_dedupe_key("sync.command_rejected:not-a-uuid"), None);
     }
 
     #[test]

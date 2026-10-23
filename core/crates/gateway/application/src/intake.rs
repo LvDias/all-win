@@ -231,6 +231,7 @@ impl HandleExecutionReport {
                             "platform_account": report.platform_account,
                             "kind": "fill",
                             "instrument_symbol": report.instrument.symbol(),
+                            "contract_month": report.instrument.contract_month(),
                             "fill_qty": fill.quantity,
                         });
                         if let Some(side) = &report.side {

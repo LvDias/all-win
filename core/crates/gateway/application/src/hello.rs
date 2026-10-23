@@ -132,7 +132,8 @@ impl HandleHello {
                     now,
                     json!({
                         "account_id": account.account_id,
-                        "venue_account_id": venue.id,
+                        "connection_id": principal.connection_id,
+                        "platform_account": venue.platform_account,
                         "previous_kind": previous,
                         "kind": venue.kind,
                     }),

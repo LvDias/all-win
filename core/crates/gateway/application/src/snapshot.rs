@@ -80,6 +80,7 @@ impl HandlePositionSnapshot {
                                 "platform_account": entry.platform_account,
                                 "kind": "snapshot",
                                 "instrument_symbol": instrument.symbol(),
+                                "contract_month": instrument.contract_month(),
                                 "position": qty,
                             }),
                             json!({ "account_id": account_id }),

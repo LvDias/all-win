@@ -9,6 +9,7 @@ pub mod consume;
 pub mod deliver;
 pub mod disconnect;
 pub mod events;
+pub mod frames;
 pub mod hello;
 pub mod intake;
 pub mod ports;
