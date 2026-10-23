@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 16.3 (4cc8085); **rev. 16.4 proposed** (Brasa's access patterns): §6.4 rule 2 gets the DDL of `app.outbox_consumer` and `app.outbox_delivery` (per-consumer retries), registration, retirement, fetch and dead-letter rules; `published_at` is materialized as "done for all", so the purge needs no join; §8 #14 = `…061400`; §8 also lists `…060630` (#2c) and reserves `…061310` (#2d, `identity.source.name` CHECK, Crivo L1, needs user authorization); §6.1 lists the four ingress codes. **Rev. 16.5** (Esmeril on 16.4, Brasa aligned): a new `backfill` consumer resets `published_at` on retained rows; `outbox_delivery_event_idx` for the purge cascade; `app.outbox.dead_lettered_at` is legacy-only (#1b) and filtered in the fetch; L3 accepted for V1; cutover rules; delivery-consumer test instead of an FK; §8 row order.
+- **Status:** Accepted (2026-10-23), rev. 16.5 (aa60b31); **rev. 16.6 proposed**: migration #9 `…061600` (Bigorna, gateway gaps G1–G8: stored `frame` for byte-identical retransmission, `undelivered`, `position_effect`, per-contract columns and `execution_report.seq`, `reason_code` CHECK, role split; no connection table per Esquadro B4 = b); S11 sync storage (`account_sync.version`, per-occurrence `account_sync_reason` with `dedupe_key` and `resolved_at`); §5.6 `risk.applied_fill` (#10b `…061510`), the #10 grants (DELETE only on `scheduled_limit`, worker column grants) and #10 `…061500`; §6.4 backfill alert note and indentation (Esmeril notes b, c); §6.5 and §8 rows.
+- Rev. 16.4/16.5 (aa60b31; Brasa's access patterns, Esmeril): §6.4 rule 2 gets the DDL of `app.outbox_consumer` and `app.outbox_delivery` (per-consumer retries), registration, retirement, fetch and dead-letter rules; `published_at` is materialized as "done for all", so the purge needs no join; §8 #14 = `…061400`; §8 also lists `…060630` (#2c) and reserves `…061310` (#2d, `identity.source.name` CHECK, Crivo L1, needs user authorization); §6.1 lists the four ingress codes. **Rev. 16.5** (Esmeril on 16.4, Brasa aligned): a new `backfill` consumer resets `published_at` on retained rows; `outbox_delivery_event_idx` for the purge cascade; `app.outbox.dead_lettered_at` is legacy-only (#1b) and filtered in the fetch; L3 accepted for V1; cutover rules; delivery-consumer test instead of an FK; §8 row order.
 - Rev. 16.3 (4cc8085; Esquadro, Crivo R1/R2): §6.4 rules 1–2 define completion per consumer (consumed, or before a `from_now` consumer's `start_seq` = first receivable `seq`), and state the order rule and the retention predicate.
 - Rev. 16.2 (7acd73c): the outbox no-consumer allowlist (Esquadro, decision (b)) in §6.4 rule 1 and §6.5 retention; §8 versions `…060610` (`app.outbox.seq`) and `…060620` (#7b); a §9 list fix (Crivo nit on 16.1).
 - Rev. 16.1 (1a634da; Crivo N1–N3 and ADR-0008 round 2): binding, change, release and archive write both `account.limits_changed` and `account.binding_changed`; the open-position residual and the gateway mitigation are mirrored in §5.3; §9 gains the rev. 16 constraint and grant tests.
@@ -926,7 +927,37 @@ CREATE TABLE risk.account_block (                        -- blocked until the re
   FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
 );
 CREATE UNIQUE INDEX account_block_active_key ON risk.account_block (account_id) WHERE ended_at IS NULL;
+
+-- rev. 16.6, migration #10b `…061510` (Malha; Esquadro decision): which fills are in the trading_day sums.
+CREATE TABLE risk.applied_fill (
+  user_id              uuid NOT NULL,
+  account_id           uuid NOT NULL,
+  fill_id              text NOT NULL CHECK (char_length(fill_id) BETWEEN 1 AND 128),   -- platform execution id
+  trading_date         date NOT NULL,                    -- fixed at the first application; never moves
+  qty                  integer NOT NULL CHECK (qty >= 0),          -- as applied now (0 after a remove)
+  gross                NUMERIC(18,4) NOT NULL,                      -- realized gross P&L this fill contributed
+  commission_effective NUMERIC(18,4) NOT NULL CHECK (commission_effective >= 0),
+  commission_gap       NUMERIC(18,4) NOT NULL CHECK (commission_gap >= 0),
+  last_event_id        uuid NOT NULL,                    -- gateway execution_report.event_id applied last (trace)
+  applied_at           timestamptz NOT NULL DEFAULT now(),
+  removed_at           timestamptz,                      -- fill.operation = remove; the row stays as the dedupe record
+  PRIMARY KEY (account_id, fill_id),                     -- fill_id is unique per account, not globally (ADR-0004 §4)
+  CHECK (removed_at IS NULL OR (qty = 0 AND gross = 0 AND commission_effective = 0 AND commission_gap = 0)),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id),
+  FOREIGN KEY (account_id, trading_date) REFERENCES risk.trading_day (account_id, trading_date)
+);
+CREATE INDEX applied_fill_trading_date_idx ON risk.applied_fill (trading_date);   -- retention purge
 ```
+
+- **Applied fills (rev. 16.6; Esquadro decision, Malha #10b):**
+  - **Never count twice:** `add` → `INSERT … ON CONFLICT (account_id, fill_id) DO NOTHING`; only an inserted row adds its values to `trading_day` (same risk transaction). `amend` → the difference between the new values and the stored ones is applied to the row's own `trading_date`, and the row takes the new values, so a redelivered amend applies 0. `remove` → the stored values are subtracted, the row is zeroed and gets `removed_at`; a redelivered remove is a no-op. A correction for an unknown or purged fill changes nothing and alerts (code from the S13 contract).
+  - The `trading_day` FK fixes the day: a late correction updates the day it was first counted in, never today's.
+  - **Retention:** `allwin_maint` deletes rows with `trading_date` older than **30 days**, in batches. That is longer than the adapter's 7-day dedupe record (ADR-0004 §4) and covers month-end corrections. `trading_day` is not purged.
+  - Consumer `from_now`, plus the startup reconciliation through `PlatformPnl::fills_since(account_id, trading_day_start)`, which goes through the same `ON CONFLICT` path.
+  - Tests: the same `add` twice counts once; an amend redelivered applies once; a remove zeroes the row and restores the sums; a correction after midnight updates the original day; a purge older than 30 days leaves `trading_day` intact; a cross-user read returns 0 rows.
+- **Grants (rev. 16.6, DBA review of #10):**
+  - `allwin_app` keeps `DELETE` only on `scheduled_limit` (reset step 2). `REVOKE DELETE` on `account_limits`, `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block` and `applied_fill`: no runtime path deletes them, and a block row never vanishes (no early unlock). Erasure (Q13-b) and the `applied_fill` purge run as `allwin_maint`; #10b grants it `SELECT, DELETE` on `applied_fill`, and the erasure grant on the other tables comes in a later migration that the DBA numbers.
+  - `allwin_worker` finds due work with column grants only: `SELECT (user_id, account_id, effective_from)` on `scheduled_limit`, `SELECT (user_id, account_id, until, ended_at)` on `account_block`, and `SELECT (user_id, account_id, effective_as_of, reset_source, reset_local_time, reset_time_zone)` on `account_limits` (stuck-reset alert). Each item's work then runs on the `allwin_app` pool with `app.user_id` set (§2 roles). A test asserts that the worker can read those columns and nothing else.
 
 - **Net (rev. 15; user decision: risk computed on net):**
   - Daily loss, drawdown, the daily profit target and S15 enforcement all use net figures.
@@ -1255,19 +1286,29 @@ CREATE TABLE gateway.command (                           -- also the delivery ou
   connection_id  uuid NOT NULL,
   step           text NOT NULL CHECK (step ~ '^(place|flatten|(modify|cancel):(0|[1-9][0-9]{0,3})|orphan_flatten:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'),  -- ALIGN-6, ALIGN-8
   kind           text NOT NULL CHECK (kind IN ('place','modify','cancel','flatten')),
+  position_effect text CHECK (position_effect IN ('open','reduce')),  -- rev. 16.6 (G2): place only; finds pending reduces (Vigia I1)
+  instrument_symbol text NOT NULL CHECK (instrument_symbol ~ '^[A-Z0-9]{1,10}$'),   -- rev. 16.6 (G3): protocol `instrument`
+  contract_month    date NOT NULL CHECK (extract(day FROM contract_month) = 1),
+  msg_id         uuid NOT NULL UNIQUE,                   -- rev. 16.6 (G1): envelope msg_id, the same on every retransmission
+  protocol_version text NOT NULL CHECK (protocol_version ~ '^1\.(0|[1-9][0-9]*)$'),  -- the frame's envelope version
+  frame          text NOT NULL,                          -- the exact envelope sent (byte-identical retransmission, ADR-0004 §4)
   depends_on     uuid REFERENCES gateway.command(id) ON DELETE SET NULL,
   expires_at     timestamptz,                            -- required for position-increasing (ADR-0004 §5)
-  state          text NOT NULL CHECK (state IN ('pending','sent','acked','completed','rejected','expired','failed','unknown')),
-  payload        jsonb NOT NULL,                         -- protocol `command` body
-  created_at     timestamptz NOT NULL,
+  state          text NOT NULL CHECK (state IN ('pending','sent','acked','completed','rejected','expired','failed','unknown','undelivered')),
+  payload        jsonb NOT NULL,                         -- protocol `command` body (queryable copy of the frame's payload)
+  created_at     timestamptz NOT NULL,                   -- = the envelope sent_at (creation time, ADR-0004 §4)
   sent_at        timestamptz,
   acked_at       timestamptz,
   finished_at    timestamptz,
   UNIQUE (instruction_id, account_id, step),
+  CHECK ((kind = 'place') = (position_effect IS NOT NULL)),
+  CONSTRAINT command_frame_no_token CHECK (frame !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'),
   CHECK (CASE split_part(step, ':', 1) WHEN 'orphan_flatten' THEN 'flatten' ELSE split_part(step, ':', 1) END = kind)
 );
 CREATE INDEX command_open_idx ON gateway.command (connection_id, created_at) WHERE state IN ('pending','sent');
 CREATE INDEX command_user_instruction_idx ON gateway.command (user_id, instruction_id);
+CREATE INDEX command_pending_reduce_idx ON gateway.command (account_id)
+  WHERE position_effect = 'reduce' AND state IN ('pending','sent');   -- rev. 16.6: the clear expires them (Vigia I1)
 -- step codes (ADR-0003 §5): <n> = zero-based ordinal of that kind in the routing plan of the
 -- (instruction, account) pair; reverse = 'flatten' + 'place'; reduce = 'place'.
 -- 'unknown': the order's state could not be determined after a recovery (execution_report status 'unknown').
@@ -1281,7 +1322,10 @@ CREATE TABLE gateway.execution_report (
   account_id        uuid NOT NULL,
   connection_id     uuid NOT NULL,
   command_id        uuid,                                -- NULL for origin = external
+  seq               bigint GENERATED ALWAYS AS IDENTITY (CACHE 1) UNIQUE,  -- rev. 16.6 (G3): Core arrival order
   origin            text NOT NULL CHECK (origin IN ('all_win','local_enforcement','external')),
+  instrument_symbol text CHECK (instrument_symbol ~ '^[A-Z0-9]{1,10}$'),   -- rev. 16.6 (G3): protocol `instrument`, when sent
+  contract_month    date CHECK (extract(day FROM contract_month) = 1),
   child_role        text CHECK (child_role IN ('entry','stop','target')),
   status            text NOT NULL CHECK (status IN ('received','working','partially_filled','filled','cancelled','rejected','expired','duplicate','unknown')),
   platform_order_id text,
@@ -1295,7 +1339,7 @@ CREATE TABLE gateway.execution_report (
   commission_source    text CHECK (commission_source IN ('platform','configured','none')),  -- which one won; 'none' = neither exists (warning)
   position_after    integer,                             -- signed
   avg_price_after   NUMERIC(22,10),
-  reason_code       text,
+  reason_code       text CHECK (reason_code ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'),   -- rev. 16.6 (G5): protocol code, never platform text
   occurred_at       timestamptz NOT NULL,
   platform_time     timestamptz,
   received_at       timestamptz NOT NULL DEFAULT now(),
@@ -1303,7 +1347,9 @@ CREATE TABLE gateway.execution_report (
   CHECK ((fill_id IS NULL) = (fill_qty IS NULL) AND (fill_id IS NULL) = (fill_price IS NULL)
          AND (fill_id IS NULL) = (fill_operation IS NULL)),
   CHECK ((fill_id IS NULL) = (commission_effective IS NULL) AND (fill_id IS NULL) = (commission_source IS NULL)),
-  CHECK (commission_source IS DISTINCT FROM 'none' OR commission_effective = 0)
+  CHECK (commission_source IS DISTINCT FROM 'none' OR commission_effective = 0),
+  CHECK ((instrument_symbol IS NULL) = (contract_month IS NULL)),
+  CHECK (position_after IS NULL OR instrument_symbol IS NOT NULL)
 );
 -- rev. 15/15.1: gateway computes the effective commission once per fill when it records the report. The rate is
 -- the one IN FORCE, read from risk's derived limits through the risk query port
@@ -1317,6 +1363,8 @@ CREATE INDEX execution_report_fill_history_idx ON gateway.execution_report (acco
   WHERE fill_id IS NOT NULL;
 CREATE INDEX execution_report_command_idx ON gateway.execution_report (command_id) WHERE command_id IS NOT NULL;
 CREATE INDEX execution_report_user_account_idx ON gateway.execution_report (user_id, account_id, occurred_at DESC);
+CREATE INDEX execution_report_position_idx ON gateway.execution_report (account_id, instrument_symbol, contract_month, seq DESC)
+  WHERE position_after IS NOT NULL;                       -- rev. 16.6 (G3): latest position per (account, contract)
 
 CREATE TABLE gateway.account_sync (                      -- Q14 sticky flag, single writer = gateway
   user_id     uuid NOT NULL,
@@ -1325,17 +1373,26 @@ CREATE TABLE gateway.account_sync (                      -- Q14 sticky flag, sin
   flagged_at  timestamptz,
   cleared_at  timestamptz,
   cleared_by  uuid,                                      -- user who cleared (S11 AC-3, audited)
+  version     integer NOT NULL DEFAULT 1 CHECK (version >= 1),  -- rev. 16.6 (S11): +1 on every flag, reason add/resolve and clear
   UNIQUE (user_id, account_id)
 );
 
-CREATE TABLE gateway.account_sync_reason (               -- current reasons → welcome.accounts[].sync_reasons
+CREATE TABLE gateway.account_sync_reason (               -- reasons → welcome.accounts[].sync_reasons; rev. 16.6 (S11)
+  id          uuid PRIMARY KEY,
   user_id     uuid NOT NULL,
   account_id  uuid NOT NULL,
   reason_code text NOT NULL CHECK (reason_code ~ '^sync\.[a-z][a-z0-9_]*$'),
-  raised_at   timestamptz NOT NULL,
-  PRIMARY KEY (account_id, reason_code),
+  dedupe_key  text NOT NULL CHECK (char_length(dedupe_key) <= 200),   -- built by the Core: code + instrument/command id
+  raised_at   timestamptz NOT NULL,                      -- SyncReason.detected_at
+  details     jsonb NOT NULL DEFAULT '{}',               -- the other SyncReason fields, incl. core_action
+  resolved_at timestamptz,                               -- the Core removed it while still out_of_sync (resolved_reasons)
+  CHECK (jsonb_typeof(details) = 'object'
+         AND NOT jsonb_path_exists(details, '$.**.fill_price ? (@.type() == "number")')),   -- Price as a string
+  CONSTRAINT account_sync_reason_details_no_token CHECK (details::text !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}'),
   FOREIGN KEY (user_id, account_id) REFERENCES gateway.account_sync (user_id, account_id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX account_sync_reason_active_key ON gateway.account_sync_reason (account_id, dedupe_key)
+  WHERE resolved_at IS NULL;                             -- also serves the active-reasons read
 
 CREATE TABLE gateway.outbound_message (                  -- reliable C→A messages other than commands (limits, instruction_result)
   msg_id        uuid PRIMARY KEY,
@@ -1343,8 +1400,11 @@ CREATE TABLE gateway.outbound_message (                  -- reliable C→A messa
   connection_id uuid NOT NULL,
   type          text NOT NULL,
   payload       jsonb NOT NULL,
-  created_at    timestamptz NOT NULL,
-  acked_at      timestamptz
+  protocol_version text NOT NULL CHECK (protocol_version ~ '^1\.(0|[1-9][0-9]*)$'),  -- rev. 16.6 (G1)
+  frame         text NOT NULL,                           -- rev. 16.6 (G1): the exact envelope sent
+  created_at    timestamptz NOT NULL,                    -- = the envelope sent_at
+  acked_at      timestamptz,
+  CONSTRAINT outbound_message_frame_no_token CHECK (frame !~ 'aw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}')
 );
 CREATE INDEX outbound_message_unacked_idx ON gateway.outbound_message (connection_id, created_at) WHERE acked_at IS NULL;
 
@@ -1356,6 +1416,17 @@ CREATE TABLE gateway.inbound_receipt (                   -- msg_id dedupe ≥ 24
 );
 ```
 
+- **Rev. 16.6 (migration #9 `…061600`, Bigorna; S11 storage, Compasso; Esquadro B4 = b):**
+  - **G1, byte-identical retransmission:** `command` and `outbound_message` store the exact envelope as `frame text` (`jsonb` does not keep bytes), with its `msg_id` and `protocol_version`. `created_at` is the envelope `sent_at`. A retransmission sends `frame` unchanged; `payload` is a queryable copy and is never re-serialized for the wire.
+  - **G2:** `state` gains `undelivered` (72-h horizon, ADR-0004 §4: never retransmitted, audited, `sync.command_undelivered`). `position_effect` (`open` | `reduce`, `place` only) is a column, so the clear finds the account's pending reduces through `command_pending_reduce_idx` and marks them `expired` (Vigia I1).
+  - **G3, per-contract expected state:** both tables carry the protocol `instrument` as `instrument_symbol` + `contract_month` (the wire form, as in `routing.instruction`; no catalog FK, §1). `execution_report.seq` gives the Core's arrival order, which the expected state and `position_ref` follow (ADR-0004 §5); `execution_report_position_idx` reads the latest `position_after` per account and contract.
+  - **G4:** no gateway connection table. Gateway emits `gateway.connection_session_changed`, and identity writes `adapter_connection` status, `last_seen` and the disconnect reason (Esquadro B4 = b). Session supersede is in memory.
+  - **G5:** `while_disconnected` belongs to `risk_event`, and the `local_enforcement` linkage stays in `payload`; no columns. `reason_code` has a format `CHECK` (a protocol code, never platform text).
+  - **G6/S11, sync state version:** `account_sync.version` is bumped in the same transaction as every flag, reason add or resolve, and clear. The user's clear is `UPDATE … SET sync_state = 'in_sync', version = version + 1 … WHERE account_id = $1 AND version = $expected`; 0 rows → 409 `accounts.sync_state_changed` (or `accounts.not_out_of_sync` after a re-read). The same compare-and-set serves gateway's writes, so no `FOR UPDATE` is needed.
+  - **S11 reasons:** one row per occurrence (`id`). `dedupe_key` (code + instrument or command id, built by the Core) keeps one **active** row per occurrence. `resolved_at` set = a `resolved_reasons` entry: the Core removed it while the account stays `out_of_sync`, and it survives a re-flag. The clear deletes **all** the account's reason rows, active and resolved, in its transaction. The ≤ 32 cap is a Core rule. `observable` is derived (connection state + `sync.bracket_integrity_unknown`), never stored. Audit `sync.*` codes use category `connection` (Esquadro A); no audit `CHECK` change.
+  - **G7:** a snapshot's `connected: false` is not stored: its lasting effect is the `sync.bracket_integrity_unknown` reason, and a gateway restart re-makes connections and receives a fresh snapshot.
+  - **G8, roles:** `allwin_worker` (`BYPASSRLS`) only **finds** work: `SELECT` and `UPDATE (state, sent_at, acked_at, finished_at)` on `command`, `SELECT` and `UPDATE (acked_at)` on `outbound_message`. Intake (`inbound_receipt` dedupe + `execution_report` insert + sync changes) runs on the `allwin_app` pool, in one transaction with `app.user_id` set to the session's resolved user. `inbound_receipt` has no `user_id` and no RLS (connection-scoped); `allwin_maint` purges it after 48 h. `routing.commands_requested` is consumed into `command` (`ON CONFLICT (id) DO NOTHING`), so routing never writes gateway tables.
+  - **Tests:** a retransmitted frame equals the first byte for byte; a token in a `frame` or in `details` is refused; `kind = 'place'` ⇔ `position_effect`; two active reasons with the same `dedupe_key` fail, and a resolved one does not block a new one; a clear with a stale `version` changes nothing; the worker cannot `UPDATE payload` or `frame`; cross-user reads return 0 rows.
 - **Fill dedupe with `fill.operation`** (adapter-protocol 1.0 delta):
   - Every report is first deduped by `event_id` (primary key), so a redelivered report is a no-op.
   - `add` is unique per `(account_id, fill_id)`, so the same execution is never counted twice.
@@ -1540,17 +1611,17 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
        - `INSERT … ON CONFLICT (consumer, event_type) DO NOTHING`, with `start_seq = coalesce(max(seq), 0) + 1` for `from_now` (an index-only read through `outbox_seq_key`) and `1` for `backfill`. Then the row is read back. A different `start_policy` than the code declares is a startup error, and `start_seq` never changes.
        - A row committed later with `seq < start_seq` (a transaction in flight at registration) is never delivered to that consumer. That is accepted for `from_now` (rule 1, order rule). `nextval` would not close that window either, because the in-flight row already holds its lower `seq`.
        - In the same transaction, the dispatcher sets `published_at` on the rows of that type with `seq < start_seq` that are now done for every registered consumer (rule 1). This is what releases rows from the allowlist period. It is bounded by the 7-day window of one type.
-       - **A new `backfill` consumer** (rev. 16.5, Esmeril M1): when the `INSERT` actually inserts a `backfill` pair, the same transaction runs `UPDATE app.outbox SET published_at = NULL WHERE event_type = $t AND published_at IS NOT NULL AND dead_lettered_at IS NULL`. Rows that other consumers had completed are not done for the new consumer, so they go back to the fetch (one fetch shape, `outbox_pending_idx`). Only retained rows come back: purged rows are gone, which X-5 already rules out for audit types because they are never allowlisted. `published_at` is set again when the new consumer's delivery completes the row. Registration of a consumer runs under that consumer's advisory lock, before its dispatcher loop starts; the purge `DELETE` re-checks `published_at IS NOT NULL` on the locked row, so a reset row is never purged.
-      - **Retirement:** a pair present in the table but not registered by the code fails startup. Removing a consumer is an explicit operator step that sets `retired_at`. A retired consumer no longer counts in "every registered consumer", and its rows are then re-checked as above. So a consumer that is dropped by mistake can never make its events count as done silently.
+       - **A new `backfill` consumer** (rev. 16.5, Esmeril M1): when the `INSERT` actually inserts a `backfill` pair, the same transaction runs `UPDATE app.outbox SET published_at = NULL WHERE event_type = $t AND published_at IS NOT NULL AND dead_lettered_at IS NULL`. Rows that other consumers had completed are not done for the new consumer, so they go back to the fetch (one fetch shape, `outbox_pending_idx`). Only retained rows come back: purged rows are gone, which X-5 already rules out for audit types because they are never allowlisted. `published_at` is set again when the new consumer's delivery completes the row. Until it catches up, the old-unpublished alert may fire for that type; that is expected, and the alert names the consumer that is behind (rev. 16.6, Esmeril note b). Registration of a consumer runs under that consumer's advisory lock, before its dispatcher loop starts; the purge `DELETE` re-checks `published_at IS NOT NULL` on the locked row, so a reset row is never purged.
+       - **Retirement:** a pair present in the table but not registered by the code fails startup. Removing a consumer is an explicit operator step that sets `retired_at`. A retired consumer no longer counts in "every registered consumer", and its rows are then re-checked as above. So a consumer that is dropped by mistake can never make its events count as done silently.
      - **Fetch per consumer C**, in batches of 100, ordered by `seq`: `o.event_type = ANY(<C's types>) AND o.seq >= c.start_seq AND o.published_at IS NULL`, joined to `outbox_delivery d` (C, `o.id`) with `d IS NULL OR (d.delivered_at IS NULL AND d.dead_lettered_at IS NULL AND d.next_attempt_at <= now())`.
        - Also `o.dead_lettered_at IS NULL` (rev. 16.5, reverses 16.4): after `…061400` nothing writes `app.outbox.dead_lettered_at`. It only carries rows dead-lettered under #1b, which stay out of the fetch and the purge, visible to the alert and to replay. A per-consumer dead letter lives only in `outbox_delivery`, so it never stops the other consumers (for example the `backfill` audit consumer, X-5).
        - Do not use `FOR UPDATE … SKIP LOCKED` on `app.outbox`: it would make consumers block or skip each other on the same row. One dispatcher loop per consumer holds `pg_try_advisory_xact_lock` on the consumer name, and the delivery row (PK) carries the state.
        - Uses `outbox_pending_idx` and the `outbox_delivery` PK.
      - **Dead letter:** after 20 attempts, `d.dead_lettered_at` is set; `app.outbox` is not touched (rev. 16.5). The row is not done for that consumer, so `published_at` stays `NULL`: it is never purged and it trips the old-unpublished alert. An operator replay resets the delivery row. A legacy #1b dead letter (`o.dead_lettered_at`) is replayed by clearing that column; the row then re-enters the fetch of every consumer.
-    - **Scan cost behind a stuck consumer (Esmeril L3, accepted for V1):** a row dead-lettered or retrying for one consumer stays in `outbox_pending_idx` and is skipped by the anti-join in every other consumer's fetch. At V1 volume (< 1e6 rows in 7 days) that is bounded by the dead-letter and old-unpublished alerts and the replay/retire operator steps. A per-consumer high-water mark (`outbox_consumer` column) is a later expand-only change if the metrics show it is needed.
-    - **Cutover to `…061400`** (Esmeril L4; only DEV databases exist): `outbox_consumer` starts empty, so the first startup registers every consumer. `from_now` consumers start at `max(seq) + 1`; rows still in #1b retry count as before their start (rule 1, order rule). `backfill` consumers reset `published_at` on the retained rows of their types and receive up to 7 days again, with `attempts` from 0; that is safe because consumers dedupe on the event id (audit on `source_event_id`). Legacy #1b dead letters keep `o.dead_lettered_at` (fetch filter above).
-    - **No FK from `outbox_delivery.consumer`** (Esmeril N5): the key of `outbox_consumer` is `(consumer, event_type)`, and `event_type` is not repeated on the delivery row. A test asserts instead that every delivery row's `(consumer, event type of its event)` exists in `outbox_consumer`.
-    - **Tests (#14, rev. 16.5):** a `backfill` consumer registered after a `from_now` consumer completed rows receives them, and `published_at` is set again only after it consumes; a purge that deletes 1000 outbox rows uses `outbox_delivery_event_idx` for the cascade (plan check, no `EXPLAIN ANALYZE` outside test DBs); a per-consumer dead letter does not stop the other consumer of the same row; a legacy row with `o.dead_lettered_at` is neither fetched nor purged; the consumer test above.
+     - **Scan cost behind a stuck consumer (Esmeril L3, accepted for V1):** a row dead-lettered or retrying for one consumer stays in `outbox_pending_idx` and is skipped by the anti-join in every other consumer's fetch. At V1 volume (< 1e6 rows in 7 days) that is bounded by the dead-letter and old-unpublished alerts and the replay/retire operator steps. A per-consumer high-water mark (`outbox_consumer` column) is a later expand-only change if the metrics show it is needed.
+     - **Cutover to `…061400`** (Esmeril L4; only DEV databases exist): `outbox_consumer` starts empty, so the first startup registers every consumer. `from_now` consumers start at `max(seq) + 1`; rows still in #1b retry count as before their start (rule 1, order rule). `backfill` consumers reset `published_at` on the retained rows of their types and receive up to 7 days again, with `attempts` from 0; that is safe because consumers dedupe on the event id (audit on `source_event_id`). Legacy #1b dead letters keep `o.dead_lettered_at` (fetch filter above).
+     - **No FK from `outbox_delivery.consumer`** (Esmeril N5): the key of `outbox_consumer` is `(consumer, event_type)`, and `event_type` is not repeated on the delivery row. A test asserts instead that every delivery row's `(consumer, event type of its event)` exists in `outbox_consumer`.
+     - **Tests (#14, rev. 16.5):** a `backfill` consumer registered after a `from_now` consumer completed rows receives them, and `published_at` is set again only after it consumes; a purge that deletes 1000 outbox rows uses `outbox_delivery_event_idx` for the cascade (plan check, no `EXPLAIN ANALYZE` outside test DBs); a per-consumer dead letter does not stop the other consumer of the same row; a legacy row with `o.dead_lettered_at` is neither fetched nor purged; the consumer test above.
      - The #1b columns `attempts`, `last_error` and `next_attempt_at` on `app.outbox` are no longer written after `…061400`. Dropping them is a destructive change for a later migration, with user authorization.
      - **Volume (Brasa's V1 estimate):** ≤ 1e5 rows a day, < 1e6 in 7 days, and 1–3 consumers per type. The delivery table holds at most a few times the outbox, and it shrinks with the purge.
   3. **Each consumer declares a start policy at registration:**
@@ -1569,6 +1640,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `routing.message_receipt` | `(user_id, message_id)` | no | **kept** until the user is erased |
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
 | `app.outbox` (done for every registered consumer, or of an allowlisted no-consumer type; §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
+| `risk.applied_fill` (rev. 16.6) | `(account_id, fill_id)` | no | 30 days after its `trading_date` (`allwin_maint`) |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 | `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
 | `identity.channel_change` (completed, cancelled or expired) | `id` | no | 30 days after its end, after its codes; it holds the new value (the audit keeps the masked values) |
@@ -1756,8 +1828,9 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 2c | `identity_resolve_source_key_name` (`…060630`, rev. 16.4): `identity.resolve_source_key` also returns `source_name` (audit snapshot) | Ferro writes, Brasa approves (`s/v1-audit-codes--core`, 196a30a); after #7b |
 | 14 | `app_create_outbox_consumer_tracking` (`…061400`, rev. 16.4): `app.outbox_consumer`, `app.outbox_delivery`, `outbox_delivery_event_idx` (rev. 16.5), `outbox_pending_idx`, drop `outbox_due_idx` (§6.4 rule 2) | Brasa; after S3 and S5–S7 |
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
-| 9 | `gateway_create_delivery`: `venue_account` (without the binding, rev. 16), `command`, `execution_report`, `account_sync`, `account_sync_reason`, `outbound_message`, `inbound_receipt` | S2 / M1 |
-| 10 | `risk_create_account_limits` (rev. 13): `account_limits`, `scheduled_limit` (derived), `trading_day`, `drawdown_tracker`, `account_block`, with RLS | S13; unwritten, so it takes the rev. 13 shape directly |
+| 10 | `risk_create_account_limits` (`…061500`, rev. 13/16.6): `account_limits`, `scheduled_limit` (derived), `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block`, with RLS; the rev. 16.6 grants (§5.6) | S13 (Malha) |
+| 10b | `risk_create_applied_fill` (`…061510`, rev. 16.6): `risk.applied_fill` + maint grants (§5.6) | S13 (Malha); after #10 |
+| 9 | `gateway_create_delivery` (`…061600`, rev. 16.6): `venue_account` (without the binding, rev. 16), `command` (with `frame`, `position_effect`, contract), `execution_report` (with `seq`, contract), `account_sync` (with `version`), `account_sync_reason` (per occurrence), `outbound_message` (with `frame`), `inbound_receipt` | Bigorna (gateway); S2 / M1 |
 | 11 | `catalog_create_presets` (rev. 10): the §5.7 catalog tables + the forward change on `opt_in_rule_version` | S16; version stamped after the latest merged migration |
 | 13 | `trades_create_trade` (rev. 14/15.2): `CREATE SCHEMA trades` + its grants, `trades.trade`, `trades.trade_fill`, indexes, RLS, immutability triggers | S21; version stamped after the latest merged migration |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
@@ -1770,7 +1843,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). From `…061500` on, numbers are assigned on request (#9, #10, #11, #13); no branch picks its own.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). From `…061700` on, numbers are assigned on request (#11, #13); no branch picks its own.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
