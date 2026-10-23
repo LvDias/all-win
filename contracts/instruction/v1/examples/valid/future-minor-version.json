@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.3",
+  "message_id": "tv-MNQ-trigger-1792685000000",
+  "sent_at": "2026-10-22T16:03:20Z",
+  "source": {
+    "type": "tradingview"
+  },
+  "signal_type": "trigger",
+  "action": "buy",
+  "instrument": {
+    "symbol": "MNQ"
+  },
+  "quantity": 1
+}

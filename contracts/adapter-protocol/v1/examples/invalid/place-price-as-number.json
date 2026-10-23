@@ -1,0 +1,33 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-0000000003ee",
+  "type": "command",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "command_id": "0192b3c4-0000-7000-8000-000000000007",
+    "instruction_id": "0192b3c4-0000-7000-8000-000000000006",
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "platform_account": "Sim101",
+    "instrument": {
+      "symbol": "MNQ",
+      "contract_month": "2026-12"
+    },
+    "kind": "place",
+    "expires_at": "2026-10-22T14:31:10.000Z",
+    "place": {
+      "side": "buy",
+      "quantity": 2,
+      "order": {
+        "type": "limit",
+        "limit_price": 21000.25
+      },
+      "position_effect": "open",
+      "protection": {
+        "mode": "individual",
+        "stop_ticks": 40,
+        "target_ticks": 80
+      }
+    },
+    "reason_code": "routing.routed"
+  }
+}

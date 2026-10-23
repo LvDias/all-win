@@ -1,0 +1,12 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-0000000003f7",
+  "type": "instruction_result",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "message_id": "m-6f1c2a-0009",
+    "status": "rejected",
+    "error_code": "ingress.missing_order_ref",
+    "pointer": "/refs/order_ref"
+  }
+}

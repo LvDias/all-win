@@ -1,0 +1,15 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-000000000400",
+  "type": "risk_event",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "event_id": "0192b3c4-0000-7000-8000-00000000001a",
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "kind": "flattened",
+    "limits_version": 3,
+    "while_disconnected": true,
+    "occurred_at": "2026-10-22T15:25:00Z",
+    "platform_time": "2026-10-22T15:25:00Z"
+  }
+}

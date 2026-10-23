@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-MNQ-close-1792683000000",
+  "sent_at": "2026-10-22T15:30:00Z",
+  "source": {
+    "type": "tradingview",
+    "name": "strikes-quanticocap",
+    "version": "3.2"
+  },
+  "signal_type": "trigger",
+  "action": "close",
+  "instrument": {
+    "symbol": "MNQ"
+  }
+}

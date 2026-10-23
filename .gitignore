@@ -1,0 +1,36 @@
+# Orchestration / agents (never commit)
+.maestri/
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Rust
+core/target/
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# .NET / NinjaTrader
+plugins/**/bin/
+plugins/**/obj/
+plugins/**/*.user
+plugins/**/.vs/
+# Local copies of proprietary NinjaTrader DLLs
+plugins/**/lib/ninjatrader/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/

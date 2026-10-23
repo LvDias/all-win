@@ -1,0 +1,495 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allwin.app/contracts/instruction/v1/instruction.schema.json",
+  "title": "All Win standard trade instruction v1",
+  "description": "Canonical instruction accepted by the Core from any Input adapter (ADR-0003). Structural rules only; source-specific policies (e.g. TradingView may not send modify/cancel in V1) are enforced by the Core and documented in ADR-0003 section 6. Credentials never travel in this document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "message_id",
+    "sent_at",
+    "source",
+    "signal_type",
+    "action",
+    "instrument"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Major.minor. The Core accepts major 1 with a minor it supports.",
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$"
+    },
+    "message_id": {
+      "description": "Source-assigned id, unique per user. The Core never executes the same message_id twice.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "sent_at": {
+      "description": "Instant the source emitted the instruction, RFC 3339 in UTC with a Z suffix.",
+      "$ref": "#/$defs/utc_timestamp"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "description": "Source kind. Must match the kind bound to the authenticated credential. Known values: tradingview, master_account, signal_engine.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
+    },
+    "signal_type": {
+      "description": "Used for per-account signal selection.",
+      "enum": [
+        "trigger",
+        "trade_plan",
+        "nq_trigger",
+        "master_account"
+      ]
+    },
+    "action": {
+      "enum": [
+        "buy",
+        "sell",
+        "close",
+        "reverse",
+        "modify",
+        "cancel"
+      ]
+    },
+    "position_effect": {
+      "description": "Only for buy/sell. open (default): open or add in the action's direction; rejected per account if an opposite position exists. reduce: reduce an existing opposite position, capped at the current position, never flips.",
+      "enum": [
+        "open",
+        "reduce"
+      ]
+    },
+    "side": {
+      "description": "Only for reverse: the side the account must end on.",
+      "enum": [
+        "long",
+        "short"
+      ]
+    },
+    "instrument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "symbol"
+      ],
+      "properties": {
+        "symbol": {
+          "description": "Platform-neutral root symbol, e.g. MNQ.",
+          "type": "string",
+          "pattern": "^[A-Z0-9]{1,10}$"
+        },
+        "contract_month": {
+          "description": "YYYY-MM. Omitted: the Core uses the instrument's active contract from the catalog.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        }
+      }
+    },
+    "quantity": {
+      "description": "Base size in whole contracts, before each target account's multiplier. Ignored for close.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "order": {
+      "description": "Omitted: market order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "market",
+            "limit",
+            "stop",
+            "stop_limit"
+          ]
+        },
+        "role": {
+          "description": "entry (default) or a protective order of the source: stop, target. Used by master replication to correlate modify/cancel.",
+          "enum": [
+            "entry",
+            "stop",
+            "target"
+          ]
+        },
+        "limit_price": {
+          "$ref": "#/$defs/price"
+        },
+        "stop_price": {
+          "$ref": "#/$defs/price"
+        },
+        "time_in_force": {
+          "enum": [
+            "day",
+            "gtc"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "limit"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "limit_price"
+            ],
+            "not": {
+              "required": [
+                "stop_price"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stop"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "stop_price"
+            ],
+            "not": {
+              "required": [
+                "limit_price"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stop_limit"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "limit_price",
+              "stop_price"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "market"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "limit_price"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "stop_price"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "changes": {
+      "description": "Only for modify. price_delta moves the correlated orders by the same amount (signed decimal, price units); quantity is the new base quantity of a working order.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "price_delta": {
+          "$ref": "#/$defs/signed_decimal"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "refs": {
+      "description": "Source-assigned correlation identifiers (ADR-0003 section 5).",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "position_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "order_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "parent_order_ref": {
+          "$ref": "#/$defs/ref"
+        }
+      }
+    },
+    "reference_price": {
+      "description": "Informational price at signal time (audit, slippage analysis). Never used to price an order in V1.",
+      "$ref": "#/$defs/price"
+    },
+    "details": {
+      "description": "Free-form source metadata (setup, zone, trigger...). Shown to the user and stored for analysis; never used for routing.",
+      "type": "object",
+      "maxProperties": 32
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "enum": [
+              "buy",
+              "sell"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "quantity"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "side"
+              ]
+            },
+            {
+              "required": [
+                "changes"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "reverse"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "quantity",
+          "side"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "position_effect"
+              ]
+            },
+            {
+              "required": [
+                "changes"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "close"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "position_effect"
+              ]
+            },
+            {
+              "required": [
+                "side"
+              ]
+            },
+            {
+              "required": [
+                "changes"
+              ]
+            },
+            {
+              "required": [
+                "order"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "modify"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "refs",
+          "changes"
+        ],
+        "properties": {
+          "refs": {
+            "required": [
+              "order_ref"
+            ]
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "position_effect"
+              ]
+            },
+            {
+              "required": [
+                "side"
+              ]
+            },
+            {
+              "required": [
+                "quantity"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "cancel"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "refs"
+        ],
+        "properties": {
+          "refs": {
+            "required": [
+              "order_ref"
+            ]
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "position_effect"
+              ]
+            },
+            {
+              "required": [
+                "side"
+              ]
+            },
+            {
+              "required": [
+                "quantity"
+              ]
+            },
+            {
+              "required": [
+                "changes"
+              ]
+            },
+            {
+              "required": [
+                "order"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "utc_timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$"
+    },
+    "price": {
+      "description": "Exact decimal as a string, strictly positive.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,10})?$",
+      "not": {
+        "pattern": "^0(\\.0+)?$"
+      }
+    },
+    "signed_decimal": {
+      "description": "Exact decimal as a string, may be negative, must be non-zero.",
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,10})?$",
+      "not": {
+        "pattern": "^-?0(\\.0+)?$"
+      }
+    },
+    "ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    }
+  }
+}

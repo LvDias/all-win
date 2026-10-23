@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "message_id": "m-6f1c2a-0002",
+  "sent_at": "2026-10-22T14:52:10Z",
+  "source": {
+    "type": "master_account",
+    "name": "nt8-desk-a",
+    "version": "0.1.0"
+  },
+  "signal_type": "master_account",
+  "action": "sell",
+  "position_effect": "reduce",
+  "instrument": {
+    "symbol": "MNQ",
+    "contract_month": "2026-12"
+  },
+  "quantity": 1,
+  "refs": {
+    "position_ref": "pos-6f1c2a",
+    "order_ref": "ord-6f1c2a-x1"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-000000000445",
+  "type": "execution_report",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "event_id": "0192b3c4-0000-7000-8000-00000000001f",
+    "command_id": "0192b3c4-0000-7000-8000-000000000007",
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "platform_account": "Sim101",
+    "instrument": {
+      "symbol": "MNQ",
+      "contract_month": "2026-12"
+    },
+    "origin": "all_win",
+    "status": "rejected",
+    "occurred_at": "2026-10-22T14:31:06Z"
+  }
+}

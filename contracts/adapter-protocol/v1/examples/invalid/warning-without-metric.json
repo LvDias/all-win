@@ -1,0 +1,13 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-000000000448",
+  "type": "risk_event",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "event_id": "0192b3c4-0000-7000-8000-000000000021",
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "kind": "warning",
+    "limits_version": 3,
+    "occurred_at": "2026-10-22T15:20:00Z"
+  }
+}

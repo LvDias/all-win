@@ -1,0 +1,42 @@
+# Decision Log — All Win (delivery)
+
+> Append-only. Product decisions are canonical in [product-vision.md](../product/product-vision.md); this log records user decisions given during delivery. Reversals are new entries.
+
+## 2026-10-23 — Account usage for agents
+- **Decision:** recruit agents on Dev2 and Dev3 only; Dev1 is not to be used until the user says so.
+- **Context:** Dev1's Claude Max account has no usage left at the moment.
+- **Canonical doc:** this log.
+
+## 2026-10-23 — Plan before implementation; no push/merge/deploy without authorization
+- **Decision:** present the architecture proposal and the V1 slice plan to the user before any implementation starts. No push, merge, or deploy without explicit user authorization.
+- **Canonical doc:** this log.
+
+## 2026-10-23 — S0 and V1 plan approved; recommendations accepted with conditions
+- **Decision:** the user approved the S0 proposal (ADR-0001 stack, ADR-0002 repository structure, root CLAUDE.md) and the V1 slice plan, accepting all recommendations for A1–A6 and Q1–Q16 with these conditions:
+  - **A3:** webhook secret in the URL, and it must be masked in every log (Caddy, Core, audit).
+  - **A2:** production hosted in the US, central region (near Chicago).
+  - **Tooling:** DevOps may install development tooling on the host. Opening firewall ports requires explicit user authorization.
+  - **Q15:** before the user provides the Windows + NinjaTrader 8 machine, the Architect defines in the NT8 spike how agents will build and test the plugin there (Maestri over SSH needs bash/curl and may not work on Windows), and presents options.
+  - **Git:** the user fixed `safe.directory` for `/srv/www/allwin`.
+- **Options rejected:** secret in the message body (A3); local replication shortcut in V1 (A4); open sign-up (Q6); see the canonical docs for the others.
+- **Canonical docs:** [ADR-0001](../architecture/adr/0001-technology-stack.md), [ADR-0002](../architecture/adr/0002-repository-structure.md), [s0-decisions-needed.md](../architecture/s0-decisions-needed.md), [slice-plan.md](../product/release-1/slice-plan.md) — to be updated by their owners.
+
+## 2026-10-23 — Prop firms that forbid automation: explicit per-account opt-in (option A)
+- **Decision:** keep the plan: TradingView → automatic execution in V1.0, master replication in V1.1. Presets show each firm's official stance on automation and copying, with source and date. When registering or editing an account of a firm that forbids automation, the user must explicitly choose whether the account accepts automated sources (no default), after seeing a warning with the firm's rule text and the risk of losing the account. The choice is recorded in the audit log with date and user.
+- **Context:** R1 research found Apex and Phidias officially forbid automation; Lucid allows it; none mentions webhooks.
+- **Options rejected:** (B) product-enforced block of automated sources plus master replication moved to V1.0. (C) consulting the firms is deferred, handled by the user.
+- **Presets:** items that conflict across a firm's official pages ship marked "not confirmed" and do not block the rest of the preset; the conflict list goes to the user for a later decision. Presets also store the platform (e.g., Rithmic/Tradovate).
+- **Risk accepted by:** the user, per account, through the explicit opt-in.
+- **Canonical docs:** product-vision.md and slice-plan.md (PO to update S5/S7/S16); presets research format.
+
+## 2026-10-23 — Consolidated open questions answered (items 1–22 accepted)
+- **Decision:** the user accepted every recommendation:
+  - ADR-0003 (instruction contract v1) and ADR-0004 (adapter protocol v1) accepted.
+  - P1 exits bypass risk/out-of-sync gates (pause/disable block all); P2 FIFO on partial exits in individual mode; P3 master protective cancel replicated with warnings; P4 expiry base = min(sent_at, received_at); P5/Q-A5 global rollover catalog maintained by the admin with advance warning.
+  - T1 only entries expire, late exits audited; T2 default command TTL 5 s (editable 1–60 s per account); T3 external order marks master-replication destinations out of sync, audit only for TradingView-only destinations.
+  - Q13 activity record retained 24 months rolling, configurable (trades/configuration for the account's life); Q13-b data erased 30 days after the user closes the account (privacy policy).
+  - Q-A1 one max position per account in V1 (MNQ); Q-A2 stop/target profiles keyed by instrument; Q-A4 signal filter per (source, account); Q-N1 dollar distances rounded toward the entry, adjustment shown in the audit.
+  - Q17 multiple named TradingView sources; Q18 unpairing allowed with confirmation, accounts become out of sync, nothing closed; Q19 admin-only invites, single-use, email-bound, 7 days, delivered manually; Q20 transactional email only for invite/reset, admin-generated reset link as fallback; Q21 12 h idle / 24 h absolute, remember-me 7 d / 30 d, step-up after 15 min; Q22 10 recovery codes, password + code to toggle TOTP, admin-assisted reset; Q23 browser language (else pt-BR), profile time zone defaulting to browser, 24-hour clock.
+- **User-owned pending item:** review NinjaTrader ToS §5(a)(viii) and EULA (or consult NinjaTrader/legal) before offering the product to other people. Does not block development on simulation.
+- **Still open:** W1–W3 (Windows machine access) pending the Architect's consolidated options; preset conflict list pending PO review.
+- **Canonical docs:** ADR-0003, ADR-0004, auth-and-session-policy.md, q13-audit-retention.md, wave1-data-model.md (owners mark Accepted); slice-plan.md and product-vision.md (PO).

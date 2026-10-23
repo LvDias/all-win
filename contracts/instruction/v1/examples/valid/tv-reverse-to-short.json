@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-MNQ-reverse-1792684000000",
+  "sent_at": "2026-10-22T15:46:40Z",
+  "source": {
+    "type": "tradingview",
+    "name": "strikes-quanticocap",
+    "version": "3.2"
+  },
+  "signal_type": "trigger",
+  "action": "reverse",
+  "side": "short",
+  "instrument": {
+    "symbol": "MNQ"
+  },
+  "quantity": 1,
+  "reference_price": "21050"
+}

@@ -1,0 +1,17 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-0000000003ff",
+  "type": "risk_event",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "event_id": "0192b3c4-0000-7000-8000-000000000019",
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "kind": "warning",
+    "metric": "daily_loss",
+    "value": "-812.50",
+    "limit": "-1000.00",
+    "limits_version": 3,
+    "while_disconnected": false,
+    "occurred_at": "2026-10-22T15:20:00Z"
+  }
+}

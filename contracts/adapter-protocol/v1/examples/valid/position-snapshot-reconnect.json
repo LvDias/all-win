@@ -1,0 +1,47 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-0000000003fd",
+  "type": "position_snapshot",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "trigger": "reconnect",
+    "taken_at": "2026-10-22T14:50:00Z",
+    "accounts": [
+      {
+        "account_id": "0192b3c4-0000-7000-8000-000000000001",
+        "platform_account": "Sim101",
+        "connected": true,
+        "positions": [
+          {
+            "instrument": {
+              "symbol": "MNQ",
+              "contract_month": "2026-12"
+            },
+            "position": {
+              "quantity": 2,
+              "average_price": "21034.50"
+            }
+          }
+        ],
+        "working_orders": [
+          {
+            "platform_order_id": "a1b2c3",
+            "command_id": "0192b3c4-0000-7000-8000-000000000007",
+            "child_role": "stop",
+            "instrument": {
+              "symbol": "MNQ",
+              "contract_month": "2026-12"
+            },
+            "side": "sell",
+            "quantity": 2,
+            "order": {
+              "type": "stop",
+              "stop_price": "21024.50"
+            },
+            "origin": "all_win"
+          }
+        ]
+      }
+    ]
+  }
+}

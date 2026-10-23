@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-MNQ-nqtrigger-1792682000000",
+  "sent_at": "2026-10-22T15:13:20Z",
+  "source": {
+    "type": "tradingview",
+    "name": "strikes-quanticocap",
+    "version": "3.2"
+  },
+  "signal_type": "nq_trigger",
+  "action": "buy",
+  "instrument": {
+    "symbol": "MNQ",
+    "contract_month": "2026-12"
+  },
+  "quantity": 1
+}

@@ -1,0 +1,25 @@
+# Normalize text to LF in the repository and working tree.
+* text=auto eol=lf
+
+# Windows-only tooling files
+*.sln text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.dll binary
+*.exe binary
+*.woff binary
+*.woff2 binary
+
+# Generated (committed, checked for drift)
+*.gen.ts linguist-generated=true
+core/.sqlx/** linguist-generated=true

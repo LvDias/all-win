@@ -1,0 +1,10 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-00000000044a",
+  "type": "instruction_result",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "message_id": "m-1",
+    "status": "rejected"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "42",
+  "type": "heartbeat",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {}
+}

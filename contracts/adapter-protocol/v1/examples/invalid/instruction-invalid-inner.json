@@ -1,0 +1,37 @@
+{
+  "protocol_version": "1.0",
+  "msg_id": "0192b3c4-0000-7000-8000-000000000449",
+  "type": "instruction",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "account_id": "0192b3c4-0000-7000-8000-000000000002",
+    "instruction": {
+      "schema_version": "1.0",
+      "message_id": "m-6f1c2a-0001",
+      "sent_at": "2026-10-22T14:40:00.250Z",
+      "source": {
+        "type": "master_account",
+        "name": "nt8-desk-a",
+        "version": "0.1.0"
+      },
+      "signal_type": "master_account",
+      "action": "buy",
+      "position_effect": "open",
+      "instrument": {
+        "symbol": "MNQ",
+        "contract_month": "2026-12"
+      },
+      "quantity": 0,
+      "order": {
+        "type": "limit",
+        "role": "entry",
+        "limit_price": "21000.25",
+        "time_in_force": "day"
+      },
+      "refs": {
+        "position_ref": "pos-6f1c2a",
+        "order_ref": "ord-6f1c2a-e1"
+      }
+    }
+  }
+}

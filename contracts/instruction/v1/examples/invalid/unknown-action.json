@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "message_id": "tv-MNQ-trigger-setup6-1792679465000",
+  "sent_at": "2026-10-22T14:31:05Z",
+  "source": {
+    "type": "tradingview",
+    "name": "strikes-quanticocap",
+    "version": "3.2"
+  },
+  "signal_type": "trigger",
+  "action": "flatten",
+  "instrument": {
+    "symbol": "MNQ"
+  },
+  "quantity": 1,
+  "reference_price": "21034.25",
+  "details": {
+    "setup": "Setup 6",
+    "zone": "Defense",
+    "trigger": "engulfing"
+  }
+}
