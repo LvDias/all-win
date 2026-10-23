@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 16.1 (1a634da); **rev. 16.2 proposed**: the outbox no-consumer allowlist (Esquadro, decision (b)) in §6.4 rule 1 and §6.5 retention; §8 versions `…060610` (`app.outbox.seq`) and `…060620` (#7b); a §9 list fix (Crivo nit on 16.1).
+- **Status:** Accepted (2026-10-23), rev. 16.2 (7acd73c); **rev. 16.3 proposed** (Esquadro; Crivo R1/R2): §6.4 rules 1–2 define completion per consumer (consumed, or before a `from_now` consumer's `start_seq` = first receivable `seq`), and state the order rule and the retention predicate.
+- Rev. 16.2 (7acd73c): the outbox no-consumer allowlist (Esquadro, decision (b)) in §6.4 rule 1 and §6.5 retention; §8 versions `…060610` (`app.outbox.seq`) and `…060620` (#7b); a §9 list fix (Crivo nit on 16.1).
 - Rev. 16.1 (1a634da; Crivo N1–N3 and ADR-0008 round 2): binding, change, release and archive write both `account.limits_changed` and `account.binding_changed`; the open-position residual and the gateway mitigation are mirrored in §5.3; §9 gains the rev. 16 constraint and grant tests.
 - Rev. 16 (9dcc772, c509981):
   - **Binding (Esquadro, ADR-0008, approved by the user):** `accounts` owns the account ↔ platform-account binding. `accounts.account` gains `venue_account_id` and `bound_at`, and `gateway.venue_account` loses `account_id`, `bound_at` and `venue_account_bound_key` (§5.2, §5.3).
@@ -1484,10 +1485,21 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
      - Events whose type has no registered consumer are not fetched (`event_type = ANY(<registered types>)`). They stay visible and are counted by a metric and alert: unpublished, not dead-lettered, older than N minutes. That catches, for example, a type retired by a deploy.
      - **Exception: the no-consumer allowlist** (Esquadro, decision (b), rev. 16.2). A type may be emitted before its consumer slice exists when it is on a versioned allowlist file in the core, owned by the dispatcher owner. Each entry names the type, the future consumer slice and its start policy. Wave 1 entries: `account.limits_changed`, `account.binding_changed`, `account.changed`, `account.archived`.
        - Only a type whose future consumer is `from_now` may be listed. A type that needs `backfill` (anything that becomes an audit entry, X-5) never is, because the purge would lose it.
-       - Startup does not fail for a listed type. Its rows are excluded from the old-unpublished alert and are purged after 7 days (`occurred_at`), like published rows. They are **not** marked published, so `published_at` still means "consumed".
-       - When the consumer registers (`from_now`), the rows before its cursor stay purgeable after 7 days. A test fails when a listed type has a registered consumer, and another when a listed type is emitted by no module.
+       - Startup does not fail for a listed type. Its rows are excluded from the old-unpublished alert and are purged after 7 days (`occurred_at`), like published rows. They are **not** marked published, so `published_at` is still set only by a consumption (rule 2).
+       - A test fails when a listed type has a registered consumer, and another when a listed type is emitted by no module.
+       - **Per-consumer completion** (rev. 16.3; Esquadro, Crivo R1/R2). When a consumer registers, its type leaves the allowlist (the test forces that), and the older rows of that type are neither published nor listed. Without a rule they would stay forever and trip the old-unpublished alert on the first deploy with the consumer. The same happens to a type that gains a second `from_now` consumer later. So completion is defined per consumer:
+         - **`start_seq`**, stored per `(consumer, event_type)` with the rule 2 delivery tracking, is the **first** `app.outbox.seq` that the consumer may receive: the highest `seq` at registration + 1 (1 on an empty outbox). A `from_now` consumer receives only `seq >= start_seq`. No per-event "skipped" marks are written.
+         - A row is **done for consumer C** when C consumed it, or when C is `from_now` and `seq < C.start_seq`. A `backfill` consumer is done only by consuming, so a type with a `backfill` consumer never ages out unconsumed (X-5).
+         - A row is **done** when it is done for **every** registered consumer of its type. `published_at` (rule 2) is set when the last consumption makes the row done. Retention and the alert use "done", so a row that is done only through start cursors needs no write.
+         - `seq` is drawn at insert, so a transaction still open at registration can commit a row with `seq < start_seq` afterwards. That row counts as before the start and is never delivered.
+         - **Order rule (Esquadro):** every `from_now` consumer records its `start_seq` **before** it runs its startup reconciliation or resync. The reconciliation reads the current state, not events, so such a row's effect is still applied: risk via `list_limits_versions` (ADR-0006 §3.2), gateway via `welcome` / `limits` re-sent on connect (connections are re-made at gateway start), and SSE clients refetch on reconnect. Waiting for in-flight transactions is not needed, because a `from_now` consumer never depends on the event itself.
+         - Tests:
+           - the newest row at registration (`seq = start_seq - 1`) is neither delivered nor left unpurged;
+           - for a type with `from_now` consumer A and a consumer B registered later, a row between the two starts, consumed by A, becomes done and is purged; a row still in A's retry queue when B registers becomes done once A consumes it;
+           - an event committed between the registration and the end of the reconciliation has its effect applied (risk derives the new version).
+       - **Retention predicate** (purge job, `allwin_maint`), never for dead-lettered rows: `dead_lettered_at IS NULL AND occurred_at < now() - 7 days AND (event_type = ANY($listed) OR <done>)`. `<done>` is `published_at IS NOT NULL`, or a row that is done for every registered consumer of its type by the definition above. The old-unpublished alert uses the same exclusions without the age bound. The cursor table is created by the rule 2 migration, whose number the DBA assigns.
        - No schema change: the purge job receives the listed types from the core, so there is no allowlist table.
-  2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event). `published_at` keeps meaning "every registered consumer has consumed it".
+  2. **Delivery is tracked per consumer** from M1 (C3), in a table keyed by (consumer, event), plus each consumer's `start_seq` per event type (rev. 16.3). `published_at` is set when a consumption makes the row done for every registered consumer (rule 1, per-consumer completion). A row that is done only through start cursors keeps `published_at` NULL and is treated as done by the predicate.
   3. **Each consumer declares a start policy at registration:**
      - `from_now`: cursor at the registration instant, no backfill. This is the default for consumers that **act** (routing, commands).
      - `backfill`: from the oldest unconsumed event. Consumers that **record** (audit) use it, so the user-visible log never misses an entry (X-5).
@@ -1503,7 +1515,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `gateway.command`, `gateway.execution_report` | `id`, `event_id`, `(account_id, fill_id)` | no | batched `DELETE` older than N months, children first |
 | `routing.message_receipt` | `(user_id, message_id)` | no | **kept** until the user is erased |
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
-| `app.outbox` (published, or of an allowlisted no-consumer type, §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
+| `app.outbox` (done for every registered consumer, or of an allowlisted no-consumer type; §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 | `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
 | `identity.channel_change` (completed, cancelled or expired) | `id` | no | 30 days after its end, after its codes; it holds the new value (the audit keeps the masked values) |
