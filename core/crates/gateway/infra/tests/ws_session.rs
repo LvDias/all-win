@@ -236,7 +236,7 @@ async fn adapter_session_end_to_end() {
         locale: "en".into(),
     };
     let intake = HandleExecutionReport::new(store.clone(), bindings.clone(), risk.clone());
-    let snapshot = HandlePositionSnapshot::new(store.clone(), bindings.clone());
+    let snapshot = HandlePositionSnapshot::new(store.clone(), bindings.clone(), sessions.clone());
     let runtime = Arc::new(GatewayRuntime::new(
         sessions.clone(),
         Arc::new(Tokens(principal)),

@@ -92,7 +92,11 @@ impl World {
     }
 
     fn snapshot_uc(&self) -> HandlePositionSnapshot {
-        HandlePositionSnapshot::new(self.store.clone(), self.bindings.clone())
+        HandlePositionSnapshot::new(
+            self.store.clone(),
+            self.bindings.clone(),
+            self.sessions.clone(),
+        )
     }
 
     async fn connect(
@@ -794,4 +798,41 @@ async fn unexpected_types_close_with_4006_and_store_failures_with_4000() {
         Some((crate::frames::CloseCode::Normal, "intake_retry"))
     );
     assert!(out.replies.is_empty(), "no ack when nothing was stored");
+}
+
+#[tokio::test]
+async fn flat_disconnect_then_matching_reconnect_is_restored_once() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    HandleDisconnect::new(w.store.clone(), w.sessions.clone())
+        .handle(&session, SessionEnd::Network, false, t(1))
+        .await
+        .unwrap();
+    let (session2, _) = w.connect(&["1.2"], "simulation", t(2)).await.unwrap();
+    w.reconnect_snapshot(&session2, json!([]), json!([]), t(3))
+        .await;
+    w.reconnect_snapshot(&session2, json!([]), json!([]), t(4))
+        .await;
+    let s = w.store.state();
+    let restored: Vec<_> = s
+        .events
+        .iter()
+        .filter(|e| e.event_type == "sync.restored")
+        .collect();
+    assert_eq!(restored.len(), 1);
+    assert_eq!(
+        restored[0].payload["details"]["connection_id"],
+        json!(session2.connection_id)
+    );
+    drop(s);
+    assert_eq!(w.sync_state().0, SyncState::InSync);
+}
+
+#[tokio::test]
+async fn first_connection_is_not_a_restore() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
+        .await;
+    assert!(!w.store.event_types().contains(&"sync.restored"));
 }

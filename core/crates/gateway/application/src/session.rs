@@ -157,6 +157,10 @@ impl Session {
 #[derive(Debug, Default, Clone)]
 pub struct Sessions {
     inner: Arc<Mutex<HashMap<ConnectionId, Arc<Session>>>>,
+    /// Accounts whose session ended while flat with nothing in flight (ADR-0004 §6 row 3): the
+    /// next matching reconnect snapshot records `sync.restored`. In memory: a Core restart loses
+    /// only that informational entry, never a flag.
+    flat_disconnects: Arc<Mutex<BTreeSet<AccountId>>>,
 }
 
 impl Sessions {
@@ -199,6 +203,21 @@ impl Sessions {
             .values()
             .find(|s| s.mapped(account).is_some())
             .cloned()
+    }
+
+    pub fn mark_flat_disconnect(&self, account: AccountId) {
+        self.flat_disconnects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(account);
+    }
+
+    /// Takes the marker: `true` once per flat disconnect.
+    pub fn take_flat_disconnect(&self, account: AccountId) -> bool {
+        self.flat_disconnects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&account)
     }
 
     pub fn all(&self) -> Vec<Arc<Session>> {

@@ -36,11 +36,20 @@ pub enum SnapshotError {
 pub struct HandlePositionSnapshot {
     store: Arc<dyn GatewayStore>,
     bindings: Arc<dyn AccountBindings>,
+    sessions: crate::session::Sessions,
 }
 
 impl HandlePositionSnapshot {
-    pub fn new(store: Arc<dyn GatewayStore>, bindings: Arc<dyn AccountBindings>) -> Self {
-        Self { store, bindings }
+    pub fn new(
+        store: Arc<dyn GatewayStore>,
+        bindings: Arc<dyn AccountBindings>,
+        sessions: crate::session::Sessions,
+    ) -> Self {
+        Self {
+            store,
+            bindings,
+            sessions,
+        }
     }
 
     /// One transaction for the whole snapshot (receipt + every account's sync change). After
@@ -149,6 +158,25 @@ impl HandlePositionSnapshot {
                             .push(sync_event(account_id, &change, &sync, msg_id, now));
                         changed = true;
                     }
+                }
+                // ADR-0004 §6 row 3: flat disconnect, and the reconnect snapshot shows flat with no
+                // All Win working orders → back to normal, recorded (`sync.restored`).
+                if trigger == SnapshotTrigger::Reconnect
+                    && self.sessions.take_flat_disconnect(account_id)
+                    && findings.raise.is_empty()
+                    && sync.state() == gateway_enterprise::sync::SyncState::InSync
+                    && observed.positions.values().all(|q| *q == 0)
+                    && !observed
+                        .working_orders
+                        .iter()
+                        .any(|o| o.origin == Origin::AllWin)
+                {
+                    work.events.push(events::audit(
+                        "sync.restored",
+                        now,
+                        json!({ "sync_version": sync.version(), "connection_id": session.connection_id }),
+                        refs.clone(),
+                    ));
                 }
                 if changed {
                     work.sync.push(SyncWrite {

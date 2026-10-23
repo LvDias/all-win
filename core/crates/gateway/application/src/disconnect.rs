@@ -55,6 +55,7 @@ impl HandleDisconnect {
                 };
                 let reasons = on_disconnect(end, &facts);
                 if reasons.is_empty() {
+                    self.sessions.mark_flat_disconnect(account);
                     continue;
                 }
                 let mut sync = self.store.account_sync(user, account).await?;
