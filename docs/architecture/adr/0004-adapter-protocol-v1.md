@@ -60,6 +60,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 | `heartbeat` | both | no | Liveness |
 | `command` | C→A | **yes** | `place` / `modify` / `cancel` / `flatten` on one account |
 | `limits` | C→A | **yes** | Risk configuration per account for local enforcement, versioned |
+| `account_state` | C→A | no (latest wins) | **1.1:** an account's `sync_state` and full `sync_reasons` after a change during the session (S11 AC-1); sent only on sessions that negotiated 1.1. Applied when its `changed_at` is newer than or equal to the state held (an equal value means the later-received message wins; WebSocket preserves order) |
 | `instruction_result` | C→A | **yes** | Outcome of a master `instruction` (accepted, duplicate, rejected + code) |
 | `execution_report` | A→C | **yes** | Every order event on mapped accounts: All Win, local enforcement and external origins |
 | `position_snapshot` | A→C | **yes** | Positions and working orders per mapped account |
@@ -71,7 +72,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 
 1. The adapter sends `hello` first. The Core answers `welcome`, or `error` followed by a close (4001–4003).
 2. After `welcome`, the Core sends `limits` for all mapped accounts.
-3. The adapter must send a `position_snapshot` (`trigger: reconnect`) **before** the Core sends any new `command` in that session (§6).
+3. The adapter must send a `position_snapshot` (`trigger: reconnect`) **before** the Core sends any new `command` in that session (§6). Adapter order on every (re)connect: `hello` → `welcome` → apply `limits` → retransmit its outbox in original order → `position_snapshot` → process commands. A command received before the adapter's snapshot is sent is queued, never rejected, and processed afterwards with the expiry re-check of §5; it is logged as a Core protocol violation.
 4. The Core picks the highest protocol version listed in both `hello.supported_protocol_versions` and its own support.
 5. Platform accounts the user has not mapped are ignored by the adapter: no commands, no reports, no enforcement.
 
@@ -79,10 +80,14 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 
 - **At-least-once delivery with idempotent receivers:**
   - **Reliable messages** stay in the sender's **durable outbox** until acknowledged. The adapter outbox is a local file store under the NinjaTrader user folder, chosen in the spike; the Core outbox is a PostgreSQL table.
-  - Unacked messages are retransmitted after `ack_timeout_ms` (default 5000) and on every reconnect, in original order, with the **same `msg_id`**.
+  - Unacked messages are retransmitted after `ack_timeout_ms` (default 5000) and on every reconnect, in original order. A retransmission is **byte-identical** to the first send: same `msg_id` and same envelope `sent_at`, so `sent_at` is the message's creation time.
   - Receivers dedupe by `msg_id` for at least 24 h.
 - **Business idempotency on top of transport dedupe:**
-  - **`command_id`** is deterministic (ADR-0003 §5). The adapter keeps a **durable record of every `command_id` it has acted on** for at least the current and previous trading day. A command already handled is acknowledged and answered with an `execution_report` `status: duplicate` that repeats the latest known state; it is never executed again.
+  - **`command_id`** is deterministic (ADR-0003 §5). The adapter keeps a **durable record of every `command_id` it has acted on** for at least the current and previous trading day, implemented as **at least 7 days of wall clock** (clarified 2026-10-23: weekends and holiday sessions; exits carry no `expires_at`, so this record and the staleness guard below protect them against a late re-delivery). Pruning happens at startup or on a timer, never while a command is in flight. A command already handled is acknowledged and answered with an `execution_report` `status: duplicate` that repeats the latest known state; it is never executed again.
+  - **Bounded re-delivery (never execute twice after a long outage; Code Review 4):** dedupe records are finite, so both sides bound how old a command can be when it is delivered. Neither side relies only on the other's clock.
+    - **Core, retransmission horizon H = 72 h:** a command not acked within 72 h of its creation is never retransmitted. It becomes `undelivered`, is removed from the outbox and audited, and the account goes `out_of_sync` (`sync.command_undelivered`) with an alert.
+    - **Adapter, staleness guard:** on every command, before execution and whether or not a dedupe record exists, the adapter refuses a command whose envelope `sent_at` (creation time, unchanged on retransmission) is older than **6 days** on its skew-corrected clock. That is the retention R = 7 days minus a 1-day margin. It reports `rejected` + `command.stale` and records the `command_id` as handled, so a re-delivery after the record was pruned can never execute.
+    - **Invariant:** retention R (7 d) > staleness limit (6 d) > H (72 h), so R > H + margin. Any change to one of the three must keep this order.
   - **`event_id`** is generated once per platform event by the adapter and persisted in its outbox before sending. The Core enforces `UNIQUE (event_id)`.
   - **`fill_id`** (the platform execution id) is unique per account. The Core also dedupes fills by `(account_id, fill_id)`, which protects against an adapter that loses its outbox and replays platform history.
 - **Ack semantics:**
@@ -102,6 +107,15 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
   - The adapter computes protective prices from the **fill price** (individual) or the **average position price** (shared, re-computed on every add), rounds to tick size, and reports the protective orders as `execution_report`s with `child_role` `stop`/`target` under the same `command_id`.
 - **`modify` / `cancel`:** target orders created by All Win, identified by `(command_id, child_role)`, plus the `platform_order_id` when known. `modify` applies `price_delta` and/or a new total `quantity`.
 - **`flatten`:** closes the account's position in that contract and cancels **all** its working orders (orphan-order protection). The reason is `close` or `reverse`.
+- **Adapter execution rules (clarified 2026-10-23 for V1-S2; reason codes and report attribution in [`reason-codes.md`](../../../contracts/adapter-protocol/v1/reason-codes.md)):**
+  - **Shared-mode ownership:** the command that opened the position owns the shared stop/target. Adds get entry reports only, and resize/re-price reports carry the owner's `command_id`. Modify/cancel address `(owner command_id, stop|target)`. Ownership ends when the position goes flat. Re-pricing uses the owner's protection ticks.
+  - **Individual mode with partial entry fills:** the bracket is submitted on the first fill for the filled quantity and resized on each later fill. Prices come from the volume-weighted average fill price of that entry order, re-priced on later fills. An off-tick price is rounded toward the entry (tighter). If the rest of the entry is cancelled, the bracket stays at the filled quantity.
+  - **Time in force:** protective orders are GTC (a DAY order would drop protection at the session end). Entry orders are DAY.
+  - **Expiry re-check:** `expires_at` is checked on receipt **and** right before submitting to the platform, which covers waits on `depends_on` and the per-account queue.
+  - **`flatten` on a flat account:** `cancelled` + `command.already_flat`, a terminal success for `depends_on`.
+  - **`reduce` that cannot reduce** (flat, or same side): `cancelled` + `command.nothing_to_reduce`, never opening or flipping. A reduce larger than the position is capped (`order.quantity_capped`).
+  - **Modify/cancel outcomes:** one outcome report per target under the modify/cancel `command_id`, never with fills. The Core classifies reports by the action of their command.
+  - **Fill corrections** (`amend`/`remove`): the recomputed order-level status, the original `fill_id`, and an authoritative `position_after`.
 - **Orphan-order protection in the adapter:** whenever an account's position in a contract becomes flat **for any reason**, the adapter immediately cancels the remaining All Win stop/target orders for it, and reports them `cancelled` with `reason_code: order.orphan_cancelled` (vision §8).
 - **Expiry (`expires_at`)**:
   - **Computed by the Core:** `expires_at = expiry_base + account.command_ttl`, where `expiry_base = min(instruction.sent_at, received_at)` (ADR-0003 §7).
@@ -124,6 +138,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 | External order or fill on a destination account (`origin: external`) | Destinations of master replication: `out_of_sync` + alert. TradingView-only destinations: audit only (T3, decided) |
 | Sim account reset or Playback rewind (`position_snapshot.trigger: account_reset`, NT8 `SimulationAccountReset`) | `out_of_sync` (`sync.simulation_reset`); the discontinuity is never interpreted as fills |
 | Execution amended or removed by the platform (`fill.operation` `amend`/`remove`) | The Core corrects the position and P&L, audits it, and flags `out_of_sync` if the expected state no longer matches |
+| Command not acked within the 72-h retransmission horizon (§4) | `out_of_sync` (`sync.command_undelivered`) + alert; the command is `undelivered` and never retransmitted |
 | User unpairs the connection (Q18) | Every mapped account of that connection becomes `out_of_sync`; nothing is closed or cancelled |
 | Bracket integrity cases on local-OCO connections | See §6.1 |
 
@@ -132,7 +147,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 - The Core refuses new position-increasing instructions for the account (`routing.out_of_sync`, ADR-0003 §4.1).
 - **It never sends corrective orders on its own:** no reopen, no resync, no catch-up.
 - The user sees the differences and either fixes the account manually and clears the flag, or flattens and clears.
-- `welcome.accounts[].sync_state` and `sync_reasons` tell the plugin to show the state and its reasons in its window.
+- `welcome.accounts[].sync_state` and `sync_reasons` tell the plugin to show the state and its reasons in its window. Changes during the session reach the plugin through the C→A message `account_state` (protocol 1.1, sent only when 1.1 is negotiated). On 1.0 the plugin shows the `welcome` state plus its locally observed reasons until the next `welcome`.
 
 ### 6.1 Bracket integrity on connections with locally simulated OCO
 
@@ -199,6 +214,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 ## 9. Versioning
 
 - `protocol_version` is `major.minor`. Additive optional fields and new enum values bump the minor, and receivers must ignore nothing silently: unknown enum values from a newer minor are answered with `error` `protocol.unsupported_value`.
+- A new message type is also a minor bump. The sender uses it only when the negotiated version includes it (the schema enforces it for `account_state`).
 - A new major lives in `contracts/adapter-protocol/v2/`, and the Core serves both for a transition period.
 - An adapter older than the Core's minimum version is refused with 4003. The plugin shows "update required", and the web app shows the connection as *outdated*.
 
@@ -208,6 +224,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 - **`adapter-sim`:** implements the adapter side, with scripted fills, partial fills, rejects, slow acks, duplicate deliveries, disconnects mid-command and expired commands. It is used for Core integration tests and the M1 demo without NinjaTrader.
 - **Plugin core library tests:**
   - outbox and dedupe across a simulated restart;
+  - stale re-delivery: record and execute a command, lose its ack, advance the clock 8 days (pruning runs), reconnect, and receive the same frame again. Expected: `rejected` + `command.stale` and no second execution. Core side: no retransmission after 72 h (`undelivered`, `out_of_sync`);
   - expiry with clock skew;
   - `depends_on` ordering;
   - orphan cancellation;
