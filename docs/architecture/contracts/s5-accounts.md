@@ -108,3 +108,16 @@ They are written in the same transaction as the change, through `app.outbox`. Th
 - `commission_per_contract_side` (optional, USD per contract and side): the commission floor (U20 a), prefilled from the preset and editable, in create, update and the response. In `updateAccount` it is the one exception to the full replacement: absent = unchanged, `null` = remove (4.1.0, QA Security). A lower or removed floor applies from the next trading day.
 - `evaluation_start` + `evaluation_earned_before` on create (S13b). Later changes go through `restartEvaluation`, not `updateAccount`.
 - Q35 decided 2026-10-23 with the setting on: the step-up of `account_binding_change` is required. Q37–Q42 are decided, and the "provisional" marks were removed.
+
+## 8. 5.0.0 changes
+
+- **Q73 (b, user):** a prop account whose size is outside the standard list copies the profile of the nearest standard size, like a real account. On a tie, `profile_size` is required. The nearest size only picks the stop/target profile; balance, limits and risk always use `size_amount`.
+- **Evaluation fields** are accepted only for an account with an evaluation target. Otherwise, 422 `accounts.evaluation_not_applicable` with the pointer of the first field sent. Invariant: an account with a target always has `evaluation_start`. When an existing account gains a target (S16 selection or preset change, rule edit), the Core sets a missing start to the Q46 default (registration date, user's time zone) in the same transaction.
+- `accounts.evaluation_restarted` details: `DetailsEvaluationRestarted` (no `achieved`).
+- `getOptInRules`: `firm_platform` without `preset_version_id` → 400 `/query/firm_platform`.
+- Implementation notes (Malha): a missing `Idempotency-Key` → 400 `common.invalid_request`, pointer `/header/Idempotency-Key`. `rule_values` before S16: 400 without a preset (schema), or 422 `accounts.preset_version_unknown` with one; never a 500.
+
+## 9. 5.1.0
+
+- Filling a missing `evaluation_start` when an account gains a target is a rule-input change. It bumps `account.limits_version` and emits `account.limits_changed` in the same transaction (ADR-0006 §3.1).
+- A missing `Idempotency-Key` has pointer `/header/Idempotency-Key`, which the root pointer rule now names.

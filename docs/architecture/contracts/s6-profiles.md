@@ -57,3 +57,15 @@ Rendering belongs to S10.
 
   Applied in data model rev. 8 (Lastro, 5dd2d45); the `set_by_user` `CHECK` in rev. 9.
 - `distance_unit = 'usd'`: the contract limits it to 2 decimals; the `CHECK` at 4 can stay.
+
+## 5. Implementation clarifications (Torno, S6 Core B4; no contract change)
+
+- **`price_decimals`** is derived by the Core, no column: the scale of `tick_size` with trailing zeros removed (0.25 → 2, 1 → 0, 0.005 → 3, 0.03125 → 5). `points` and prices are shown with it.
+- **Rounding toward the entry:** `ticks = floor(points / tick_size)` or `floor(usd / tick_value)`, per side. `rounded = true` when the division had a remainder. The range check runs after the floor: below 1 → 422 `profiles.distance_below_one_tick`, above 10 000 → 422 `profiles.distance_too_large`, with the side's pointer.
+- **Equivalents are exact products, never rounded:** `points = ticks × tick_size` with `price_decimals` decimals; `usd = ticks × tick_value` with max(2, scale of `tick_value`) decimals (`'12.50'`).
+- **No-op comparison** (`putDefaultProfile`, `putAccountProfile`): same `distance_unit` and numerically equal distances (`"100.1"` = `"100.10"`). Then nothing is written or audited, the stored text stays as first typed, and `row_version` does not change. A different unit is a change even when the ticks are the same.
+- **`listAccountProfiles`:** one entry per instrument with `catalog.instrument.is_enabled`, including those the account has no profile for (`profile` absent, Q43), in the `listInstruments` order (by symbol).
+
+## 6. 5.0.0: Q73 (b)
+
+- `nearest_size_default` now also applies to prop accounts whose size is outside the standard list. Restore without `copied_from_size` and `getNearestProfileSize` follow the same rule. The nearest size only picks the profile; risk uses the account's own size. No data-model change (`copied_from_size` already exists).

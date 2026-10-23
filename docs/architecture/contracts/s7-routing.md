@@ -72,3 +72,35 @@ Step-up (3.0.0, QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_per
 
 - Q67 (b) is decided and active (see §2.5).
 - Q35 is decided with the setting on: the `route_enable` step-up is required.
+
+## 7. Implementation clarifications (Ferro, S7 Core; no contract change)
+
+- **Display order of `RouteReasonCode`** (`effective.reasons[]`, most severe first), extending F§7.2 (out of sync → disconnected → blocked → automation pending → paused/disabled) with the route-level states first: `source_revoked`, `route_disabled`, `platform_unbound`, `out_of_sync`, `connection_disconnected`, `risk_blocked`, `limits_pending`, `no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`. This goes into the `RouteReasonCode` description at the next contract touch. It is a display order only: the audit code of a skipped instruction is the first gate that fails, in ADR-0003 §4.1 order.
+- **Gate order (ADR-0003 §4.1; confirmed by Esquadro for his next ADR-0003 delta, with `platform_unbound` from ADR-0008):** gates for all actions first, then entry gates; the audited code is the first gate that fails. `account_inactive` → `platform_unbound` → `automation_not_accepted` → `copy_not_accepted` → `signal_type_not_selected` → `out_of_sync` → `risk_blocked` → `limits_pending` → `no_bracket_profile` → action rules (§4.2) → `expired`.
+  - `source_revoked` and `route_disabled` are route status only, not instruction gates: a revoked token never passes ingress, and a disabled route yields no candidate.
+  - `connection_disconnected` does not skip the instruction: the command is created and waits. An entry's command expires (`routing.expired`) if its TTL runs out before delivery (never execute late); exits (close, reduce, cancel, a protective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as late (ADR-0003 §4.1, ADR-0004 T1). `expired` is an entries-only gate.
+  - `limits_pending` and `no_bracket_profile` apply to position-increasing actions only; an action that cannot be classified counts as an entry (ADR-0006 §3.3).
+  - ~~A `reverse` stopped by an entry gate is skipped whole.~~ Superseded by Q74 (b): see §8.
+- **`reverse` with no room:** the contract has `max_position_qty ≥ 1`. If a derived limit (S13/S14) leaves `M = 0`, the flatten runs and cancels the protections, and the open of `min(Q, M) = 0` is skipped with `routing.max_position_reached`. The decision outcome is `capped` with `executed_qty = 0` for the open, and the flatten is audited as usual.
+- **Expected position** is owned by the gateway, which recomputes it from execution reports (`position_after`, data model §6.3). Routing reads it once per decision through the query port `PositionFor(account_id, instrument)`. The port returns the signed position and the position identity (`position_ref` from U13, or unknown), so a `reduce` can resolve to `routing.position_unknown` without a second read. The trait lives on the routing side and the adapter in `crates/app` (ADR-0006, Ports). `routing_decision.position_before` is the value read. Trades (S21) only derive reporting from fills.
+
+## 8. 5.0.0
+
+- The `RouteReasonCode` description carries the display order and the gate order of §7 (Esquadro's ADR-0003 delta). `routing.platform_unbound` is now an audit code.
+- **Q74 (b, user)** replaces "skipped whole" in §7. For a `reverse` the ADR-0003 §4.2 position check runs before the entry gates. On an account barred for entries:
+  - position opposite → the close leg runs (flatten + cancel protections) and the open is skipped with the gate code: outcome `capped` (audit `partial`), `reverse_closed_qty`, notification `routing.reverse_close_only`;
+  - flat → skipped with the gate code;
+  - already on the reverse side → `routing.position_conflict` (rejected and notified, never a flatten).
+
+  A reverse never opens on a barred account.
+
+## 9. 5.1.0
+
+- An open leg of a `reverse` with an opposite position that expires **at routing** (the decision sees the TTL exceeded, e.g. a late webhook) closes only: the close leg runs (exits never expire), and the open is skipped with `routing.expired`. Outcome `capped` (audit `partial`), `reverse_closed_qty`, notification `routing.reverse_close_only` with `reason_code: routing.expired`. Flat → outcome `expired`. Already on the reverse side → `routing.position_conflict`, since the position check comes first. ADR-0003 gets the same sentence in Esquadro's next delta.
+- An open leg that expires **later, in the gateway queue** (connection down, close executed on reconnect) is not a routing decision. The decision stays `routed`, and ADR-0004 §5 applies, including "Exception: the opening leg of a reverse" (5.1.1, ADR-0004 r3). The open is held until the flatten in its `depends_on` is terminal. If it then expires, it becomes `expired` and is audited as `execution.expired`. It does **not** flag the account out of sync only when all of these hold:
+  - it never left the Core (`pending`, never sent);
+  - the flatten succeeded with a proven flat position: `already_flat`, or for `filled` the latest report with `position_after` shows 0 and no later report exists;
+  - the account has no other sync reason.
+
+  Then the user gets `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
+- `reverse_closed_qty` / `closed_qty` = abs(position) read at the decision: the quantity the close leg is sent to flatten. The executed result is in the execution entries.
