@@ -104,3 +104,13 @@
 - **Evaluation target (Q46 details):** start = date given by the user, default = the account's registration date; reaching the target = notice + notification only, no automatic action. Minimum days and payout later.
 - **GitHub:** the private repository is `git@github.com:LvDias/all-win.git` with the deploy key registered; the user asks to configure the remote, test the connection and push `main` and the branches (standing authorization: push only to this private repository; never public, no deploy, no production access).
 - **Canonical docs:** slice-plan (PO); ADR-0004/0005 + protocol 1.3, auth policy (Architect); HTTP contract (Compasso); data model (Database Architect).
+
+## 2026-10-23 — First push done; routine pushes
+- **Fact:** the user ran the initial push; `main` (188ed53) and the `s/*` / `d/*` branches are on the private repository `git@github.com:LvDias/all-win.git`, using dev2's deploy key.
+- **Decision:** from now on the team pushes to that private repository under the standing authorization (main after each local integration, and the slice/docs branches). If the Claude Code filter blocks a push, the Maestro gives the user the ready command. Still forbidden: making the repository public, force pushes, deploy, production access.
+- **Canonical doc:** this log.
+
+## 2026-10-23 — Q71 manual-trade commission
+- **Decision:** when a manual trade's commission is left blank, it is filled automatically from the account's configured `commission_per_contract_side` (U20); if the account has no configured commission, the recommended option applies (zero, net = gross, labelled "comissões não informadas"). Manual trades still never feed risk.
+- **Note:** the amount is computed by the Core (the browser does no money arithmetic); the UI shows the Core's value/preview and the user may override it.
+- **Canonical docs:** slice-plan S21 AC-7 (PO); HTTP contract trades module (Compasso).
