@@ -65,3 +65,7 @@ Rendering belongs to S10.
 - **Equivalents are exact products, never rounded:** `points = ticks × tick_size` with `price_decimals` decimals; `usd = ticks × tick_value` with max(2, scale of `tick_value`) decimals (`'12.50'`).
 - **No-op comparison** (`putDefaultProfile`, `putAccountProfile`): same `distance_unit` and numerically equal distances (`"100.1"` = `"100.10"`). Then nothing is written or audited, the stored text stays as first typed, and `row_version` does not change. A different unit is a change even when the ticks are the same.
 - **`listAccountProfiles`:** one entry per instrument with `catalog.instrument.is_enabled`, including those the account has no profile for (`profile` absent, Q43), in the `listInstruments` order (by symbol).
+
+## 6. 5.0.0: Q73 (b)
+
+- `nearest_size_default` now also applies to prop accounts whose size is outside the standard list. Restore without `copied_from_size` and `getNearestProfileSize` follow the same rule. The nearest size only picks the profile; risk uses the account's own size. No data-model change (`copied_from_size` already exists).

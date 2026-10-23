@@ -194,6 +194,7 @@ components:
         - routing.automation_not_accepted
         - routing.copy_not_accepted
         - routing.account_inactive
+        - routing.platform_unbound
         - routing.no_bracket_profile
         - routing.limits_pending
         - routing.out_of_sync
@@ -491,7 +492,15 @@ components:
     DetailsRoutingDecision:
       type: object
       additionalProperties: false
-      description: Every `routing.*` decision code (routed, capped, skipped, refused, expired).
+      description: |
+        Every `routing.*` decision code (routed, capped, skipped, refused, expired). Q74: for a `reverse`
+        the position check (ADR-0003 §4.2) runs before the entry gates. On an account barred for entries
+        (`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`), or with no room
+        (`max_position_reached`, derived M = 0): position opposite → only the close leg runs, and the
+        entry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0
+        for the open, and `reverse_closed_qty`; flat → skipped with the gate code, no
+        `reverse_closed_qty`; already on the reverse side → `routing.position_conflict` (rejected and
+        notified, never a flatten).
       properties:
         sizing: { $ref: '#/components/schemas/DetailsSizing' }
         lifecycle_state: { type: string, enum: [paused, disabled] }
@@ -507,6 +516,7 @@ components:
           type: array
           items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         limits_version: { type: integer, minimum: 1, description: With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006). }
+        reverse_closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'Q74: contracts flattened by the close leg of a reverse whose open leg was skipped with this code.' }
         ttl_ms: { type: integer, minimum: 1 }
         expiry_base: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
     DetailsCommandSent:
@@ -856,7 +866,7 @@ components:
       type: object
       additionalProperties: false
       required: [profit_target, achieved, start]
-      description: '`risk.evaluation_target_reached` (notify only, Q70) and `accounts.evaluation_restarted` (with the previous start and earned-before).'
+      description: '`risk.evaluation_target_reached` (notify only, Q70).'
       properties:
         start: { type: string, format: date }
         previous_start: { type: string, format: date }
@@ -864,6 +874,17 @@ components:
         previous_earned_before: { $ref: '#/components/schemas/Money' }
         profit_target: { $ref: '#/components/schemas/Money' }
         achieved: { $ref: '#/components/schemas/Money' }
+    DetailsEvaluationRestarted:
+      type: object
+      additionalProperties: false
+      required: [start, previous_start, profit_target]
+      description: '`accounts.evaluation_restarted`: old and new start and earned-before, and the target in force. No progress figure (that is risk data, S13b).'
+      properties:
+        start: { type: string, format: date }
+        previous_start: { type: string, format: date }
+        earned_before: { $ref: '#/components/schemas/Money' }
+        previous_earned_before: { $ref: '#/components/schemas/Money' }
+        profit_target: { $ref: '#/components/schemas/Money' }
     DetailsSecurityInvitation:
       type: object
       additionalProperties: false
@@ -894,6 +915,7 @@ components:
         routing.automation_not_accepted: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.copy_not_accepted: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.account_inactive: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.platform_unbound: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.no_bracket_profile: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.limits_pending: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.out_of_sync: { $ref: '#/components/schemas/DetailsRoutingDecision' }
@@ -959,7 +981,7 @@ components:
         risk.target_reached: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.evaluation_target_reached: { $ref: '#/components/schemas/DetailsEvaluation' }
-        accounts.evaluation_restarted: { $ref: '#/components/schemas/DetailsEvaluation' }
+        accounts.evaluation_restarted: { $ref: '#/components/schemas/DetailsEvaluationRestarted' }
         trades.captured: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_created: { $ref: '#/components/schemas/DetailsTrade' }
         trades.manual_changed: { $ref: '#/components/schemas/DetailsTradeChanged' }

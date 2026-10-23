@@ -37,7 +37,7 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
    - `fill_corrected` (a `fill.operation` of `amend` / `remove`).
 4. **New routing decision codes** named here: `routing.routed` (a full-quantity decision) and `routing.no_bracket_profile` (Q43). `routing.quantity_capped` keeps the spec's name, for the `capped` decision.
 5. **Typed `details`:** `AuditDetailsByCode` is a type map (code → schema); the client types `details` by `code`. Money, prices and distances are decimal strings, and the UI does no arithmetic. `execution.bracket_calculated` carries the S6 AC-4 adjustment (requested distance, whole ticks, rounded flags, resulting prices).
-6. **`safe_to_display`:** the raw `details` JSON appears under "technical data" only when the Core marks it safe. The catalog's rendered fields are always shown. Secrets never reach `details` (redaction + the storage `CHECK`).
+6. **`safe_to_display`:** the raw `details` JSON appears under "technical data" only when the Core marks it safe. The catalog's rendered fields are always shown. Secrets never reach `details` (redaction + the storage `CHECK`). `safe_to_display = true` for `ingress.*` and `routing.subscription_changed` (Esquadro, agreed with Ferro). In `ingress.rejected` the `pointer` is a path only, never a value from the body.
 7. **Exits:** `is_exit` on routing and execution entries lets the text say "saída" (spec §7 rule) without the client knowing the action rules.
 8. **Duplicates (Q-S10-6):** `ingress.duplicate_ignored` entries carry the original `instruction_id`, so they appear in the original instruction's `intake`.
 9. **Timeline:**
@@ -74,4 +74,6 @@ Read-only by construction: no write operation exists (S10 AC-3). Isolation: ever
 - **`actor` (Crivo note on 4.3.0), so the Core fills it consistently:**
   - `security.invitation_issued` / `security.invitation_revoked` → `user`: the platform admin, in their own log.
   - `security.account_created` → `user`: the invitee who completed the sign-up, in the new user's log.
+  - `ingress.*` → `system` (the source is identified by `source_id`).
+  - `routing.subscription_changed` → `user` with `cause = user`; `system` with `cause = account_ineligible` (Q67).
   - General rule: `user` when a person's request caused the entry; `system` for everything the Core or the plugin does on its own (routing decisions, executions, risk states, connection status, scheduled derivations, Core-side switch-offs such as Q67); `platform_admin` only for an admin acting on another user's data (Q28 recovery).

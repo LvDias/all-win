@@ -49,7 +49,7 @@
         "achieved",
         "start"
       ],
-      "description": "`risk.evaluation_target_reached` (notify only, Q70) and `accounts.evaluation_restarted` (with the previous start and earned-before).",
+      "description": "`risk.evaluation_target_reached` (notify only, Q70).",
       "properties": {
         "start": {
           "type": "string",
@@ -113,7 +113,7 @@
     "DetailsRoutingDecision": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Every `routing.*` decision code (routed, capped, skipped, refused, expired).",
+      "description": "Every `routing.*` decision code (routed, capped, skipped, refused, expired). Q74: for a `reverse`\nthe position check (ADR-0003 §4.2) runs before the entry gates. On an account barred for entries\n(`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`), or with no room\n(`max_position_reached`, derived M = 0): position opposite → only the close leg runs, and the\nentry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0\nfor the open, and `reverse_closed_qty`; flat → skipped with the gate code, no\n`reverse_closed_qty`; already on the reverse side → `routing.position_conflict` (rejected and\nnotified, never a flatten).\n",
       "properties": {
         "sizing": {
           "$ref": "#/$defs/DetailsSizing"
@@ -164,6 +164,12 @@
           "type": "integer",
           "minimum": 1,
           "description": "With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006)."
+        },
+        "reverse_closed_qty": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Q74: contracts flattened by the close leg of a reverse whose open leg was skipped with this code."
         },
         "ttl_ms": {
           "type": "integer",
@@ -294,6 +300,41 @@
         "account_count": {
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "ParamsReverseCloseOnly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason_code",
+        "closed_qty",
+        "closed_side"
+      ],
+      "description": "Q74 (Vigia I1): a `reverse` that closed the position and skipped the open, because the account is\nbarred for entries or has no room. Always notified, one per occurrence, whatever the gate\n(including `routing.limits_pending`, which is otherwise not notified). It replaces the gate's own\ngrouped notification for that occurrence. The audit entry carries the gate code\n(`DetailsRoutingDecision.reverse_closed_qty`).\n",
+      "properties": {
+        "reason_code": {
+          "type": "string",
+          "enum": [
+            "routing.out_of_sync",
+            "routing.risk_blocked",
+            "routing.limits_pending",
+            "routing.no_bracket_profile",
+            "routing.max_position_reached"
+          ]
+        },
+        "closed_qty": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "closed_side": {
+          "type": "string",
+          "enum": [
+            "long",
+            "short"
+          ],
+          "description": "The side of the position that was closed."
         }
       }
     },
