@@ -152,6 +152,7 @@ mod tests {
                 code: RejectionCode::SchemaViolation,
                 pointer: Some("/quantity".into()),
                 message_id: None,
+                size_bytes: Some(212),
             },
         };
         let p = event_payload(&event);
@@ -159,6 +160,7 @@ mod tests {
         assert_eq!(p["code"], "ingress.schema_violation");
         assert_eq!(p["pointer"], "/quantity");
         assert_eq!(p["key_id"], "AbCdEf123456");
+        assert_eq!(p["size_bytes"], 212);
         assert!(p.get("message_id").is_none());
     }
 }

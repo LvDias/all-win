@@ -189,6 +189,17 @@ async fn audit_partitions_are_maintained_through_definer_functions_only() {
             .await
             .is_err()
     );
+    // Recent audit can never be dropped, even by a buggy job.
+    for month in [
+        "date_trunc('month', now())::date",
+        "(date_trunc('month', now()) + interval '1 month')::date",
+    ] {
+        let sql = format!("SELECT audit.drop_partitions_before({month})");
+        let result = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .execute(&db.maint)
+            .await;
+        assert!(result.is_err(), "{month}");
+    }
     assert!(
         sqlx::query("ALTER TABLE audit.audit_entry DETACH PARTITION audit.audit_entry_default")
             .execute(&db.maint)

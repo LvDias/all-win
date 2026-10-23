@@ -63,6 +63,11 @@ BEGIN
   IF p_month <> date_trunc('month', p_month)::date THEN
     RAISE EXCEPTION 'p_month must be the first day of a month';
   END IF;
+  -- Never the current or the previous month, whatever the caller computes; the retention
+  -- window itself (24 months) is the Core's.
+  IF p_month > (date_trunc('month', now() AT TIME ZONE 'UTC') - interval '1 month')::date THEN
+    RAISE EXCEPTION 'p_month must be at least one month before the current month';
+  END IF;
   FOR part IN
     SELECT c.relname
       FROM pg_inherits i

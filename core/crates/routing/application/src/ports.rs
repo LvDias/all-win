@@ -111,6 +111,7 @@ pub fn event_payload(event: &IngressEvent) -> Value {
             code,
             pointer,
             message_id,
+            size_bytes,
         } => {
             payload.insert("code".into(), json!(code.as_str()));
             if let Some(pointer) = pointer {
@@ -118,6 +119,9 @@ pub fn event_payload(event: &IngressEvent) -> Value {
             }
             if let Some(message_id) = message_id {
                 payload.insert("message_id".into(), json!(message_id));
+            }
+            if let Some(size_bytes) = size_bytes {
+                payload.insert("size_bytes".into(), json!(size_bytes));
             }
         }
     }

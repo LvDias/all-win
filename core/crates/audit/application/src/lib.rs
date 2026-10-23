@@ -129,12 +129,12 @@ mod tests {
         let e = event(
             "ingress.rejected",
             json!({"kind":"ingress.rejected","code":"ingress.schema_violation","pointer":"/quantity",
-                   "source_id":Uuid::now_v7(),"key_id":"AbCdEf123456"}),
+                   "size_bytes":212,"source_id":Uuid::now_v7(),"key_id":"AbCdEf123456"}),
         );
         let a = entry_for(&e).unwrap();
         assert_eq!(
             a.details,
-            json!({"error_code":"ingress.schema_violation","pointer":"/quantity"})
+            json!({"error_code":"ingress.schema_violation","pointer":"/quantity","size_bytes":212})
         );
     }
 
