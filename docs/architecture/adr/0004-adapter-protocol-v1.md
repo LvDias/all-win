@@ -44,6 +44,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 | 4003 | Unsupported protocol version | Stop. Show "update the plugin" |
 | 4004 | Superseded by another session | Stop. Show "connected elsewhere" |
 | 4005 | Heartbeat timeout | Reconnect with backoff |
+| 4100 | **Sent by the adapter** (1.3): the user pressed "Desconectar" in the plugin | The adapter keeps its device token, stores a "disconnected by the user" flag and does not reconnect until the user presses "Conectar". Local enforcement continues. The Core records `Connection.disconnect_reason = user` (§6) |
 | 4006 | Protocol violation (schema, ordering) | Reconnect with backoff; the Core logs the details |
 
 ## 3. Envelope and message catalogue
@@ -55,7 +56,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 | Type | Direction | Reliable (acked) | Purpose |
 |---|---|---|---|
 | `hello` | A→C | handshake | Adapter identity and version, supported protocol versions, visible platform accounts with kind (`simulation`/`playback`/`live`/`unknown`), count of pending outbound messages |
-| `welcome` | C→A | handshake | Session and connection ids, negotiated version, heartbeat and ack timeouts, `simulation_only`, user locale, mapped accounts (`account_id`, roles `destination`/`master`, `sync_state`) |
+| `welcome` | C→A | handshake | Session and connection ids, negotiated version, heartbeat and ack timeouts, `simulation_only`, user locale, mapped accounts (`account_id`, roles `destination`/`master`, `sync_state`). **1.3:** `connection_name`, `time_zone`, `app_url`, `accounts[].display_name` (applied at each `welcome`) |
 | `error` | both | no | Stable `code`, optional `ref_msg_id` |
 | `ack` | both | no | Acknowledges up to 500 `msg_id`s |
 | `heartbeat` | both | no | Liveness |
@@ -67,7 +68,11 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 | `position_snapshot` | A→C | **yes** | Positions and working orders per mapped account |
 | `instruction` | A→C | **yes** | Master-account input: a standard instruction (ADR-0003), validated with the same schema |
 | `risk_event` | A→C | **yes** | Warning (80 %), limit reached, flattened, orders cancelled, blocked/unblocked, blocked-account order cancelled |
-| `risk_state` | A→C | no (latest wins) | Live P&L and remaining limits for display; throttled to at most 2 per second per account |
+| `risk_state` | A→C | no (latest wins) | Live P&L and remaining limits for display; throttled to at most 2 per second per account. **1.3:** `realized_pnl` is net, plus `commissions_today` and `commission_source` (§7) |
+| `notifications` | C→A | no (latest wins) | **1.3:** snapshot after `welcome`: up to 200 notifications plus the authoritative unread count (S18) |
+| `notification` | C→A | **yes** | **1.3:** upsert of one notification by `notification_id` and monotonic `revision` |
+| `notification_read` | A→C | **yes** | **1.3:** notifications the user marked as read in the plugin |
+| `trade_completed` | A→C | **yes** | **1.3:** a completed trade computed by the plugin (S21 AC-2), reconciled by the Core with its fills. Fill references carry quantities. A fill shared by several trades (a flip, or a FIFO partial close in individual mode) has its effective commission allocated pro rata by quantity: 4 decimals, half away from zero, and the trade allocated last gets the remainder, so the shares sum to the fill's commission (Crivo F1). The allocation order is the consumption order: closing quantities first (FIFO), then the flip remainder (Pêndulo LA1) |
 
 **Handshake:**
 
@@ -137,7 +142,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
       - a fill correction (`amend`/`remove`) touching the opening fill;
       - at the guard, when the live platform position differs from the record (an execution still queued, ADR-0005 N6).
       - An `unknown` or `external` identity never matches a `position_ref`. NT8 execution retention and ordering across a restart are verified by spikes E4/E9 (untested).
-    - **Core:** every `reduce` carries `refs.position_ref` = the identity in the Core's expected state, derived from the **order of execution reports** (the fill whose `position_after` moved from 0), never from routing order: with two entries in flight from flat, the first to fill is the identity. If the Core holds no All Win identity, it does not send the reduce; routing skips it with `routing.position_unknown`, audited.
+    - **Core:** every `reduce` carries `refs.position_ref` = the identity in the Core's expected state, derived from the **order of execution reports** with the same rule as the adapter: the All Win fill whose `position_after` takes the position from 0 to non-0, or flips it (`position_after` crosses 0 with the opposite sign). It is never derived from routing order: with two entries in flight from flat, the first to fill is the identity. If the Core holds no All Win identity, it does not send the reduce; routing skips it with `routing.position_unknown`, audited.
     - **Adapter steps for a `reduce`, in order** (after the account checks):
       0. **crash-window lookup** by order name `(command_id, x)`: any match is adopted and reported (filled, partially filled, cancelled…), never re-checked; 2+ matches → `order.ambiguous_reference`; a failed lookup → never submit. This comes first, so a re-delivery after a lost journal reports what already happened instead of "nothing to reduce" or "position changed";
       1. flat → `cancelled` + `command.nothing_to_reduce` (benign race: the bracket closed it);
@@ -173,6 +178,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 | Execution amended or removed by the platform (`fill.operation` `amend`/`remove`) | The Core corrects the position and P&L, audits it, and flags `out_of_sync` if the expected state no longer matches |
 | Command not acked within the 72-h retransmission horizon (§4) | `out_of_sync` (`sync.command_undelivered`) + alert; the command is `undelivered` and never retransmitted |
 | User unpairs the connection (Q18) | Every mapped account of that connection becomes `out_of_sync`; nothing is closed or cancelled |
+| User disconnects in the plugin (close 4100, 1.3) | Mapped accounts with an open position or a command in flight: `out_of_sync` (`sync.disconnected_by_user`) + alert, because routing stops for them. Flat with nothing in flight: status + audit row only, no alert. `Connection.disconnect_reason = user`. Local enforcement continues |
 | Bracket integrity cases on local-OCO connections | See §6.1 |
 
 **While `out_of_sync`:**
@@ -220,6 +226,16 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 - **Reporting:**
   - Every enforcement action produces `execution_report`s with `origin: local_enforcement` plus a `risk_event`.
   - `while_disconnected: true` marks actions taken offline. They are delivered from the outbox on reconnect.
+- **Net P&L (1.3, U20 user decision 2026-10-23):** every risk metric uses **net** P&L.
+  - **Effective commission of a fill** = max(platform-reported `fill.commission`, `commission_per_contract_side` × quantity). It is fixed when the fill is recorded, with the floor in force at that time, and never recomputed.
+  - **Live usage** (daily loss, intraday drawdown on equity) also deducts the **expected closing-side commission** (floor × open quantity). This is fail-closed: a limit triggers slightly earlier, never later. End-of-day and realized values are realized-only.
+  - **Drawdown** high water and floor use the **adjusted balance** = platform balance − Σ(effective − platform-reported commission). The sum is cumulative since the account's tracking start, never just the day's; for the evaluation target it runs from `evaluation_start` (Crivo N1). The plugin cannot rebuild it, so `limits.drawdown.balance_adjustment` carries the sum up to the previous trading-day close. Plugin adjusted equity = platform balance − balance_adjustment − the day's Σ(effective − reported) − expected closing commission (Pêndulo M9). The adapter keeps the day's Σ(effective − reported) in its durable journal, reset at the trading-day boundary. If it cannot vouch for it (for example after a restart without the journal), it alerts the user and uses the Core's value at the next `limits` push, never a smaller one (Pêndulo LA2).
+  - **Floor timing:** the plugin uses the floor of the last applied `limits` version at fill time. A difference with the Core's snapshot (a higher floor not yet received) is reconciled by the Core and affects only display (`risk_state`) and `trades.reconcile_mismatch`. A `fill.commission` the platform fills in late is reported as absent (the floor applies) and never amended afterwards (spike E14).
+  - **Not reported vs zero:** an absent `fill.commission` means the platform reported nothing; a present `0` means zero. Per-fill `commission_source`: `platform` when the reported value is ≥ floor × quantity (it won); `configured` when the floor won (reported lower, zero, or absent with a floor); `none` when absent and no floor.
+  - **`commission_source`** `none` (no platform commission and no floor) means net equals gross, and the plugin shows "comissão não informada; os limites podem estar folgados demais".
+  - **A lower floor** is scheduled for the next trading day (ADR-0006 §3.7); a higher one applies at once.
+- **Evaluation target (1.3, Q46):** `limits.evaluation` gives the target and the baseline up to the previous trading-day close (computed by the Core). The plugin shows progress = baseline + the day's net, which also deducts the expected closing commission (Pêndulo L-E), so the target is never reported early. Reaching the target only notifies; it never flattens or blocks.
+- **Unpairing stops local enforcement** for that connection (G7): the plugin no longer receives `limits` and clears its cache for those accounts. Before unpairing, the web app and the plugin say so.
 - **Core-side gate:** the Core's own gate (ADR-0003 §4.1) uses the same limits and the reported state. The adapter never relaxes a block because of a Core message, except an `unblocked` state that follows a reset.
 
 ## 8. Pairing a NinjaTrader instance (answers D5)
@@ -249,7 +265,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 - `protocol_version` is `major.minor`. Additive optional fields and new enum values bump the minor, and receivers must ignore nothing silently: unknown enum values from a newer minor are answered with `error` `protocol.unsupported_value`.
 - A new message type is also a minor bump. The sender uses it only when the negotiated version includes it (the schema enforces it for `account_state`).
 - Envelopes created after `welcome` carry the negotiated version. Outbox frames keep their original bytes on retransmission, so a receiver accepts any envelope minor that is less than or equal to the negotiated one (e.g. a `1.0` frame inside a `1.1` session).
-- **Rollback (newer frame, older session):** an outbox frame created in a newer-minor session is still retransmitted byte-identical if a later session negotiates an older minor (e.g. Core rollback from 1.1 to 1.0). The receiver accepts it when its `type` exists in the negotiated version and its payload validates against the schema the receiver knows; otherwise it answers `error` `protocol.unsupported_value` with `ref_msg_id` and does **not** ack it, so the frame stays in the outbox and the session is flagged for the user. Every A→C type exists in 1.0, so this case cannot lose an execution report. A 1.2 `reduce` frame (with `refs`) retransmitted to an adapter that negotiated 1.1 fails the 1.1 schema and is refused the same way: it stays unacked and is never executed. This is intended. **Never "fix" it by stripping `refs`**, because that would run the reduce without the guard.
+- **Rollback (newer frame, older session):** an outbox frame created in a newer-minor session is still retransmitted byte-identical if a later session negotiates an older minor (e.g. Core rollback from 1.1 to 1.0). The receiver accepts it when its `type` exists in the negotiated version and its payload validates against the schema the receiver knows; otherwise it answers `error` `protocol.unsupported_value` with `ref_msg_id` and does **not** ack it, so the frame stays in the outbox and the session is flagged for the user. Every A→C type of 1.0 still exists, so this case cannot lose an execution report. **1.3-only A→C messages** (`trade_completed`, `notification_read`) are **held** by the adapter while the session negotiated less than 1.3, and are sent at the next ≥ 1.3 session (Pêndulo L-R). A 1.2 `reduce` frame (with `refs`) retransmitted to an adapter that negotiated 1.1 fails the 1.1 schema and is refused the same way: it stays unacked and is never executed. This is intended. **Never "fix" it by stripping `refs`**, because that would run the reduce without the guard.
 - A new major lives in `contracts/adapter-protocol/v2/`, and the Core serves both for a transition period.
 - **Reduce needs 1.2:** the Core never sends a `reduce` on a session that negotiated a version below 1.2. **At the Core upgrade to 1.2**, undelivered `reduce` frames created before it (1.0/1.1, without `refs`) are marked `expired`, audited, and never retransmitted, so an old frame cannot reach a still-1.1 plugin unguarded (Pêndulo L3). Routing skips it with `routing.adapter_protocol_outdated` (audited, alert), so a reduce never runs without the position-identity guard (§5). A 1.2 adapter rejects a reduce in a 1.0/1.1 envelope with `command.position_changed`; a 1.2-envelope reduce without `refs` is `protocol.invalid_message`, not acked (§5).
 - An adapter older than the Core's minimum version is refused with 4003. The plugin shows "update required", and the web app shows the connection as *outdated*.

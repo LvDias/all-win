@@ -1,6 +1,6 @@
 # Authentication, session and credential policy (V1)
 
-- **Status:** rev. 2 **Proposed** (2026-10-23): passwordless sign-in by one-time code replaces password + TOTP (user requirement change of 2026-10-23, [decisions.md](../../delivery/decisions.md); supersedes Q21's password parts, Q22, D10, A5). Decided by the user and restated here: invite-only sign-up, e-mail and WhatsApp confirmed by code, login by a code on a channel the user chooses, code single use / 10 min / 5 wrong attempts, send limits per user and per IP, new-device e-mail, fresh code for sensitive actions, channel change confirmed on old and new channel, WhatsApp may ship after e-mail. **Open for the user:** U16 (code format, §2.1), Q28 (lost channels, §9), Q29, Q30, Q33 (§4), Q34 (§5.3), Q35 (§6.2), U17 (WhatsApp supplier). Items marked **[Proposed]** are Architect recommendations awaiting those answers.
+- **Status:** rev. 3.1 (2026-10-23): §6.1 step-up consumption across modules ([ADR-0007](../adr/0007-access-port.md), user approved); a moot M2/M3 clause removed from §6.2. Rev. 3 **Accepted** (2026-10-23). The user accepted every recommendation of rev. 2 (decisions.md, "User decisions on all open recommendations"): U16 format 1, Q28–Q36, M2, M3, proposals (i) the other-channel code on a channel change and (ii) the 24-h freeze after a change, and the Q35 set with the setting on. Rev. 2 (2026-10-23): passwordless sign-in by one-time code replaces password + TOTP (user requirement change of 2026-10-23, [decisions.md](../../delivery/decisions.md); supersedes Q21's password parts, Q22, D10, A5). Decided by the user and restated here: invite-only sign-up, e-mail and WhatsApp confirmed by code, login by a code on a channel the user chooses, code single use / 10 min / 5 wrong attempts, send limits per user and per IP, new-device e-mail, fresh code for sensitive actions, channel change confirmed on old and new channel, WhatsApp may ship after e-mail. Still open: U17 (WhatsApp supplier; the user started the Meta verification).
 - **Rev. 1** (Accepted 2026-10-23): password + optional TOTP model. Its session values (Q21 a) and link/token rules carry over unless stated.
 - **Owner:** Software Architect.
 - **Product source:** [slice-plan](../../product/release-1/slice-plan.md) V1-S3 rev. 7 (AC-1…AC-16) and V1-S3b (WhatsApp).
@@ -14,16 +14,16 @@
 
 | Purpose | Who requests | Sent to | Bound to |
 |---|---|---|---|
-| `signup` | invitee, with a valid invitation | the invited e-mail. WhatsApp at sign-up depends on **Q31**; recommended (a): sign-up is e-mail only and WhatsApp is added later as a channel change (§7, S3 AC-3, S3b AC-1) | invitation, flow |
+| `signup` | invitee, with a valid invitation | the invited e-mail. WhatsApp at sign-up: **Q31 decided (a)**: sign-up is e-mail only and WhatsApp is added later as a channel change (§7, S3 AC-3, S3b AC-1) | invitation, flow |
 | `login` | anyone, unauthenticated | the chosen confirmed channel of the account, if it exists | identifier, flow |
 | `step_up` | signed-in user | a confirmed channel the user chooses | session, action, target |
 | `channel_change` | signed-in user | the current value **and** the new value of the channel (two codes, one flow) | session, flow |
 
 ## 2. Codes
 
-### 2.1 Format (U16) — recommendation: format 1
+### 2.1 Format (U16) — decided: format 1
 
-| | Format 1 (recommended) | Format 2 |
+| | Format 1 (decided) | Format 2 |
 |---|---|---|
 | Alphabet | **Crockford Base32**: `0–9 A–Z` without `I L O U` (32 symbols) | upper + lower + digits + specials (≈94 printable ASCII) |
 | Length / entropy | 8 characters → 32⁸ = 2⁴⁰ ≈ 1.1 × 10¹² | 8 characters → 94⁸ ≈ 2⁵² ≈ 6.1 × 10¹⁵ |
@@ -68,6 +68,11 @@
   - The `login` screen **always** shows the same text, whatever happened: "Se o e-mail estiver cadastrado, enviamos um código. Não chegou? Confira o spam ou peça outro em 60 s." A failed login delivery is **never** reported to the unauthenticated requester.
   - Every failed send of a registered user writes an audit row `auth.code_delivery_failed` (channel, purpose, provider error class; never the code). After the next successful sign-in the user sees it in the audit log and as a notice ("Um código de acesso não pôde ser enviado em …"). Repeated provider failures raise an admin alert.
   - `signup`, `step_up` and `channel_change` run in a context that already proves the destination (invitation-bound or signed in). There the client may read the challenge's delivery state (`pending`, `sent`, `failed`) and offer another channel: "Não foi possível enviar pelo WhatsApp. Enviar por e-mail?" The Core never switches channel on its own (S3b AC-5).
+- **Delivery providers by environment** (decided by the Architect, 2026-10-23):
+  - A `CodeSender` port. By default it is `DisabledSender`, which reports delivery `failed` and sends nothing. That is correct while no provider exists (e-mail Q8, WhatsApp U17): nobody can sign in.
+  - **Development/test only:** an SMTP sender to a local Mailpit (dev compose). It is enabled only when `APP_ENV` is development or test **and** an explicit flag is set. The Core refuses to start with it in any other environment.
+  - E2E reads codes through the Mailpit API.
+  - The Core logs which `CodeSender` is active at startup (Disabled, Mailpit or the provider), so an operator sees a Mailpit enabled by mistake at once (Vigia I2).
 - **Message content:**
   - the code;
   - what it is for, in the user's language ("para entrar", "para ativar a automação na conta …", "para trocar o e-mail");
@@ -88,7 +93,7 @@
 - **WhatsApp number clash** (S3b, I4): same rule as the channel clash above. Adding a number that belongs to another account never says so.
 - **Sign-up** needs a valid invitation token bound to one e-mail (Q36 a), so it does not enumerate accounts.
 
-## 4. Limits (Q33) — [Proposed] values
+## 4. Limits (Q33) — decided values
 
 "Known device" = the request carries a valid device cookie of that user (§5.2). Unknown devices and known devices have **separate** per-identifier budgets. An attacker who knows the e-mail can therefore exhaust only the unknown-device budget, and the real user keeps signing in from their own browser.
 
@@ -116,7 +121,7 @@
 
 ### 5.1 Session (Q29)
 
-- **Values (Q21 a, carried over; Q29 a recommended):** idle 12 h / absolute 24 h; "keep me signed in" idle 7 days / absolute 30 days.
+- **Values (Q21 a, carried over; Q29 a decided):** idle 12 h / absolute 24 h; "keep me signed in" idle 7 days / absolute 30 days.
 - **Mechanics (rev. 1, unchanged):**
   - `__Host-aw_session` cookie, `HttpOnly; Secure; SameSite=Lax; Path=/`, 256-bit random id stored as SHA-256;
   - the idle timeout is refreshed only by user-initiated requests (SSE and polling do not extend it);
@@ -133,9 +138,10 @@
 - **Shared browser** (C4): only an unknown or revoked cookie value is replaced. A value valid for **another** user is kept, and this user gets their own `known_device` row with the same value, so each user of a shared browser keeps it as a known device.
 - **A new device** is a successful sign-in whose request carries no valid device cookie **of that user**. Only the sign-up session itself sends no notice (AC-9); any later sign-in from another browser, including the first one after sign-up, is a new device.
 - **"Forget this device"** (user action in Sessions/Devices) revokes the device and ends the sessions bound to it (`end_reason = device_revoked`).
+- **Shared browser, forget device** (Crivo N2): if user A forgets the device while user B still has a valid row with the same cookie value, A's next sign-in sets a new value. Then B's next sign-in from that browser counts as a new device, and B gets a notice. This is accepted: it errs towards notifying.
 - **A revoked device's cookie counts as no cookie** (R11). The next sign-in from that browser is a new device: it gets a **new** random device value and a new `known_device` row; the revoked row is never reactivated. The same applies after "sign out everywhere". The response clears or replaces the stale cookie.
 
-### 5.3 New-device notice (Q34) — [Proposed] content
+### 5.3 New-device notice (Q34) — decided content
 
 - Sent **by e-mail** to the account e-mail (also when the sign-in used WhatsApp, S3b AC-4), in the user's language and time zone, through the outbox (it holds no secret). Contents:
   - date and time;
@@ -150,13 +156,13 @@
 
 ### 6.1 Mechanics (Q30)
 
-- Before a sensitive action, the client obtains a **fresh code** for that action. Q30 (a) is recommended: every action asks a new code, and there is no reuse window.
+- Before a sensitive action, the client obtains a **fresh code** for that action. Q30 (a) is decided: every action asks a new code, and there is no reuse window.
   1. `POST` request step-up (channel, action, target): the Core sends a `step_up` code bound to the session, the action kind and the target id, and returns its `challenge_id`.
-  2. The client sends the action request with the `challenge_id` and the `code` (HTTP contract 2.0.0). The Core verifies the code and performs the action in the same transaction, so a code cannot authorize anything else.
+  2. The client sends the action request with the `challenge_id` and the `code` (HTTP contract 2.0.0). The Core verifies the code against its bound session, action and target, and consumes it atomically **before** the action is performed. When the action belongs to the `identity` module, consumption and action share one transaction. For an action of another module, the code is consumed in identity's own commit and the action runs afterwards ([ADR-0007](../adr/0007-access-port.md) §3.2). A code therefore authorizes at most one action, and nothing other than its bound action and target. An action refused after the step-up (409/422) has spent the code, and the user requests a new one.
 - Missing or failed step-up → `403 auth.step_up_required` (missing) or `auth.code_invalid` (wrong). Every attempt is audited (AC-10, AC-16).
 - With two confirmed channels the user may pick either (S3b AC-3), except for channel change (§7).
 
-### 6.2 Which actions (Q35) — [Proposed]: the user's three plus three security musts
+### 6.2 Which actions (Q35) — decided: the user's three plus the security musts
 
 | Action | Step-up | Why |
 |---|---|---|
@@ -166,28 +172,29 @@
 | Create or rotate a **source token** | **must** | Gives a holder of a stolen session a persistent way to send trades into the user's accounts. It survives sign-out and session expiry, because the token is a separate credential |
 | Create a **pairing code** | **must** | Pairing an attacker's NT8 instance gives persistent access to commands and account data, also surviving the session |
 | **Admin** actions: issue an invitation, recovery for a lost channel (§9) | **must** | An admin session controls other users' accounts |
-| Turn enforcement **off** on an account; raise maximum position size | recommended, not a must | Increases loss exposure but grants no persistent access. Q35 (a) leaves them without step-up. I recommend including them (both are rare), but the user decides |
+| Enable an automated-source route to an account whose automation was not accepted with step-up (`route_enable`); change the platform binding of an account that receives automation (`account_binding_change`) | **must** (QA Security M1/L1 on HTTP 2.4.0) | Either one silently points automated trading at an account |
+| Turn enforcement **off** on an account; raise maximum position size | no (not in the accepted Q35 set) | Increases loss exposure but grants no persistent access |
 | Decline an opt-in; revoke a source token; sign out (everywhere) | no | Reduce access only |
 
-**Pending Q35, the three musts are enforced by a Core setting** (`step_up.q35_persistence_actions`, default on; contract `x-step-up: conditional`); the contract's action list is a superset, so the user's answer changes the setting, not the contract. The setting is **server configuration only** (environment or config file), never an admin, UI or database toggle; missing or invalid means **on** (fail-closed); its value is logged at startup.
+**Q35 decided (2026-10-23): the musts are enforced, setting on.** They run through a Core setting (`step_up.q35_persistence_actions`, default on; contract `x-step-up: conditional`), so a later user decision changes the setting, not the contract. The setting is **server configuration only** (environment or config file), never an admin, UI or database toggle; missing or invalid means **on** (fail-closed); its value is logged at startup.
 
 The three musts are what separates "someone used my open browser for a while" from "someone keeps access to my trading after I sign out". Without them, step-up on the three user actions can be bypassed in practice.
 
-**M3 — persistence step-ups from a new device** — [Proposed], **user decision**: when the session's device was first seen less than 7 days ago, the persistence actions (source token create/rotate, pairing code, opt-in accept) require the step-up code **by e-mail**. After S3b, they require codes on **both** channels. Reason: after a SIM swap, a WhatsApp-only step-up from the attacker's new browser would hand over persistent trading access. With e-mail required, the attacker also needs the inbox, and the new-device e-mail notice has already been sent. Cost: none in the e-mail-only phase (e-mail is the only channel); after S3b, one extra code on new devices only. **Recommendation: adopt.**
+**M3 — persistence step-ups from a new device** — **decided** (2026-10-23): when the session's device was first seen less than 7 days ago, the persistence actions (source token create/rotate, pairing code, opt-in accept) require the step-up code **by e-mail**. After S3b, they require codes on **both** channels. Reason: after a SIM swap, a WhatsApp-only step-up from the attacker's new browser would hand over persistent trading access. With e-mail required, the attacker also needs the inbox, and the new-device e-mail notice has already been sent. Cost: none in the e-mail-only phase (e-mail is the only channel); after S3b, one extra code on new devices only.
 
-**Residual, stated for the user's decision:** in the e-mail-only phase M3 adds no barrier, and during an M2 hold whoever controls the inbox can still create source tokens and pairing codes. The hold protects **ownership** of the account, not against **persistence**. Against persistence the defence is the new-device notice and the §5.3 guidance to revoke unknown tokens and pairings. If the user rejects M2/M3, the risk acceptance is recorded in decisions.md.
+**Residual, accepted by the user (2026-10-23):** in the e-mail-only phase M3 adds no barrier, and during an M2 hold whoever controls the inbox can still create source tokens and pairing codes. The hold protects **ownership** of the account, not against **persistence**. Against persistence the defence is the new-device notice and the §5.3 guidance to revoke unknown tokens and pairings.
 
 ## 7. Channel change (AC-11)
 
 - **Default:** the user enters the new value. Codes go to the **current** value and to the **new** value (one flow, two codes). The change happens only when both are confirmed within 10 minutes. Until then the current value stays in force.
-- **With two confirmed channels** (after S3b) — [Proposed]: changing one channel also requires a code from the **other** channel. Otherwise an attacker who takes over the e-mail inbox alone can confirm "old e-mail + new e-mail" and own the account permanently. The other channel turns a single compromised channel into a recoverable incident.
+- **With two confirmed channels** (after S3b) — decided (proposal i): changing one channel also requires a code from the **other** channel. Otherwise an attacker who takes over the e-mail inbox alone can confirm "old e-mail + new e-mail" and own the account permanently. The other channel turns a single compromised channel into a recoverable incident.
 - **On success:**
   - every other session of the user ends (`end_reason = channel_changed`), and the current session is rotated;
   - a notice goes to the **old** value ("seu e-mail foi trocado para j***@…") and to the other channel, if any;
   - the change is audited with both masked values;
-  - **no** further channel change is accepted for **24 hours** [Proposed], so a takeover cannot chain changes before the user reacts to the notice.
-- **Old channel unreachable** — [Proposed], part of **Q28**: the old value is **never** replaced without its own code, even when another channel is confirmed. Otherwise a single taken-over channel (a SIM swap on WhatsApp) could replace the e-mail. The change goes through the §9 hold: a code to the new value and a code from the other confirmed channel (if any) open the request, then 72 h with notices to every old value, cancellable with **"Cancelar troca"** (§9).
-- **M2 — hold for changes from a new device** — [Proposed], **user decision**: in the e-mail-only phase, a channel change requested from a device first seen less than 7 days ago also takes the 72-h hold of §9, with notices and "Cancelar troca", even when both codes are confirmed. Reason: with e-mail as the only channel, someone who controls the inbox confirms both codes and owns the account permanently; the hold gives the real user 72 h to react to the new-device and change notices. Cost: a user who really changes e-mail from a new phone waits 3 days. **Recommendation: adopt.**
+  - **no** further channel change is accepted for **24 hours** (decided, proposal ii), so a takeover cannot chain changes before the user reacts to the notice.
+- **Old channel unreachable** — decided with **Q28**: the old value is **never** replaced without its own code, even when another channel is confirmed. Otherwise a single taken-over channel (a SIM swap on WhatsApp) could replace the e-mail. The change goes through the §9 hold: a code to the new value and a code from the other confirmed channel (if any) open the request, then 72 h with notices to every old value, cancellable with **"Cancelar troca"** (§9).
+- **M2 — hold for changes from a new device** — **decided** (2026-10-23): in the e-mail-only phase, a channel change requested from a device first seen less than 7 days ago also takes the 72-h hold of §9, with notices and "Cancelar troca", even when both codes are confirmed. Reason: with e-mail as the only channel, someone who controls the inbox confirms both codes and owns the account permanently; the hold gives the real user 72 h to react to the new-device and change notices. Cost: a user who really changes e-mail from a new phone waits 3 days. When the hold takes effect (at its end, "on effect", as in §9), every session ends and every device is revoked: the requester may be the attacker.
 - Adding WhatsApp the first time is a channel change with "current" = e-mail.
 
 ## 8. Channel risks and mitigations
@@ -203,9 +210,9 @@ The three musts are what separates "someone used my open browser for a while" fr
 | **Provider sees codes / provider outage** | Code exposure in the provider's logs; no login | Accepted with the supplier choice. If WhatsApp delivery fails, the user is told only in signed-in or invitation-bound flows (§2.3; never on the login screen) and may request an e-mail code; the Core never silently resends through another channel (S3b AC-5) |
 | **Mail scanners** fetching links | Would consume magic links | There are no magic links; codes are typed |
 
-## 9. Loss of every channel (Q28) — user decision needed
+## 9. Loss of every channel (Q28) — decided: (a) admin-assisted recovery
 
-- No rule exists yet; AC-12 is blocked. **Recommendation (Q28 a):** admin-assisted recovery.
+- **Decided (Q28 a, 2026-10-23):** admin-assisted recovery (AC-12 unblocked).
   - The admin verifies identity out of band (an agreed procedure, not just a message from the new address). The admin action requires step-up.
   - The admin sets a new e-mail; a code to it confirms it.
   - The change takes effect after a **72-hour hold**, during which notices go to every old channel.
@@ -213,7 +220,7 @@ The three musts are what separates "someone used my open browser for a while" fr
   - On effect: all sessions end and all devices are revoked. Source tokens and pairings stay, as in rev. 1 for reset, and the user is pointed to review them.
   - Everything is audited.
 - (b) "start over with a new invitation" loses the trading history and configuration. (c) a third recovery contact adds a channel to secure.
-- **The admin's own recovery** (I3) — [Proposed], with Q28: no admin can recover themselves through the admin flow. Either a second admin account held by the user, or a documented break-glass command run on the server by the operator (the user, over SSH), with the same 72-h hold, notices and audit. Recommendation: the break-glass command; a second admin is a second credential to protect.
+- **The admin's own recovery** (I3) — decided with Q28: no admin can recover themselves through the admin flow. Either a second admin account held by the user, or a documented break-glass command run on the server by the operator (the user, over SSH), with the same 72-h hold, notices and audit. Decided: the break-glass command; a second admin would be a second credential to protect.
 
 ## 10. Invitations, tokens and logging
 
