@@ -1,0 +1,84 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/app",
+    "crates/shared-kernel",
+    "crates/contracts",
+    "crates/*/enterprise",
+    "crates/*/application",
+    "crates/*/infra",
+    "adapters/*",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99.1"
+license = "UNLICENSED"
+publish = false
+
+# Versions resolved with `cargo add` / `cargo info` on 2026-10-23. Member crates
+# inherit with `<dep>.workspace = true` and add features locally.
+[workspace.dependencies]
+# internal
+shared-kernel = { path = "crates/shared-kernel" }
+contracts = { path = "crates/contracts" }
+identity-enterprise = { path = "crates/identity/enterprise" }
+identity-application = { path = "crates/identity/application" }
+identity-infra = { path = "crates/identity/infra" }
+catalog-enterprise = { path = "crates/catalog/enterprise" }
+catalog-application = { path = "crates/catalog/application" }
+catalog-infra = { path = "crates/catalog/infra" }
+routing-enterprise = { path = "crates/routing/enterprise" }
+routing-application = { path = "crates/routing/application" }
+routing-infra = { path = "crates/routing/infra" }
+audit-enterprise = { path = "crates/audit/enterprise" }
+audit-application = { path = "crates/audit/application" }
+audit-infra = { path = "crates/audit/infra" }
+adapter-tradingview = { path = "adapters/tradingview" }
+
+# runtime / http
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+axum = "0.8.9"
+thiserror = "2.0.21"
+tokio = "1.54.1"
+tower = "0.5.3"
+tower-http = "0.7.1"
+http-body-util = "0.1.5"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+
+# data
+chrono = { version = "0.4.45", default-features = false }
+rust_decimal = "1.43.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sqlx = { version = "0.9.0", default-features = false }
+uuid = "1.28.0"
+jsonschema = { version = "0.60.0", default-features = false }
+
+# crypto
+argon2 = "0.6.0"
+sha2 = "0.11.1"
+subtle = "2.6.1"
+rand = "0.10.3"
+base64 = "0.22.1"
+hmac = "0.13.0"
+sha1 = "0.11.0"
+aes-gcm = "0.11.1"
+
+# identity (S3)
+chrono-tz = "0.10.4"
+unicode-normalization = "0.1.26"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+float_arithmetic = "deny"

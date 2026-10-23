@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT count(*) FILTER (WHERE dead_lettered_at IS NOT NULL) AS \"dead_lettered!\",\n                  count(*) FILTER (WHERE published_at IS NULL AND dead_lettered_at IS NULL\n                                   AND NOT (event_type = ANY($1))) AS \"unconsumed!\"\n             FROM app.outbox",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "dead_lettered!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "unconsumed!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "6a922c56e15a8292b4a4098e464e67304b07e29e8c08cbcfb5ee32f95a898338"
+}

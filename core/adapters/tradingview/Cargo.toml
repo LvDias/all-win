@@ -1,0 +1,29 @@
+[package]
+name = "adapter-tradingview"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+contracts.workspace = true
+routing-application.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+shared-kernel.workspace = true
+subtle.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { workspace = true, features = ["util"] }

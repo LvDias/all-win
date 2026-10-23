@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.source_key SET revoked_at = now() WHERE source_id = $1 AND revoked_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e440d7c06fc98c15759b3a1eb7688e75df2540564fc502bb1418ef8f46cdf784"
+}

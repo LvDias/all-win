@@ -1,0 +1,15 @@
+[package]
+name = "catalog-application"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait.workspace = true
+catalog-enterprise.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT instruction_id FROM routing.message_receipt\n                       WHERE user_id = $1 AND message_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "instruction_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "routing.message_receipt",
+            "name": "instruction_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c2eb714f7c85979e4ab5c1a733bfbd979826a8152ab1d7a37ce2399a63486801"
+}

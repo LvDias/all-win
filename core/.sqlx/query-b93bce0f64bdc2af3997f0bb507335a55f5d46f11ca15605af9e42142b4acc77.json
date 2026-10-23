@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.source (id, user_id, source_type, name) VALUES ($1, $2, 'tradingview', $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b93bce0f64bdc2af3997f0bb507335a55f5d46f11ca15605af9e42142b4acc77"
+}
