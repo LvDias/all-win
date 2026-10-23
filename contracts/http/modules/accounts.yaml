@@ -117,8 +117,9 @@ paths:
         unbinds, an absent `multiplier` resets it to 1; `kind` cannot change. Changing the
         preset version, the firm platform or the manual prop fields may select a different rule version:
         the request must then carry `opt_ins` for each kind whose choice becomes required, or the Core
-        answers 422 `accounts.opt_in_required` (D16). Applying a newer preset version to the account
-        (S16 AC-3) is this operation with the new `preset_version_id`.
+        answers 422 `accounts.opt_in_required` (D16). Selecting another preset re-fills the rule values
+        from it (the UI confirms first). Applying a newer version of the same preset (S16 AC-3) is
+        `applyPresetVersion`, not this operation (422 `presets.use_apply_version`).
         Changing or removing the binding while the account has an open position is refused with 409
         `accounts.binding_open_position` (provisional, Q38). Lowering `max_position_qty` below an open
         position is allowed; open positions are not changed.
@@ -343,7 +344,11 @@ components:
         - `accounts.platform_account_kind_not_allowed` — `/binding` (`live` or `unknown` kind outside
           production; ADR-0004 §8);
         - `accounts.profile_size_required` / `accounts.profile_size_invalid` — `/profile_size` (create of
-          a real account whose size is a tie between two standard sizes; provisional, Q60).
+          a real account whose size is a tie between two standard sizes; provisional, Q60);
+        - `presets.required_field_unresolved` — `/rule_values/<field>` or `/max_position_qty` (a required
+          rule field of the preset is not confirmed and the body does not resolve it; S16 AC-6);
+        - `presets.use_apply_version` — `/preset_version_id` (update to a newer version of the same
+          preset; use `applyPresetVersion`).
       content:
         application/json:
           schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -489,6 +494,9 @@ components:
           $ref: '#/components/schemas/Multiplier'
         max_position_qty: { $ref: '#/components/schemas/MaxPositionQty' }
         binding: { $ref: '#/components/schemas/PlatformAccountRef' }
+        rule_values:
+          description: Prop with a preset only. The account's own rule values where they differ from the preset or resolve a not-confirmed field (S16 AC-2, AC-6).
+          $ref: 'presets.yaml#/components/schemas/PresetRuleValues'
         profile_size:
           description: Real accounts only. The standard size whose default profile is copied, when `size_amount` is a tie (`getNearestProfileSize` returns two candidates). Ignored otherwise.
           $ref: '#/components/schemas/SizeAmount'
@@ -500,7 +508,7 @@ components:
         - if: { properties: { kind: { const: real } } }
           then:
             required: [size_amount]
-            not: { anyOf: [{ required: [preset_version_id] }, { required: [firm_platform] }, { required: [firm_name] }, { required: [plan_name] }, { required: [phase] }, { required: [opt_ins] }] }
+            not: { anyOf: [{ required: [preset_version_id] }, { required: [firm_platform] }, { required: [firm_name] }, { required: [plan_name] }, { required: [phase] }, { required: [opt_ins] }, { required: [rule_values] }] }
           else: { not: { required: [profile_size] } }
         - if: { properties: { kind: { const: prop } }, required: [preset_version_id] }
           then: { not: { anyOf: [{ required: [firm_name] }, { required: [plan_name] }, { required: [phase] }, { required: [size_amount] }] } }
@@ -509,7 +517,7 @@ components:
             not: { required: [preset_version_id] }
           then:
             required: [firm_name, plan_name, phase, size_amount]
-            not: { required: [firm_platform] }
+            not: { anyOf: [{ required: [firm_platform] }, { required: [rule_values] }] }
     AccountUpdateRequest:
       type: object
       additionalProperties: false
@@ -536,6 +544,9 @@ components:
         binding:
           description: The platform account to bind; absent means unbound.
           $ref: '#/components/schemas/PlatformAccountRef'
+        rule_values:
+          description: Prop with a preset only. Full replacement of the account's own rule values (absent fields take the preset value; S16 AC-2, AC-6). Restoring one value is `restorePresetValue`.
+          $ref: 'presets.yaml#/components/schemas/PresetRuleValues'
         opt_ins: { $ref: '#/components/schemas/OptInChoices' }
         step_up:
           description: Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`, target = this account).
@@ -546,7 +557,7 @@ components:
         - if: { required: [firm_name] }
           then: { required: [plan_name, phase, size_amount] }
         - if: { not: { required: [preset_version_id] } }
-          then: { not: { required: [firm_platform] } }
+          then: { not: { anyOf: [{ required: [firm_platform] }, { required: [rule_values] }] } }
     LifecycleRequest:
       type: object
       additionalProperties: false

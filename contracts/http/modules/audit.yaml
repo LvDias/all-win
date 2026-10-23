@@ -226,6 +226,8 @@ components:
         - routing.subscription_changed
         - profiles.default_changed
         - profiles.account_changed
+        - presets.version_applied
+        - presets.value_restored
       description: |
         Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
         auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
@@ -678,6 +680,22 @@ components:
       type: object
       additionalProperties: false
       maxProperties: 0
+    DetailsPresetApplied:
+      type: object
+      additionalProperties: false
+      required: [from_preset_version_id, to_preset_version_id, changes]
+      properties:
+        from_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        to_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        to_version_number: { type: integer, minimum: 1 }
+        changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
+        kept_fields: { type: array, description: 'Edited fields the user kept (`keep_mine`).', items: { $ref: 'presets.yaml#/components/schemas/RuleField' } }
+    DetailsPresetValueRestored:
+      type: object
+      additionalProperties: false
+      required: [change]
+      properties:
+        change: { $ref: '#/components/schemas/FieldChange' }
     AuditDetailsByCode:
       type: object
       additionalProperties: false
@@ -739,3 +757,5 @@ components:
         routing.subscription_changed: { $ref: '#/components/schemas/DetailsSubscriptionChanged' }
         profiles.default_changed: { $ref: '#/components/schemas/DetailsProfileChanged' }
         profiles.account_changed: { $ref: '#/components/schemas/DetailsProfileChanged' }
+        presets.version_applied: { $ref: '#/components/schemas/DetailsPresetApplied' }
+        presets.value_restored: { $ref: '#/components/schemas/DetailsPresetValueRestored' }

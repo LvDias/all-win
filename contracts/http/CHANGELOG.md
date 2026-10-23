@@ -1,5 +1,10 @@
 # HTTP API — changelog
 
+## 2.5.0 — 2026-10-23 (V1-S16 prop firm presets; additive) — notes: docs/architecture/contracts/s16-presets.md
+- Module `presets`: `listFirms`, `getFirm`, `listFirmReleases`, `getPresetVersion`, `getAccountPreset`, `getAccountPresetDiff`, `applyPresetVersion` (per-field `choices` / `rule_values`, `opt_ins`, step-up `account_opt_in_accept`), `restorePresetValue`; SSE `presets.version_available`. Typed rule values with provenance (`verified` / `not_confirmed` + published values), VPS and personal-device stances, manual-only reason.
+- `createAccount` / `updateAccount` gain `rule_values` (prop with a preset); `updateAccount` to a newer version of the same preset → 422 `presets.use_apply_version`.
+- Audit codes `presets.version_applied`, `presets.value_restored`.
+
 ## 2.4.0 — 2026-10-23 (V1-S10 activity; additive) — notes: docs/architecture/contracts/s10-audit.md
 - Module `audit`: `listActivity` (filters, opaque cursor, `retention_months`, `horizon`), `getActivityFilterOptions`, `getActivityEntry`, `getInstructionTimeline`; SSE `audit.entry_recorded`.
 - Final `AuditOutcome` (10 values, incl. `unknown`), open `AuditCode` + `KnownAuditCode`, typed `details` per code (`AuditDetailsByCode`), `safe_to_display`, `is_exit`; `execution.*` codes; `security.*` codes (S3 AC-16, masked values only).

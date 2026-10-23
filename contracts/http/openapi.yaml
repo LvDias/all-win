@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 2.4.0
+  version: 2.5.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
     sessions, devices, channel changes, sources, NinjaTrader connections and pairing) in this root, and in
-    `modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`), the opt-in rule versions of the
-    S16 catalog (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`) and V1-S10
+    `modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`), the V1-S16 prop firm catalog and
+    the account's preset (`presets`), V1-S7 routing (`routing`), V1-S6 stop/target profiles (`profiles`) and V1-S10
     activity (`audit`). Security rules: auth-and-session-policy.md rev. 2.
     Version 2.0.0 is breaking (password and TOTP removed). Paths stay `/api/v1`: no version was ever deployed
     and there are no external clients, so the path major moves only for breaking changes after the first
@@ -1215,6 +1215,15 @@ paths:
   /api/v1/activity/filter-options: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity~1filter-options' }
   /api/v1/activity/{entry_id}: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1activity~1{entry_id}' }
   /api/v1/instructions/{instruction_id}/timeline: { $ref: 'modules/audit.yaml#/paths/~1api~1v1~1instructions~1{instruction_id}~1timeline' }
+  # V1-S16 catalog (module presets); owner Compasso.
+  /api/v1/firms: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1firms' }
+  /api/v1/firms/{firm_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1firms~1{firm_id}' }
+  /api/v1/firms/{firm_id}/releases: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1firms~1{firm_id}~1releases' }
+  /api/v1/preset-versions/{preset_version_id}: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1preset-versions~1{preset_version_id}' }
+  /api/v1/accounts/{account_id}/preset: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset' }
+  /api/v1/accounts/{account_id}/preset-diff: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-diff' }
+  /api/v1/accounts/{account_id}/preset-version: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-version' }
+  /api/v1/accounts/{account_id}/preset-values/{field}/restore: { $ref: 'modules/presets.yaml#/paths/~1api~1v1~1accounts~1{account_id}~1preset-values~1{field}~1restore' }
 
 components:
   securitySchemes:
@@ -1653,6 +1662,7 @@ components:
         - $ref: 'modules/accounts.yaml#/components/schemas/AccountArchivedEvent'
         - $ref: 'modules/routing.yaml#/components/schemas/RouteChangedEvent'
         - $ref: 'modules/audit.yaml#/components/schemas/AuditEntryRecordedEvent'
+        - $ref: 'modules/presets.yaml#/components/schemas/PresetVersionAvailableEvent'
         - type: object
           additionalProperties: false
           required: [type, at, connection_id, status]

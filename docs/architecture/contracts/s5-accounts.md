@@ -92,5 +92,5 @@ They are written in the same transaction as the change, through `app.outbox`. Th
 
 - Out-of-sync and risk flags on `Account` → S11 / S13 contracts.
 - Profile provenance (`copied_from_size`) and the "initial profile: nearest standard size" line → S6 contract.
-- Catalog (firms, plans, presets, preset versions, diff, apply) → S16 contract. `getOptInRules` and `getRuleVersion` stay as they are.
+- Catalog (firms, plans, presets, preset versions, diff, apply): done in 2.5.0 ([S16 notes](s16-presets.md)). `getOptInRules` and `getRuleVersion` are unchanged. `createAccount` / `updateAccount` gained `rule_values`, and applying a newer version of the same preset moved to `applyPresetVersion`.
 - The follower flow with the copy choice → S7/S19.
