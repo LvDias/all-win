@@ -1,0 +1,73 @@
+{
+ "InstrumentList": {
+  "additionalProperties": false,
+  "properties": {
+   "instruments": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "currency": {
+       "pattern": "^[A-Z]{3}$",
+       "type": "string"
+      },
+      "exchange": {
+       "maxLength": 16,
+       "type": "string"
+      },
+      "id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "name": {
+       "maxLength": 120,
+       "type": "string"
+      },
+      "point_value": {
+       "description": "Non-negative money as a decimal string (NUMERIC(18,4)).",
+       "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+       "type": "string"
+      },
+      "price_decimals": {
+       "description": "Decimals to display prices and points with.",
+       "maximum": 10,
+       "minimum": 0,
+       "type": "integer"
+      },
+      "symbol": {
+       "description": "Neutral root, e.g. 'MNQ'.",
+       "pattern": "^[A-Z0-9]{1,10}$",
+       "type": "string"
+      },
+      "tick_size": {
+       "description": "Exact decimal as a string (no sign, no exponent, no separators).",
+       "pattern": "^[0-9]{1,12}(\\.[0-9]{1,10})?$",
+       "type": "string"
+      },
+      "tick_value": {
+       "description": "Money per tick (tick_size × point_value, computed by the Core).",
+       "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "symbol",
+      "name",
+      "exchange",
+      "currency",
+      "tick_size",
+      "tick_value",
+      "point_value",
+      "price_decimals"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "instruments"
+  ],
+  "type": "object"
+ }
+}
