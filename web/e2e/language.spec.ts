@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { assertNoI18nProblems, expect, test } from "./fixtures";
 
 test.describe("locale resolution", () => {
   test.use({ locale: "en-GB" });
@@ -93,4 +93,12 @@ test("no horizontal scroll at 320 px", async ({ page, api }) => {
   await expect(page.getByLabel("Idioma da interface")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("the missing-translation gate detects a marker and an i18n console error", async ({ page }) => {
+  await page.setContent("<p>⟦missing: sources.create.title⟧</p>");
+  await expect(assertNoI18nProblems(page, [])).rejects.toThrow();
+  await page.setContent("<p>ok</p>");
+  await expect(assertNoI18nProblems(page, ["[i18n] missing message: a.b"])).rejects.toThrow();
+  await assertNoI18nProblems(page, []);
 });

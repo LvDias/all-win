@@ -2,6 +2,11 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 export const profile = { id: "00000000-0000-4000-8000-000000000001", email: "trader@example.com", locale: "pt-BR", time_zone: "America/Sao_Paulo", is_platform_admin: false };
 
+export async function assertNoI18nProblems(page: Page, i18nErrors: string[]) {
+  await expect(page.getByText("⟦missing:")).toHaveCount(0);
+  expect(i18nErrors).toEqual([]);
+}
+
 /** Every test fails on a visible missing-translation marker or an i18n console error (spec V1-S4 §7). */
 export const test = base.extend<{ api: { signedOut: () => Promise<void>; signedIn: (overrides?: Partial<typeof profile>) => Promise<void> } }>({
   page: async ({ page }, use) => {
@@ -10,8 +15,7 @@ export const test = base.extend<{ api: { signedOut: () => Promise<void>; signedI
       if (message.type() === "error" && message.text().includes("[i18n]")) i18nErrors.push(message.text());
     });
     await use(page);
-    await expect(page.getByText("⟦missing:")).toHaveCount(0);
-    expect(i18nErrors).toEqual([]);
+    await assertNoI18nProblems(page, i18nErrors);
   },
   api: async ({ page }, use) => {
     await use({

@@ -1,4 +1,4 @@
-import { defaultLocale, type Locale } from "./config";
+import { defaultLocale, isMarkerMode, type Locale } from "./config";
 
 export type Messages = { [key: string]: string | Messages };
 
@@ -16,9 +16,17 @@ export function mergeMessages(base: Messages, over: Messages): Messages {
   return out;
 }
 
+/**
+ * Marker mode (dev/QA/staging) keeps the locale's own catalog so a missing key shows `⟦missing: …⟧`.
+ * Production overlays it on pt-BR, so a missing key reads as pt-BR text instead of a blank (spec V1-S4 §7).
+ */
+export function buildCatalog(own: Messages, fallback: Messages, markerMode: boolean): Messages {
+  return markerMode ? own : mergeMessages(fallback, own);
+}
+
 export async function loadMessages(locale: Locale): Promise<Messages> {
   const own = ((await import(`../../../messages/${locale}.json`)) as { default: Messages }).default;
   if (locale === defaultLocale) return own;
   const fallback = ((await import(`../../../messages/${defaultLocale}.json`)) as { default: Messages }).default;
-  return mergeMessages(fallback, own);
+  return buildCatalog(own, fallback, isMarkerMode());
 }

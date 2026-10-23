@@ -78,7 +78,9 @@ export function LocaleSwitchProvider({ children }: { children: ReactNode }) {
       busy.current = true;
       setPending(true);
       try {
-        if (me.data) await updateMe.mutateAsync({ locale: target });
+        // A switch right after load must not skip the profile save because /me is still in flight.
+        const profile = me.isPending ? (await me.refetch()).data : me.data;
+        if (profile) await updateMe.mutateAsync({ locale: target });
         writeLocaleCookie(target);
         try {
           sessionStorage.setItem(focusHeadingFlag, "1");
@@ -98,7 +100,7 @@ export function LocaleSwitchProvider({ children }: { children: ReactNode }) {
         setPending(false);
       }
     },
-    [me.data, pathname, router, t, updateMe],
+    [me, pathname, router, t, updateMe],
   );
 
   useEffect(() => {

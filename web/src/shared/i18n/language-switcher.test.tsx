@@ -64,6 +64,34 @@ describe("LanguageSwitcher", () => {
     expect(patch).not.toHaveBeenCalled();
   });
 
+  it("signed in: a switch while /me is still loading waits for it and still saves the profile", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get("*/api/v1/me", async () => { await gate; return HttpResponse.json(me); }));
+    const bodies: unknown[] = [];
+    server.use(http.patch("*/api/v1/me", async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json({ ...me, locale: "en" }); }));
+    renderApp(<LanguageSwitcher />);
+    await openMenuAndPick("English");
+    expect(navigation.replace).not.toHaveBeenCalled();
+    release();
+    await waitFor(() => expect(navigation.replace).toHaveBeenCalled());
+    expect(bodies).toEqual([{ locale: "en" }]);
+  });
+
+  it("is operable with the keyboard only", async () => {
+    signedOut();
+    const user = userEvent.setup();
+    renderApp(<LanguageSwitcher />);
+    await user.tab();
+    expect(screen.getByRole("button", { name: /Idioma: Português/ })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    const english = await screen.findByRole("menuitemradio", { name: "English" });
+    await user.keyboard("{ArrowDown}");
+    expect(english).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith(expect.stringMatching(/^\/en\//), { scroll: false }));
+  });
+
   it("signed in: saves the profile language before navigating", async () => {
     signedIn();
     const bodies: unknown[] = [];
