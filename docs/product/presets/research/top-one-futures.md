@@ -6,7 +6,7 @@
 | **Official domains** | `www.toponefutures.com` (main site; plain curl works) · `help.toponefutures.com` (official help center, Intercom-hosted; linked from the homepage, alias `intercom.help/top-one-futures`) · `portal.toponefutures.com` (trader dashboard, login, not used) · `checkout.toponefutures.com` (checkout, not used) |
 | **Research date** | 2026-10-23 (all URLs below accessed 2026-10-23) |
 | **Researcher** | Lupa (Prop Firm Rules Researcher) |
-| **File status** | `partial`. Every core field is verified on official pages for the six plans currently sold (Elite Daily, Elite ACCESS, Elite ACCESS Intraday, Instant Sim Funded, Ignite, LaunchPad X-Daily Spark) in all sizes, plus Pre-Live/Live. Still open: 7 conflicts (two 150K DLL values, copying to/from other firms, same-IP rule vs copying, Ignite flatten time, account limits) and gaps (per-plan platform list, "personal device" rule, Elite Daily lock trigger). See §9 |
+| **File status** | `partial`. Every core field is verified on official pages for the six plans currently sold (Elite Daily, Elite ACCESS, Elite ACCESS Intraday, Instant Sim Funded, Ignite, LaunchPad X-Daily Spark) in all sizes, plus Pre-Live/Live. Still open: 7 conflicts (two 150K DLL values, copying to/from other firms, same-IP rule vs copying, Ignite flatten time, account limits) and gaps (per-plan platform list, Elite Daily lock trigger). The "personal device" rule was closed in R4 (`no`). See §9 |
 | **Instruments covered** | MNQ, NQ. Both are listed: "/NQ NASDAQ-100" and "/MNQ Micro NASDAQ-100" (Q3). Micros are 1/10 of a mini: "Minis are standard futures contracts, while micros are one-tenth the size of minis. You can trade minis, micros, or a combination of both, as long as you stay within your limit." (G1) |
 | **Platforms (for routing)** | **Tradovate/NinjaTrader** (Tradovate-backed accounts, usable in NinjaTrader Desktop/Web, Tradovate Web/Desktop and TradingView), **BlackArrow**, **WealthCharts**. The platform is chosen at checkout and is permanent per account. No Rithmic, CQG or ProjectX found. See §2 |
 | **Automation** | **Forbidden** on all accounts (§6) |
@@ -333,7 +333,7 @@ PO checklist:
 
 - **VPS: `conditional`.** "At Top One Futures, we permit the use of Virtual Private Servers (VPS) with static IP addresses for trading purposes. … If you choose to use a VPS, please ensure it has a static IP address and notify us in advance to avoid any issues." Requirements: "IP address of the VPS: This must be a static IP"; "VPS service invoice: The invoice should include the VPS's IP address"; "IP registration: Ensure the VPS IP address is shared and registered with our team". The summary table says "Using a VPS with a static IP (must notify support)" under "Allowed". (G13)
 - **VPN: not allowed.** The summary table lists "Using a VPN (strictly prohibited)". The body says "The use of Virtual Private Networks (VPNs) is not advised … using a VPN may trigger location violations and lead to account suspension or breaches." (G13). The wording differs inside the same page (§9 C9).
-- **Personal device: `unknown`.** No official page says orders must come from the trader's "personal device". The closest texts: "We highly recommend that traders use a single device with a unique IP address for their trading activities" and "Trading from different devices (mobile, desktop)" is "Allowed" (G13). Searched: all 131 help-center articles, the T&C, the homepage, /elite-access, /launchpad and /coupon-code-pricing (§9 G2).
+- **Personal device: `no`** (R4, 2026-10-23). No page requires orders to come from a "personal device", and the IP page (G13, https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions) lists as "Allowed": "Trading from different devices (mobile, desktop)" and "Using a VPS with a static IP (must notify support)". It also says: "At Top One Futures, we permit the use of Virtual Private Servers (VPS) with static IP addresses for trading purposes." Recommendation only: "We highly recommend that traders use a single device with a unique IP address for their trading activities". Limits that still apply: "You must be the sole individual executing trades on your account. Sharing your login credentials or allowing a third party to trade on your behalf is not allowed" (G16, https://help.toponefutures.com/en/articles/14847123-account-ownership-and-registration-policies). Searched: G13, G16, G11, G15, G6, G14 and the T&C (June 10, 2026) for device, personal, remote, third, VPS, server, cloud, shared, IP. Earlier searches: all 131 help-center articles, the homepage, /elite-access, /launchpad and /coupon-code-pricing.
 - **Only the owner may trade.** "Only the registered account owner is permitted to trade. Allowing friends, family, or third parties to access or trade on your account violates this policy." (G11 §5). "You must be the sole individual executing trades on your account." (G16). One profile per person: "We operate under a strict one account per user policy." (G16)
 - **IP monitoring.** "Multiple IP addresses on the same account: Using multiple IP addresses to access a single account may raise flags". See the same-IP conflict in §5. (G13)
 - **ATM client-side (P4).** "If NinjaTrader Desktop is not open, running and connected, no ATM instructions can be sent." This is relevant to a VPS-hosted NT8.
@@ -358,7 +358,7 @@ PO checklist:
 
 ## 8. Machine-readable blocks
 
-One block per plan / phase / size (38 blocks). All blocks share `instruments: [MNQ, NQ]`, the firm-wide platform list (§2), `copy_trading_allowed: conditional`, `automated_trading_allowed: "no"`, `vps_allowed: conditional` and `personal_device_required: unknown`. `min_trading_days: "none"` means the firm explicitly states there is no minimum. `null` means the value was not found. Conflict field names used in `not_confirmed_fields` are defined in §9.
+One block per plan / phase / size (38 blocks). All blocks share `instruments: [MNQ, NQ]`, the firm-wide platform list (§2), `copy_trading_allowed: conditional`, `automated_trading_allowed: "no"`, `vps_allowed: conditional` and `personal_device_required: "no"`. `min_trading_days: "none"` means the firm explicitly states there is no minimum. `null` means the value was not found. Conflict field names used in `not_confirmed_fields` are defined in §9.
 
 ### 8.1 Elite Daily (V2)
 
@@ -381,7 +381,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -395,6 +395,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -417,7 +418,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -431,6 +432,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -453,7 +455,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -467,6 +469,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -489,7 +492,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [daily_loss_limit, copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -503,6 +506,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -525,7 +529,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -538,6 +542,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -560,7 +565,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -573,6 +578,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -595,7 +601,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -608,6 +614,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -630,7 +637,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [daily_loss_limit, copy_trading_other_firms, copy_trading_same_ip, max_accounts_size_mixing]
 sources:
@@ -643,6 +650,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -667,7 +675,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -681,6 +689,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -703,7 +712,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -717,6 +726,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -739,7 +749,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -753,6 +763,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -775,7 +786,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -789,6 +800,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -811,7 +823,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -824,6 +836,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -846,7 +859,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -859,6 +872,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -881,7 +895,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -894,6 +908,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -916,7 +931,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [daily_loss_limit, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -929,6 +944,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -953,7 +969,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -967,6 +983,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -989,7 +1006,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1003,6 +1020,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1025,7 +1043,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1039,6 +1057,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1061,7 +1080,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1075,6 +1094,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1097,7 +1117,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1110,6 +1130,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1132,7 +1153,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1145,6 +1166,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1167,7 +1189,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1180,6 +1202,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1202,7 +1225,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [daily_loss_limit, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1215,6 +1238,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1239,7 +1263,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [max_accounts, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1252,6 +1276,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1274,7 +1299,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [max_accounts, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1287,6 +1312,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1309,7 +1335,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1322,6 +1348,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1344,7 +1371,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1357,6 +1384,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1381,7 +1409,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [max_accounts, flatten_time, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1394,6 +1422,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1416,7 +1445,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [max_accounts, flatten_time, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1429,6 +1458,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1451,7 +1481,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [max_accounts, flatten_time, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1464,6 +1494,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1486,7 +1517,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [max_accounts, flatten_time, copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1499,6 +1530,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1523,7 +1555,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1537,6 +1569,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1559,7 +1592,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip, news_rule]
 sources:
@@ -1572,6 +1605,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
   - { field: platforms, url: "https://help.toponefutures.com/en/articles/17149341-can-i-switch-my-trading-platform-tradovate-ninjatrader-or-blackarrow", accessed: "2026-10-23" }
 ```
 
@@ -1597,7 +1631,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1609,6 +1643,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
 ```
 
 ```yaml
@@ -1631,7 +1666,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1643,6 +1678,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
 ```
 
 ```yaml
@@ -1665,7 +1701,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1677,6 +1713,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
 ```
 
 ```yaml
@@ -1699,7 +1736,7 @@ copy_trading_allowed: conditional   # own accounts only, same program AND same s
 automated_trading_allowed: "no"
 automation_rule_text: "Use of any automated trading system, script, bot, Expert Advisor (EA), or high-frequency execution tool is strictly forbidden. All trades must be entered manually or semi-manually by the trader."
 vps_allowed: conditional          # VPS with static IP, notify support in advance with IP + invoice (G13); VPN prohibited
-personal_device_required: unknown # no 'personal device' rule found on any official page (§7, §9)
+personal_device_required: "no"   # explicitly permitted: other devices and a static-IP VPS (G13); account owner must be the sole trader (G16)
 status: partial
 not_confirmed_fields: [copy_trading_other_firms, copy_trading_same_ip]
 sources:
@@ -1711,6 +1748,7 @@ sources:
   - { field: automated_trading_allowed, url: "https://help.toponefutures.com/en/articles/11021584-prohibited-trading-practices", accessed: "2026-10-23" }
   - { field: copy_trading_allowed, url: "https://help.toponefutures.com/en/articles/11680891-copy-trading-policy", accessed: "2026-10-23" }
   - { field: vps_allowed, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
+  - { field: personal_device_required, url: "https://help.toponefutures.com/en/articles/11187841-are-there-ip-address-restrictions", accessed: "2026-10-23" }
 ```
 
 ## 9. Unverified / gaps / conflicts
@@ -1735,7 +1773,7 @@ sources:
 | ID | Field | What is missing | Where searched |
 |---|---|---|---|
 | G1 | `platforms` per plan | Which of Tradovate/NinjaTrader, BlackArrow and WealthCharts each plan offers is not published. Only the /elite-access configurator shows one option ("Tradovate/NinjaTrader"). The Live platform/broker is not named | All 131 help-center articles, HOME, SITE-EA, SITE-LP, SITE-CP. Checkout not used (rule) |
-| G2 | `personal_device_required` | No "personal device" rule found. VPS use is explicitly allowed with conditions (§7) | All help-center articles, TC, HOME, SITE-EA/LP/CP (keyword search: device, personal, VPS, server, IP) |
+| G2 | `personal_device_required` | CLOSED in R4: `no`. The IP page explicitly allows other devices and a static-IP VPS (§7). | G13, G16, G11, G15, T&C |
 | G3 | Elite Daily `drawdown.stops_trailing_at` trigger | The lock level is published ($25,100 … $150,100). The balance that triggers it is not ("once your account has grown enough") | ED1, ED4, G3 (G3 tables cover Instant and Elite only) |
 | G4 | X-Daily Spark evaluation lock | Only the funded lock ($50,100 at a $52,100 close) is published | XS1, XS4 |
 | G5 | Automation details | Webhooks: not mentioned. "Semi-manually" (G11) is not defined. ATM strategies are documented as optional (P4), but no page says whether they fall under the bot ban | G6, G11, TC, P1–P9 |
@@ -1751,3 +1789,4 @@ sources:
 ## 10. Changelog
 
 - 2026-10-23 — initial research (Lupa). Six current plans (Elite Daily, Elite ACCESS, Elite ACCESS Intraday, Instant Sim Funded 2.0, Ignite, X-Daily Spark) plus Pre-Live/Live; 38 YAML blocks; legacy products summarized in §3.8. Sources: www.toponefutures.com and help.toponefutures.com, read with curl (no portal needed).
+- 2026-10-23 — rev bump R4: `personal_device_required` closed as `no` in all 38 blocks (G13 allows other devices and a static-IP VPS; G16 sole-trader rule noted). Nothing else changed (Lupa).

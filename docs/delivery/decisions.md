@@ -152,3 +152,33 @@
 - **Decision:** DevOps provides an isolated Docker PostgreSQL test environment for QA, reused by every slice.
 - **Decision:** agents not reconnected within 10 minutes are replaced with a state handoff; if Esquadro does not return, ADR-0003/0004 r4 goes to Compasso.
 - **Canonical doc:** this log.
+
+## 2026-10-24 — User accepts all pending recommendations (Q75 side effects, Q77, Q79–Q90, migrations 061300/061310, presets S-R3-1..5, 2nd VPS timing)
+- **Q75-1: yes.** A Q75 flatten on an out-of-sync account that is really flat cancels every working order on the contract, manual ones included; the user is notified (routing.out_of_sync_flatten).
+- **Q75-2: yes.** A reverse X on an out-of-sync account that All Win believes flat but really holds X closes that real X position and opens nothing.
+- **Q77 (a):** keep the source policy — `position_effect: reduce` stays refused from TradingView in V1, allowed from master replication.
+- **Q79 (a):** archived accounts' trades are kept, selectable through an "archived" filter.
+- **Q80 (a/b):** trades closed while NT/plugin was off are captured on reconnect from the execution history (deduplicated, labelled "recovered") if the Architect confirms the platform exposes it; otherwise (b).
+- **Q81 (a):** alert only for venue accounts that were bound then unbound/archived while they still had All Win working orders; never-bound (manual) accounts are ignored.
+- **Q82 (a):** while an account is blocked until the reset, unpairing the instance, unlinking or disabling the account is refused until the reset, with the reason.
+- **Q83 (a):** out-of-sync cannot be cleared while the account is unobservable; only after the reconnect check reports.
+- **Q84 (a):** out-of-sync may be cleared with a position open, with a confirmation dialog that lists the position and whether it is protected.
+- **Q85 (a):** confirms the contract: a lower or removed commission floor applies from the next trading day; a higher one at once.
+- **Q86 (b):** changing the stop/target mode (individual/shared) is refused while the account has an open position or working orders.
+- **Q87 (a):** no narrowing — with the server setting on, every route switch-on requires the route_enable step-up.
+- **Q88 (a):** "sign out everywhere" cancels a pending user-requested channel change; "forget device" only when that device requested it; notices to all channels, audited, no 24 h freeze; admin recovery (AC-12) only by explicit "Cancelar troca".
+- **Q89 (b):** V1 treats CME holidays/early closes as normal days with the limitation stated in the Risk tab and guide.
+- **Q90 (a):** model the trailing-drawdown lock point (stops_trailing_at) as a structured preset/rule field used by the Core and the plugin floor; until it lands, the floor keeps trailing with a visible warning.
+- **Migrations A (061300) and B (061310): authorized.** They only add CHECK constraints (no data deleted; 0 violations measured in all test databases; no production exists). The user asks to be told BEFORE any migration that deletes non-test data.
+- **Presets S-R3-1..5: (a)** — FFF opt-in with the verbatim ban; Phoenix per-platform preset, dxFeed manual-tracking-only; Elite conditional, off by default, written-authorisation warning; NT8-unreachable platforms → preset shown, account manual-tracking-only; Earn2Trade follower opt-in with the text.
+- **2nd Windows VPS:** contract only when V1.1 (S19) tests are near; the Maestro warns the user in advance.
+- **Canonical docs:** slice-plan / presets (PO); ADR-0003/0004 r4 + r5, auth policy rev. 3.2 (Architect); HTTP contracts 5.2.0–5.4.0 (Compasso); data model (Database Architect).
+
+## 2026-10-24 — Q91, Q92 and the S17 Pine signal rules
+- **Q91 (a): risk ACCEPTED by the user.** Shared-browser device cookie (Vigia I11): a previous user of the same browser who also obtains a sign-in code could sign in without the new-device notice / M3. Accepted because the attack already requires access to the user's e-mail.
+- **Q92 (c):** when the plugin cannot establish the trading-day start (NT8 closed at the boundary, no proven reconstruction), new automated entries on that account stay blocked (exits pass) until the user confirms "restart today's count" in the web; the Core sends the re-anchor (day_realized_net_known with watermark) per Esquadro's final rule; the confirmation warns that losses All Win did not see may be left out. Never re-anchored automatically.
+- **S17-a:** trigger setups and NQ Triggers by engulfing → alert at bar close; Trade Plan and Trigger in "touch" mode → intrabar.
+- **S17-b:** one signal per bar / setup / direction.
+- **S17-c:** opening = BUY/SELL; Trade Plan by the target's direction; Bull buys, Bear sells. The indicator's take/stop alerts never become orders (stop/target come from the account profile); they are only recorded. Opposite signal with an open position: ANSWER PENDING.
+- **S17-d:** base quantity 1 for every signal (the account multiplier applies on top).
+- **Canonical docs:** auth policy rev. 3.2 (Q91 risk acceptance, Architect); adapter protocol 1.4 + S13/S15 (Q92, Compasso/Esquadro/Malha); integrations/tradingview guide + Pine (S17, Plugin Engineer); slice-plan (PO).
