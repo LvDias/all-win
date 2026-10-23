@@ -18,6 +18,7 @@ Log capture for QA: `scripts/dev-stack.sh logs caddy core` (container stdout; no
 - `/metrics` is never routed on the public edge (only reachable inside the compose network, e.g. `docker compose exec caddy wget -qO- http://core:<port>/metrics`).
 - Configuration review rejects (or at least raises an alert for) overly broad TradingView source ranges, for example `0.0.0.0/0` or `::/0` in `INGRESS_TRADINGVIEW_SOURCE_RANGES`: the list must be the published TradingView addresses only. The Core refuses to start with a non-empty list while `INGRESS_TRUST_FORWARDED_FOR=false`.
 - Caddy never records the request URI or the Referer; `log_credentials` stays off; `resp_headers>Location` is deleted from the logs.
+- Outbound e-mail (sign-in codes and notices) is sent only from a dedicated sender domain that publishes SPF and DKIM and a DMARC policy of `p=reject`. These records must be in place and verified **before any real message is sent**; until then the Core uses no real mail transport (development and QA use a local sink). Documentation only: no DNS change has been made.
 
 ## Gates to wire in `make check` / CI (no Makefile or CI exists yet)
 
