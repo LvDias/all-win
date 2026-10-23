@@ -93,7 +93,7 @@ async fn accepted_then_duplicate_with_audit_entries() {
         "expiry_base = min(sent_at, received_at)"
     );
 
-    while app.dispatcher.dispatch_batch().await.unwrap().0 > 0 {}
+    drain(&app, db, s.user_id).await;
     let codes: Vec<(String, Option<String>, Value)> = as_user(db, s.user_id, |c| {
         Box::pin(async move {
             sqlx::query_as("SELECT code, source_key_id, details FROM audit.audit_entry ORDER BY occurred_at, recorded_at")
@@ -112,11 +112,12 @@ async fn accepted_then_duplicate_with_audit_entries() {
     );
     assert_eq!(codes[0].2["message_id"], msg.as_str());
     // Redelivery is a no-op.
-    sqlx::query("UPDATE app.outbox SET published_at = NULL")
+    sqlx::query("UPDATE app.outbox SET published_at = NULL WHERE user_id = $1")
+        .bind(s.user_id)
         .execute(&db.worker)
         .await
         .unwrap();
-    while app.dispatcher.dispatch_batch().await.unwrap().0 > 0 {}
+    drain(&app, db, s.user_id).await;
     assert_eq!(
         count(db, "SELECT count(*) FROM audit.audit_entry", s.user_id).await,
         2
@@ -313,7 +314,7 @@ async fn policy_and_catalog_rejections_are_422_and_audited() {
         count(db, "SELECT count(*) FROM routing.instruction", s.user_id).await,
         0
     );
-    while app.dispatcher.dispatch_batch().await.unwrap().0 > 0 {}
+    drain(&app, db, s.user_id).await;
     let rejected = count(
         db,
         "SELECT count(*) FROM audit.audit_entry WHERE code = 'ingress.rejected'",
@@ -519,24 +520,159 @@ async fn per_key_rate_limit_answers_429_with_retry_after() {
     );
 }
 
+fn from_ip(request: Request<Body>, ip: &str) -> Request<Body> {
+    let (mut parts, body) = request.into_parts();
+    parts.headers.insert("x-forwarded-for", ip.parse().unwrap());
+    Request::from_parts(parts, body)
+}
+
 #[tokio::test]
-async fn per_ip_rate_limit_applies_before_the_token() {
+async fn flood_cap_counts_every_request_per_ip_before_the_token() {
     let db = db_or_skip!();
     let mut cfg = config();
-    cfg.rate_per_ip_per_min = 2;
+    cfg.ip_flood_per_min = 2;
     let app = wire(db, &cfg);
-    for _ in 0..2 {
-        assert_eq!(
-            send(&app.state, post_json("/ingress/v1/tradingview/nope", "{}"))
-                .await
-                .0,
-            404
-        );
-    }
-    let (status, headers, _) =
-        send(&app.state, post_json("/ingress/v1/tradingview/nope", "{}")).await;
-    assert_eq!(status, 429);
+    let s = seed(db).await;
+    let ok = || post_json(&ingress_path(&s.token), instruction(&unique_message_id()));
+    assert_eq!(send(&app.state, ok()).await.0, 200);
+    assert_eq!(
+        send(&app.state, post_json("/ingress/v1/tradingview/nope", "{}"))
+            .await
+            .0,
+        404
+    );
+    let (status, headers, body) = send(&app.state, ok()).await;
+    assert_eq!(status, 429, "the flood cap applies to valid tokens too");
+    assert_eq!(json(&body)["error"]["code"], "ingress.rate_limited");
     assert!(headers.contains_key("retry-after"));
+}
+
+#[tokio::test]
+async fn tradingview_ranges_get_the_higher_flood_cap() {
+    let db = db_or_skip!();
+    let mut cfg = config();
+    cfg.trust_forwarded_for = true;
+    cfg.ip_flood_per_min = 2;
+    cfg.tradingview_flood_per_min = 50;
+    cfg.tradingview_source_ranges = vec!["52.89.214.0/24".parse().unwrap()];
+    let app = wire(db, &cfg);
+    let s = seed(db).await;
+    let ok = |ip: &str| {
+        from_ip(
+            post_json(&ingress_path(&s.token), instruction(&unique_message_id())),
+            ip,
+        )
+    };
+    for _ in 0..10 {
+        assert_eq!(send(&app.state, ok("52.89.214.238")).await.0, 200);
+    }
+    assert_eq!(send(&app.state, ok("198.51.100.20")).await.0, 200);
+    assert_eq!(send(&app.state, ok("198.51.100.20")).await.0, 200);
+    assert_eq!(send(&app.state, ok("198.51.100.20")).await.0, 429);
+    // IPv6 is keyed by /64: another address in the same /64 shares the bucket.
+    assert_eq!(send(&app.state, ok("2001:db8:1:2::1")).await.0, 200);
+    assert_eq!(send(&app.state, ok("2001:db8:1:2::2")).await.0, 200);
+    assert_eq!(send(&app.state, ok("2001:db8:1:2::3")).await.0, 429);
+    assert_eq!(send(&app.state, ok("2001:db8:1:3::1")).await.0, 200);
+}
+
+#[tokio::test]
+async fn token_failure_budget_answers_an_identical_429_and_never_blocks_valid_tokens() {
+    let db = db_or_skip!();
+    let mut cfg = config();
+    cfg.ip_token_failures_per_min = 3;
+    let app = wire(db, &cfg);
+    let s = seed(db).await;
+    let revoked = seed(db).await;
+    assert!(
+        app::dev::revoke_key(&db.owner, &revoked.key_id)
+            .await
+            .unwrap()
+    );
+    let unknown = format!("awk_ZZZZZZZZZZZZ_{}", s.secret);
+    let mismatched = format!("awk_{}_{}", s.key_id, revoked.secret);
+    let failures = [
+        "/ingress/v1/tradingview/malformed".to_owned(),
+        ingress_path(&unknown),
+        ingress_path(&revoked.token),
+    ];
+    for path in &failures {
+        let (status, _, body) = send(&app.state, post_json(path, "{}")).await;
+        assert_eq!((status, body.len()), (404, 0));
+    }
+    // Budget exhausted: every failure kind, including near-miss paths, gets the same 429.
+    let mut answers = Vec::new();
+    for path in failures
+        .iter()
+        .cloned()
+        .chain([ingress_path(&mismatched), "/Ingress/v1/x".to_owned()])
+    {
+        let (status, headers, body) = send(&app.state, post_json(&path, "{}")).await;
+        assert_eq!(
+            status,
+            429,
+            "{}",
+            path.replace(s.secret.as_str(), "<secret>")
+        );
+        answers.push((
+            body,
+            headers
+                .get("retry-after")
+                .map(|v| v.to_str().unwrap().to_owned()),
+        ));
+    }
+    assert!(
+        answers.windows(2).all(|w| w[0] == w[1]),
+        "429s must be identical"
+    );
+    // A valid token from the same IP is never refused by the failure budget.
+    for _ in 0..3 {
+        let (status, _, _) = send(
+            &app.state,
+            post_json(&ingress_path(&s.token), instruction(&unique_message_id())),
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
+}
+
+#[tokio::test]
+async fn only_unknown_key_ids_are_cached() {
+    let db = db_or_skip!();
+    let app = wire(db, &config());
+    let cache = &app.state.ingress.unknown_keys;
+    let now = std::time::Instant::now;
+    let s = seed(db).await;
+    let post = |token: &str| post_json(&ingress_path(token), instruction(&unique_message_id()));
+
+    // An unknown key_id is remembered.
+    let ghost = format!("awk_ZZZZZZZZZZZZ_{}", s.secret);
+    assert_eq!(send(&app.state, post(&ghost)).await.0, 404);
+    assert!(cache.is_unknown("ZZZZZZZZZZZZ", now()));
+
+    // A revoked key is never cached: un-revoking takes effect on the next request.
+    assert!(app::dev::revoke_key(&db.owner, &s.key_id).await.unwrap());
+    assert_eq!(send(&app.state, post(&s.token)).await.0, 404);
+    assert!(!cache.is_unknown(&s.key_id, now()));
+    let mut tx = db.owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(s.user_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE identity.source_key SET revoked_at = NULL WHERE key_id = $1")
+        .bind(&s.key_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(send(&app.state, post(&s.token)).await.0, 200);
+
+    // The cache is consulted before the database; creating a key invalidates its entry.
+    cache.remember_unknown(&s.key_id, now());
+    assert_eq!(send(&app.state, post(&s.token)).await.0, 404);
+    cache.invalidate(&s.key_id);
+    assert_eq!(send(&app.state, post(&s.token)).await.0, 200);
 }
 
 #[tokio::test]
@@ -560,9 +696,13 @@ async fn metrics_count_by_result_only() {
     assert!(text.contains(r#"result="accepted"} 1"#), "{text}");
     assert!(text.contains(r#"result="not_found"} 1"#), "{text}");
     assert!(!text.contains(&s.key_id));
+    assert!(text.contains("allwin_outbox_dead_lettered "), "{text}");
 }
 
+/// Wall-clock latency depends on host load, so it is not a gate here; the composed-stack
+/// p95 (Sentinela) is. Run with `cargo test -- --ignored` on an idle host.
 #[tokio::test]
+#[ignore = "performance check, not a gate: run on an idle host"]
 async fn p95_latency_is_well_under_budget() {
     let db = db_or_skip!();
     let app = wire(db, &config());

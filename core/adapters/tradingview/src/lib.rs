@@ -5,14 +5,18 @@
 //! instruction (`routing`) and the instrument catalog.
 
 pub mod http;
+pub mod ip;
 pub mod metrics;
+pub mod negative_cache;
 pub mod policy;
 pub mod ports;
 pub mod rate_limit;
 pub mod token;
 
-pub use http::{INGRESS_ROUTE, IngressState, router};
+pub use http::{INGRESS_ROUTE, IngressState, IpLimits, router, unmatched};
+pub use ip::{Cidr, IpKey};
 pub use metrics::IngressMetrics;
+pub use negative_cache::UnknownKeyCache;
 pub use ports::{InstrumentSupport, PortError, ResolvedSourceKey, SourceKeyResolver};
 pub use rate_limit::{KeyedRateLimiter, RateLimit};
 pub use token::IngressToken;

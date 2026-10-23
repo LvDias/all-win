@@ -1,9 +1,10 @@
 //! `POST /ingress/v1/tradingview/{token}` (OpenAPI `ingressTradingView`).
 //!
-//! Order (s1-webhook-ingest §2): per-IP limit → token from the raw path (before the
-//! body is read) → per-key limit → content type and size → JSON → schema → source
-//! policy → idempotent insert. Nothing after `/ingress` is ever logged; the span gets
-//! `key_id` only for a canonical token.
+//! Order (s1-webhook-ingest §2, HTTP 1.1.2): per-IP flood cap → token from the raw
+//! path (before the body is read; every failure charged to the IP's token-failure
+//! budget) → per-key limit → content type and size → JSON → credential guard →
+//! schema → source policy → idempotent insert. Nothing after `/ingress` is ever logged;
+//! the span gets `key_id` only for a canonical token.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -27,7 +28,9 @@ use serde_json::{Value, json};
 use shared_kernel::Clock;
 use tracing::Span;
 
+use crate::ip::{Cidr, IpKey};
 use crate::metrics::{IngressMetrics, Outcome};
+use crate::negative_cache::UnknownKeyCache;
 use crate::ports::{InstrumentSupport, ResolvedSourceKey, SourceKeyResolver};
 use crate::rate_limit::KeyedRateLimiter;
 use crate::token::IngressToken;
@@ -41,13 +44,27 @@ pub const MAX_BODY_BYTES: usize = 16 * 1024;
 /// Highest instruction minor this build accepts (`ingress.unsupported_version` above it).
 pub const SUPPORTED_MINOR: u64 = 0;
 
+/// Per-IP limits (s1-webhook-ingest §2 steps 1–2).
+pub struct IpLimits {
+    /// Step 1, every request: `ingress.ip_flood_per_min`.
+    pub flood: KeyedRateLimiter<IpKey>,
+    /// Step 1 for `tradingview_source_ranges`: `ingress.tradingview_flood_per_min`.
+    pub tradingview_flood: KeyedRateLimiter<IpKey>,
+    /// TradingView's published webhook addresses (configuration, never request data).
+    pub tradingview_ranges: Vec<Cidr>,
+    /// Step 2, failures only: `ingress.ip_token_failures_per_min`.
+    pub token_failures: KeyedRateLimiter<IpKey>,
+}
+
 pub struct IngressState {
     pub resolver: Arc<dyn SourceKeyResolver>,
     pub instruments: Arc<dyn InstrumentSupport>,
     pub ingest: IngestInstruction,
     pub reject: RecordIngressRejection,
-    pub ip_limiter: KeyedRateLimiter<IpAddr>,
+    pub ip_limits: IpLimits,
     pub key_limiter: KeyedRateLimiter<String>,
+    /// Canonical `key_id`s not found in the database (never revoked or inactive ones).
+    pub unknown_keys: UnknownKeyCache,
     pub metrics: Arc<IngressMetrics>,
     pub clock: Arc<dyn Clock>,
     /// Take the client IP from the last `X-Forwarded-For` entry (set by Caddy).
@@ -58,6 +75,45 @@ pub fn router(state: Arc<IngressState>) -> Router {
     Router::new()
         .route(INGRESS_ROUTE, any(ingress))
         .with_state(state)
+}
+
+/// Any other ingress-like request (other case, double slash, extra segments): the same
+/// flood cap and failure budget as a bad token, then the empty 404 (or the identical 429).
+pub fn unmatched(state: &IngressState, request: &Request) -> Response {
+    let ip = client_ip(request, state.trust_forwarded_for);
+    let (outcome, response) = flood_check(state, ip).unwrap_or_else(|| token_failure(state, ip));
+    state.metrics.record(outcome);
+    response
+}
+
+/// Step 1: `Some(429)` when the IP is over its flood cap.
+fn flood_check(s: &IngressState, ip: Option<IpAddr>) -> Option<(Outcome, Response)> {
+    let ip = ip?;
+    Span::current().record("client.ip", tracing::field::display(ip));
+    let limits = &s.ip_limits;
+    let limiter = if limits.tradingview_ranges.iter().any(|r| r.contains(ip)) {
+        &limits.tradingview_flood
+    } else {
+        &limits.flood
+    };
+    limiter
+        .check(&IpKey::from(ip), Instant::now())
+        .err()
+        .map(|retry| (Outcome::RateLimitedIp, rate_limited(retry)))
+}
+
+/// Charges a token failure to the IP: the empty 404 while the budget lasts, then a 429
+/// identical for every failure kind (it never reveals whether a key exists).
+fn token_failure(s: &IngressState, ip: Option<IpAddr>) -> (Outcome, Response) {
+    let charged = ip.map(|ip| {
+        s.ip_limits
+            .token_failures
+            .check(&IpKey::from(ip), Instant::now())
+    });
+    match charged {
+        Some(Err(retry)) => (Outcome::RateLimitedFailures, rate_limited(retry)),
+        _ => (Outcome::NotFound, not_found()),
+    }
 }
 
 /// Authenticated request context.
@@ -80,14 +136,11 @@ async fn handle(
     received_at: chrono::DateTime<chrono::Utc>,
 ) -> (Outcome, Response) {
     let ip = client_ip(&request, s.trust_forwarded_for);
-    if let Some(ip) = ip {
-        Span::current().record("client.ip", tracing::field::display(ip));
-        if let Err(retry) = s.ip_limiter.check(&ip, Instant::now()) {
-            return (Outcome::RateLimitedIp, rate_limited(retry));
-        }
+    if let Some(limited) = flood_check(s, ip) {
+        return limited;
     }
     if request.method() != Method::POST {
-        return (Outcome::NotFound, not_found());
+        return token_failure(s, ip);
     }
     // The raw (still percent-encoded) path: an encoded or altered token never matches.
     let Some(token) = request
@@ -96,13 +149,22 @@ async fn handle(
         .strip_prefix(PATH_PREFIX)
         .and_then(IngressToken::parse)
     else {
-        return (Outcome::NotFound, not_found());
+        return token_failure(s, ip);
     };
     Span::current().record("key_id", token.key_id());
 
+    if s.unknown_keys.is_unknown(token.key_id(), Instant::now()) {
+        return token_failure(s, ip);
+    }
     let key = match s.resolver.resolve(token.key_id()).await {
         Ok(Some(key)) if authenticates(&token, &key) => key,
-        Ok(_) => return (Outcome::NotFound, not_found()),
+        // Revoked, inactive or mismatched: never cached, always looked up again.
+        Ok(Some(_)) => return token_failure(s, ip),
+        Ok(None) => {
+            s.unknown_keys
+                .remember_unknown(token.key_id(), Instant::now());
+            return token_failure(s, ip);
+        }
         Err(e) => return internal(&e),
     };
     let caller = Caller {

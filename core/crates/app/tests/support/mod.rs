@@ -103,6 +103,8 @@ pub async fn db() -> Option<TestDb> {
         async move {
             PgPoolOptions::new()
                 .max_connections(max)
+                // Generous: a loaded CI host must not turn queueing into PoolTimedOut.
+                .acquire_timeout(std::time::Duration::from_secs(120))
                 .connect(&url)
                 .await
                 .unwrap()
@@ -110,7 +112,7 @@ pub async fn db() -> Option<TestDb> {
     };
     Some(TestDb {
         owner: pool("allwin_owner", "owner-test-only", 2).await,
-        app: pool("allwin_app", "app-test-only", 25).await,
+        app: pool("allwin_app", "app-test-only", 8).await,
         worker: pool("allwin_worker", "worker-test-only", 2).await,
         maint: pool("allwin_maint", "maint-test-only", 1).await,
     })
@@ -171,7 +173,8 @@ pub fn config() -> Config {
     Config::from_lookup(|k| match k {
         "DATABASE_URL" => Some("postgres://unused".into()),
         "INGRESS_RATE_PER_KEY_PER_MIN" => Some("1000".into()),
-        "INGRESS_RATE_PER_IP_PER_MIN" => Some("100000".into()),
+        "INGRESS_IP_FLOOD_PER_MIN" => Some("100000".into()),
+        "INGRESS_IP_TOKEN_FAILURES_PER_MIN" => Some("100000".into()),
         _ => None,
     })
     .unwrap()
@@ -184,6 +187,7 @@ pub fn wire(db: &TestDb, config: &Config) -> App {
         db.worker.clone(),
         Arc::new(SystemClock),
     )
+    .unwrap()
 }
 
 pub struct Seeded {
@@ -275,4 +279,24 @@ pub async fn as_user<T>(
     let out = f(&mut tx).await;
     tx.rollback().await.unwrap();
     out
+}
+
+/// Delivers the outbox until `user` has no undelivered event. Other tests' dispatchers
+/// may hold rows (`SKIP LOCKED`), so "no row seen" alone is not "delivered".
+pub async fn drain(app: &App, db: &TestDb, user: uuid::Uuid) {
+    for _ in 0..200 {
+        app.dispatcher.dispatch_batch().await.unwrap();
+        let pending: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM app.outbox WHERE user_id = $1 AND published_at IS NULL AND dead_lettered_at IS NULL",
+        )
+        .bind(user)
+        .fetch_one(&db.worker)
+        .await
+        .unwrap();
+        if pending == 0 {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("outbox not drained for {user}");
 }

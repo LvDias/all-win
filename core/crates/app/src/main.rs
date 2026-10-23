@@ -48,6 +48,12 @@ async fn serve() -> anyhow::Result<()> {
     if let Some(owner) = &config.migration_database_url {
         migrate(owner).await?;
     }
+    if !config.trust_forwarded_for {
+        // Behind Caddy every request would share Caddy's address (QA Security I1).
+        tracing::warn!(
+            "INGRESS_TRUST_FORWARDED_FOR=false: per-IP ingress limits use the TCP peer; set it to true when the Core is reachable only through Caddy"
+        );
+    }
     let app = App::connect(&config).await?;
     tokio::spawn(app.dispatcher.run());
     let listener = tokio::net::TcpListener::bind(config.bind)

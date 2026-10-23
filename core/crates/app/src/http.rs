@@ -4,7 +4,7 @@
 use axum::Router;
 use axum::extract::{MatchedPath, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -16,12 +16,13 @@ pub const UNMATCHED: &str = "<unmatched>";
 pub const UNMATCHED_INGRESS: &str = "<unmatched-ingress>";
 
 pub fn router(state: AppState) -> Router {
+    let ingress = adapter_tradingview::router(state.ingress.clone());
     Router::new()
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
-        .with_state(state.clone())
-        .merge(adapter_tradingview::router(state.ingress.clone()))
         .fallback(fallback)
+        .with_state(state)
+        .merge(ingress)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(make_span)
@@ -48,13 +49,41 @@ async fn healthz() -> StatusCode {
 async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     let mut out = String::new();
     state.ingress.metrics.render(&mut out);
+    // Dead-lettered: an audit entry missing from a user's log (X-5). Unconsumed: events of
+    // a type with no registered consumer, never fetched (Architect decision (A)). Alert on > 0.
+    let consumed: Vec<String> = state.consumed_event_types.to_vec();
+    match sqlx::query!(
+        r#"SELECT count(*) FILTER (WHERE dead_lettered_at IS NOT NULL) AS "dead_lettered!",
+                  count(*) FILTER (WHERE published_at IS NULL AND dead_lettered_at IS NULL
+                                   AND NOT (event_type = ANY($1))) AS "unconsumed!"
+             FROM app.outbox"#,
+        &consumed
+    )
+    .fetch_one(&state.worker)
+    .await
+    {
+        Ok(row) => {
+            out.push_str("# TYPE allwin_outbox_dead_lettered gauge\n");
+            out.push_str(&format!(
+                "allwin_outbox_dead_lettered {}\n",
+                row.dead_lettered
+            ));
+            out.push_str("# TYPE allwin_outbox_unconsumed gauge\n");
+            out.push_str(&format!("allwin_outbox_unconsumed {}\n", row.unconsumed));
+        }
+        Err(e) => tracing::error!(error = %e, "metrics: outbox counts failed"),
+    }
     ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], out)
 }
 
-/// Every unmatched request gets an empty 404, so a near-miss ingress URL is
-/// indistinguishable from an unknown token (S1 AC-2).
-async fn fallback() -> StatusCode {
-    StatusCode::NOT_FOUND
+/// Every unmatched request gets an empty 404. Ingress-like ones go through the ingress
+/// flood cap and token-failure budget, so a near-miss URL is indistinguishable from an
+/// unknown token (S1 AC-2, HTTP 1.1.2 step 2).
+async fn fallback(State(state): State<AppState>, request: Request) -> Response {
+    if is_ingress_like(request.uri().path()) {
+        return adapter_tradingview::unmatched(&state.ingress, &request);
+    }
+    StatusCode::NOT_FOUND.into_response()
 }
 
 /// Ingress-like: path starts with `/ingress` compared case-insensitively after

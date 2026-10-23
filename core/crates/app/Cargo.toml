@@ -21,11 +21,13 @@ audit-application.workspace = true
 audit-infra.workspace = true
 axum.workspace = true
 base64.workspace = true
+chrono.workspace = true
 catalog-application.workspace = true
 catalog-infra.workspace = true
 rand.workspace = true
 routing-application.workspace = true
 routing-infra.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 uuid = { workspace = true, features = ["v7"] }
 shared-kernel = { workspace = true, features = ["sqlx"] }
@@ -38,6 +40,7 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 
 [dev-dependencies]
+async-trait.workspace = true
 chrono.workspace = true
 http-body-util.workspace = true
 rust_decimal.workspace = true

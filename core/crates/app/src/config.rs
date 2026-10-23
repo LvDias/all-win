@@ -7,9 +7,15 @@
 //! | `MIGRATION_DATABASE_URL` | unset | role `allwin_owner`; when set, migrations run at startup and the dev seed uses it |
 //! | `CORE_BIND` | `127.0.0.1:8080` | listen address |
 //! | `DB_MAX_CONNECTIONS` | `10` | pool size |
-//! | `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop (behind Caddy only) |
-//! | `INGRESS_RATE_PER_IP_PER_MIN` | `300` | per-source-IP limit (burst = same) |
-//! | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | per-key limit (burst = same) |
+//! | `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop; only when Caddy sets it and the Core is reachable only through Caddy |
+//! | `INGRESS_IP_FLOOD_PER_MIN` | `3000` | step 1: every request, per IPv4 address / IPv6 /64 |
+//! | `INGRESS_TRADINGVIEW_FLOOD_PER_MIN` | `30000` | step 1 for addresses in the TradingView ranges |
+//! | `INGRESS_TRADINGVIEW_SOURCE_RANGES` | empty | comma-separated CIDRs of TradingView's webhook IPs; non-empty requires `INGRESS_TRUST_FORWARDED_FOR=true` |
+//! | `INGRESS_IP_TOKEN_FAILURES_PER_MIN` | `30` | step 2: token failures per IP before the identical 429 |
+//! | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | step 3: per authenticated key |
+//! | `INGRESS_UNKNOWN_KEY_CACHE_TTL_S` | `60` | step 2: negative cache of unknown `key_id`s (0 disables) |
+//!
+//! Limits burst up to their per-minute value (s1-webhook-ingest §2, HTTP 1.1.2).
 //! | `RUST_LOG` | `info` | tracing filter |
 
 use std::net::SocketAddr;
@@ -21,6 +27,8 @@ pub enum ConfigError {
     Missing(&'static str),
     #[error("{0} is invalid")]
     Invalid(&'static str),
+    #[error("{0}")]
+    Conflict(&'static str),
 }
 
 /// A value that must never reach logs; `Debug` prints `REDACTED`.
@@ -51,8 +59,12 @@ pub struct Config {
     pub bind: SocketAddr,
     pub db_max_connections: u32,
     pub trust_forwarded_for: bool,
-    pub rate_per_ip_per_min: u32,
+    pub ip_flood_per_min: u32,
+    pub tradingview_flood_per_min: u32,
+    pub tradingview_source_ranges: Vec<adapter_tradingview::Cidr>,
+    pub ip_token_failures_per_min: u32,
     pub rate_per_key_per_min: u32,
+    pub unknown_key_cache_ttl_s: u64,
 }
 
 impl Config {
@@ -65,15 +77,44 @@ impl Config {
         let database_url = non_empty("DATABASE_URL").ok_or(ConfigError::Missing("DATABASE_URL"))?;
         let worker_database_url =
             non_empty("WORKER_DATABASE_URL").unwrap_or_else(|| database_url.clone());
+        let tradingview_source_ranges = match non_empty("INGRESS_TRADINGVIEW_SOURCE_RANGES") {
+            Some(list) => list
+                .split(',')
+                .filter(|r| !r.trim().is_empty())
+                .map(|r| r.parse())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| ConfigError::Invalid("INGRESS_TRADINGVIEW_SOURCE_RANGES"))?,
+            None => Vec::new(),
+        };
+        let trust_forwarded_for = parse_or(&get, "INGRESS_TRUST_FORWARDED_FOR", Some(false))?;
+        // Without the forwarded client address every request would appear to come from
+        // Caddy, and the whole ingress would get the TradingView cap (1.1.2 deployment rule).
+        if !tradingview_source_ranges.is_empty() && !trust_forwarded_for {
+            return Err(ConfigError::Conflict(
+                "INGRESS_TRADINGVIEW_SOURCE_RANGES requires INGRESS_TRUST_FORWARDED_FOR=true",
+            ));
+        }
         Ok(Self {
             database_url: SecretString::new(database_url),
             worker_database_url: SecretString::new(worker_database_url),
             migration_database_url: non_empty("MIGRATION_DATABASE_URL").map(SecretString::new),
             bind: parse_or(&get, "CORE_BIND", "127.0.0.1:8080".parse().ok())?,
             db_max_connections: parse_or(&get, "DB_MAX_CONNECTIONS", Some(10))?,
-            trust_forwarded_for: parse_or(&get, "INGRESS_TRUST_FORWARDED_FOR", Some(false))?,
-            rate_per_ip_per_min: parse_or(&get, "INGRESS_RATE_PER_IP_PER_MIN", Some(300))?,
+            trust_forwarded_for,
+            ip_flood_per_min: parse_or(&get, "INGRESS_IP_FLOOD_PER_MIN", Some(3000))?,
+            tradingview_flood_per_min: parse_or(
+                &get,
+                "INGRESS_TRADINGVIEW_FLOOD_PER_MIN",
+                Some(30000),
+            )?,
+            tradingview_source_ranges,
+            ip_token_failures_per_min: parse_or(
+                &get,
+                "INGRESS_IP_TOKEN_FAILURES_PER_MIN",
+                Some(30),
+            )?,
             rate_per_key_per_min: parse_or(&get, "INGRESS_RATE_PER_KEY_PER_MIN", Some(60))?,
+            unknown_key_cache_ttl_s: parse_or(&get, "INGRESS_UNKNOWN_KEY_CACHE_TTL_S", Some(60))?,
         })
     }
 }
@@ -104,7 +145,19 @@ mod tests {
         assert_eq!(c.worker_database_url.expose(), c.database_url.expose());
         assert!(c.migration_database_url.is_none());
         assert!(!c.trust_forwarded_for);
-        assert_eq!((c.rate_per_ip_per_min, c.rate_per_key_per_min), (300, 60));
+        assert_eq!(
+            (
+                c.ip_flood_per_min,
+                c.tradingview_flood_per_min,
+                c.ip_token_failures_per_min
+            ),
+            (3000, 30000, 30)
+        );
+        assert_eq!(
+            (c.rate_per_key_per_min, c.unknown_key_cache_ttl_s),
+            (60, 60)
+        );
+        assert!(c.tradingview_source_ranges.is_empty());
         assert!(!format!("{c:?}").contains("pw-secret"));
     }
 

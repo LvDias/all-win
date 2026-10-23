@@ -9,18 +9,24 @@ pub mod wiring;
 
 use std::sync::Arc;
 
-use adapter_tradingview::{IngressMetrics, IngressState, KeyedRateLimiter, RateLimit};
+use adapter_tradingview::{
+    IngressMetrics, IngressState, IpLimits, KeyedRateLimiter, RateLimit, UnknownKeyCache,
+};
 use anyhow::Context;
 use audit_application::RecordAuditEntry;
 use audit_infra::PgAuditStore;
 use catalog_application::IsInstrumentEnabled;
 use catalog_infra::PgInstrumentRepository;
+use routing_application::enterprise::IngressEvent;
 use routing_application::{IngestInstruction, IngestStore, RecordIngressRejection};
 use routing_infra::PgIngestStore;
 use shared_kernel::{Clock, SystemClock};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::Notify;
+
+/// Bounded size of the unknown-`key_id` cache (s1-webhook-ingest §2 step 2).
+const UNKNOWN_KEY_CACHE_CAPACITY: usize = 10_000;
 
 /// Migrations embedded in the binary; run as `allwin_owner` only.
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
@@ -29,6 +35,10 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations"
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
+    /// `allwin_worker` (BYPASSRLS): cross-user operational counts only (`/metrics`).
+    pub worker: PgPool,
+    /// Outbox event types with a registered consumer (for the unconsumed-events metric).
+    pub consumed_event_types: Arc<[String]>,
     pub ingress: Arc<IngressState>,
 }
 
@@ -55,15 +65,16 @@ impl App {
         let worker = connect(&config.worker_database_url, 2)
             .await
             .context("WORKER_DATABASE_URL")?;
-        Ok(Self::wire(config, db, worker, Arc::new(SystemClock)))
+        Self::wire(config, db, worker, Arc::new(SystemClock))
     }
 
+    /// Wires every module. Fails when an emitted outbox event type has no consumer.
     pub fn wire(
         config: &config::Config,
         db: PgPool,
         worker: PgPool,
         clock: Arc<dyn Clock>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let wake = Arc::new(Notify::new());
         let store: Arc<dyn IngestStore> = Arc::new(wiring::NotifyingIngestStore {
             inner: Arc::new(PgIngestStore::new(db.clone())),
@@ -76,20 +87,46 @@ impl App {
             ))),
             ingest: IngestInstruction::new(store.clone()),
             reject: RecordIngressRejection::new(store),
-            ip_limiter: KeyedRateLimiter::new(RateLimit {
-                per_minute: config.rate_per_ip_per_min,
-            }),
+            ip_limits: IpLimits {
+                flood: KeyedRateLimiter::new(RateLimit {
+                    per_minute: config.ip_flood_per_min,
+                }),
+                tradingview_flood: KeyedRateLimiter::new(RateLimit {
+                    per_minute: config.tradingview_flood_per_min,
+                }),
+                tradingview_ranges: config.tradingview_source_ranges.clone(),
+                token_failures: KeyedRateLimiter::new(RateLimit {
+                    per_minute: config.ip_token_failures_per_min,
+                }),
+            },
             key_limiter: KeyedRateLimiter::new(RateLimit {
                 per_minute: config.rate_per_key_per_min,
             }),
+            unknown_keys: UnknownKeyCache::new(
+                std::time::Duration::from_secs(config.unknown_key_cache_ttl_s),
+                UNKNOWN_KEY_CACHE_CAPACITY,
+            ),
             metrics: Arc::new(IngressMetrics::default()),
             clock,
             trust_forwarded_for: config.trust_forwarded_for,
         });
-        let audit = RecordAuditEntry::new(Arc::new(PgAuditStore::new(db.clone())));
-        Self {
-            state: AppState { db, ingress },
-            dispatcher: outbox::OutboxDispatcher::new(worker, audit, wake),
+        // Consumers are registered before the dispatcher exists (architecture rule).
+        let audit: Arc<dyn outbox::EventConsumer> = Arc::new(outbox::AuditConsumer(
+            RecordAuditEntry::new(Arc::new(PgAuditStore::new(db.clone()))),
+        ));
+        let mut consumers = outbox::Consumers::default();
+        for event_type in IngressEvent::TYPES {
+            consumers.register(event_type, audit.clone());
         }
+        consumers.require(&IngressEvent::TYPES)?;
+        Ok(Self {
+            state: AppState {
+                db,
+                worker: worker.clone(),
+                consumed_event_types: consumers.types().into(),
+                ingress,
+            },
+            dispatcher: outbox::OutboxDispatcher::new(worker, consumers, wake),
+        })
     }
 }

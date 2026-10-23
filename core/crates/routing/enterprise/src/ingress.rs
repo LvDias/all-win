@@ -73,6 +73,13 @@ pub struct IngressEvent {
 }
 
 impl IngressEvent {
+    /// Every outbox `event_type` this module emits; each must have a consumer at startup.
+    pub const TYPES: [&'static str; 3] = [
+        "ingress.received",
+        "ingress.duplicate_ignored",
+        "ingress.rejected",
+    ];
+
     /// Outbox `event_type` and audit `code`.
     pub fn event_type(&self) -> &'static str {
         match self.kind {

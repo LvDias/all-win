@@ -10,17 +10,19 @@ pub enum Outcome {
     Duplicate,
     NotFound,
     RateLimitedIp,
+    RateLimitedFailures,
     RateLimitedKey,
     Rejected,
     Internal,
 }
 
 impl Outcome {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Accepted,
         Self::Duplicate,
         Self::NotFound,
         Self::RateLimitedIp,
+        Self::RateLimitedFailures,
         Self::RateLimitedKey,
         Self::Rejected,
         Self::Internal,
@@ -32,6 +34,7 @@ impl Outcome {
             Self::Duplicate => "duplicate",
             Self::NotFound => "not_found",
             Self::RateLimitedIp => "rate_limited_ip",
+            Self::RateLimitedFailures => "rate_limited_token_failures",
             Self::RateLimitedKey => "rate_limited_key",
             Self::Rejected => "rejected",
             Self::Internal => "internal",
@@ -41,7 +44,7 @@ impl Outcome {
 
 #[derive(Debug, Default)]
 pub struct IngressMetrics {
-    counts: [AtomicU64; 7],
+    counts: [AtomicU64; 8],
 }
 
 impl IngressMetrics {

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, user_id, event_type, occurred_at, payload FROM app.outbox\n               WHERE published_at IS NULL ORDER BY occurred_at LIMIT $1 FOR UPDATE SKIP LOCKED",
+  "query": "SELECT id, user_id, event_type, occurred_at, payload, attempts FROM app.outbox\n               WHERE published_at IS NULL AND dead_lettered_at IS NULL\n                 AND next_attempt_at <= now() AND event_type = ANY($1)\n               ORDER BY next_attempt_at, occurred_at LIMIT $2 FOR UPDATE SKIP LOCKED",
   "describe": {
     "columns": [
       {
@@ -57,10 +57,22 @@
             "name": "payload"
           }
         }
+      },
+      {
+        "ordinal": 5,
+        "name": "attempts",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "app.outbox",
+            "name": "attempts"
+          }
+        }
       }
     ],
     "parameters": {
       "Left": [
+        "TextArray",
         "Int8"
       ]
     },
@@ -69,8 +81,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "b796b10e19a8fe524239500db950d6aded4c4612046dd19de3f303d6f40a6531"
+  "hash": "6b18bd09c2a4268c89382b91ed83a2eab01b1fef48366787654f4d8a18ab135a"
 }

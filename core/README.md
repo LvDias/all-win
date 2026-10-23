@@ -22,8 +22,13 @@ Workspace lints deny `unwrap`/`expect`/`panic`/float arithmetic outside tests.
 | `MIGRATION_DATABASE_URL` | unset | `allwin_owner`; when set, `serve` applies migrations first |
 | `CORE_BIND` | `127.0.0.1:8080` | listen address |
 | `DB_MAX_CONNECTIONS` | `10` | pool size |
-| `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop (only behind Caddy) |
-| `INGRESS_RATE_PER_IP_PER_MIN` / `INGRESS_RATE_PER_KEY_PER_MIN` | `300` / `60` | ingress rate limits (burst = same) |
+| `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop; `true` only when Caddy sets it and the Core is reachable only through Caddy |
+| `INGRESS_IP_FLOOD_PER_MIN` | `3000` | every ingress request, per IPv4 address / IPv6 /64 |
+| `INGRESS_TRADINGVIEW_FLOOD_PER_MIN` | `30000` | the same, for addresses in the TradingView ranges |
+| `INGRESS_TRADINGVIEW_SOURCE_RANGES` | empty | comma-separated CIDRs of TradingView's webhook IPs; non-empty requires `INGRESS_TRUST_FORWARDED_FOR=true` (the Core refuses to start otherwise) |
+| `INGRESS_IP_TOKEN_FAILURES_PER_MIN` | `30` | token failures per IP before the identical 429; valid tokens are never refused |
+| `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | per authenticated key |
+| `INGRESS_UNKNOWN_KEY_CACHE_TTL_S` | `60` | negative cache of unknown `key_id`s only (0 disables) |
 | `RUST_LOG` | `info` | tracing filter (JSON lines on stdout) |
 | `ALLWIN_ENABLE_DEV_COMMANDS` | unset | `true` enables `seed` / `revoke-key` (dev and test only) |
 
@@ -39,7 +44,8 @@ allwin-core revoke-key KEY_ID  # dev: revoke a source key
 ```
 
 Endpoints on the Core bind: `POST /ingress/v1/tradingview/{token}`, `GET /healthz` (204), `GET /metrics`
-(counters by result only; not proxied by Caddy). Request logs carry `http.route` (template, `<unmatched>` or
+(counters by result only). Deployment requirement: Caddy proxies only `/ingress/*` and `/api/*`, never
+`/metrics` or `/healthz`, and the Core port is not published outside the Docker network. Request logs carry `http.route` (template, `<unmatched>` or
 `<unmatched-ingress>`), status, latency, `client.ip` and, for a canonical token only, `key_id`.
 
 ## Checks

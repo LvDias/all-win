@@ -168,7 +168,7 @@ async fn no_secret_fragment_reaches_logs_spans_metrics_responses_or_audit() {
     .await;
     assert_eq!((status, b.len()), (404, 0));
 
-    while app.dispatcher.dispatch_batch().await.unwrap().0 > 0 {}
+    drain(&app, db, s.user_id).await;
     let (_, _, metrics) = send(
         &app.state,
         Request::get("/metrics").body(Body::empty()).unwrap(),
