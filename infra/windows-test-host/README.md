@@ -65,7 +65,7 @@ The VPS also needs to stay joined as a tagged, non-expiring node: confirm in the
 
 ## 3. VPS - get the scripts onto the machine
 
-The repository is private and the VNC console cannot paste, so use **option B only**: RDP from the Mac to the VPS (over the tailnet) with **one folder that holds only the two scripts** shared (*Devices & Audio -> Drives*, or Clipboard), not the whole Mac disk: the Administrator session can read whatever is shared. Turn the sharing off after copying, then copy the two scripts from the Mac checkout of the approved commit (`infra/windows-test-host/Lock-Firewall.ps1` and `Install-AllWinTestHost.ps1`) and make the folder admin-only. In PowerShell as Administrator:
+The repository is private and the VNC console cannot paste, so use **option B only**: RDP from the Mac to the VPS (over the tailnet) with **one folder that holds only the two scripts** shared (*Devices & Audio -> Drives*, or Clipboard), not the whole Mac disk: the Administrator session can read whatever is shared. Copy the two scripts from the Mac checkout of the approved commit (`infra/windows-test-host/Lock-Firewall.ps1` and `Install-AllWinTestHost.ps1`), make the folder admin-only, and only then turn the sharing off. In PowerShell as Administrator:
 
 ```powershell
 mkdir C:\AllWin-setup
@@ -123,11 +123,11 @@ It ends with an audit of the active firewall policy and **fails** if any enabled
 **After step 6 succeeds**, scope your hand-edited Remote Desktop rules to the Tailscale interface too (the audit checks the interface only for the two AllWin rules, so this is on you). Confirm first that RDP over the tailnet still works (it now also passes through `AllWin-Tailnet-RDP-TCP-3389`), then:
 
 ```powershell
-Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-*' -InterfaceAlias Tailscale   # keeps RDP over UDP
+Get-NetFirewallRule -Name 'RemoteDesktop-*' | Where-Object Enabled -eq 'True' | Set-NetFirewallRule -InterfaceAlias Tailscale   # every enabled Remote Desktop rule; keeps RDP over UDP
 C:\AllWin-setup\Lock-Firewall.ps1 -CheckOnly                                         # must end with "Audit OK"
 ```
 
-If RDP breaks, use the VNC console to run `Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-*' -InterfaceAlias Any` and fix Tailscale first.
+If RDP breaks, use the VNC console to run `Get-NetFirewallRule -Name 'RemoteDesktop-*' | Where-Object Enabled -eq 'True' | Set-NetFirewallRule -InterfaceAlias Any` and fix Tailscale first.
 
 ## 7. Mac — RDP over the tailnet
 
