@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 adapter-tradingview.workspace = true
+accounts-infra = { path = "../accounts/infra" }
 anyhow.workspace = true
 async-trait.workspace = true
 audit-application.workspace = true

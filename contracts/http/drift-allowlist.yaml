@@ -5,10 +5,8 @@
 # merge gate removes its own operations.
 not_implemented:
   - applyPresetVersion
-  - archiveAccount
   - cancelChannelChange
   - completeSignup
-  - createAccount
   - createConnection
   - createInvitation
   - createManualTrade
@@ -18,8 +16,6 @@ not_implemented:
   - deleteRoute
   - eventStream
   - forgetDevice
-  - getAccount
-  - getAccountArchiveImpact
   - getAccountPreset
   - getAccountPresetDiff
   - getAccountRisk
@@ -32,15 +28,12 @@ not_implemented:
   - getMe
   - getMySecurity
   - getNearestProfileSize
-  - getOptInRules
   - getPerformance
   - getPresetVersion
-  - getRuleVersion
   - getTrade
   - getTradesSummary
   - getUnreadCount
   - listAccountProfiles
-  - listAccounts
   - listActivity
   - listConnections
   - listDefaultProfiles
@@ -73,19 +66,15 @@ not_implemented:
   - requestLoginCode
   - requestStepUp
   - resendCode
-  - restartEvaluation
   - restoreAccountProfile
   - restorePresetValue
   - revokeInvitation
   - revokeSource
   - rotateSource
-  - setAccountLifecycle
-  - setAccountOptIn
   - signOutEverywhere
   - startChannelChange
   - startSignup
   - unpairConnection
-  - updateAccount
   - updateManualTrade
   - updateMe
   - updateRoute

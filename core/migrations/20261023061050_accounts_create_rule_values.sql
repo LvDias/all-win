@@ -25,7 +25,7 @@ CREATE TABLE accounts.account_rule_value (
   CONSTRAINT account_rule_value_object_check CHECK (value IS NULL OR jsonb_typeof(value) = 'object'),
   CONSTRAINT account_rule_value_amount_check CHECK (value IS NULL
              OR NOT jsonb_path_exists(value, '$.**.amount ? (@.type() == "number")')),
-  CONSTRAINT account_rule_value_chose_check CHECK ((origin = 'chosen_from_conflict') = (chose IS NOT NULL)),
+  CONSTRAINT account_rule_value_conflict_check CHECK ((origin = 'chosen_from_conflict') = (chose IS NOT NULL)),
   CONSTRAINT account_rule_value_chosen_at_check CHECK ((chose IS NULL) = (chosen_at IS NULL))
 );
 ALTER TABLE accounts.account_rule_value OWNER TO allwin_owner;

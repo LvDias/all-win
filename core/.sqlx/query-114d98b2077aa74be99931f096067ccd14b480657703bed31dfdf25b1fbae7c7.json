@@ -1,0 +1,184 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT v.id, v.kind, v.firm_stance, v.is_generic, v.firm_id, v.firm_platform,\n                      v.version_number, v.published_at, v.quotes, v.research, v.change_cause,\n                      v.change_reason, v.previous_id, p.firm_stance AS \"previous_firm_stance?\"\n                 FROM catalog.opt_in_rule_version v\n                 LEFT JOIN catalog.opt_in_rule_version p ON p.id = v.previous_id WHERE v.id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "firm_stance",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "firm_stance"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "is_generic",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "is_generic"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "firm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "firm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "firm_platform",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "firm_platform"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "version_number",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "version_number"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "published_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "published_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "quotes",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "quotes"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "research",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "research"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "change_cause",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "change_cause"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "change_reason",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "change_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "previous_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "previous_id"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "previous_firm_stance?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog.opt_in_rule_version",
+            "name": "firm_stance"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "114d98b2077aa74be99931f096067ccd14b480657703bed31dfdf25b1fbae7c7"
+}

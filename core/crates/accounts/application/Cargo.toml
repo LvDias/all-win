@@ -1,0 +1,32 @@
+[package]
+name = "accounts-application"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "accounts module — application layer: account use cases and their ports (S5)."
+
+[lints]
+workspace = true
+
+[features]
+# In-memory fakes of the other modules' ports, for tests.
+testing = []
+
+[dependencies]
+# Internal crates by path until core/Cargo.toml lists them in [workspace.dependencies] (Brasa).
+accounts-enterprise = { path = "../enterprise" }
+access.workspace = true
+shared-kernel.workspace = true
+async-trait.workspace = true
+chrono = { workspace = true, features = ["std"] }
+chrono-tz.workspace = true
+rust_decimal.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -1,0 +1,432 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT a.id, a.user_id, a.kind, a.display_name, a.firm_id, a.firm_name, a.plan_name,\n                      a.phase, a.preset_version_id, a.firm_platform, a.size_amount, a.multiplier,\n                      a.max_position_qty, a.lifecycle_state, a.venue_account_id, a.bound_at,\n                      a.automation_state, a.automation_choice, a.automation_rule_version_id,\n                      a.automation_pending_reason, a.automation_chosen_at,\n                      a.copy_state, a.copy_choice, a.copy_rule_version_id, a.copy_pending_reason,\n                      a.copy_chosen_at, a.created_at, a.updated_at, a.archived_at, a.row_version,\n                      a.limits_version, a.evaluation_start, a.evaluation_earned_before,\n                      (SELECT r.value->>'amount' FROM accounts.account_rule_value r\n                        WHERE r.user_id = a.user_id AND r.account_id = a.id\n                          AND r.field = 'commission_per_contract_side' AND NOT r.is_unset) AS commission,\n                      a.create_request_hash\n                 FROM accounts.account a WHERE a.user_id = $1 AND a.id = $2 AND a.archived_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "firm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "firm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "firm_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "firm_name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "plan_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "plan_name"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "phase",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "phase"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "preset_version_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "preset_version_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "firm_platform",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "firm_platform"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "size_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "size_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "multiplier",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "multiplier"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "max_position_qty",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "max_position_qty"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "lifecycle_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "lifecycle_state"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "venue_account_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "venue_account_id"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "bound_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "bound_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "automation_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_state"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "automation_choice",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_choice"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "automation_rule_version_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_rule_version_id"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "automation_pending_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_pending_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "automation_chosen_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "automation_chosen_at"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "copy_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_state"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "copy_choice",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_choice"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "copy_rule_version_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_rule_version_id"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "copy_pending_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_pending_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "copy_chosen_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "copy_chosen_at"
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 28,
+        "name": "archived_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "ordinal": 29,
+        "name": "row_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "row_version"
+          }
+        }
+      },
+      {
+        "ordinal": 30,
+        "name": "limits_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "limits_version"
+          }
+        }
+      },
+      {
+        "ordinal": 31,
+        "name": "evaluation_start",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "evaluation_start"
+          }
+        }
+      },
+      {
+        "ordinal": 32,
+        "name": "evaluation_earned_before",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "evaluation_earned_before"
+          }
+        }
+      },
+      {
+        "ordinal": 33,
+        "name": "commission",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 34,
+        "name": "create_request_hash",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "accounts.account",
+            "name": "create_request_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      null,
+      true
+    ]
+  },
+  "hash": "0761a0f4bcf9d28658c8fdb2f5df7099122ba157affff704c167cfbe8780f1a4"
+}

@@ -1,0 +1,37 @@
+[package]
+name = "accounts-infra"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "accounts module — infra layer: PostgreSQL store, outbox, HTTP handlers (S5)."
+
+[lints]
+workspace = true
+
+[dependencies]
+accounts-application = { path = "../application" }
+access = { workspace = true, features = ["axum"] }
+shared-kernel = { workspace = true, features = ["sqlx"] }
+async-trait.workspace = true
+axum.workspace = true
+chrono = { workspace = true, features = ["std", "serde"] }
+contracts.workspace = true
+jsonschema.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "macros", "rust_decimal"] }
+tracing.workspace = true
+utoipa.workspace = true
+uuid = { workspace = true, features = ["v7", "serde"] }
+
+[dev-dependencies]
+accounts-application = { path = "../application", features = ["testing"] }
+sqlx = { workspace = true, features = ["migrate"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+tower = { workspace = true, features = ["util"] }
+http-body-util.workspace = true
+chrono-tz.workspace = true

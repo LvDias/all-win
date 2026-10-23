@@ -50,6 +50,7 @@ CREATE TABLE accounts.account (
   CONSTRAINT account_create_key UNIQUE (user_id, create_idempotency_key),
   CONSTRAINT account_create_key_hash_check CHECK ((create_idempotency_key IS NULL) = (create_request_hash IS NULL)),
   CONSTRAINT account_binding_check CHECK ((venue_account_id IS NULL) = (bound_at IS NULL)),
+  CONSTRAINT account_archived_unbound_check CHECK (archived_at IS NULL OR venue_account_id IS NULL),  -- archiving releases the binding
   CONSTRAINT account_real_check CHECK (kind = 'prop' OR (firm_id IS NULL AND firm_name IS NULL AND plan_name IS NULL
              AND phase IS NULL AND preset_version_id IS NULL AND firm_platform IS NULL)),
   -- prop: a preset XOR the three manual fields (S5 contract §2.4); with a preset they come from the catalog

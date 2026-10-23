@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (\n                 SELECT 1 FROM accounts.account_rule_value\n                  WHERE user_id = $1 AND account_id = $2 AND field = 'evaluation_profit_target'\n                    AND NOT is_unset) AS \"has!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "has!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c1373bd8ef131aa4497b18b53a6a5463470750e79c8f66134b4aa457422af1ed"
+}
