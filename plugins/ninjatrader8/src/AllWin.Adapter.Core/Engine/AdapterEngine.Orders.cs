@@ -259,6 +259,7 @@ namespace AllWin.Adapter.Core.Engine
                 CommandId = commandId,
                 RoleLetter = letter == '\0' ? null : letter.ToString(),
                 RecordedAt = _clock.UtcNow,
+                Instrument = execution.Instrument.Clone(),
             };
             _fills[key] = fillRecord;
             Put(Collections.Fills, key, fillRecord);

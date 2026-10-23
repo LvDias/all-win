@@ -162,6 +162,9 @@ namespace AllWin.Adapter.Core.Engine
         /// the position from flat to non-flat or flips it. 0 for records written before it existed.
         /// </summary>
         public long PositionSeq { get; set; }
+
+        /// <summary>Instrument of the fill, so pruning can keep the fills of a position that is still open (null in old records).</summary>
+        public Instrument? Instrument { get; set; }
     }
 
     public sealed class OutboxEntry

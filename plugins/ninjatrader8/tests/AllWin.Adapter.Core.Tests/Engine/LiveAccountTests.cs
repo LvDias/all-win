@@ -403,6 +403,23 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
+        public void Fills_of_a_position_open_past_retention_are_kept_for_the_row_6_cap()
+        {
+            // Code Review low: a shared position open for more than 7 days, whose executions NT8 no longer lists.
+            using var h = LiveHarness();
+            h.Deliver(Place(E1, Side.Buy, 1, protection: Shared()));
+            h.Deliver(Place(E2, Side.Buy, 1, protection: Shared(), order: new OrderSpec { Type = OrderType.Limit, LimitPrice = 20995m }));
+            h.AckAll();
+            h.Platform.ForgetExecutions(Sim101);
+            h.Tick(TimeSpan.FromDays(8)); // pruning runs
+            h.Platform.DeferCancels = true;
+            Enter(h, LiveState.A);
+            h.Platform.FillOrder(Sim101, h.Platform.OrderByName(Sim101, "aw:" + E2 + ":e")!.Handle, 1, 20995m);
+            h.Settle();
+            Assert.Equal(2, h.Platform.OrderByName(Sim101, "aw:" + E1 + ":s")!.Quantity);
+        }
+
+        [Fact]
         public void Shared_growth_from_a_non_consented_fill_on_A_is_still_refused()
         {
             using var h = LiveHarness();

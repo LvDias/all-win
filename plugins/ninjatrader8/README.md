@@ -17,7 +17,7 @@ The plugin connects a trader's NinjaTrader 8 to the All Win Core through adapter
 ## Build and test (Linux, .NET 10 SDK)
 
 ```bash
-dotnet test plugins/ninjatrader8 --nologo -v q            # 676 tests, includes the fake-Core scenarios
+dotnet test plugins/ninjatrader8 --nologo -v q            # 677 tests, includes the fake-Core scenarios
 dotnet run --project plugins/ninjatrader8/tools/AllWin.FakeCore -- -with-sim   # scenarios with a readable summary
 python3 plugins/ninjatrader8/tools/gen-contract-schemas.py # after a contract change (a drift test fails otherwise)
 ```

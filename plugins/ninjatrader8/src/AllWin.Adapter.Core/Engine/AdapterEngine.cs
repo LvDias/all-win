@@ -650,13 +650,23 @@ namespace AllWin.Adapter.Core.Engine
                 foreach (var execution in SafeExecutions(mapping.PlatformAccount)) heldByPlatform.Add(mapping.PlatformAccount + "|" + execution.ExecutionId);
             }
             foreach (var pair in _fills.Where(p => p.Value.RecordedAt < cutoff && !heldByPlatform.Contains(p.Key)
-                && observedPrefixes.Any(prefix => p.Key.StartsWith(prefix, StringComparison.Ordinal))).ToList())
+                && observedPrefixes.Any(prefix => p.Key.StartsWith(prefix, StringComparison.Ordinal) && !InOpenPosition(prefix.Substring(0, prefix.Length - 1), p.Value))).ToList())
             {
                 _fills.Remove(pair.Key);
                 _pending.Add(new StoreOp(Collections.Fills, pair.Key, null));
             }
             // Keep the outbox sequence monotonic even after the outbox drains.
             Put(Collections.Meta, "next_outbox_seq", _nextOutboxSeq);
+        }
+
+        /// <summary>
+        /// The fill belongs to a position that is still open (its number is the current one and the position is not flat):
+        /// kept past retention, because the row 6 cap of ADR-0005 §N11 sums those fills (Code Review low).
+        /// </summary>
+        private bool InOpenPosition(string account, FillRecord fill)
+        {
+            if (fill.Instrument == null || fill.PositionSeq == 0) return false;
+            return fill.PositionSeq == CurrentPositionSeq(account, fill.Instrument) && PositionQuantity(account, fill.Instrument) != 0;
         }
 
         /// <summary>
