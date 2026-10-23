@@ -255,7 +255,7 @@ describe("form UX (spec §4, F§10)", () => {
     renderApp(<RulesForm accountId={id} />);
     const loss = await screen.findByLabelText(/Limite de perda diária/);
     await u().type(loss, "9");
-    await u().click(screen.getByRole("link", { name: "Cancelar" }));
+    await u().click(screen.getByRole("button", { name: "Cancelar" }));
     expect(await screen.findByRole("alertdialog")).toHaveTextContent(/Descartar alterações/);
   });
   it("loosening / tightening effect copy is shown for every limit field", async () => {
@@ -334,4 +334,32 @@ describe("commission floor (AC-11, via updateAccount)", () => {
   });
 });
 
+describe("prefilled Core value with 3+ decimals stays savable in pt-BR", () => {
+  it("unchanged 1000.125 is not rejected as ambiguous; editing it re-applies the 2-decimal rule", async () => {
+    serve(rulesBody({ daily_loss_limit: { kind: "hard", amount: "1000.125" } })); writes(); renderApp(<RulesForm accountId={id} />);
+    const loss = await screen.findByLabelText(/Limite de perda diária/);
+    const target = await screen.findByLabelText(/Valor da meta/);
+    await u().type(target, "600"); await save();
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(loss).not.toHaveAttribute("aria-invalid", "true");
+    expect(body().rules.daily_loss_limit?.amount).toBe("1000.125");
+  });
+  it("editing the prefilled value to 3 decimals is rejected again", async () => {
+    serve(rulesBody({ daily_loss_limit: { kind: "hard", amount: "1000.125" } })); writes(); renderApp(<RulesForm accountId={id} />);
+    const loss = await screen.findByLabelText(/Limite de perda diária/);
+    await u().type(loss, "9"); await save();
+    expect(loss).toHaveAttribute("aria-invalid", "true"); expect(previews).toBe(0);
+  });
+});
+
 function u() { return userEvent.setup(); }
+
+describe("discard guard", () => {
+  it("cancel without changes leaves without asking", async () => {
+    serve(); renderApp(<RulesForm accountId={id} />);
+    await screen.findByLabelText(/Limite de perda diária/);
+    const cancel = screen.queryByRole("button", { name: "Cancelar" }) ?? screen.getByRole("link", { name: "Cancelar" });
+    await u().click(cancel);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+});
