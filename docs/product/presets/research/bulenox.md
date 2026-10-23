@@ -244,6 +244,8 @@ PO checklist:
   - The OCO note ("simulated locally on your computer").
   - The ToU right to "block certain IP addresses from accessing the Sites and Company Services". This is about the website, not trading.
 
+R4 re-check (2026-10-23): re-fetched the Terms of Use PDF (https://bulenox.com/legal/Terms_of_Use.pdf, header "Updated October 2026"), the FAQ CMS items and all 50 Help Center items (CMS JSON, English). Zero hits for vps, vpn, virtual in any of them. Nearest texts, none a device rule: "you are the sole authorized Bulenox trader profile holder within your household, and no other person residing at the same physical address or sharing the same residential location operates or maintains a Bulenox trader profile, unless such person has obtained prior written approval from Bulenox Compliance." (ToU); "selling or otherwise transferring your profile" (ToU prohibited uses); "any third-party algorithm, automated trading software, or other third-party trading technology must be reviewed and approved by the Bulenox management team before use." (ToU).
+
 YAML: `vps_allowed: unknown`, `personal_device_required: unknown`. Gap G1.
 
 ---
@@ -2414,3 +2416,4 @@ Not reached: none. Every public page loaded with curl or the portal. `bulenox.co
 ## 10. Changelog
 
 - 2026-10-23 — initial research (Lupa). Format rev. 2 plus PO rev. 3 (VPS / personal device). Sources: bulenox.com homepage, accounts-pricing, FAQ, Help Center (via the site's public CMS JSON, with the rendered FAQ answer checked in a browser portal), Terms of Use (Updated October 2026), Risk Disclosure.
+- 2026-10-23 — rev bump R4: VPS and personal device re-checked in the October 2026 Terms of Use, FAQ and all Help Center items; still not mentioned, both stay unknown (G1); no YAML change (Lupa)

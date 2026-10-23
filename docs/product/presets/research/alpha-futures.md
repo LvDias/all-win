@@ -266,7 +266,7 @@ YAML for all Evaluation/Qualified blocks: `vps_allowed: conditional`, `personal_
 - "The use of VPS is permitted in your trading, however the use of VPN attempting to hide or change you IP address is not." (https://help.alpha-futures.com/en/articles/9508585-prohibited-trading-practices, accessed 2026-10-23)
 - "The use of VPS/VPN during the KYC process is not permitted. The usage of one of these devices can lead to account closure." (https://help.alpha-futures.com/en/articles/9867976-completing-kyc, accessed 2026-10-23)
 - Classified `conditional` because VPS is permitted for trading, while VPN IP masking is not, and neither may be used during KYC. The T&C (S26) do not mention VPS or VPN.
-- **Personal device:** not mentioned. Searched: all 36 help articles, T&C, Terms of Use, General Service Agreement, product, platforms, how-it-works and home pages (§9 G12).
+- **Personal device:** not mentioned (R4 re-check 2026-10-23: re-fetched the prohibited-practices, KYC, copy-trading, TradingView and trading-hours help articles, the T&C, the Terms of Use, the home and how-it-works pages; searched personal, own computer, device, IP address, remote, third party, shared, location). Nearest texts, none a device rule: "The use of VPS is permitted in your trading, however the use of VPN attempting to hide or change you IP address is not." (prohibited-practices); "During the KYC process, it is mandatory that the account holder personally completes the KYC requirements. … Any attempt to circumvent this requirement, or Third Party Involvement at all, will be considered a" breach (KYC article, https://help.alpha-futures.com/en/articles/9867976-completing-kyc, accessed 2026-10-23); T&C: "Only one username per individual is permitted, and one individual per household may use our services." (https://alpha-futures.com/terms-and-conditions, accessed 2026-10-23). `personal_device_required` stays `unknown`. `vps_allowed` stays `conditional` (newest help-center text unchanged).
 
 ### Other rules
 
@@ -1325,3 +1325,4 @@ sources:
 ## 10. Changelog
 
 - 2026-10-23 — initial research (Lupa)
+- 2026-10-23 — rev bump R4: personal-device and VPS re-checked on the newest help-center and T&C text; nothing new found, `personal_device_required` stays unknown (G12), `vps_allowed` stays conditional; no YAML change (Lupa)
