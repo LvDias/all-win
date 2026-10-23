@@ -291,7 +291,8 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
     CHECK ((purpose = 'step_up') = (action IS NOT NULL)
            AND (target_id IS NOT NULL) = COALESCE(action IN ('source_rotate','pairing_code_new',
                                                             'connection_unpair','account_opt_in_accept'), false)),
-  -- The superset is final: Q35 only turns each action on or off by Core setting, no migration.
+  -- Q35 turns each of these actions on or off by Core setting, with no migration. New values (e.g. enforcement-off,
+  -- max-position changes, "added when Q35 decides" per HTTP 2.0.0) would need a contract change and a migration.
   CONSTRAINT one_time_code_role_check
     CHECK ((purpose = 'channel_change') = (code_role IS NOT NULL) AND (code_role IS NULL) = (channel_change_id IS NULL)),
   CONSTRAINT one_time_code_session_check CHECK ((purpose IN ('step_up','channel_change')) = (session_id IS NOT NULL)),
@@ -1141,6 +1142,6 @@ Adapter-protocol 1.0 acceptance deltas applied in rev. 2:
 | Q-A5 | Contract rollover: global (admin) or per user? | Global catalog maintained by the admin, with an advance warning |
 | Q-N1 | A dollar distance that is not a whole number of ticks: round which way? | Toward the entry (the tighter distance); the adjustment is shown in the audit |
 | Q32 (PO) | (rev. 6, open) One account per e-mail and per WhatsApp number? The model says yes (`app_user_whatsapp_key`, like e-mail) | **Open**, user; dropping the constraint is the only change if not |
-| Q35 (PO) | (rev. 6, open) Which step-up actions are on (source token create/rotate, pairing code, admin actions…) | **Open**, user. No schema impact: the `action` CHECK already holds the final superset of HTTP 2.0.0 `StepUpAction` (rev. 7); Q35 only switches Core settings |
+| Q35 (PO) | (rev. 6, open) Which step-up actions are on (source token create/rotate, pairing code, admin actions…) | **Open**, user. No schema impact for the 8 current HTTP 2.0.0 `StepUpAction` values (rev. 7.1): Q35 switches Core settings. New actions it may add (enforcement-off, max-position changes) need a contract change and a migration extending the `action` CHECK |
 | Q28 (PO) | (rev. 6, open) Admin-assisted recovery when every channel is lost | **Open**, user; not modelled until decided (§4.3) |
 | Q-O1 | (ADR-0004, open) Double fill of a local bracket while NT8 was down: (a) alert and wait, (b) flatten the orphan position | **Open**, user. The schema already supports (b) (ALIGN-8); nothing changes if the user picks (a) |
