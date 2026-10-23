@@ -38,6 +38,15 @@ function setTimes(entryPrice = "21234.50", exitPrice = "21240.25", exitTime = "1
 }
 
 describe("ManualTradeFlow", () => {
+  it("says on every step that manual trades do not change limits or blocks (AC-11)", async () => {
+    renderApp(<ManualTradeFlow />);
+    const person = userEvent.setup();
+    expect(await screen.findByText("Trades manuais não alteram limites nem bloqueios.")).toBeInTheDocument();
+    await fillTrade(person);
+    await screen.findByRole("heading", { level: 2, name: "Entrada e saída" });
+    expect(screen.getByText("Trades manuais não alteram limites nem bloqueios.")).toBeInTheDocument();
+  });
+
   it("starts on step 1 with nothing preselected and asks for the missing fields", async () => {
     renderApp(<ManualTradeFlow />);
     const person = userEvent.setup();
@@ -74,7 +83,7 @@ describe("ManualTradeFlow", () => {
     setTimes();
     const block = await screen.findByLabelText("Calculado");
     await waitFor(() => expect(within(block).getByText("+US$ 21,50")).toBeInTheDocument());
-    expect(within(block).getByText(/estimada pelo piso da conta/)).toBeInTheDocument();
+    expect(within(block).getByText(/estimada a partir da configuração da conta/)).toBeInTheDocument();
     expect(within(block).getByText("12 min 30 s")).toBeInTheDocument();
     await person.click(screen.getByRole("button", { name: "Continuar" }));
     await person.click(await screen.findByRole("button", { name: "Pular etapa" }));

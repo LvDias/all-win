@@ -1218,10 +1218,10 @@
       "commissionMissing": "Commissions not provided",
       "commissionSource": {
         "platform": "reported by the platform",
-        "configured": "estimated from the account's minimum",
+        "configured": "estimated from account setting",
         "mixed": "partly platform, partly estimated",
         "manual": "typed by you",
-        "none": "commissions not provided"
+        "none": "commissions not entered"
       },
       "origin": "Origin",
       "registeredByYou": "Entered by you at {time}",
@@ -1309,16 +1309,18 @@
         "gross": "Gross P&L",
         "commission": "Commission",
         "duration": "Time in trade",
-        "none": "Commissions not provided: net equals gross. Set the account's per-contract commission or type the commission.",
+        "none": "Commissions not entered: the commission is zero and net equals gross. Set the account's per-contract commission or type the commission.",
         "help": "Calculated from the prices, the quantity, the instrument's tick value and the commission.",
         "source": {
           "platform": "reported by the platform",
-          "configured": "estimated from the account's minimum",
+          "configured": "estimated from account setting",
           "mixed": "partly platform, partly estimated",
           "manual": "typed by you",
-          "none": "commissions not provided"
-        }
-      }
+          "none": "commissions not entered"
+        },
+        "estimatedHelp": "Account commission per contract × side × quantity × 2. Type the real commission to replace it."
+      },
+      "note": "Manual trades do not change limits or blocks."
     },
     "edit": {
       "title": "Edit manual trade",

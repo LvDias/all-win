@@ -1218,7 +1218,7 @@
       "commissionMissing": "Comissões não informadas",
       "commissionSource": {
         "platform": "informada pela plataforma",
-        "configured": "estimada pelo piso da conta",
+        "configured": "estimada a partir da configuração da conta",
         "mixed": "parte da plataforma, parte estimada",
         "manual": "digitada por você",
         "none": "comissões não informadas"
@@ -1309,16 +1309,18 @@
         "gross": "P&L bruto",
         "commission": "Comissão",
         "duration": "Tempo na operação",
-        "none": "Comissões não informadas: o líquido é igual ao bruto. Defina a comissão por contrato da conta ou digite a comissão.",
+        "none": "Comissões não informadas: a comissão é zero e o líquido é igual ao bruto. Defina a comissão por contrato da conta ou digite a comissão.",
         "help": "Calculado a partir dos preços, da quantidade, do valor do tick do instrumento e da comissão.",
         "source": {
           "platform": "informada pela plataforma",
-          "configured": "estimada pelo piso da conta",
+          "configured": "estimada a partir da configuração da conta",
           "mixed": "parte da plataforma, parte estimada",
           "manual": "digitada por você",
           "none": "comissões não informadas"
-        }
-      }
+        },
+        "estimatedHelp": "Comissão por contrato da conta × lado × quantidade × 2. Digite a comissão real para substituir."
+      },
+      "note": "Trades manuais não alteram limites nem bloqueios."
     },
     "edit": {
       "title": "Editar trade manual",

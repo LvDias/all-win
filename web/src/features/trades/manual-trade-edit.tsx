@@ -161,6 +161,7 @@ function Editor({ trade, rowVersion, tickSize }: { trade: Trade; rowVersion: num
       className="grid max-w-180 gap-4"
     >
       <PageHeader title={e("title")} description={e("description", { account: trade.account_name })} />
+      <Alert tone="info">{t("note")}</Alert>
       {failure ? (
         <Alert tone="danger" tabIndex={-1} ref={focusOnMount}>
           <div className="grid gap-2">

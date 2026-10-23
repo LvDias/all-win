@@ -41,6 +41,7 @@ export function Calculated({ preview, pending, failed, ready }: { preview: Manua
         <dd>{formatDuration(preview.duration_seconds)}</dd>
       </dl>
       {preview.commission_source === "none" ? <Alert tone="warning">{t("none")}</Alert> : null}
+      {preview.commission_source === "configured" ? <p className="text-xs text-muted-foreground">{t("estimatedHelp")}</p> : null}
       <p className="text-xs text-muted-foreground">{t("help")}</p>
     </section>
   );

@@ -16,6 +16,7 @@ import { formatDateTime, zonedToInstant } from "@/shared/format";
 import { useLocalePath } from "@/shared/i18n/navigation";
 import { useDebounced } from "@/shared/lib/use-debounced";
 import { useDisplay } from "@/shared/session/display";
+import { Alert } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { ErrorState } from "@/shared/ui/error-state";
@@ -252,20 +253,23 @@ function Flow({ initialAccountId, restarted, accounts, instrument, onAnother }: 
   }
 
   return (
-    <FormStepper
-      form={form}
-      steps={steps}
-      submitLabel={t("save")}
-      onCancel={() => router.push(path("/trades"))}
-      onSubmit={() => save(t("saved"), () => router.push(path("/trades")))}
-      secondarySubmit={{ label: t("saveAnother"), onSubmit: () => save(t("savedAnother"), (accountId) => onAnother(accountId)) }}
-      focusOnMount={restarted}
-      reviewExtra={
-        <div className="grid gap-3">
-          <p className="text-sm text-muted-foreground">{t("originManual", { account: accountName })}</p>
-          {calc}
-        </div>
-      }
-    />
+    <>
+      <Alert tone="info">{t("note")}</Alert>
+      <FormStepper
+        form={form}
+        steps={steps}
+        submitLabel={t("save")}
+        onCancel={() => router.push(path("/trades"))}
+        onSubmit={() => save(t("saved"), () => router.push(path("/trades")))}
+        secondarySubmit={{ label: t("saveAnother"), onSubmit: () => save(t("savedAnother"), (accountId) => onAnother(accountId)) }}
+        focusOnMount={restarted}
+        reviewExtra={
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">{t("originManual", { account: accountName })}</p>
+            {calc}
+          </div>
+        }
+      />
+    </>
   );
 }
