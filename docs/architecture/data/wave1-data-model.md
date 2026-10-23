@@ -1,6 +1,6 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-23), rev. 5; **rev. 6 proposed** (identity; Architect review round 2). Rev. 6: passwordless sign-in replaces password + TOTP (user requirement change 2026-10-23, Q21/Q22 superseded). It removes `password_hash`, `totp_credential`, `recovery_code` and `password_reset`, and adds verified channels on `app_user`, `signup_code`, `one_time_code`, `code_send_counter` and `known_device` (§3, §4.1, §4.2, §4.3, §6.5, §8, §9). The account is created only when the signup e-mail code is confirmed (S3 AC-2). It ships as a forward migration #2b, `identity_passwordless` (§8). Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
+- **Status:** Accepted (2026-10-23), rev. 6; **rev. 7 proposed** (Architect/Code Review pending). Rev. 7 aligns with HTTP contract 2.0.0: the channel change becomes an entity, `identity.channel_change`, with status, hold and cancellation, and the code roles become `current_value` / `new_value` / `other_channel` (§3, §4.1, §4.3, §6.5, §8, §9). Rev. 6 (Crivo-approved, 539d45e): passwordless sign-in replaces password + TOTP (user requirement change 2026-10-23, Q21/Q22 superseded). It removes `password_hash`, `totp_credential`, `recovery_code` and `password_reset`, and adds verified channels on `app_user`, `signup_code`, `one_time_code`, `code_send_counter` and `known_device` (§3, §4.1, §4.2, §4.3, §6.5, §8, §9). The account is created only when the signup e-mail code is confirmed (S3 AC-2). It ships as a forward migration #2b, `identity_passwordless` (§8). Rev. 5: outbox dispatcher rules per the Architect's decision (A) (§6.4). Rev. 4: outbox delivery attempts and dead-letter (§6.4, migration 1b, Code Review 5 C2). Rev. 3 applies Code Review 1 (Crivo/Esquadro) for HTTP contract 1.1.0: connection name/status, `admin_totp_reset`, copy opt-in (Q24). It also adds the S3 migration review deltas (invitation `locale`/`superseded_at`, `session.login_at`, owner read policies, `email_registered`/`admin_list_users`) and updates the §8 migration order: #1 is merged alone and first, #6 is split into 6/6b, and the cross-branch dependencies are listed. The user accepted Q-A1, Q-A2, Q-A4, Q-A5 and Q-N1 ([decisions.md](../../delivery/decisions.md)). The Architect accepted ALIGN-1…7, now in ADR-0003/0004 and the contracts. Rev. 2 applies those decisions and the adapter-protocol 1.0 acceptance deltas (§10). ALIGN-8 (orphan-fill command step) was accepted the same day. Still open: Q-A3 and the user's Q-O1. Preview sections are finalized by their own slices. Migrations #1, #1b, #2, #3, #4, #6 and #7 are DBA-approved, and their authors ran them on PostgreSQL 16. #8 is pending the startup status reset.
 - **Owner:** Database Architect (Lastro @ Dev3)
 - **Inputs:**
   - [product-vision.md](../../product/product-vision.md) rev. 4
@@ -86,7 +86,7 @@ CREATE POLICY account_owner ON accounts.account
 |---|---|---|
 | `allwin_owner` | `sqlx migrate` | Owns all objects. Never used at runtime |
 | `allwin_app` | Request handlers and per-user work | DML on module tables, `NOBYPASSRLS`. On `audit.audit_entry` only `INSERT`/`SELECT`. No DDL |
-| `allwin_worker` | Loops that must **find** work across users: outbox dispatcher, command delivery, expiry sweeper, adapter session handler | `BYPASSRLS`, limited to `SELECT` + narrow `UPDATE` on queue tables (`app.outbox`, `gateway.command`, `gateway.outbound_message`). Each item's business work then runs on the `allwin_app` pool with that item's `user_id` set |
+| `allwin_worker` | Loops that must **find** work across users: outbox dispatcher, command delivery, expiry sweeper, adapter session handler | `BYPASSRLS`, limited to `SELECT` + narrow `UPDATE` on queue tables (`app.outbox`, `gateway.command`, `gateway.outbound_message`); `SELECT` on `identity.channel_change` to find holds that are due (rev. 7). Each item's business work then runs on the `allwin_app` pool with that item's `user_id` set |
 | `allwin_maint` | Partition creation, retention purge, erasure after account closure | `BYPASSRLS`; partition DDL on `audit.audit_entry`; `DELETE` on activity tables |
 
 - **Pre-authentication lookups** (the user is not known yet) go through `SECURITY DEFINER` functions in `identity`. Each one returns only what its caller needs:
@@ -223,17 +223,46 @@ CREATE INDEX signup_code_open_idx ON identity.signup_code (invitation_id, create
   WHERE consumed_at IS NULL AND invalidated_at IS NULL;
 -- The destination is the invitation's e-mail (Q36 a), so it is not copied here. Same lifecycle as one_time_code.
 
+CREATE TABLE identity.channel_change (                   -- one e-mail/WhatsApp change (HTTP 2.0.0 ChannelChange; id = change_id)
+  id                      uuid PRIMARY KEY,
+  user_id                 uuid NOT NULL REFERENCES identity.app_user(id),
+  channel                 text NOT NULL CHECK (channel IN ('email','whatsapp')),
+  new_value               text NOT NULL,                 -- normalized; shown only masked; applied when completed
+  requested_session_id    uuid NOT NULL,                 -- the session that started it (codes are bound to it)
+  status                  text NOT NULL DEFAULT 'awaiting_codes'
+                          CHECK (status IN ('awaiting_codes','on_hold','completed','cancelled','expired')),
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  expires_at              timestamptz NOT NULL,          -- every code confirmed within 10 min (policy §7)
+  hold_until              timestamptz,                   -- on_hold: effective time (policy §9 hold; §7 M2 if adopted)
+  completed_at            timestamptz,
+  cancelled_at            timestamptz,
+  cancelled_by_session_id uuid,                          -- "Cancelar troca"; NULL = cancelled by the Core, generic reason (§4.3)
+  UNIQUE (user_id, id),
+  CONSTRAINT channel_change_whatsapp_check CHECK (channel <> 'whatsapp' OR new_value ~ '^\+[1-9][0-9]{7,14}$'),
+  CONSTRAINT channel_change_expiry_check CHECK (expires_at > created_at AND expires_at <= created_at + interval '10 minutes'),
+  CONSTRAINT channel_change_hold_check CHECK (status <> 'on_hold' OR hold_until IS NOT NULL),
+  CONSTRAINT channel_change_completed_check CHECK ((status = 'completed') = (completed_at IS NOT NULL)),
+  CONSTRAINT channel_change_cancelled_check CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL)),
+  CONSTRAINT channel_change_cancelled_by_check CHECK (cancelled_by_session_id IS NULL OR cancelled_at IS NOT NULL),
+  FOREIGN KEY (user_id, requested_session_id)    REFERENCES identity.session (user_id, id),
+  FOREIGN KEY (user_id, cancelled_by_session_id) REFERENCES identity.session (user_id, id)
+);
+CREATE UNIQUE INDEX channel_change_one_open ON identity.channel_change (user_id)
+  WHERE status IN ('awaiting_codes','on_hold');          -- one pending change per user (SecurityState.pending_channel_change)
+CREATE INDEX channel_change_hold_due_idx ON identity.channel_change (hold_until) WHERE status = 'on_hold';
+-- RLS: owner policy. allwin_worker SELECT only (finds due holds); the effect runs in the user's allwin_app transaction.
+
 CREATE TABLE identity.one_time_code (                    -- login, step-up and channel-change codes (signup: signup_code)
   id                 uuid PRIMARY KEY,                   -- uuid inside the sealed challenge_id token (§4.3); never the code
   user_id            uuid NOT NULL REFERENCES identity.app_user(id),
-  flow_id            uuid NOT NULL,                      -- codes confirmed together: channel change old + new
+  channel_change_id  uuid,                              -- channel_change: the change this code confirms
   purpose            text NOT NULL CHECK (purpose IN ('login','step_up','channel_change')),
   channel            text NOT NULL CHECK (channel IN ('email','whatsapp')),  -- delivery channel
   destination        text NOT NULL,                      -- normalized address the code was sent to; the proof is for this address
   action             text CHECK (action IN ('automation_enable','adapter_unpair')),  -- step_up only
   target_id          uuid,                               -- step_up: the account or connection the action applies to
   session_id         uuid,                               -- step_up / channel_change: only the requesting session may use the code
-  code_role          text CHECK (code_role IN ('current','new')),  -- channel_change: code to the current or to the new value
+  code_role          text CHECK (code_role IN ('current_value','new_value','other_channel')),  -- channel_change only
   code_hmac          bytea NOT NULL CHECK (octet_length(code_hmac) = 32),  -- HMAC-SHA-256(k_code, challenge_id ‖ normalized code)
   pepper_version     smallint NOT NULL,
   failed_attempts    smallint NOT NULL DEFAULT 0 CHECK (failed_attempts BETWEEN 0 AND 5),
@@ -242,7 +271,7 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   expires_at         timestamptz NOT NULL,
   consumed_at        timestamptz,
   invalidated_at     timestamptz,
-  invalidated_reason text CHECK (invalidated_reason IN ('attempts','channel_changed','user_closed')),
+  invalidated_reason text CHECK (invalidated_reason IN ('attempts','channel_changed','change_closed','user_closed')),
   request_ip         inet,                               -- send limits and investigation; same retention as the row
   delivery_state     text NOT NULL DEFAULT 'pending' CHECK (delivery_state IN ('pending','sent','failed')),  -- §4.3 Delivery
   CONSTRAINT one_time_code_expiry_check
@@ -252,15 +281,17 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   CONSTRAINT one_time_code_final_check CHECK (consumed_at IS NULL OR invalidated_at IS NULL),
   CONSTRAINT one_time_code_step_up_check
     CHECK ((purpose = 'step_up') = (action IS NOT NULL) AND (purpose = 'step_up') = (target_id IS NOT NULL)),
-  CONSTRAINT one_time_code_role_check CHECK ((purpose = 'channel_change') = (code_role IS NOT NULL)),
+  CONSTRAINT one_time_code_role_check
+    CHECK ((purpose = 'channel_change') = (code_role IS NOT NULL) AND (code_role IS NULL) = (channel_change_id IS NULL)),
   CONSTRAINT one_time_code_session_check CHECK ((purpose IN ('step_up','channel_change')) = (session_id IS NOT NULL)),
   CONSTRAINT one_time_code_whatsapp_check CHECK (channel <> 'whatsapp' OR destination ~ '^\+[1-9][0-9]{7,14}$'),
-  FOREIGN KEY (user_id, session_id) REFERENCES identity.session (user_id, id)
+  FOREIGN KEY (user_id, session_id) REFERENCES identity.session (user_id, id),
+  FOREIGN KEY (user_id, channel_change_id) REFERENCES identity.channel_change (user_id, id)
 );
 CREATE INDEX one_time_code_user_created_idx ON identity.one_time_code (user_id, created_at);
   -- per-signed-in-user limit on step_up / channel_change sends (policy §4: 10 per hour)
-CREATE UNIQUE INDEX one_time_code_flow_role_key ON identity.one_time_code (flow_id, code_role)
-  WHERE code_role IS NOT NULL;                           -- one current + one new code per channel-change flow
+CREATE UNIQUE INDEX one_time_code_change_role_key ON identity.one_time_code (channel_change_id, code_role)
+  WHERE channel_change_id IS NOT NULL;                   -- one code per role per change (a resend replaces it in place)
 -- No UNIQUE on code_hmac: codes are looked up by id. No cap on open challenges and no eviction (policy §2.2):
 -- a new challenge never invalidates another; the send limits bound how many exist.
 
@@ -397,8 +428,8 @@ No password, TOTP seed or recovery code is stored (rev. 6). The plaintext one-ti
      - a closed row is never reopened and nothing is sent. The answer is always 202.
   4. **Verification:** the Core opens the token (bad MAC → `auth.code_invalid`). Then `resolve_one_time_code(uuid)` gives `user_id`; no row → `auth.code_invalid`. In that user's transaction, the Core runs `SELECT … FOR UPDATE` on the row and checks it is open and unexpired. Then it checks the destination per purpose (policy rev. 2):
      - `login`, `step_up`: `destination` is still a current confirmed value of the user;
-     - `channel_change`, `code_role = 'current'`: `destination` is still current;
-     - `channel_change`, `code_role = 'new'`: `destination` is still the pending new value of the same flow (the flow's `current` code is not invalidated and the user's value has not changed since the flow began);
+     - `channel_change`, `current_value` / `other_channel`: `destination` is still a current confirmed value (of the changed channel / of the other channel), and the change is `awaiting_codes`;
+     - `channel_change`, `new_value`: `destination` equals `channel_change.new_value` of a change still `awaiting_codes`;
      - signup (`signup_code`): the invited e-mail of a still-open invitation.
   5. It compares the HMAC in constant time.
      - On a mismatch: `failed_attempts + 1`, and at 5 `invalidated_reason = 'attempts'`. The failure is **committed**, even though the request fails.
@@ -414,12 +445,29 @@ No password, TOTP seed or recovery code is stored (rev. 6). The plaintext one-ti
   1. A `step_up` code is bound to `session_id`, `action` and `target_id` (all required). Sends count against the per-user hourly limit (`one_time_code_user_created_idx`).
   2. The action request carries the challenge and code. The Core consumes it in the same transaction as the action, so no "elevated" state is stored.
   3. A channel change uses `purpose = 'channel_change'` instead, and its old-channel code is the step-up.
-- **Channel change / adding WhatsApp later:**
-  1. Refused while `channel_changed_at` is less than 24 h old (policy §7), checked under the user-row lock.
-  2. One `flow_id` with two `channel_change` codes, `code_role` `current` and `new`, to the current and the new address. Adding WhatsApp later works the same way: the "current" code goes to the e-mail, the other to the new number.
-  3. **Channel clash** (policy §3): if the new value belongs to another account, the flow proceeds but no code is sent to it, and the final confirmation fails with `auth.code_invalid`; `app_user_email_normalized_key` / `app_user_whatsapp_key` are the backstop.
-  4. When both are consumed, one transaction updates the address, its `*_verified_at` and `channel_changed_at`. The same transaction invalidates the user's open codes (`channel_changed`), ends every other session (`channel_changed`) and rotates the current one.
-- **Not modelled yet (user decision pending):** a hold on a channel change requested from a new device, and an e-mail step-up for persistence from a new device. If approved, they need only `known_device.first_seen_at` (already there; device age < 7 days) and a hold state on the channel-change flow (`pending_until`).
+- **Channel change / adding WhatsApp later** (HTTP 2.0.0 `ChannelChange`):
+  1. Refused while `channel_changed_at` is less than 24 h old (policy §7) or while another change is open (`channel_change_one_open`), checked under the user-row lock. Under the same lock, the start path first expires the user's stale `awaiting_codes` row (past `expires_at`), so it never blocks `channel_change_one_open` until the sweeper runs.
+  2. Insert `channel_change` (`awaiting_codes`, `expires_at` = +10 min), then its codes, all bound to the requesting session:
+     - `current_value` to the current value;
+     - `new_value` to the new value;
+     - `other_channel` to the other confirmed channel when the user has two (policy §7, [Proposed]).
+     Adding WhatsApp later works the same way: `current_value` goes to the e-mail and `new_value` to the number.
+  3. **Channel clash** (policy §3): if the new value belongs to another account, the change proceeds and the `new_value` row exists, but nothing is sent to it. Its `delivery_state` still ends `sent`, and its confirmation fails with `auth.code_invalid`. `app_user_email_normalized_key` / `app_user_whatsapp_key` are the backstop.
+  4. When every code of the change is consumed:
+     - **without a hold**, one transaction:
+       - sets `completed` and updates the address, its `*_verified_at` and `channel_changed_at`;
+       - invalidates the user's other open codes (`channel_changed`);
+       - ends every other session (`channel_changed`) and rotates the current one;
+     - **with a hold** (policy §9; §7 M2 if adopted), the change becomes `on_hold` with `hold_until`, and the address stays as it is. A worker finds due rows (`channel_change_hold_due_idx`) and applies them in the user's transaction:
+       - it re-checks the 24-h `channel_changed_at` rule and that the new value is free; if either fails, it is a Core cancel (step 5);
+       - it updates the address, `*_verified_at` and `channel_changed_at`;
+       - it invalidates the user's open codes;
+       - there is no current session to rotate, so **every** session ends (`channel_changed`);
+       - for the policy §9 admin recovery, every device is also revoked;
+       - for an M2 hold, whether devices are revoked as well is decided with M2 (policy).
+  5. **Cancel ("Cancelar troca")**: `cancelled`, with `cancelled_at` and `cancelled_by_session_id`. The change's open codes are invalidated (`change_closed`). It is allowed from any session of the user while `awaiting_codes` or `on_hold`. If the new value has meanwhile been taken by another account when a hold ends, the Core cancels it with `cancelled_by_session_id` NULL. The clash is not revealed (policy §3): the user-visible audit row and the notice carry the same generic reason as any change that could not be completed (`me.channel_change_not_completed`). The real reason goes only to the internal/admin log.
+  6. `expired`: an `awaiting_codes` change past `expires_at`, set lazily on the next read, by the start path (step 1) or by the expiry sweeper. Its open codes are invalidated (`change_closed`).
+- **Not modelled yet (user decision pending):** a hold on a channel change requested from a new device, and an e-mail step-up for persistence from a new device. If approved, they need only `known_device.first_seen_at` (already there; device age < 7 days) and the `on_hold` state of `channel_change` (rev. 7; already modelled).
 - **Sign out everywhere** (S3, Q34): one transaction ends every session (`signed_out_everywhere`) and sets `revoked_at` on every device.
 - **Admin-assisted recovery** when a user loses access to every channel is **not modelled until the user decides Q28**. The Architect's recommendation is: an admin sets a new e-mail, confirmed by code, with a 72-h hold, cancellable, and notices to the old channels. It would likely add a pending-change row with `effective_at`/`cancelled_at`.
 
@@ -921,6 +969,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `app.outbox` (published), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days / 48 h / 7 days |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
 | `identity.one_time_code` (consumed, expired or invalidated) | `id` | no | 30 days (holds the destination address and IP) |
+| `identity.channel_change` (completed, cancelled or expired) | `id` | no | 30 days after its end, after its codes; it holds the new value (the audit keeps the masked values) |
 | `identity.known_device` | `(user_id, device_key_hash)` | no | deleted 30 days after `revoked_at`, or when unseen for 13 months (accepted; cookie Max-Age 400 days) |
 | `identity.code_send_counter` | primary key | no | deleted when `window_start + window_seconds` is older than 24 h |
 | `identity.signup_code` (consumed, expired or invalidated) | `id` | no | 30 days |
@@ -974,7 +1023,7 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
 | 1 | `app_bootstrap`: schemas, `app.current_user_id()`, default privileges, `app.outbox` | S1 (Ferro); merged alone and first, since S1 and S3 both build on it |
 | 1b | `app_outbox_delivery_attempts`: outbox retry/backoff/dead-letter columns, `outbox_due_idx`, `GRANT UPDATE (attempts, last_error, next_attempt_at, dead_lettered_at)` to `allwin_worker` (expand only) | S1 (Ferro); depends only on #1; version re-stamped after the latest merged migration |
 | 2 | `identity_create_users_sessions`: `app_user`, `invitation`, `session`, `password_reset`, `totp_credential`, `recovery_code`, `resolve_*` / `find_user_for_login` (on `main`; never edited) | S3 |
-| 2b | `identity_passwordless` (rev. 6): drops the password/TOTP/recovery/reset objects and adds channels, `known_device`, `signup_code`, `one_time_code`, `code_send_counter` and the new session columns; see below | S3 (Brasa); version stamped after the latest merged migration |
+| 2b | `identity_passwordless` (rev. 6): drops the password/TOTP/recovery/reset objects and adds channels, `known_device`, `signup_code`, `channel_change`, `one_time_code`, `code_send_counter` and the new session columns; see below | S3 (Brasa); version stamped after the latest merged migration |
 | 3 | `identity_create_sources`: `source`, `source_key`, `resolve_source_key` | S3 (Brasa); S1 and the M1 seed use it |
 | 4 | `catalog_create_instrument`: `instrument`, `instrument_contract`, `standard_account_size` + reference rows (MNQ, 6 sizes) | S1 |
 | 5 | `accounts_create_account`: `account`, `default_bracket_profile`, `account_bracket_profile` (schema only; screens in S5/S6) | before M1, so seeds use real tables |
@@ -1002,12 +1051,14 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
      - add the channel columns and `channel_changed_at`;
      - backfill the existing rows (dev seeds only) with `email_verified_at = created_at`, then `SET NOT NULL`;
      - then add the constraints.
-  4. `CREATE` `known_device`, `code_send_counter`, `signup_code` and `one_time_code`, with RLS, the owner-read policy where needed, and grants.
-  5. Sessions:
+  4. `CREATE` `known_device`, `code_send_counter` and `signup_code`.
+  5. Sessions (needs `known_device`):
      - `DELETE FROM identity.session`: password sessions are void, and no production data exists;
      - `DROP COLUMN mfa_state, authenticated_at`;
      - add `device_id`, `login_channel` and `UNIQUE (user_id, id)` with its FK;
      - replace the `end_reason` CHECK.
+  6. `CREATE` `channel_change`, then `one_time_code`: both reference `session (user_id, id)`.
+  7. Steps 4 and 6 also cover RLS, the owner-read policy where needed, and grants.
 - **Destructive changes need explicit user authorization** (DBA rule): the `DROP` statements and the session `DELETE`. There is nothing to lose: no production deploy, dev data only.
 - Ferro updates `core/crates/app/src/dev.rs`, whose seed inserts `password_hash`, and the matching `core/.sqlx` query in the same change. No database recreation is needed.
 
@@ -1032,10 +1083,11 @@ Nightly maintenance (`allwin_maint`, outside trading hours):
    - opt-in (`automation_*` and `copy_*`): `chosen` with no choice fails; `not_required` with a choice fails; `pending_review` keeping the previous choice passes; a choice without `chosen_at` fails; a real account with `pending_review` fails;
    - `adapter_connection`: a second live connection named `Desk A`/`desk a` fails; reusing the name of an unpaired one passes; `status = 'unpaired'` without `archived_at` fails; after a simulated Core restart, rows left `connected`/`outdated` become `disconnected` with a new `status_changed_at` and an audit entry, before any adapter can connect;
    - `email_registered` and `admin_list_users` return false / no rows for a non-admin `app.user_id`;
-   - `one_time_code` (rev. 6): `expires_at` beyond 10 minutes fails; `failed_attempts = 5` without `invalidated_reason = 'attempts'` fails; consumed and invalidated together fails; `step_up` without `action` or `target_id`, `login` with `session_id` and `channel_change` without `code_role` fail; a second `new` code in one flow fails; a `new`-role code whose destination is not yet the user's address is accepted; a resend moves `expires_at` to at most `sent_at + 10 min` and keeps `failed_attempts`; 3 logins from an unknown browser do not invalidate the user's open challenge; the 60-s resend cooldown and the send budgets are identical for a registered and an unregistered identifier (counter rows, no code row needed); a `new`-role code is refused once the flow's `current` code is invalidated; two concurrent wrong guesses on a code at 4 failures leave it invalidated at 5, never 6; another user's challenge id resolves but its row is invisible under RLS;
+   - `one_time_code` (rev. 6): `expires_at` beyond 10 minutes fails; `failed_attempts = 5` without `invalidated_reason = 'attempts'` fails; consumed and invalidated together fails; `step_up` without `action` or `target_id`, `login` with `session_id` and `channel_change` without `code_role` fail; a second `new_value` code in one change fails; a `new_value` code whose destination is not yet the user's address is accepted; a resend moves `expires_at` to at most `sent_at + 10 min` and keeps `failed_attempts`; 3 logins from an unknown browser do not invalidate the user's open challenge; the 60-s resend cooldown and the send budgets are identical for a registered and an unregistered identifier (counter rows, no code row needed); a `new_value` code is refused once its change is no longer `awaiting_codes`; two concurrent wrong guesses on a code at 4 failures leave it invalidated at 5, never 6; another user's challenge id resolves but its row is invisible under RLS;
    - `app_user` (rev. 6): no `email_verified_at` fails; a second channel change within 24 h of `channel_changed_at` is refused; `whatsapp_e164` without `whatsapp_verified_at` fails; a second user with the same number fails;
    - `known_device` (rev. 6): after "forget device" or "sign out everywhere", the next sign-in from that browser gets a new cookie and a new row (no unique violation) and a new-device notice; signup completion creates a device without a notice;
    - `signup_code` (rev. 6): an abandoned signup leaves no `app_user` row; two concurrent confirmations on one invitation create exactly one user; a code on a revoked or expired invitation fails; `channel` other than `email` fails;
+   - `channel_change` (rev. 7): a second open change for the user fails; `on_hold` without `hold_until` fails; `cancelled` without `cancelled_at` fails; a code with `code_role` and no `channel_change_id` fails; a second `new_value` code for one change fails; a `new_value` code is refused once its change is cancelled or expired; an `on_hold` change does not alter the address until a worker applies it after `hold_until`; a cancel or an expiry leaves the change's open codes invalidated with `change_closed`; a stale `awaiting_codes` row does not block a new start; a hold applied by the worker ends every session of the user; a cancel from another session of the same user works, and one from another user is invisible under RLS;
    - `delivery_state` (rev. 6): a channel-change send suppressed by a clash and one to a free value both end `sent`, and the clash writes no `auth.code_delivery_failed`; a resend resets it to `pending`; a failed send of a registered user writes `auth.code_delivery_failed`;
    - `code_send_counter` (rev. 6): a registered and an unregistered identifier hit the limit at the same count; concurrent upserts never lose a send; no column holds the address;
    - a choice without `*_rule_version_id` fails;
@@ -1077,6 +1129,6 @@ Adapter-protocol 1.0 acceptance deltas applied in rev. 2:
 | Q-A5 | Contract rollover: global (admin) or per user? | Global catalog maintained by the admin, with an advance warning |
 | Q-N1 | A dollar distance that is not a whole number of ticks: round which way? | Toward the entry (the tighter distance); the adjustment is shown in the audit |
 | Q32 (PO) | (rev. 6, open) One account per e-mail and per WhatsApp number? The model says yes (`app_user_whatsapp_key`, like e-mail) | **Open**, user; dropping the constraint is the only change if not |
-| Q35 (PO) | (rev. 6, open) Further step-up actions (source token create/rotate, pairing code, admin actions) | **Open**, user. If accepted, `one_time_code.action` needs a follow-up migration; admin "issue invitation" has no uuid target, so `target_id` would need a rule for it |
+| Q35 (PO) | (rev. 6, open) Further step-up actions (source token create/rotate, pairing code, admin actions) | **Open**, user. If accepted, `one_time_code.action` needs a follow-up migration; HTTP 2.0.0 `StepUpAction` already lists 8 values (3 without a target, different names), so the `action` CHECK and the `target_id` rule follow C1/Q35 on the contract. Admin "issue invitation" has no uuid target, so `target_id` would need a rule for it |
 | Q28 (PO) | (rev. 6, open) Admin-assisted recovery when every channel is lost | **Open**, user; not modelled until decided (§4.3) |
 | Q-O1 | (ADR-0004, open) Double fill of a local bracket while NT8 was down: (a) alert and wait, (b) flatten the orphan position | **Open**, user. The schema already supports (b) (ALIGN-8); nothing changes if the user picks (a) |
