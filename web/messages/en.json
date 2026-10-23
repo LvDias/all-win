@@ -113,6 +113,7 @@
       "payload_too_large": "The received content is too large.",
       "rate_limited": "Source request limit exceeded.",
       "schema_violation": "The received content does not follow the expected format.",
+      "signal_type_not_allowed_for_source": "The signal type is not allowed for this source.",
       "source_mismatch": "The instruction does not match the source that sent it.",
       "unsupported_instrument": "Unsupported instrument.",
       "unsupported_media_type": "Unsupported content type.",

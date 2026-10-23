@@ -113,6 +113,7 @@
       "payload_too_large": "O conteúdo recebido é grande demais.",
       "rate_limited": "Limite de requisições da fonte excedido.",
       "schema_violation": "O conteúdo recebido não segue o formato esperado.",
+      "signal_type_not_allowed_for_source": "O tipo de sinal não é permitido para esta fonte.",
       "source_mismatch": "A instrução não corresponde à fonte que a enviou.",
       "unsupported_instrument": "Instrumento não suportado.",
       "unsupported_media_type": "Tipo de conteúdo não suportado.",
