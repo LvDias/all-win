@@ -553,12 +553,12 @@
     "admin": "Administração",
     "invites": "Convites",
     "menu": "Abrir menu",
-    "userMenu": "Menu do usuário",
     "signOut": "Sair",
     "main": "Navegação principal",
     "notFound": "Não encontrado.",
     "signOutFailed": "Não foi possível sair. Sua sessão pode continuar ativa.",
-    "accounts": "Contas"
+    "accounts": "Contas",
+    "userMenuName": "{email}, menu do usuário"
   },
   "security": {
     "title": "Segurança",

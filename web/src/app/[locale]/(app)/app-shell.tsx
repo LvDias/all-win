@@ -130,7 +130,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="ml-auto">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" aria-label={t("nav.userMenu")}>
+                <Button variant="ghost" aria-label={t("nav.userMenuName", { email: me.data.email })}>
                   <Settings aria-hidden="true" />
                   <span className="hidden max-w-48 truncate sm:inline">{me.data.email}</span>
                   <ChevronDown aria-hidden="true" />
