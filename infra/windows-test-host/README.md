@@ -1,5 +1,10 @@
 # Windows test host (NinjaTrader 8) — setup, "Fase 2"
 
+> **Phase 2 parked (2026-10-24).** NinjaTrader 8 tests are manual, run by the user over RDP. The VPS stays as it is (Tailscale,
+> policy, Tailnet Lock, RDP restricted to the tailnet). **Steps 8-12 are not used:** sshd is not started,
+> `Install-AllWinTestHost.ps1` is not run, agents get no access to the VPS, and `Lock-Firewall.ps1` is kept only for reference.
+> Files reach the VPS through the user (RDP drive redirection); see `infra/nt8-exchange/README.md`.
+
 Implements `docs/architecture/spikes/nt8-spike-plan.md` §6.3–§6.5 (rev. 5). **Status: DRAFT** — the scripts have never run on Windows (first run = experiment E1).
 **Do not run any script here until Code Review (Crivo) and QA Security (Vigia) approved the exact commit** (they run as Administrator).
 
