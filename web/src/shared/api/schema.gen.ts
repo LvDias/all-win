@@ -913,15 +913,40 @@ export interface paths {
          *        - the body is compared without `step_up`, so a retry with a new code still matches;
          *        - the same key with a different body gets 409 `common.idempotency_key_reused`;
          *        - the store is keyed by (user_id, operation, account_id, key), never by the key alone (Vigia L1);
+         *        - a key is kept 24 h after the clear it recorded, as in `createAccount` (6.1.0, Crivo q2). After
+         *          that it is unknown and the request runs as new: step-up, then 409 (`expected_version` is
+         *          stale or the account is `not_out_of_sync`), so an expired key never repeats a clear;
          *        - without a known key, the step-up applies as normal;
          *     3. step-up;
          *     4. 409.
          *     **Live protection (Vigia L2; Q98 b, user):** the confirmation lists each open position from the last
          *     evaluated snapshot with its live stop protection (`AccountSync.positions`). ANY working stop that
-         *     covers the position counts, a manual one in the platform included (shown as `external`). Only a
-         *     position that is not fully covered by any stop (`none` or `partial`) keeps its
-         *     `sync.bracket_incomplete`, or raises it if absent. The account then stays `out_of_sync` with that
-         *     reason only, the entry block remains, and the 200 response shows it. The plugin has no clear (Q-P3).
+         *     covers the position counts, a manual one in the platform included (shown as `external`).
+         *     **"Covers" (6.1.0, Vigia L1; ADR-0004 §6.4):** working stop and stop-limit orders on the OPPOSITE
+         *     side of the position, in the same account and the same contract (symbol + contract month), whose
+         *     total working quantity is ≥ |position|. A stop on the same side, a limit or market order, or an
+         *     order on another contract never counts.
+         *     **What the clear keeps (6.1.0; Q98 b, Q100 a; ADR-0004 §6.4 r6.1; fail closed):** every position whose protection is
+         *     not `full` (`partial`, `none` or `unknown`) keeps its `sync.bracket_incomplete`, or raises it if
+         *     absent, one per instrument. Each kept reason carries `held_at_clear`. All other reasons are
+         *     cleared. The account stays `out_of_sync` with those reasons only, entries stay refused
+         *     (`routing.out_of_sync`; exits pass), and the 200 response shows it. The web shows such an account
+         *     as "blocked for new entries: position without full stop protection", not as a new alert, and says
+         *     that the block ends by itself once a stop covers the position or it is closed (Vigia I2).
+         *     **Re-evaluation and release (6.1.0, Vigia L1; Q101; ADR-0004 §6.4 r6.1):** after the clear, the Core re-evaluates the
+         *     protection of every position listed at the clear on each evaluated snapshot and each order report,
+         *     until that position is flat:
+         *     - a held reason is resolved when its position is `full` or flat. When every active reason is a
+         *       held one and the last is resolved, the account returns to `in_sync` by itself (the user already
+         *       confirmed at the clear), audited as `sync.restored` with that reason (Q101 yes, user
+         *       2026-10-24);
+         *     - a reason added after the clear has no `held_at_clear`, so it is sticky as usual and needs a new
+         *       clear;
+         *     - a position covered at the clear (`full`) that later loses that cover (the user cancels the
+         *       external stop, or it fills while the position stays open) raises `sync.bracket_incomplete` again,
+         *       without `held_at_clear`. The account goes back to `out_of_sync` and entries are blocked again
+         *       at once; it needs a new clear (Q101 user addition; Q14).
+         *     The plugin has no clear (Q-P3).
          *     Audited as `sync.cleared` (actor user; the reasons that were active and resolved).
          */
         post: operations["clearAccountSync"];
@@ -1635,7 +1660,9 @@ export interface paths {
          *        so a retry carrying a new code still gets the recorded 202 (Esmeril L1). The same key with a
          *        different body (other than `step_up`) gets 409 `common.idempotency_key_reused`. The replay store is
          *        keyed by (user_id, operation, account_id, key), never by the key alone, so another user's or
-         *        another account's request never matches (Vigia L1);
+         *        another account's request never matches (Vigia L1). A key is kept 24 h after the request it
+         *        recorded, as in `createAccount` (6.1.0, Crivo q2); after that it is unknown and the request runs
+         *        as new (step-up, then 409 `risk.day_not_unknown` once the day is known, or the pending request);
          *     3. step-up;
          *     4. 409.
          *     Without a known key the step-up applies as normal. On a session below 1.4: 409
@@ -1788,7 +1815,8 @@ export interface paths {
          *     item unchanged. Reading never changes or hides the state it reports (a block, a risk level, an out-
          *     of-sync flag stays visible in banners and badges). A later occurrence of a grouped item makes it
          *     unread again only when its registry code has `reopen_on_occurrence: true` (Q68 b: the
-         *     `danger` routing codes); otherwise only `count` and `updated_at` change. Emits `notification.read`.
+         *     `danger` routing codes; Q99 yes, user 2026-10-24: also `sync.flagged`, whose every occurrence is
+         *     a NEW reason); otherwise only `count` and `updated_at` change. Emits `notification.read`.
          */
         post: operations["markNotificationRead"];
         delete?: never;
@@ -2393,23 +2421,23 @@ export interface components {
             /** @description All active reasons; greater than the length of `reasons` only on overflow. */
             reasons_total: number;
             /** @description Open positions from the last evaluated snapshot, with their live All Win protection, for the clear confirmation (Vigia L2). Empty when flat; absent when the account was never observed. */
-            positions?: {
+            positions?: ({
                 instrument_symbol: string;
                 contract_month: string;
                 /** @description Signed contracts. */
                 position: number;
                 /**
-                 * @description Live stop protection of the position, from ANY working stop that covers it, All Win or manual (Q98 b, user 2026-10-24): `full` = every contract covered by a working stop; `partial` = some; `none`; `unknown` = orders in an unknown state.
+                 * @description Live stop protection of the position, from ANY working stop that covers it, All Win or manual (Q98 b, user 2026-10-24), counting only stop and stop-limit orders on the opposite side, same account and same contract (6.1.0, Vigia L1; see `clearAccountSync`): `full` = their total working quantity is ≥ |position|; `partial` = at least one, with less than |position|; `none` = none; `unknown` = an order of this account and contract is in an unknown state, so the Core cannot tell. Only `full` lets a clear release the position.
                  * @enum {string}
                  */
                 protection: "full" | "partial" | "none" | "unknown";
                 /**
-                 * @description With `full` / `partial`: who placed the covering stops. `external` = placed outside All Win (e.g. a manual NT8 stop), shown as such; `mixed` = both.
+                 * @description Only with `full` / `partial` (6.1.0, Crivo q1; absent otherwise): who placed the covering stops. `external` = placed outside All Win (e.g. a manual NT8 stop), shown as such; `mixed` = both.
                  * @enum {string}
                  */
                 protection_source?: "all_win" | "external" | "mixed";
                 as_of?: components["schemas"]["Timestamp"];
-            }[];
+            } & unknown)[];
             /** @description All resolved reasons; greater than the length of `resolved_reasons` only on overflow. */
             resolved_total?: number;
             /** @description Reasons the Core removed while the account stays out of sync (shown as history in the alert). Only the Core resolves a reason. They survive a new flag and are emptied only by the user's clear. */
@@ -2455,6 +2483,8 @@ export interface components {
             detected_at: components["schemas"]["Timestamp"];
             /** @description Only in `resolved_reasons`. */
             resolved_at?: components["schemas"]["Timestamp"];
+            /** @description Only on `sync.bracket_incomplete` (6.1.0): the time of the user's clear that kept this reason because its position was not fully covered (`clearAccountSync`). The account is then blocked for new entries only by protection, and returns to `in_sync` by itself once every held reason is resolved (Q101). */
+            held_at_clear?: components["schemas"]["Timestamp"];
             /** @description The instrument as the gateway knows it from the wire (protocol `symbol`), e.g. `MNQ` (5.3.0, Bigorna). Present whenever the reason concerns one instrument. The gateway has no catalog id, so `instrument_id` is present only when the Core resolved it. */
             instrument_symbol?: string;
             /** @description With `instrument_symbol`: the protocol `contract_month` (YYYY-MM). */
@@ -2730,7 +2760,31 @@ export interface components {
         /**
          * @description Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
          *     auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
-         *     `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
+         *     `notifications.*` (S18).
+         *     S15 local enforcement (6.1.0; Rumo's S18 review; ADR-0004 `risk_event`; category risk, actor system).
+         *     The plugin acts and reports; the Core records what it reports, one entry per `risk_event`:
+         *     - `risk.blocked` (outcome `info`): the account was blocked until the trading-day reset (S15 AC-2,
+         *       AC-8), from `risk_event` `blocked` (`DetailsRiskEnforcement`, `trigger`);
+         *     - `risk.flatten` (outcome `executed`): the enforcement closed the position (`flattened`) or
+         *       cancelled the working orders (`orders_cancelled`), one entry per `risk_event` (S15 AC-2, AC-5);
+         *     - `risk.unblocked` (outcome `info`): the reset ended the block, with reason `trading_day_reset`
+         *       (S15 AC-9, Q62 a). There is no early unlock (AC-3), so it is the only reason;
+         *     - `risk.reactive_block_action` (outcome `executed`): while blocked, the plugin cancelled an order
+         *       the user placed by hand, from `risk_event` `blocked_order_cancelled` (S15 AC-6). One entry per
+         *       action; the notification groups them per account and trading day. A position that results from
+         *       such an order and is flattened while blocked is reported as `risk_event` `flattened` and recorded
+         *       as `risk.flatten` (ADR-0004 §7 r6.1, Esquadro).
+         *     Each carries the rule and the value that triggered the block (S15 AC-5, X-5). `risk_event`
+         *     `blocked` / `flattened` / `orders_cancelled` do not carry `metric` / `value` / `limit`, so the Core
+         *     takes them from the `limit_reached` of the same account and `limits_version`. With trigger
+         *     `enabled_over_limit` (S15 AC-8) the plugin may send no `limit_reached`; the Core then takes them
+         *     from its own risk state at that `limits_version`, at the instant of the event (Crivo n1, Esquadro).
+         *     `execution.exit_sent_late` (6.1.0, T1; category execution, actor system, outcome `info`; audit
+         *     only, no notification): an exit command sent after its `expiry_base` + the account's command TTL
+         *     (ADR-0004 §5 r5, "audited as late"). It is written with the same command's
+         *     `execution.command_sent`, so the late send can be filtered on its own; `late_ms` is always
+         *     present. Instructions lost in a disconnect need no code of their own: they are
+         *     `routing.expired` and the account gets `sync.flagged` (Rumo).
          *     Category by code family (the `category` of each entry): `ingress.*` → ingress; `routing.*` →
          *     routing, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →
          *     execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →
@@ -2760,13 +2814,16 @@ export interface components {
          *       plugin reported another platform account kind for a bound account, e.g. `simulation` → `live`
          *       (`DetailsAccountKindChanged`). It is audit only; the binding's `kind` shows the current value;
          *     - `sync.restored`: a disconnect while flat with nothing in flight, whose reconnect snapshot matched,
-         *       so the account was not flagged and is back to normal (system, `info`; ADR-0004 §6 row 3).
+         *       so the account was not flagged and is back to normal (system, `info`; ADR-0004 §6 row 3). Also
+         *       (6.1.0) the automatic return to `in_sync` after a clear, when the last `sync.bracket_incomplete`
+         *       the clear held (`held_at_clear`) is resolved because its position is fully covered or flat;
+         *       `reason` is that reason (Q101).
          *     The automatic orphan cancels and the orphan flatten stay execution entries (`execution.cancelled`
          *     + `order.orphan_cancelled`, `execution.command_sent` kind `flatten`); `sync.flagged` carries the
          *     summary in `reason.core_action`.
          * @enum {string}
          */
-        KnownAuditCode: "ingress.received" | "ingress.duplicate_ignored" | "ingress.duplicate_conflict" | "ingress.rejected" | "ingress.rate_limited" | "routing.routed" | "routing.quantity_capped" | "routing.max_position_reached" | "routing.signal_type_not_selected" | "routing.automation_not_accepted" | "routing.copy_not_accepted" | "routing.account_inactive" | "routing.platform_unbound" | "routing.no_bracket_profile" | "routing.limits_pending" | "routing.out_of_sync" | "routing.risk_blocked" | "routing.position_conflict" | "routing.nothing_to_close" | "routing.nothing_to_reduce" | "routing.no_correlated_order" | "routing.instrument_unavailable" | "routing.adapter_protocol_outdated" | "routing.position_unknown" | "routing.expired" | "execution.command_requested" | "execution.command_sent" | "execution.bracket_calculated" | "execution.order_received" | "execution.order_working" | "execution.partially_filled" | "execution.filled" | "execution.cancelled" | "execution.rejected" | "execution.expired" | "execution.state_unknown" | "execution.fill_corrected" | "connection.status_changed" | "sources.created" | "sources.renamed" | "sources.rotated" | "sources.revoked" | "connections.created" | "connections.renamed" | "connections.pairing_code_issued" | "connections.paired" | "connections.repaired" | "connections.unpaired" | "security.signed_in" | "security.sign_in_failed" | "security.code_rate_limited" | "security.code_delivery_failed" | "security.new_device_notice_sent" | "security.step_up_succeeded" | "security.step_up_failed" | "security.channel_change_requested" | "security.channel_change_on_hold" | "security.channel_change_completed" | "security.channel_change_cancelled" | "security.channel_change_not_completed" | "security.device_forgotten" | "security.signed_out_everywhere" | "security.invitation_issued" | "security.invitation_revoked" | "security.account_created" | "accounts.created" | "accounts.updated" | "accounts.archived" | "accounts.lifecycle_changed" | "accounts.opt_in_chosen" | "accounts.opt_in_suspended" | "accounts.opt_in_rule_updated" | "routing.subscription_changed" | "profiles.default_changed" | "profiles.account_changed" | "presets.version_applied" | "presets.value_restored" | "risk.rules_changed" | "risk.warning" | "risk.limit_reached" | "risk.target_reached" | "risk.consistency_warning" | "risk.evaluation_target_reached" | "risk.day_restarted" | "accounts.evaluation_restarted" | "accounts.evaluation_corrected" | "trades.captured" | "trades.manual_created" | "trades.manual_changed" | "trades.manual_deleted" | "trades.reconcile_mismatch" | "execution.unbound_activity" | "execution.undelivered" | "connection.account_kind_changed" | "sync.flagged" | "sync.reason_resolved" | "sync.cleared" | "sync.restored";
+        KnownAuditCode: "ingress.received" | "ingress.duplicate_ignored" | "ingress.duplicate_conflict" | "ingress.rejected" | "ingress.rate_limited" | "routing.routed" | "routing.quantity_capped" | "routing.max_position_reached" | "routing.signal_type_not_selected" | "routing.automation_not_accepted" | "routing.copy_not_accepted" | "routing.account_inactive" | "routing.platform_unbound" | "routing.no_bracket_profile" | "routing.limits_pending" | "routing.out_of_sync" | "routing.risk_blocked" | "routing.position_conflict" | "routing.nothing_to_close" | "routing.nothing_to_reduce" | "routing.no_correlated_order" | "routing.instrument_unavailable" | "routing.adapter_protocol_outdated" | "routing.position_unknown" | "routing.expired" | "execution.command_requested" | "execution.command_sent" | "execution.bracket_calculated" | "execution.order_received" | "execution.order_working" | "execution.partially_filled" | "execution.filled" | "execution.cancelled" | "execution.rejected" | "execution.expired" | "execution.state_unknown" | "execution.fill_corrected" | "connection.status_changed" | "sources.created" | "sources.renamed" | "sources.rotated" | "sources.revoked" | "connections.created" | "connections.renamed" | "connections.pairing_code_issued" | "connections.paired" | "connections.repaired" | "connections.unpaired" | "security.signed_in" | "security.sign_in_failed" | "security.code_rate_limited" | "security.code_delivery_failed" | "security.new_device_notice_sent" | "security.step_up_succeeded" | "security.step_up_failed" | "security.channel_change_requested" | "security.channel_change_on_hold" | "security.channel_change_completed" | "security.channel_change_cancelled" | "security.channel_change_not_completed" | "security.device_forgotten" | "security.signed_out_everywhere" | "security.invitation_issued" | "security.invitation_revoked" | "security.account_created" | "accounts.created" | "accounts.updated" | "accounts.archived" | "accounts.lifecycle_changed" | "accounts.opt_in_chosen" | "accounts.opt_in_suspended" | "accounts.opt_in_rule_updated" | "routing.subscription_changed" | "profiles.default_changed" | "profiles.account_changed" | "presets.version_applied" | "presets.value_restored" | "risk.rules_changed" | "risk.warning" | "risk.limit_reached" | "risk.target_reached" | "risk.consistency_warning" | "risk.evaluation_target_reached" | "risk.day_restarted" | "risk.blocked" | "risk.flatten" | "risk.unblocked" | "risk.reactive_block_action" | "accounts.evaluation_restarted" | "accounts.evaluation_corrected" | "trades.captured" | "trades.manual_created" | "trades.manual_changed" | "trades.manual_deleted" | "trades.reconcile_mismatch" | "execution.unbound_activity" | "execution.undelivered" | "execution.exit_sent_late" | "connection.account_kind_changed" | "sync.flagged" | "sync.reason_resolved" | "sync.cleared" | "sync.restored";
         AuditEntry: {
             id: components["schemas"]["Uuid"];
             occurred_at: components["schemas"]["Timestamp"];
@@ -3105,7 +3162,7 @@ export interface components {
             /** @description Instruction receipt → this report (S19 AC-4 for followers). */
             latency_ms?: number;
         };
-        /** @description `sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored`. */
+        /** @description `sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored` after a disconnect, `reason` with `sync.restored` after a held reason is resolved (6.1.0). */
         DetailsSync: {
             /** @description `AccountSync.version` after the change. */
             sync_version: number;
@@ -3452,6 +3509,49 @@ export interface components {
             /** @enum {string} */
             day_unknown_reason?: "late_anchor" | "journal_lost" | "playback_rewind" | "account_reset";
         };
+        /** @description `risk.blocked` (+ `trigger`) and `risk.flatten` (+ `action`), 6.1.0 (S15). `kind` / `limit` / `used` are those of the rule that triggered the block (S15 AC-5). */
+        DetailsRiskEnforcement: {
+            /** @description The Core's id of one enforcement episode: one block until the reset of one account. The same value on the `risk.blocked` and every `risk.flatten` of that episode (the 2–3 entries of one limit breach), and on its `risk.reactive_block_action` and `risk.unblocked` entries, so S18 groups them without heuristics (Nanquim). A new block, even on the same day, gets a new id. */
+            enforcement_id: components["schemas"]["Uuid"];
+            kind: components["schemas"]["RiskRuleKind"];
+            limit: components["schemas"]["Money"];
+            used: components["schemas"]["Money"];
+            limits_version: number;
+            /**
+             * @description With `risk.blocked`: `enabled_over_limit` = the user turned enforcement on while the limit was already exceeded today (S15 AC-8, Q61 a).
+             * @enum {string}
+             */
+            trigger?: "limit_reached" | "enabled_over_limit";
+            /**
+             * @description With `risk.flatten`.
+             * @enum {string}
+             */
+            action?: "flattened" | "orders_cancelled";
+            /** @description The plugin acted while the Core was unreachable, on its cached limits (S15 AC-4). */
+            while_disconnected?: boolean;
+            /** @description The connection's clock (Playback, S15 AC-7). */
+            platform_time?: components["schemas"]["Timestamp"];
+        };
+        /** @description `risk.unblocked` (6.1.0, S15 AC-9). */
+        DetailsRiskUnblocked: {
+            /** @description The ended block's `enforcement_id`; absent only when the Core never recorded that block. */
+            enforcement_id?: components["schemas"]["Uuid"];
+            /** @constant */
+            reason: "trading_day_reset";
+            blocked_at?: components["schemas"]["Timestamp"];
+            limits_version?: number;
+        };
+        /** @description `risk.reactive_block_action` (6.1.0, S15 AC-6): the cancel of a manual order while blocked (`risk_event` `blocked_order_cancelled`). A resulting position flattened while blocked is reported as `flattened` and recorded as `risk.flatten` (ADR-0004 §7 r6.1). */
+        DetailsReactiveBlockAction: {
+            /** @description The current block's `enforcement_id`; absent only when the Core never recorded that block. */
+            enforcement_id?: components["schemas"]["Uuid"];
+            /** @constant */
+            action: "order_cancelled";
+            /** @description The rule behind the block. */
+            kind?: components["schemas"]["RiskRuleKind"];
+            while_disconnected?: boolean;
+            platform_time?: components["schemas"]["Timestamp"];
+        };
         /**
          * @description `security.invitation_issued` (the admin's trail; with `masked_email` and `email_sent`),
          *     `security.invitation_revoked`, and `security.account_created` (the new user's log: the
@@ -3508,6 +3608,7 @@ export interface components {
             "connection.status_changed"?: components["schemas"]["DetailsConnectionStatus"];
             "execution.unbound_activity"?: components["schemas"]["DetailsUnboundActivity"];
             "execution.undelivered"?: components["schemas"]["DetailsUndelivered"];
+            "execution.exit_sent_late"?: components["schemas"]["DetailsCommandSent"];
             "connection.account_kind_changed"?: components["schemas"]["DetailsAccountKindChanged"];
             "sync.flagged"?: components["schemas"]["DetailsSync"];
             "sync.reason_resolved"?: components["schemas"]["DetailsSync"];
@@ -3559,6 +3660,10 @@ export interface components {
             "risk.consistency_warning"?: components["schemas"]["DetailsRiskState"];
             "risk.evaluation_target_reached"?: components["schemas"]["DetailsEvaluation"];
             "risk.day_restarted"?: components["schemas"]["DetailsDayRestarted"];
+            "risk.blocked"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.flatten"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.unblocked"?: components["schemas"]["DetailsRiskUnblocked"];
+            "risk.reactive_block_action"?: components["schemas"]["DetailsReactiveBlockAction"];
             "accounts.evaluation_restarted"?: components["schemas"]["DetailsEvaluationRestarted"];
             "accounts.evaluation_corrected"?: components["schemas"]["DetailsEvaluationCorrected"];
             "trades.captured"?: components["schemas"]["DetailsTrade"];
@@ -3708,8 +3813,9 @@ export interface components {
         };
         /**
          * @description Type map, not a payload: `params` of a notification with code `<code>` matches property `<code>`.
-         *     Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S15 (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
-         *     are added with those contracts.
+         *     Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). The S15 codes
+         *     (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`) are in from 6.1.0
+         *     (registry 1.6.0).
          */
         NotificationParamsByCode: {
             "routing.quantity_capped"?: components["schemas"]["DetailsRoutingDecision"];
@@ -3730,6 +3836,10 @@ export interface components {
             "risk.target_reached"?: components["schemas"]["DetailsRiskState"];
             "risk.consistency_warning"?: components["schemas"]["DetailsRiskState"];
             "risk.evaluation_target_reached"?: components["schemas"]["DetailsEvaluation"];
+            "risk.blocked"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.flatten"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.unblocked"?: components["schemas"]["DetailsRiskUnblocked"];
+            "risk.reactive_block_action"?: components["schemas"]["DetailsReactiveBlockAction"];
             "connection.status_changed"?: components["schemas"]["DetailsConnectionStatus"];
             "accounts.opt_in_suspended"?: components["schemas"]["ParamsOptInSuspendedByFirm"];
             "presets.new_version"?: components["schemas"]["ParamsPresetNewVersion"];
