@@ -32,7 +32,12 @@ done
 if [ "$STATUS" = 0 ] && [ "${1:-}" = pnpm ] && [ "${2:-}" = install ]; then
   off=0 froz=0; for a in "$@"; do case "$a" in --offline) off=1 ;; --frozen-lockfile) froz=1 ;; esac; done
   if [ "$off" = 1 ] && [ "$froz" = 1 ]; then
-    echo "allwin-heavy: pnpm install --offline --frozen-lockfile runs outside the queue (nice 19, ionice idle)" >&2
+    echo "allwin-heavy: pnpm install --offline --frozen-lockfile runs outside the queue (nice 19, ionice idle, still under the CPU and memory quota)" >&2
+    # Postinstall scripts may run, so the scope with the quota stays; only the slot and the queue are skipped.
+    if systemd-run --user --scope --quiet --collect -p "CPUQuota=${ALLWIN_HEAVY_CPU_QUOTA:-200%}" -- true >/dev/null 2>&1; then
+      exec systemd-run --user --scope --quiet --collect -p "CPUQuota=${ALLWIN_HEAVY_CPU_QUOTA:-200%}" -p CPUWeight=10 \
+        -p MemoryHigh="${ALLWIN_HEAVY_MEMORY_HIGH:-8G}" --nice=19 -- ionice -c3 "$@"
+    fi
     exec nice -n 19 ionice -c3 "$@"
   fi
 fi
@@ -44,10 +49,12 @@ fi
 ( umask 007; mkdir -p -- "$LOCK_DIR" ) 2>/dev/null || true
 [ -d "$LOCK_DIR" ] && [ -w "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] \
   || { echo "allwin-heavy: lock dir $LOCK_DIR is missing, a symlink or not writable" >&2; exit 1; }
-chmod 2770 -- "$LOCK_DIR" 2>/dev/null || true
+# Sticky: a file in here (LANE.sunday, PAUSE, another account's ticket) can be deleted or renamed only by its owner.
+chmod 3770 -- "$LOCK_DIR" 2>/dev/null || true
 
 QUEUE="$LOCK_DIR/queue"
 ( umask 007; mkdir -p -- "$QUEUE" ) 2>/dev/null || true
+chmod 3770 -- "$QUEUE" 2>/dev/null || true
 
 # Live tickets in service order: lane sunday before normal, then by arrival (nanoseconds). A ticket is live while /proc/<pid> exists
 # (works across accounts); tickets of dead processes are removed. Prints "<rank><ns> <ticket file>".
@@ -63,6 +70,9 @@ queue_live() {
   done | sort
 }
 field() { sed -n "s/^$1=//p" "$2" 2>/dev/null | head -n 1; }   # field <key> <file>
+# Which process holds the flock on a slot file (from /proc/locks, by inode): slots can stay held by a child of an older wrapper that has no record.
+held_pid() { local ino; ino="$(stat -c %i "$1" 2>/dev/null)" || return 1
+  awk -v ino="$ino" '$2=="FLOCK" { split($6, a, ":"); if (a[3] == ino) { print $5; exit } }' /proc/locks 2>/dev/null; }
 
 if [ "$STATUS" = 1 ]; then
   now="$(date +%s)"
@@ -73,7 +83,9 @@ if [ "$STATUS" = 1 ]; then
       printf '  slot.%s  RUNNING  %s  lane %s  %s min  pid %s  %s | %s\n' "$i" "$(field user "$info")" "$(field lane "$info")" \
         "$(( (now - $(field start "$info" || echo "$now")) / 60 ))" "$pid" "$(field cwd "$info")" "$(field cmd "$info")"
     else
-      printf '  slot.%s  free or running outside the tickets (no live record)\n' "$i"
+      hp="$(held_pid "$LOCK_DIR/slot.$i" || true)"
+      if [ -n "$hp" ]; then printf '  slot.%s  HELD    pid %s (no ticket record: started by an older wrapper or outside the queue)\n' "$i" "$hp"
+      else printf '  slot.%s  free\n' "$i"; fi
     fi
   done
   echo "queue (service order):"
@@ -87,19 +99,17 @@ if [ "$STATUS" = 1 ]; then
   exit 0
 fi
 
-# Lane check: the sunday lane is only for worktrees listed (one per line) in LOCK_DIR/LANE.sunday. A line is an absolute path prefix, a name
-# under /srv/www/allwin.worktrees, or "*/name" (any directory called name). Anyone else asking for it runs in the normal lane.
+# Lane check: the sunday lane is only for worktrees listed (one per line) in LOCK_DIR/LANE.sunday, a file only its owner (the Maestro, as dev2) can
+# change: mode 644 in a sticky directory. A line is an absolute path prefix or a name under /srv/www/allwin.worktrees; nothing else matches
+# (no wildcards, no "*/name", no ".."), so creating a directory with a listed name somewhere else buys nothing. Anyone else asking for the lane
+# runs as normal with a one-line notice.
 if [ "$LANE" = sunday ]; then
   cwd_real="$(pwd -P)"; allowed=0
   while IFS= read -r entry; do
     entry="${entry%%#*}"; entry="${entry//[[:space:]]/}"; [ -n "$entry" ] || continue
-    case "$entry" in
-      \*/*) nm="${entry#*/}"; case "$cwd_real/" in *"/$nm/"*) allowed=1 ;; esac ;;
-      /*) pre="${entry%/}" ;;
-      *) pre="/srv/www/allwin.worktrees/$entry" ;;
-    esac
-    case "$entry" in \*/*) ;; *) if [ "$cwd_real" = "$pre" ] || [[ "$cwd_real" == "$pre"/* ]]; then allowed=1; fi ;; esac
-    [ "$allowed" = 1 ] && break
+    case "$entry" in *..*|*\**|*\?*|*\[*) continue ;; esac
+    case "$entry" in /*) pre="${entry%/}" ;; *) pre="/srv/www/allwin.worktrees/$entry" ;; esac
+    if [ "$cwd_real" = "$pre" ] || [[ "$cwd_real" == "$pre"/* ]]; then allowed=1; break; fi
   done < <(cat "$LOCK_DIR/LANE.sunday" 2>/dev/null || true)
   if [ "$allowed" != 1 ]; then
     echo "allwin-heavy: lane sunday is not allowed for $cwd_real (not in LANE.sunday); running in the normal lane" >&2; LANE=normal
