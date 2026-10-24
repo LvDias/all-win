@@ -329,13 +329,70 @@ pub enum DecideError {
     Port(#[from] PortError),
     /// Some accounts wait for a gate that did not answer; what could be decided (exits, close
     /// legs) is committed, and the delivery is retried. The text names the instruction, each
-    /// waiting account and why, so the dead-letter alert says what is stuck (Esmeril, 5.2.0).
-    #[error("instruction {instruction} waiting ({cause}): {}", waiting_list(.accounts))]
+    /// waiting account and why, so the dead-letter alert says what is stuck (Esmeril, 5.2.0),
+    /// and the contract, so a stalled-exit alert names the instrument (Architect, L4).
+    #[error(
+        "instruction {instruction} {} {} waiting ({cause}): {}",
+        .contract.symbol,
+        .contract.month,
+        waiting_list(.accounts)
+    )]
     GatesUnavailable {
         instruction: InstructionId,
+        contract: Contract,
         accounts: Vec<(AccountId, Waiting)>,
         cause: PortError,
     },
+}
+
+impl DecideError {
+    /// The exits still waiting (a close against a flat expected position, without gate 6).
+    pub fn waiting_exits(&self) -> Vec<AccountId> {
+        match self {
+            Self::GatesUnavailable { accounts, .. } => accounts
+                .iter()
+                .filter(|(_, w)| *w == Waiting::CloseForSyncState)
+                .map(|(a, _)| *a)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// Retry ceiling of the decision consumer while an exit waits (Architect, L4): exits are
+/// retried without an attempt limit, never dead-lettered by count.
+pub const EXIT_RETRY_CAP: Duration = Duration::seconds(30);
+const EXIT_ALERT_AFTER: Duration = Duration::seconds(60);
+const EXIT_CRITICAL_AFTER: Duration = Duration::minutes(5);
+const EXIT_CRITICAL_EVERY: Duration = Duration::minutes(30);
+
+/// The operator alert of a waiting exit (Architect, L4): a warning at 60 s, then a critical
+/// alert at 5 min repeated every 30 min. The user-facing codes come with HTTP 6.3.0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExitStallAlert {
+    Waiting,
+    Stalled,
+}
+
+/// Edge-triggered (Esmeril, WIP #13 M1): the alert of the highest threshold crossed in
+/// `(previous, stalled]`, the times since the instruction was received at the previous attempt
+/// and at this one, so each threshold alerts exactly once whatever the retry cadence; a gap
+/// that skips several 30-min periods alerts once. `previous = None` (first attempt seen by
+/// this process, e.g. after a restart) counts every threshold up to `stalled`, so an alert may
+/// repeat after a restart but is never missed.
+pub fn exit_stall_alert(previous: Option<Duration>, stalled: Duration) -> Option<ExitStallAlert> {
+    let crossed = |t: Duration| previous.is_none_or(|p| p < t) && t <= stalled;
+    if stalled >= EXIT_CRITICAL_AFTER {
+        // The latest critical threshold at or before `stalled`.
+        let periods = (stalled - EXIT_CRITICAL_AFTER).num_milliseconds()
+            / EXIT_CRITICAL_EVERY.num_milliseconds();
+        let latest = EXIT_CRITICAL_AFTER
+            + Duration::milliseconds(periods * EXIT_CRITICAL_EVERY.num_milliseconds());
+        if crossed(latest) {
+            return Some(ExitStallAlert::Stalled);
+        }
+    }
+    crossed(EXIT_ALERT_AFTER).then_some(ExitStallAlert::Waiting)
 }
 
 /// Why one account of an instruction is not decided yet.
@@ -627,6 +684,7 @@ impl DecideInstruction {
                     },
                     decision,
                 )
+                .map_err(|e| DecideError::Port(PortError(e.to_string())))
             };
             // Entry gates asked but not answered (an exit never asks).
             let unanswered = gates.is_some() && answers.is_none();
@@ -650,7 +708,7 @@ impl DecideInstruction {
                             position: Some(position),
                             gates_unknown: false,
                         },
-                        commands(Leg::Close, &close),
+                        commands(Leg::Close, &close)?,
                     ));
                 }
                 waiting.push((account.id, Waiting::EntryForGates));
@@ -669,7 +727,7 @@ impl DecideInstruction {
             if has_close_leg {
                 decision.steps.retain(|s| *s != decision::Step::Flatten);
             }
-            let leg_commands = commands(leg, &decision);
+            let leg_commands = commands(leg, &decision)?;
             out.push(record(
                 user,
                 &i,
@@ -696,6 +754,7 @@ impl DecideInstruction {
             };
             return Err(DecideError::GatesUnavailable {
                 instruction: instruction_id,
+                contract,
                 accounts: waiting,
                 cause,
             });

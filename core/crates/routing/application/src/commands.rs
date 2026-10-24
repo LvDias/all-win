@@ -64,9 +64,18 @@ pub struct CommandContext<'a> {
     pub protection: Option<Protection>,
 }
 
-/// `None` when the decision places nothing. A place without a profile is never built: the
-/// engine skips it with `routing.no_bracket_profile` first.
-pub fn commands_for(c: &CommandContext<'_>, d: &Decision) -> Option<CommandsRequested> {
+/// A place without a stop/target profile: the engine skips such an entry with
+/// `routing.no_bracket_profile` first, so reaching it is a defect. The decision is not
+/// committed and the delivery retries, then dead-letters with an alert (Esmeril, C1 note a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("a place for account {0} has no stop/target profile; decision not committed")]
+pub struct MissingProtection(pub AccountId);
+
+/// `Ok(None)` when the decision places nothing.
+pub fn commands_for(
+    c: &CommandContext<'_>,
+    d: &Decision,
+) -> Result<Option<CommandsRequested>, MissingProtection> {
     let flatten_id = command_id(c.instruction.id, c.account_id, "flatten");
     // The opening of a reverse waits for its flatten, whether it is in this event or was
     // committed by the close leg.
@@ -103,9 +112,7 @@ pub fn commands_for(c: &CommandContext<'_>, d: &Decision) -> Option<CommandsRequ
                 }));
             }
             Step::Place { side, quantity } => {
-                let Some(protection) = c.protection else {
-                    continue;
-                };
+                let protection = c.protection.ok_or(MissingProtection(c.account_id))?;
                 let mut command = Map::new();
                 command.insert(
                     "command_id".into(),
@@ -141,9 +148,9 @@ pub fn commands_for(c: &CommandContext<'_>, d: &Decision) -> Option<CommandsRequ
         }
     }
     if commands.is_empty() {
-        return None;
+        return Ok(None);
     }
-    Some(CommandsRequested {
+    Ok(Some(CommandsRequested {
         event: json!({
             "instruction_id": c.instruction.id,
             "account_id": c.account_id,
@@ -151,7 +158,7 @@ pub fn commands_for(c: &CommandContext<'_>, d: &Decision) -> Option<CommandsRequ
             "commands": commands,
         }),
         exit_audits,
-    })
+    }))
 }
 
 fn instrument(c: &Contract) -> Value {

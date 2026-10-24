@@ -104,6 +104,7 @@ fn the_events_match_the_fixtures_frozen_with_the_gateway() {
             quantity: 2,
         }]),
     )
+    .unwrap()
     .unwrap();
     assert_eq!(entry.event, fixture("entry.json"));
     assert!(entry.exit_audits.is_empty(), "an entry is not an exit");
@@ -115,12 +116,14 @@ fn the_events_match_the_fixtures_frozen_with_the_gateway() {
         &context(&limit, &c, REVERSE, Leg::Close, 6_120),
         &decision(vec![Step::Flatten]),
     )
+    .unwrap()
     .unwrap();
     assert_eq!(close_leg.event, fixture("reverse-step1-close-leg.json"));
     let open_leg = commands_for(
         &context(&limit, &c, REVERSE, Leg::Open, 6_320),
         &decision(vec![SELL_2]),
     )
+    .unwrap()
     .unwrap();
     assert_eq!(open_leg.event, fixture("reverse-step2-open-leg.json"));
     assert!(open_leg.exit_audits.is_empty());
@@ -145,6 +148,7 @@ fn a_reverse_decided_at_once_is_one_event_with_the_place_after_its_flatten() {
         &context(&i, &c, REVERSE, Leg::Whole, 6_120),
         &decision(vec![Step::Flatten, SELL_2]),
     )
+    .unwrap()
     .unwrap();
     let commands = both.event["commands"].as_array().unwrap();
     assert_eq!(commands.len(), 2);
@@ -157,6 +161,7 @@ fn a_reverse_decided_at_once_is_one_event_with_the_place_after_its_flatten() {
         &context(&i, &c, REVERSE, Leg::Whole, 6_120),
         &decision(vec![SELL_2]),
     )
+    .unwrap()
     .unwrap();
     assert!(open.event["commands"][0].get("depends_on").is_none());
 }
@@ -169,6 +174,7 @@ fn a_close_and_the_q75_flatten_flatten_with_reason_close() {
         &context(&i, &c, Action::Close, Leg::Whole, 6_120),
         &decision(vec![Step::Flatten]),
     )
+    .unwrap()
     .unwrap();
     let command = &close.event["commands"][0];
     assert_eq!(command["body"], json!({"reason": "close"}));
@@ -179,7 +185,9 @@ fn a_close_and_the_q75_flatten_flatten_with_reason_close() {
     // The flat out-of-sync reverse flattens only (Q75): not a reverse's first leg.
     let mut flat = decision(vec![Step::Flatten]);
     flat.expected_flat = true;
-    let q75 = commands_for(&context(&i, &c, REVERSE, Leg::Whole, 6_120), &flat).unwrap();
+    let q75 = commands_for(&context(&i, &c, REVERSE, Leg::Whole, 6_120), &flat)
+        .unwrap()
+        .unwrap();
     assert_eq!(q75.event["commands"][0]["body"], json!({"reason": "close"}));
 }
 
@@ -191,7 +199,11 @@ fn nothing_is_requested_without_a_step_and_ids_are_stable_per_step() {
         side: Side::Long,
         quantity: 1,
     };
-    assert!(commands_for(&context(&i, &c, buy, Leg::Whole, 0), &decision(Vec::new())).is_none());
+    assert!(
+        commands_for(&context(&i, &c, buy, Leg::Whole, 0), &decision(Vec::new()))
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         command_id(i.id, account(), "place"),
         command_id(i.id, account(), "place")
@@ -296,6 +308,7 @@ fn exit_audits_match_the_contract() {
         &context(&i, &c, Action::Close, Leg::Whole, 0),
         &decision(vec![Step::Flatten]),
     )
+    .unwrap()
     .unwrap();
     for audit in &close.exit_audits {
         let errors: Vec<String> = validator
@@ -304,4 +317,36 @@ fn exit_audits_match_the_contract() {
             .collect();
         assert!(errors.is_empty(), "{errors:?}");
     }
+}
+
+/// Esmeril C1 note (a): a place without protection fails the decision, never drops silently.
+#[test]
+fn a_place_without_protection_fails_loudly() {
+    let c = contract();
+    let i = instruction(None);
+    let buy = Action::Open {
+        side: Side::Long,
+        quantity: 1,
+    };
+    let mut ctx = context(&i, &c, buy, Leg::Whole, 0);
+    ctx.protection = None;
+    let place = Step::Place {
+        side: Side::Long,
+        quantity: 2,
+    };
+    assert_eq!(
+        commands_for(&ctx, &decision(vec![place])),
+        Err(MissingProtection(account()))
+    );
+    // An exit never needs a profile.
+    let close = context(&i, &c, Action::Close, Leg::Whole, 0);
+    let close = CommandContext {
+        protection: None,
+        ..close
+    };
+    assert!(
+        commands_for(&close, &decision(vec![Step::Flatten]))
+            .unwrap()
+            .is_some()
+    );
 }

@@ -970,6 +970,7 @@ async fn a_flat_close_waits_for_gate_6_and_then_trusts_it_only_in_sync() {
         text.contains(&w.instruction.as_uuid().to_string()),
         "{text}"
     );
+    assert!(text.contains("MNQ 2026-12"), "the instrument: {text}");
     assert!(
         text.contains(&format!(
             "account {} close waiting for sync state",
@@ -1269,4 +1270,75 @@ fn decision_details_schema_has_no_free_strings() {
     let mut free = Vec::new();
     walk(&bundle, &root, "DetailsRoutingDecision", 0, &mut free);
     assert!(free.is_empty(), "free strings: {free:?}");
+}
+
+/// Architect L4 / Esmeril M1: each threshold alerts exactly once, whatever the gaps between
+/// attempts: 60 s (warning), then 5 min and every 30 min after (critical).
+#[test]
+fn a_waiting_exit_alerts_once_per_threshold_whatever_the_cadence() {
+    let s = Duration::seconds;
+    let run = |times: &[i64]| -> Vec<(i64, ExitStallAlert)> {
+        let mut previous = None;
+        let mut out = Vec::new();
+        for t in times {
+            if let Some(a) = exit_stall_alert(previous, s(*t)) {
+                out.push((*t, a));
+            }
+            previous = Some(s(*t));
+        }
+        out
+    };
+    // Steady 30 s attempts over 2 h.
+    let steady: Vec<i64> = (0..=7200).step_by(30).collect();
+    assert_eq!(
+        run(&steady),
+        [
+            (60, ExitStallAlert::Waiting),
+            (300, ExitStallAlert::Stalled),
+            (2100, ExitStallAlert::Stalled),
+            (3900, ExitStallAlert::Stalled),
+            (5700, ExitStallAlert::Stalled),
+        ]
+    );
+    // Irregular gaps (2 s, 31 s, 45 s) across both first thresholds: each once, never missed.
+    assert_eq!(
+        run(&[0, 2, 4, 59, 90, 92, 299, 301, 302, 346]),
+        [
+            (90, ExitStallAlert::Waiting),
+            (301, ExitStallAlert::Stalled)
+        ]
+    );
+    // One long gap over several 30-min periods alerts once; the next period alerts again.
+    assert_eq!(
+        run(&[10, 4000, 4010, 5700]),
+        [
+            (4000, ExitStallAlert::Stalled),
+            (5700, ExitStallAlert::Stalled)
+        ]
+    );
+    // First attempt seen by this process (restart): every threshold up to now counts.
+    assert_eq!(exit_stall_alert(None, s(70)), Some(ExitStallAlert::Waiting));
+    assert_eq!(exit_stall_alert(None, s(30)), None);
+}
+
+#[tokio::test]
+async fn only_waiting_exits_are_named_for_the_stall_alert() {
+    let w = world();
+    w.set_instruction("close", None, None);
+    *w.gates.0[0].unavailable.lock().unwrap() = true;
+    let err = w
+        .use_case()
+        .handle(w.user, w.instruction)
+        .await
+        .unwrap_err();
+    assert_eq!(err.waiting_exits(), [w.account]);
+
+    let w = world();
+    *w.gates.0[1].unavailable.lock().unwrap() = true;
+    let err = w
+        .use_case()
+        .handle(w.user, w.instruction)
+        .await
+        .unwrap_err();
+    assert!(err.waiting_exits().is_empty(), "an entry is not an exit");
 }
