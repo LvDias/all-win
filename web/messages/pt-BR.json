@@ -190,6 +190,13 @@
       "rate_limited": "Muitas tentativas de pareamento. Aguarde um pouco.",
       "temporarily_locked": "Pareamento bloqueado temporariamente. Aguarde alguns minutos."
     },
+    "presets": {
+      "choice_required": "Escolha se mantém o seu valor ou usa o do preset neste campo.",
+      "required_field_unresolved": "Resolva este valor para continuar: escolha um dos valores publicados ou digite outro.",
+      "value_not_confirmed": "O preset não tem valor confirmado para este campo, então não dá para restaurar. Edite o valor você mesmo.",
+      "version_not_newer": "Essa versão não é mais nova que a da conta. Recarregue e revise de novo.",
+      "version_superseded": "Saiu uma versão mais nova do preset enquanto você revisava. Revise de novo."
+    },
     "routing": {
       "automation_not_accepted": "Esta conta não aceita ordens automatizadas (ou a escolha está pendente).",
       "copy_not_accepted": "Esta conta não aceita cópia de operações (ou a escolha está pendente)."
@@ -1078,7 +1085,9 @@
         "none": "Sem limite"
       },
       "excluded": "Estes planos não estão disponíveis como preset: {list}. Cadastre-os manualmente.",
-      "commissionMissing": "Traço na coluna de comissão significa que a firma não a publica; a conta mostrará \"comissão não informada\" até você informar um valor."
+      "commissionMissing": "Traço na coluna de comissão significa que a firma não a publica; a conta mostrará \"comissão não informada\" até você informar um valor.",
+      "registerManually": "Cadastrar conta sem preset",
+      "resetBoth": "Firma: {firm} · Seu horário: {user}"
     },
     "versions": {
       "version": "Versão {n}",
@@ -1097,7 +1106,10 @@
         "ruleValueChanged": "Um valor de regra mudou.",
         "presetAdded": "Um preset foi adicionado.",
         "presetRemoved": "Um preset foi removido."
-      }
+      },
+      "seeTexts": "Ver textos desta versão",
+      "hideTexts": "Ocultar textos desta versão",
+      "textsError": "Não foi possível carregar os textos desta versão."
     },
     "account": {
       "title": "Preset da firma",

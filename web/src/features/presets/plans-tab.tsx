@@ -1,17 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { errorMessage } from "@/shared/api/error-message";
 import type { components } from "@/shared/api/schema.gen";
 import { formatMoney } from "@/shared/format";
 import { defaultLocale, isLocale } from "@/shared/i18n/config";
+import { withLocale } from "@/shared/i18n/paths";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 import { usePresetVersions } from "./api/use-presets";
 import type { FirmDetail, PresetRules, PresetVersion } from "./api/types";
+import { ResetTime } from "./reset-time";
 import { RuleCell } from "./rule-cell";
 
 type Schemas = components["schemas"];
@@ -53,7 +56,7 @@ export function PlansTab({ firm }: { firm: FirmDetail }) {
   const money = (amount: string) => formatMoney(amount, locale);
   const drawdown = (v: Schemas["DrawdownValue"]) => `${money(v.amount)} · ${t(`drawdown.${v.type}`)}`;
   const dailyLoss = (v: Schemas["DailyLossValue"]) => (v.kind === "none" || v.amount === undefined ? t("dailyLoss.none") : `${money(v.amount)} · ${t(`dailyLoss.${v.kind}`)}`);
-  const reset = (v: Schemas["TradingDayResetValue"]) => v.published_text ?? `${v.local_time} ${v.time_zone}`;
+  const reset = (v: Schemas["TradingDayResetValue"]) => <ResetTime localTime={v.local_time} timeZone={v.time_zone} publishedText={v.published_text} />;
 
   if (!plan) return <p className="text-sm">{t("none")}</p>;
   return (
@@ -105,8 +108,14 @@ export function PlansTab({ firm }: { firm: FirmDetail }) {
           </TableBody>
         </Table>
       </div>
-      {firm.excluded_plans.length > 0 ? <p className="text-sm">{t("excluded", { list: firm.excluded_plans.join(", ") })}</p> : null}
-      <p className="text-xs text-muted-foreground">{t("commissionMissing")}</p>
+      {firm.excluded_plans.length > 0 ? (
+        <p className="text-sm">
+          {t("excluded", { list: firm.excluded_plans.join(", ") })}{" "}
+          <Link className="underline underline-offset-4" href={withLocale(locale, "/accounts/new")}>{t("registerManually")}</Link>
+        </p>
+      ) : null}
+      {/* Said only when it is true: every size loaded and none publishes a commission. */}
+      {versions.length > 0 && versions.every((query) => query.data && !query.data.rule_sets.some((set) => set.rules.commission_per_contract_side)) ? <p className="text-xs text-muted-foreground">{t("commissionMissing")}</p> : null}
     </div>
   );
 }

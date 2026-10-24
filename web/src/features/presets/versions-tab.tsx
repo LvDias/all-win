@@ -1,12 +1,15 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
+import { useState } from "react";
 import { errorMessage } from "@/shared/api/error-message";
 import { defaultLocale, isLocale } from "@/shared/i18n/config";
+import { StanceBlock } from "@/shared/components/stance-block";
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 import { ErrorState } from "@/shared/ui/error-state";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { useFirmReleases } from "./api/use-presets";
+import { useFirmReleases, useRuleVersions } from "./api/use-presets";
 import type { FirmRelease } from "./api/types";
 import { formatCalendarDate } from "./lib/dates";
 
@@ -39,8 +42,40 @@ function ChangeText({ change }: { change: Change }) {
   }
 }
 
+const positions = ["allowed", "forbidden", "conditional", "unknown", "not_confirmed"] as const;
+const devicePositions = ["required", "not_required", "unknown", "not_confirmed"] as const;
+const isPosition = (value: string): value is (typeof positions)[number] => (positions as readonly string[]).includes(value);
+const isDevicePosition = (value: string): value is (typeof devicePositions)[number] => (devicePositions as readonly string[]).includes(value);
+
+/** What this release said (S16 §4.3): the firm's own texts per stance, so the user can compare with what an account was shown. */
+function ReleaseTexts({ release, firm, platformLabel }: { release: FirmRelease; firm: string; platformLabel: (code: string | undefined) => string | undefined }) {
+  const t = useTranslations("presets.versions");
+  const [open, setOpen] = useState(false);
+  const rules = useRuleVersions(release.rule_versions.map((rule) => rule.id), open);
+  const vps = release.vps.value;
+  const device = release.personal_device.value;
+  return (
+    <div className="space-y-3">
+      <Button type="button" variant="outline" size="sm" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        {t(open ? "hideTexts" : "seeTexts")}
+      </Button>
+      {open ? (
+        <div className="grid gap-3">
+          {rules.map((query, index) => {
+            const meta = release.rule_versions[index];
+            if (!meta || !query.data) return query.isError ? <p key={meta?.id ?? index} className="text-sm text-status-danger">{t("textsError")}</p> : null;
+            return <StanceBlock key={meta.id} subject={meta.kind} value={query.data.firm_stance} firm={firm} quotes={query.data.quotes} searchedOn={query.data.research?.searched_on} platformLabel={platformLabel(meta.firm_platform)} verifiedOn={release.verified_on} />;
+          })}
+          {isPosition(vps) ? <StanceBlock subject="vps" value={vps} firm={firm} quotes={release.vps.quotes} searchedOn={release.vps.research?.searched_on} verifiedOn={release.verified_on} /> : null}
+          {isDevicePosition(device) ? <StanceBlock subject="personalDevice" value={device} firm={firm} quotes={release.personal_device.quotes} searchedOn={release.personal_device.research?.searched_on} verifiedOn={release.verified_on} /> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** S16-02 tab "Versions": newest first, read-only. A material text change is flagged by the publisher, never by us. */
-export function VersionsTab({ firmId }: { firmId: string }) {
+export function VersionsTab({ firmId, firmName, platformLabel }: { firmId: string; firmName: string; platformLabel: (code: string | undefined) => string | undefined }) {
   const t = useTranslations("presets.versions");
   const tc = useTranslations();
   const raw = useLocale();
@@ -63,6 +98,7 @@ export function VersionsTab({ firmId }: { firmId: string }) {
               {release.changes.map((change, index) => <li key={index}><ChangeText change={change} /></li>)}
             </ul>
           )}
+          <ReleaseTexts release={release} firm={firmName} platformLabel={platformLabel} />
         </li>
       ))}
     </ol>

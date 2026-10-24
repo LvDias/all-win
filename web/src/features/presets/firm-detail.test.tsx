@@ -106,4 +106,28 @@ describe("FirmDetailPage", () => {
     expect(await screen.findByText("Firma não encontrada.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument();
   });
+
+  it("links excluded plans to a manual registration, with the reset zones and the version texts one click away", async () => {
+    serve();
+    renderApp(<FirmDetailPage firmId={ids.apex} />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Planos e regras" }));
+    expect(await screen.findByRole("link", { name: "Cadastrar conta sem preset" })).toHaveAttribute("href", expect.stringMatching(/\/accounts\/new$/));
+    const row = (await screen.findByRole("rowheader", { name: "100K" })).closest("tr");
+    if (!row) throw new Error("row missing");
+    // The firm's clock and the user's (UTC here) are both in the DOM for screen readers; sighted users get them in a tooltip.
+    expect((await within(row).findAllByText(/Firma: .* · Seu horário: .*(GMT|UTC)/)).length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole("tab", { name: "Versões" }));
+    const buttons = await screen.findAllByRole("button", { name: "Ver textos desta versão" });
+    await userEvent.click(buttons[0] as HTMLElement);
+    expect(await screen.findByRole("button", { name: "Ocultar textos desta versão" })).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByRole("region", { name: "Servidor / VPS" })).toBeInTheDocument();
+  });
+
+  it("says the firm publishes no commission only when no size does", async () => {
+    serve();
+    renderApp(<FirmDetailPage firmId={ids.apex} />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Planos e regras" }));
+    expect(await screen.findByText(/Traço na coluna de comissão/)).toBeInTheDocument();
+  });
 });

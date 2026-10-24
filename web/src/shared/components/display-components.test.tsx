@@ -62,6 +62,30 @@ describe("FirmRuleQuote", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
+  it("accepts a quote without a page title: the caption shows the URL and the Core's note", () => {
+    renderApp(<FirmRuleQuote firm="Apex" accessedAt="2026-10-20T12:00:00Z" url="https://firm.example/rules" lang="en" text="Rule." titleNote="Page has no title" />);
+    expect(screen.getByText(/Apex · https:\/\/firm\.example\/rules · acessado em 20\/10\/2026/)).toBeInTheDocument();
+    expect(screen.getByText("Page has no title")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Ver página oficial/ })).toHaveAttribute("href", "https://firm.example/rules");
+  });
+
+  it("treats an empty page title like a missing one: the URL and the note, never an empty title", () => {
+    renderApp(<FirmRuleQuote firm="Apex" pageTitle="" accessedAt="2026-10-20T12:00:00Z" url="https://firm.example/rules" lang="en" text="Rule." titleNote="Page has no title" />);
+    expect(screen.getByText(/Apex · https:\/\/firm\.example\/rules · acessado em 20\/10\/2026/)).toBeInTheDocument();
+    expect(screen.getByText("Page has no title")).toBeInTheDocument();
+  });
+
+  it("ignores a note when the page does have a title", () => {
+    renderApp(<FirmRuleQuote {...props} titleNote="should not show" text="Rule." />);
+    expect(screen.queryByText("should not show")).not.toBeInTheDocument();
+  });
+
+  it("renders only an https source as a link", () => {
+    renderApp(<FirmRuleQuote {...props} url="javascript:alert(1)" text="Rule." />);
+    expect(screen.queryByRole("link", { name: /Ver página oficial/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Rule.")).not.toHaveAttribute("cite");
+  });
+
   it("keeps the whole text in the DOM and expands a long quote", async () => {
     const long = Array.from({ length: 12 }, (_, line) => `Line ${line + 1} of the rule.`).join("\n");
     renderApp(<FirmRuleQuote {...props} text={long} />);
@@ -111,6 +135,20 @@ describe("Combobox", () => {
     await person.keyboard("{Enter}");
     expect(picked).toHaveBeenCalledWith("topstep");
     expect(screen.getByRole("combobox", { name: "Firma: Topstep" })).toBeInTheDocument();
+  });
+
+  it("builds option ids from the position, so values with spaces still make valid ids", async () => {
+    function Spaced() {
+      const [value, setValue] = useState<string | null>(null);
+      return <Combobox id="firm" options={[{ value: "take profit", label: "Take Profit" }, { value: "top step", label: "Top Step" }]} value={value} label="Firma" onChange={setValue} />;
+    }
+    renderApp(<Spaced />);
+    const person = userEvent.setup();
+    await person.click(screen.getByRole("combobox", { name: "Firma: Escolher" }));
+    const search = await screen.findByRole("combobox", { name: "Buscar: Firma" });
+    const active = search.getAttribute("aria-activedescendant") ?? "";
+    expect(active).not.toMatch(/\s/);
+    expect(document.getElementById(active)).toHaveAttribute("role", "option");
   });
 
   it("says when nothing matches", async () => {

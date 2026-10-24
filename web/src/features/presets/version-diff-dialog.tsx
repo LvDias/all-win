@@ -17,7 +17,9 @@ import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
-import { useApplyPresetVersion, usePresetDiff, type ApplyPresetVersionRequest, type PresetDiff, type RuleField } from "./api/account-preset";
+import { useQueryClient } from "@tanstack/react-query";
+import { accountKeys } from "@/shared/api/account-keys";
+import { accountPresetKeys, useApplyPresetVersion, usePresetDiff, type ApplyPresetVersionRequest, type PresetDiff, type RuleField } from "./api/account-preset";
 import { usePresetVersion } from "./api/use-presets";
 import type { SourceRef } from "./api/types";
 import { useRuleValueText } from "./lib/rule-value";
@@ -63,8 +65,9 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
   const stepUp = useStepUp();
   const valueText = useRuleValueText();
   const diff = usePresetDiff(accountId, targetId);
-  const target = usePresetVersion(targetId);
+  const target = usePresetVersion(targetId, { keepPrevious: true });
   const apply = useApplyPresetVersion(accountId);
+  const queryClient = useQueryClient();
 
   const [choices, setChoices] = useState<Partial<Record<RuleField, Choice>>>({});
   const [picks, setPicks] = useState<Partial<Record<RuleField, Pick>>>({});
@@ -77,6 +80,8 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
   const [failure, setFailure] = useState<string | null>(null);
 
   const data = diff.data;
+  // Moving to a newer target (after a conflict) shows the old comparison until the new one is in; it cannot be applied meanwhile.
+  const settling = diff.isPlaceholderData || target.isPlaceholderData;
   // Never another platform's rules: a known platform picks its own set (or none); without one only a single or platform-less set applies.
   const rules = target.data ? ruleSetFor(target.data, platform)?.rules : undefined;
   // The answers are keyed by position in the platform's published values: another platform means another list.
@@ -94,6 +99,10 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
     setPicks({});
     setCapInput("");
     setOptIns({ automation: { choice: "", ack: false }, copy: { choice: "", ack: false } });
+    // The panel's state holds the newest target and row_version the dialog is opened with: refresh it (and the account), then
+    // the dialog re-reads the diff for what the Core now says. Reading the old target again would answer 409 on every retry.
+    void queryClient.invalidateQueries({ queryKey: accountPresetKeys.state(accountId) });
+    void queryClient.invalidateQueries({ queryKey: accountKeys.detail(accountId) });
     void diff.refetch();
   }
 
@@ -189,7 +198,7 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
         {diff.isError ? <Alert tone="danger">{errorMessage(tc, diff.error).message}</Alert> : null}
         {target.isError ? <Alert tone="danger">{errorMessage(tc, target.error).message}</Alert> : null}
         {data && target.data ? (
-          <div className="space-y-5">
+          <div className={settling ? "space-y-5 opacity-60" : "space-y-5"} aria-busy={settling || undefined}>
             {data.rows.length === 0 ? <p className="text-sm">{t("noRows")}</p> : (
               <div className="overflow-x-auto">
                 <Table>
@@ -251,7 +260,7 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
                         </Label>
                       ))}
                     </RadioGroup>
-                    {errors[field] ? <p className="text-sm text-status-danger">{errors[field]}</p> : null}
+                    {errors[field] ? <p role="alert" className="text-sm text-status-danger">{errors[field]}</p> : null}
                   </fieldset>
                 );
               const options = publishedOf(rules, field).map((published, index) => ({ id: String(index), label: valueText(field, published.value) ?? t("none"), sources: published.sources }));
@@ -290,7 +299,7 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
         ) : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>{t("keepCurrent")}</Button>
-          <Button type="button" disabled={!data || !target.data || apply.isPending} onClick={() => void onApply()}>{target.data ? t("apply", { n: target.data.release.version_number }) : t("apply", { n: "" })}</Button>
+          <Button type="button" disabled={!data || !target.data || settling || apply.isPending} onClick={() => void onApply()}>{target.data ? t("apply", { n: target.data.release.version_number }) : t("apply", { n: "" })}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

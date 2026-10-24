@@ -1,10 +1,10 @@
 "use client";
 
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { segment } from "@/shared/api/ids";
 import type { components } from "@/shared/api/schema.gen";
-import type { FirmDetail, PresetVersion } from "./types";
+import type { FirmDetail, PresetVersion, RuleVersion } from "./types";
 
 /** Presets are shared reference data: the keys carry no user id, the Core scopes nothing by user here. */
 export const presetKeys = {
@@ -34,5 +34,16 @@ export const usePresetVersions = (ids: string[]) =>
     queries: ids.map((id) => ({ queryKey: presetKeys.version(id), queryFn: ({ signal }: { signal: AbortSignal }) => apiFetch<PresetVersion>(`/api/v1/preset-versions/${segment(id)}`, { signal }) })),
   });
 
-export const usePresetVersion = (id: string | undefined) =>
-  useQuery({ enabled: id !== undefined, queryKey: presetKeys.version(id ?? ""), queryFn: ({ signal }) => apiFetch<PresetVersion>(`/api/v1/preset-versions/${segment(id as string)}`, { signal }) });
+export const usePresetVersion = (id: string | undefined, options: { keepPrevious?: boolean } = {}) =>
+  useQuery({ enabled: id !== undefined, ...(options.keepPrevious ? { placeholderData: keepPreviousData } : {}), queryKey: presetKeys.version(id ?? ""), queryFn: ({ signal }) => apiFetch<PresetVersion>(`/api/v1/preset-versions/${segment(id as string)}`, { signal }) });
+
+/** The texts of rule versions (automation/copy) of one release, fetched only when asked for. */
+export const useRuleVersions = (ids: string[], enabled: boolean) =>
+  useQueries({
+    queries: ids.map((id) => ({
+      queryKey: [...presetKeys.all, "rule-version", id] as const,
+      enabled,
+      staleTime: Infinity,
+      queryFn: ({ signal }: { signal: AbortSignal }) => apiFetch<RuleVersion>(`/api/v1/rule-versions/${segment(id)}`, { signal }),
+    })),
+  });

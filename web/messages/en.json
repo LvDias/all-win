@@ -190,6 +190,13 @@
       "rate_limited": "Too many pairing attempts. Wait a moment.",
       "temporarily_locked": "Pairing is temporarily locked. Wait a few minutes."
     },
+    "presets": {
+      "choice_required": "Choose whether to keep your value or use the preset's for this field.",
+      "required_field_unresolved": "Resolve this value to continue: pick one of the published values or type another.",
+      "value_not_confirmed": "The preset has no confirmed value for this field, so it cannot be restored. Edit the value yourself.",
+      "version_not_newer": "That version is not newer than the one on the account. Reload and review again.",
+      "version_superseded": "A newer preset version came out while you were reviewing. Review again."
+    },
     "routing": {
       "automation_not_accepted": "This account does not accept automated orders (or the choice is pending).",
       "copy_not_accepted": "This account does not accept trade copying (or the choice is pending)."
@@ -1078,7 +1085,9 @@
         "none": "No limit"
       },
       "excluded": "These plans are not available as presets: {list}. Register them manually.",
-      "commissionMissing": "A dash in the commission column means the firm does not publish it; the account will show \"commission not informed\" until you enter a value."
+      "commissionMissing": "A dash in the commission column means the firm does not publish it; the account will show \"commission not informed\" until you enter a value.",
+      "registerManually": "Register an account without a preset",
+      "resetBoth": "Firm: {firm} · Your time: {user}"
     },
     "versions": {
       "version": "Version {n}",
@@ -1097,7 +1106,10 @@
         "ruleValueChanged": "A rule value changed.",
         "presetAdded": "A preset was added.",
         "presetRemoved": "A preset was removed."
-      }
+      },
+      "seeTexts": "See this version's texts",
+      "hideTexts": "Hide this version's texts",
+      "textsError": "Could not load this version's texts."
     },
     "account": {
       "title": "Firm preset",

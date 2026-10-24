@@ -212,9 +212,10 @@ describe("AccountPresetPanel", () => {
     await userEvent.click(await within(dialog).findByRole("radio", { name: "Manter meu valor" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Aplicar versão 4" }));
     const group = await within(dialog).findByRole("group", { name: /Drawdown: manter seu valor/ });
-    // The unmapped code falls back to the generic text that carries the code; it sits at the field, not in a banner.
-    expect(group).toHaveTextContent("presets.choice_required");
-    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+    // The stable code is translated (what to do), never shown raw; it sits at the field, not in a banner.
+    expect(group).toHaveTextContent("Escolha se mantém o seu valor ou usa o do preset neste campo.");
+    expect(group).not.toHaveTextContent("presets.choice_required");
+    expect(within(group).getByRole("alert")).toHaveTextContent("Escolha se mantém");
   });
 
   it("tells the user when the preset section fails to load and lets them retry", async () => {
@@ -223,5 +224,50 @@ describe("AccountPresetPanel", () => {
     renderApp(<AccountPresetPanel accountId={accountId} renderOptIn={optIn} />);
     expect(await screen.findByText("Código: common.internal", undefined, { timeout: 6000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeInTheDocument();
+  });
+
+  it("moves to the newest target after presets.version_superseded instead of retrying the old one", async () => {
+    const v5 = "00000000-0000-4000-8000-000000000100";
+    const targets: string[] = [];
+    serve({ preset: withNewer(), diff: diffBody([{ field: "drawdown", account_value: { type: "static", amount: "1800.00" }, current_preset_value: { type: "trailing_eod", amount: "2500.00" }, new_preset_value: { type: "trailing_eod", amount: "2600.00" }, edited: true, requires_choice: true, cap_conflict: false }]) });
+    let current: object = withNewer();
+    server.use(
+      http.get("*/api/v1/accounts/:id/preset", () => HttpResponse.json(current)),
+      http.get("*/api/v1/accounts/:id/preset-diff", ({ request }) => { targets.push(new URL(request.url).searchParams.get("target_preset_version_id") ?? ""); return HttpResponse.json(diffBody([{ field: "drawdown", account_value: { type: "static", amount: "1800.00" }, current_preset_value: { type: "trailing_eod", amount: "2500.00" }, new_preset_value: { type: "trailing_eod", amount: "2600.00" }, edited: true, requires_choice: true, cap_conflict: false }])); }),
+      http.post("*/api/v1/accounts/:id/preset-version", () => { current = state({ newer_version: { preset_version_id: v5, release: { ...release, version_number: 5 }, suspends: false } }); return HttpResponse.json({ error: { code: "presets.version_superseded" } }, { status: 409 }); }),
+    );
+    renderApp(<AccountPresetPanel accountId={accountId} renderOptIn={optIn} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Ver mudanças" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(await within(dialog).findByRole("radio", { name: "Manter meu valor" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Aplicar versão 4" }));
+    expect(await within(dialog).findByText("Saiu uma versão mais nova enquanto você revisava. Revise de novo.")).toBeInTheDocument();
+    await waitFor(() => expect(targets[targets.length - 1]).toBe(v5));
+  });
+
+  it("sends the account's new row_version on the retry after common.version_conflict", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    serve({ preset: withNewer(), diff: diffBody([{ field: "drawdown", account_value: { type: "static", amount: "1800.00" }, current_preset_value: { type: "trailing_eod", amount: "2500.00" }, new_preset_value: { type: "trailing_eod", amount: "2600.00" }, edited: true, requires_choice: true, cap_conflict: false }]) });
+    let current: object = withNewer();
+    let calls = 0;
+    server.use(
+      http.get("*/api/v1/accounts/:id/preset", () => HttpResponse.json(current)),
+      http.post("*/api/v1/accounts/:id/preset-version", async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        if (++calls === 1) { current = { ...(withNewer() as object), row_version: 9 }; return HttpResponse.json({ error: { code: "common.version_conflict" } }, { status: 409 }); }
+        return HttpResponse.json(state());
+      }),
+    );
+    renderApp(<AccountPresetPanel accountId={accountId} renderOptIn={optIn} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Ver mudanças" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(await within(dialog).findByRole("radio", { name: "Manter meu valor" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Aplicar versão 4" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    await userEvent.click(await within(dialog).findByRole("radio", { name: "Manter meu valor" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Aplicar versão 4" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[0]?.row_version).toBe(7);
+    expect(bodies[1]?.row_version).toBe(9);
   });
 });

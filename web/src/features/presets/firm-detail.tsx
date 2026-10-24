@@ -70,7 +70,7 @@ export function FirmDetailPage({ firmId }: { firmId: string }) {
         </TabsList>
         <TabsContent value="stances"><StancesTab firm={data} /></TabsContent>
         <TabsContent value="plans"><PlansTab firm={data} /></TabsContent>
-        <TabsContent value="versions"><VersionsTab firmId={firmId} /></TabsContent>
+        <TabsContent value="versions"><VersionsTab firmId={firmId} firmName={summary.name} platformLabel={(code) => (code === undefined ? undefined : (data.platforms.find((p) => p.code === code)?.label ?? code))} /></TabsContent>
       </Tabs>
       {back}
     </div>

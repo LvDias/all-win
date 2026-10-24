@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "@/shared/api/client";
 import { segment } from "@/shared/api/ids";
 import { accountKeys } from "@/shared/api/account-keys";
@@ -32,6 +32,8 @@ export const usePresetDiff = (accountId: string, target: string) =>
     // A diff belongs to one moment of the account and the preset: never reuse a stale one.
     gcTime: 0,
     staleTime: 0,
+    // While the diff for a newer target loads, the dialog keeps showing the previous one (greyed, Apply disabled): no blank flash.
+    placeholderData: keepPreviousData,
     queryFn: ({ signal }) => apiFetch<PresetDiff>(`/api/v1/accounts/${segment(accountId)}/preset-diff?target_preset_version_id=${encodeURIComponent(target)}`, { signal }),
   });
 
