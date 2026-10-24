@@ -15,12 +15,12 @@ echo "== FIFO among normal jobs"
 reset; hold 8; job A; job B; job C; wait; check "A, B, C run in arrival order" "A B C" "$(tr '\n' ' ' < $T/order | sed 's/ $//')"
 
 echo "== sunday lane goes first (allowed worktree)"
-reset; mkdir -p "$T/lock" "$T/wt-sunday"; printf '%s\n' "$T/wt-sunday" > "$T/lock/LANE.sunday"
+reset; mkdir -p "$T/lock" "$T/wt-sunday"; printf '%s\n' "$T/wt-sunday" > "$T/lock/LANE.sunday"; chmod 644 "$T/lock/LANE.sunday"
 hold 8; job N1; job S sunday "$T/wt-sunday"; job N2; wait
 check "S before N1 and N2, then N1, N2" "S N1 N2" "$(tr '\n' ' ' < $T/order | sed 's/ $//')"
 
 echo "== lane sunday asked from a worktree that is NOT listed"
-reset; mkdir -p "$T/lock" "$T/wt-other"; printf '%s\n' "$T/wt-sunday" > "$T/lock/LANE.sunday"
+reset; mkdir -p "$T/lock" "$T/wt-other"; printf '%s\n' "$T/wt-sunday" > "$T/lock/LANE.sunday"; chmod 644 "$T/lock/LANE.sunday"
 out="$( cd "$T/wt-other" && "$H" --lane sunday echo hi 2>&1 )"
 case "$out" in *"not allowed"*"normal lane"*) r=notice ;; *) r="$out" ;; esac; check "notice printed and the job still runs" notice "$r"
 case "$out" in *hi*) r=ran ;; *) r=no ;; esac; check "the command ran" ran "$r"
@@ -35,7 +35,7 @@ check "only LIVE ran" "LIVE" "$(tr '\n' ' ' < $T/order | sed 's/ $//')"
 check "no ticket is left behind" "0" "$(ls "$T/lock/queue" 2>/dev/null | wc -l)"
 
 echo "== --status"
-reset; mkdir -p "$T/lock" "$T/wt-sunday"; printf '%s\n' "$T/wt-sunday" > "$T/lock/LANE.sunday"
+reset; mkdir -p "$T/lock" "$T/wt-sunday"; printf '%s\n' "$T/wt-sunday" > "$T/lock/LANE.sunday"; chmod 644 "$T/lock/LANE.sunday"
 hold 6; job W1; job W2 sunday "$T/wt-sunday"
 st="$("$H" --status 2>&1)"; wait
 case "$st" in *RUNNING*) r=ok ;; *) r="$st" ;; esac; check "--status lists the running job" ok "$r"
@@ -43,17 +43,32 @@ case "$st" in *"queue (service order)"*"lane sunday"*"lane normal"*) r=ok ;; *) 
 
 echo "== M1: the sunday lane cannot be claimed by a look-alike directory, a wildcard or '..'"
 reset; mkdir -p "$T/lock" "$T/elsewhere/wt-lookalike" "$T/wt-real"
-printf '%s\n' '*/wt-lookalike' '../../etc' "$T/wt-*" > "$T/lock/LANE.sunday"
+printf '%s\n' '*/wt-lookalike' '../../etc' "$T/wt-*" > "$T/lock/LANE.sunday"; chmod 644 "$T/lock/LANE.sunday"
 out="$( cd "$T/elsewhere/wt-lookalike" && "$H" --lane sunday echo hi 2>&1 )"
 case "$out" in *"not allowed"*) r=refused ;; *) r="$out" ;; esac; check "'*/name' no longer matches a directory with that name" refused "$r"
 out="$( cd "$T/wt-real" && "$H" --lane sunday echo hi 2>&1 )"
 case "$out" in *"not allowed"*) r=refused ;; *) r="$out" ;; esac; check "a wildcard entry matches nothing" refused "$r"
-printf '%s\n' "$T/wt-real" > "$T/lock/LANE.sunday"
+printf '%s\n' "$T/wt-real" > "$T/lock/LANE.sunday"; chmod 644 "$T/lock/LANE.sunday"
 out="$( cd "$T/wt-real" && "$H" --lane sunday echo hi 2>&1 )"
 case "$out" in *"not allowed"*) r=refused ;; *) r=allowed ;; esac; check "an absolute prefix is accepted" allowed "$r"
 
+echo "== the lane file is trusted only when dev2 owns it with no group/other write; the entry '/' matches nothing"
+reset; mkdir -p "$T/lock" "$T/wt-real"; printf '%s\n' "$T/wt-real" > "$T/lock/LANE.sunday"; chmod 664 "$T/lock/LANE.sunday"
+out="$( cd "$T/wt-real" && "$H" --lane sunday echo hi 2>&1 )"
+case "$out" in *"ignoring LANE.sunday"*"not allowed"*) r=ignored ;; *) r="$out" ;; esac; check "a group-writable LANE.sunday is ignored with a warning" ignored "$r"
+chmod 644 "$T/lock/LANE.sunday"; printf '%s\n' '/' > "$T/lock/LANE.sunday"
+out="$( cd "$T/wt-real" && "$H" --lane sunday echo hi 2>&1 )"
+case "$out" in *"not allowed"*) r=refused ;; *) r="$out" ;; esac; check "the entry '/' matches nothing" refused "$r"
+if sudo -n -u dev3 true 2>/dev/null; then
+  rm -f "$T/lock/LANE.sunday"; chmod 3770 "$T/lock"
+  sudo -n -u dev3 sh -c "printf '%s\n' '$T/wt-real' > '$T/lock/LANE.sunday'; chmod 644 '$T/lock/LANE.sunday'" 2>/dev/null
+  out="$( cd "$T/wt-real" && "$H" --lane sunday echo hi 2>&1 )"
+  case "$out" in *"ignoring LANE.sunday"*"owner dev3"*) r=ignored ;; *) r="$out" ;; esac; check "a LANE.sunday made by another account (dev3) is ignored" ignored "$r"
+fi
+
 echo "== M1: another account cannot edit, replace or delete LANE.sunday (mode 644 + sticky directory)"
 if sudo -n -u dev3 true 2>/dev/null; then
+  reset; mkdir -p "$T/lock"; printf '%s\n' "$T/wt-real" > "$T/lock/LANE.sunday"
   chmod 644 "$T/lock/LANE.sunday"; chmod 3770 "$T/lock"
   sudo -n -u dev3 sh -c "echo '$T/evil' >> '$T/lock/LANE.sunday'" 2>/dev/null; check "dev3 cannot append to it" "$T/wt-real" "$(grep -v '^#' "$T/lock/LANE.sunday" | tr '\n' ' ' | sed 's/ $//')"
   sudo -n -u dev3 rm -f "$T/lock/LANE.sunday" 2>/dev/null; check "dev3 cannot delete it" yes "$([ -e "$T/lock/LANE.sunday" ] && echo yes || echo no)"
