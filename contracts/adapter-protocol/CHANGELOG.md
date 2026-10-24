@@ -1,5 +1,10 @@
 # Adapter protocol — changelog
 
+## 1.4.1 — 2026-10-24 (documentation only; no schema shape change, no version bump on the wire)
+- `limits` latest-wins: an unacked frame is dropped only when ALL its accounts have a newer version; otherwise it is rebuilt with the still-newest items (Pêndulo n1).
+- A pending `day_reanchor` is carried by every newer limits frame of the account (Crivo p1, Pêndulo n2).
+- The plugin must not require `high_water_above_start` to enforce; `room_to_floor` suffices (Crivo p2).
+
 ## 1.4 — 2026-10-24 (additive minor; Compasso; aligned with ADR-0004 r5 0255502a9fc8 §7.1/§9; Esquadro approves the root)
 - **Drawdown on distances (S13 equity referential b; Esquadro's FINAL).**
   - `limits.drawdown` gains `room_to_floor`, `high_water_above_start` and `lock_above_start`, required from 1.4 (`room_to_floor`) and anchored on the Core's realized E_start.
