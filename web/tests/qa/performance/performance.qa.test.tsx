@@ -72,10 +72,38 @@ describe("AC-1 / AC-3 figures", () => {
     expect(first).toHaveTextContent(/bruto\s\+US\$\s12,50/);
     const second = rows.find((r) => /Outra/.test(r.textContent ?? ""))!;
     expect(second).toHaveTextContent(/-US\$\s4,00/);
-    expect(second.textContent ?? "").not.toMatch(/bruto/i);
+    expect(within(second).getAllByRole("cell")[3]!.textContent ?? "").not.toMatch(/bruto/i); // the average cell: no gross invented (the total column has its own gross)
     const total = rows.find((r) => within(r).queryByRole("rowheader", { name: "Total" }))!;
     expect(total).toHaveTextContent(/-US\$\s1,23/);
     expect(total).toHaveTextContent(/bruto\s\+US\$\s3,77/);
+  });
+  it("total gross: each group row and the Total row show THEIR OWN total_gross_pnl beside the net total, as the Core sent it - the Total gross is the Core's totals value, not the sum of the groups", async () => {
+    serve(perf({
+      totals: figures({ total_pnl: "999.0000", total_gross_pnl: "1234.5600" }),
+      groups: [group({}, { total_pnl: "100.00", total_gross_pnl: "130.00" }), group({ source_id: uuid(301), source_name: "Outra" }, { total_pnl: "-40.00", total_gross_pnl: "-31.25" })],
+    }));
+    renderApp(<PerformancePage />);
+    const rows = await screen.findAllByRole("row");
+    const first = rows.find((r) => /Estratégia Quântico/.test(r.textContent ?? ""))!;
+    expect(first).toHaveTextContent(/\+US\$\s100,00/);
+    expect(first).toHaveTextContent(/bruto\s\+US\$\s130,00/);
+    const second = rows.find((r) => /Outra/.test(r.textContent ?? ""))!;
+    expect(second).toHaveTextContent(/-US\$\s40,00/);
+    expect(second).toHaveTextContent(/bruto\s-US\$\s31,25/);
+    const total = rows.find((r) => within(r).queryByRole("rowheader", { name: "Total" }))!;
+    expect(total).toHaveTextContent(/\+US\$\s999,00/);
+    expect(total).toHaveTextContent(/bruto\s\+US\$\s1\.234,56/); // not 130 + (-31.25) = 98.75
+    expect(total.textContent ?? "").not.toMatch(/98,75/);
+  });
+  it("total gross on the mobile cards: every group card and the Total card show the Core's total gross beside the net total", async () => {
+    window.matchMedia = ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+    serve(perf({ totals: figures({ total_pnl: "999.0000", total_gross_pnl: "1234.5600" }), groups: [group({}, { total_pnl: "100.00", total_gross_pnl: "130.00" })] }));
+    renderApp(<PerformancePage />);
+    const items = await screen.findAllByRole("listitem");
+    const totalCard = items.find((li) => /Total/.test(li.textContent ?? ""))!;
+    expect(totalCard).toHaveTextContent(/bruto\s\+US\$\s1\.234,56/);
+    const groupCard = items.find((li) => /Estratégia Quântico/.test(li.textContent ?? ""))!;
+    expect(groupCard).toHaveTextContent(/bruto\s\+US\$\s130,00/);
   });
   it("S1 never derives the gross average: net average without avg_gross_pnl shows no 'bruto' on the card", async () => {
     const f = figures({ avg_pnl: "-1.23" }); delete (f as Record<string, unknown>).avg_gross_pnl;
