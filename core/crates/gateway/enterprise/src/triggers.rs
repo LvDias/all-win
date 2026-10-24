@@ -19,6 +19,9 @@ pub struct ReportContext {
     /// For a correction: the authoritative `position_after` equals the expected position after
     /// replaying the corrected history.
     pub correction_consistent: bool,
+    /// Protective legs of the account were cancelled after this report's flatten was sent
+    /// (the flatten cancels every working order before closing).
+    pub protection_cancelled_by_flatten: bool,
 }
 
 /// Sync reasons one report raises. Empty means "audit only" (or nothing).
@@ -43,6 +46,19 @@ pub fn classify_report(report: &ReportFact, ctx: &ReportContext) -> Vec<SyncReas
     }
 
     let protective = report.child_role.is_some_and(ChildRole::is_protective);
+    // U19 / Esmeril M1: a flatten (any origin) that failed after cancelling protection while
+    // the position stays open. With protection intact it is an ordinary rejection.
+    if report.child_role == Some(ChildRole::Flatten)
+        && matches!(
+            report.status,
+            ReportStatus::Rejected | ReportStatus::Unknown
+        )
+        && ctx.protection_cancelled_by_flatten
+        && ctx.expected_before.is_none_or(|q| q != 0)
+    {
+        reasons.push(SyncReason::FlattenFailedUnprotected);
+        return reasons;
+    }
     match report.status {
         ReportStatus::Rejected => {
             let reason = if report.reason_is("command.position_changed") {
@@ -133,6 +149,7 @@ mod tests {
             filled_before: 0,
             fill_add_known: true,
             correction_consistent: true,
+            protection_cancelled_by_flatten: false,
         }
     }
 
@@ -350,6 +367,71 @@ mod tests {
         assert_eq!(
             on_disconnect(SessionEnd::Network, &server_oco),
             vec![SyncReason::DisconnectedInTrade]
+        );
+    }
+}
+
+#[cfg(test)]
+mod flatten_tests {
+    use super::*;
+    use crate::ids::CommandId;
+    use uuid::Uuid;
+
+    fn flatten_report(status: ReportStatus) -> ReportFact {
+        ReportFact {
+            seq: 1,
+            command_id: Some(CommandId::from_uuid(Uuid::from_u128(1))),
+            origin: Origin::AllWin,
+            child_role: Some(ChildRole::Flatten),
+            status,
+            reason_code: Some("order.platform_rejected".into()),
+            fill: None,
+            position_after: None,
+        }
+    }
+
+    fn ctx(open: Option<i64>, lost: bool) -> ReportContext {
+        ReportContext {
+            master_replication_destination: false,
+            expected_before: open,
+            filled_before: 0,
+            fill_add_known: true,
+            correction_consistent: true,
+            protection_cancelled_by_flatten: lost,
+        }
+    }
+
+    #[test]
+    fn failed_flatten_that_lost_protection_is_critical() {
+        for status in [ReportStatus::Rejected, ReportStatus::Unknown] {
+            assert_eq!(
+                classify_report(&flatten_report(status), &ctx(Some(2), true)),
+                vec![SyncReason::FlattenFailedUnprotected]
+            );
+            // Unknown expected position counts as open (fail closed).
+            assert_eq!(
+                classify_report(&flatten_report(status), &ctx(None, true)),
+                vec![SyncReason::FlattenFailedUnprotected]
+            );
+        }
+    }
+
+    #[test]
+    fn failed_flatten_with_protection_intact_or_flat_is_an_ordinary_rejection() {
+        assert_eq!(
+            classify_report(
+                &flatten_report(ReportStatus::Rejected),
+                &ctx(Some(2), false)
+            ),
+            vec![SyncReason::CommandRejected]
+        );
+        assert_eq!(
+            classify_report(&flatten_report(ReportStatus::Rejected), &ctx(Some(0), true)),
+            vec![SyncReason::CommandRejected]
+        );
+        assert_eq!(
+            classify_report(&flatten_report(ReportStatus::Unknown), &ctx(Some(2), false)),
+            vec![SyncReason::CommandUnknown]
         );
     }
 }

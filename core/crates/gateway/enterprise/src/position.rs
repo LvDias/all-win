@@ -2,7 +2,7 @@
 //! execution reports (ADR-0004 §5, U13). Never derived from routing order.
 
 use crate::ids::CommandId;
-use crate::report::{FillOperation, Origin, ReportFact, ReportStatus};
+use crate::report::{ChildRole, FillOperation, Origin, ReportFact, ReportStatus};
 
 /// Identity of the current position, with the adapter's rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,8 +130,13 @@ impl ExpectedPosition {
             self.opening_fill_id = None;
             return;
         }
-        self.identity = match (report.origin, report.command_id) {
-            (Origin::AllWin, Some(id)) => PositionIdentity::AllWin(id),
+        // The plugin's rule (AdapterEngine UpdateIdentity): only an All Win ENTRY fill gives an
+        // All Win identity. Any other All Win fill that opens or flips (a stop, a target, a capped
+        // exit) leaves it unknown, so the Core never sends a reduce the plugin would refuse
+        // (Pêndulo F8). Fills of other origins are external.
+        self.identity = match (report.origin, report.command_id, report.child_role) {
+            (Origin::AllWin, Some(id), Some(ChildRole::Entry)) => PositionIdentity::AllWin(id),
+            (Origin::AllWin, _, _) => PositionIdentity::Unknown,
             _ => PositionIdentity::External,
         };
         self.opening_fill_id = report.fill.as_ref().map(|f| f.fill_id.clone());
@@ -237,6 +242,18 @@ mod tests {
             fill(2, AllWin, Some(9), "f2", Add, -1),
         ]);
         assert_eq!(p.position_ref(), Some(cid(9)));
+    }
+
+    #[test]
+    fn a_flip_by_a_non_entry_all_win_fill_is_unknown() {
+        // A stop that fills beyond the position (or any non-entry leg) flips it: the plugin keeps
+        // the identity unknown, so the Core must not hand out a position_ref (Pêndulo F8).
+        let mut stop_flip = fill(2, AllWin, Some(9), "f2", Add, -1);
+        stop_flip.child_role = Some(ChildRole::Stop);
+        let p =
+            ExpectedPosition::flat().replay(&[fill(1, AllWin, Some(1), "f1", Add, 1), stop_flip]);
+        assert_eq!(p.identity(), &PositionIdentity::Unknown);
+        assert_eq!(p.position_ref(), None);
     }
 
     #[test]

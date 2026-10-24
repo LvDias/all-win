@@ -56,6 +56,12 @@ impl ProtocolVersion {
         envelope.major == self.major && envelope.minor <= self.minor
     }
 
+    /// Same major: a frame of another minor is acceptable when its type exists in the
+    /// negotiated version and the receiver's schema validates it (§9 rollback rule).
+    pub fn same_major(self, other: Self) -> bool {
+        self.major == other.major
+    }
+
     /// `reduce` (with `refs`) is sent only on sessions ≥ 1.2.
     pub fn supports_reduce(self) -> bool {
         self >= Self::V1_2

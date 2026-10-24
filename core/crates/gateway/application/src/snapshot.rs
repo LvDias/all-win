@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use gateway_enterprise::ids::{AccountId, CommandId};
-use gateway_enterprise::report::{ChildRole, Origin};
+use gateway_enterprise::report::{ChildRole, Origin, ReportStatus};
 use gateway_enterprise::snapshot::{
     ExpectedAccount, ExpectedOrders, ObservedAccount, ObservedOrder, ObservedOrderState, OrderRef,
-    SnapshotTrigger, evaluate,
+    SnapshotTrigger, UnobservedFills, evaluate,
 };
 use gateway_enterprise::sync::{ReasonDetails, ReasonEntry, ReasonScope, SyncReason};
 use serde_json::json;
@@ -58,6 +58,7 @@ impl HandlePositionSnapshot {
         &self,
         session: &Session,
         msg_id: Uuid,
+        sent_at: DateTime<Utc>,
         snapshot: &PositionSnapshot,
         now: DateTime<Utc>,
     ) -> Result<CommitOutcome, SnapshotError> {
@@ -70,6 +71,7 @@ impl HandlePositionSnapshot {
                 ..UnitOfWork::default()
             };
             let mut evaluated = Vec::new();
+            let mut restored = Vec::new();
             for entry in &snapshot.accounts {
                 let account_id = AccountId::from_uuid(entry.account_id);
                 let Some(mapped) = session.mapped(account_id) else {
@@ -99,14 +101,35 @@ impl HandlePositionSnapshot {
                     continue;
                 }
                 let expected = self.expected(user, account_id).await?;
+                let mut sync = self.store.account_sync(user, account_id).await?;
+                // Fills of protective legs received while the account was unobservable (since
+                // the active integrity reason was raised): a double fill flags, any fill keeps the
+                // integrity reason until the user clears (Esquadro Q2).
+                let unobserved = match sync
+                    .active()
+                    .iter()
+                    .find(|r| r.code == SyncReason::BracketIntegrityUnknown)
+                    .map(|r| r.detected_at)
+                {
+                    Some(since) => UnobservedFills(
+                        self.store
+                            .protective_reports_since(user, account_id, since)
+                            .await?
+                            .into_iter()
+                            .filter(|(_, _, st)| *st == ReportStatus::Filled)
+                            .map(|(c, r, _)| (c, r))
+                            .collect(),
+                    ),
+                    None => UnobservedFills::default(),
+                };
                 let findings = evaluate(
                     trigger,
                     &expected,
                     &observed,
                     mapped.venue.oco_local_or_unknown(),
+                    &unobserved,
                 );
 
-                let mut sync = self.store.account_sync(user, account_id).await?;
                 let expected_version = sync.version();
                 let refs = crate::audit::refs(account_id, Some(&mapped.display_name), None);
                 let mut changed = false;
@@ -162,7 +185,7 @@ impl HandlePositionSnapshot {
                 // ADR-0004 §6 row 3: flat disconnect, and the reconnect snapshot shows flat with no
                 // All Win working orders → back to normal, recorded (`sync.restored`).
                 if trigger == SnapshotTrigger::Reconnect
-                    && self.sessions.take_flat_disconnect(account_id)
+                    && self.sessions.has_flat_disconnect(account_id)
                     && findings.raise.is_empty()
                     && sync.state() == gateway_enterprise::sync::SyncState::InSync
                     && observed.positions.values().all(|q| *q == 0)
@@ -171,10 +194,12 @@ impl HandlePositionSnapshot {
                         .iter()
                         .any(|o| o.origin == Origin::AllWin)
                 {
-                    work.events.push(events::audit(
-                        "sync.restored",
+                    restored.push(account_id);
+                    work.events.extend(crate::audit::restored(
+                        account_id,
+                        sync.version(),
+                        session.connection_id,
                         now,
-                        json!({ "sync_version": sync.version(), "connection_id": session.connection_id }),
                         refs.clone(),
                     ));
                 }
@@ -189,9 +214,19 @@ impl HandlePositionSnapshot {
             }
             match self.store.commit(user, work).await {
                 Ok(outcome) => {
-                    if trigger == SnapshotTrigger::Reconnect {
-                        for a in evaluated {
-                            session.mark_snapshot_evaluated(a);
+                    // The marker is consumed only once the entry is committed (Grosa L6), and only
+                    // a reconnect snapshot of THIS session opens the command gate: not a
+                    // duplicate, not an old one retransmitted from the outbox (Grosa M9).
+                    if outcome == CommitOutcome::Committed {
+                        for a in restored {
+                            self.sessions.take_flat_disconnect(a);
+                        }
+                        if trigger == SnapshotTrigger::Reconnect
+                            && session.is_current_snapshot(sent_at)
+                        {
+                            for a in evaluated {
+                                session.mark_snapshot_evaluated(a);
+                            }
                         }
                     }
                     return Ok(outcome);
@@ -214,8 +249,8 @@ impl HandlePositionSnapshot {
             .into_iter()
             .collect();
         let mut orders = ExpectedOrders::default();
-        for (instrument, report) in self.store.order_reports(user, account).await? {
-            orders.apply(&instrument, &report);
+        for (instrument, report, kind) in self.store.order_reports(user, account).await? {
+            orders.apply(&instrument, &report, kind);
         }
         Ok(ExpectedAccount { positions, orders })
     }

@@ -5,11 +5,11 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use gateway_enterprise::command::{Command, CommandState};
+use gateway_enterprise::command::{Command, CommandKind, CommandState};
 use gateway_enterprise::ids::{AccountId, CommandId, ConnectionId, EventId, VenueAccountId};
 use gateway_enterprise::instrument::Instrument;
 use gateway_enterprise::protocol::ProtocolVersion;
-use gateway_enterprise::report::ReportFact;
+use gateway_enterprise::report::{ChildRole, ReportFact, ReportStatus};
 use gateway_enterprise::sync::AccountSync;
 use serde_json::Value;
 use shared_kernel::{Money, UserId};
@@ -26,6 +26,9 @@ pub enum StoreError {
     /// Optimistic concurrency lost (account_sync.version or command state): re-read and retry.
     #[error("concurrent change")]
     Conflict,
+    /// A deterministic refusal by a constraint (e.g. a no-token CHECK): retrying cannot help.
+    #[error("rejected by a constraint: {0}")]
+    Rejected(String),
     #[error("store: {0}")]
     Other(String),
 }
@@ -298,6 +301,40 @@ pub trait GatewayStore: Send + Sync {
         id: VenueAccountId,
     ) -> Result<Option<(ConnectionId, VenueAccount)>, StoreError>;
 
+    /// `(connection_id, msg_id)` was already received (inbound dedupe, checked first: Grosa M4).
+    async fn receipt_known(
+        &self,
+        user_id: UserId,
+        connection: ConnectionId,
+        msg_id: Uuid,
+    ) -> Result<bool, StoreError>;
+
+    /// The command whose envelope has this `msg_id` on this connection.
+    async fn command_by_msg(
+        &self,
+        user_id: UserId,
+        connection: ConnectionId,
+        msg_id: Uuid,
+    ) -> Result<Option<StoredCommand>, StoreError>;
+
+    /// Protective-leg reports (bracket owner, leg, status) of the account received at or after
+    /// `since`, in arrival order.
+    async fn protective_reports_since(
+        &self,
+        user_id: UserId,
+        account: AccountId,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<(CommandId, ChildRole, ReportStatus)>, StoreError>;
+
+    /// The last known position of (account, contract) strictly before report `seq`.
+    async fn position_before(
+        &self,
+        user_id: UserId,
+        account: AccountId,
+        instrument: &Instrument,
+        seq: i64,
+    ) -> Result<Option<i64>, StoreError>;
+
     /// Compare-and-set `pending → sent` with `sent_at`, committed before the socket write.
     /// `false` when the row is no longer pending.
     /// The events (`execution.command_sent`) are written in the same transaction.
@@ -347,7 +384,7 @@ pub trait GatewayStore: Send + Sync {
         &self,
         user_id: UserId,
         account: AccountId,
-    ) -> Result<Vec<(Instrument, ReportFact)>, StoreError>;
+    ) -> Result<Vec<(Instrument, ReportFact, Option<CommandKind>)>, StoreError>;
 
     /// Reports already received for a command (all children), in `seq` order.
     async fn command_reports(

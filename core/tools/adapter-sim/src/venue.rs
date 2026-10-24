@@ -67,6 +67,8 @@ pub struct Venue {
     pub script: Script,
     positions: BTreeMap<String, Position>,
     legs: Vec<Leg>,
+    /// Manual (non-All Win) working orders, as (contract key, platform order id).
+    manual: Vec<(String, Value, String)>,
     /// Last report per handled `command_id` (dedupe record, answered as `duplicate`).
     handled: HashMap<String, Value>,
 }
@@ -91,6 +93,7 @@ impl Venue {
             script,
             positions: BTreeMap::new(),
             legs: Vec::new(),
+            manual: Vec::new(),
             handled: HashMap::new(),
         }
     }
@@ -157,6 +160,34 @@ impl Venue {
     }
 
     /// Orphan protection (ADR-0004 §5): a flat contract keeps no All Win stop/target.
+    /// A working order placed by hand on the platform (tests of Q75-1).
+    pub fn add_manual_order(&mut self, instrument: Value) -> String {
+        let id = format!("MANUAL-{}", Uuid::now_v7().simple());
+        self.manual.push((key(&instrument), instrument, id.clone()));
+        id
+    }
+
+    pub fn manual_orders(&self) -> usize {
+        self.manual.len()
+    }
+
+    /// A flatten cancels EVERY working order of the contract, manual ones included (Q75-1);
+    /// a manual order is reported with `origin: external`.
+    fn cancel_manual(&mut self, instrument: &Value, now: DateTime<Utc>) -> Vec<Value> {
+        let k = key(instrument);
+        let (gone, kept): (Vec<_>, Vec<_>) = self.manual.drain(..).partition(|(mk, _, _)| *mk == k);
+        self.manual = kept;
+        gone.into_iter()
+            .map(|(_, inst, order_id)| {
+                let mut r = self.report(None, &inst, "entry", "cancelled", now);
+                r.insert("origin".into(), json!("external"));
+                r.remove("child_role");
+                r.insert("platform_order_id".into(), json!(order_id));
+                Value::Object(r)
+            })
+            .collect()
+    }
+
     fn cancel_orphans(&mut self, instrument: &Value, now: DateTime<Utc>) -> Vec<Value> {
         let k = key(instrument);
         let (gone, kept): (Vec<Leg>, Vec<Leg>) =
@@ -304,6 +335,10 @@ impl Venue {
                 }
             }
             "flatten" => {
+                // Like the plugin (AdvanceFlatten): every working All Win order of the contract is
+                // cancelled and confirmed BEFORE the close, so the cancels come first (ADR-0004 §6.1).
+                out.extend(self.cancel_orphans(&instrument, now));
+                out.extend(self.cancel_manual(&instrument, now));
                 let pos = self
                     .positions
                     .get(&key(&instrument))
@@ -319,7 +354,6 @@ impl Venue {
                     self.fill(&mut r, &instrument, -pos.quantity, &id);
                     out.push(Value::Object(r));
                 }
-                out.extend(self.cancel_orphans(&instrument, now));
             }
             other => {
                 // modify/cancel: one outcome per target (ADR-0004 §5), never with fills.
@@ -440,15 +474,20 @@ mod tests {
         );
         assert_eq!(rs[1]["position_after"]["quantity"], 1);
         let rs = v.on_command(&json!({"command_id": "f", "kind": "flatten", "instrument": {"symbol": "MNQ", "contract_month": "2026-12"}, "flatten": {"reason": "close"}}), now());
-        assert_eq!(rs[0]["position_after"]["quantity"], 0);
-        assert_eq!(
-            rs.iter()
-                .filter(|r| r["reason_code"] == "order.orphan_cancelled")
-                .count(),
-            2
-        );
+        // Cancels first (as the plugin's AdvanceFlatten), the close last.
+        assert_eq!(rs[0]["reason_code"], "order.orphan_cancelled");
+        assert_eq!(rs[1]["reason_code"], "order.orphan_cancelled");
+        assert_eq!(rs[2]["child_role"], "flatten");
+        assert_eq!(rs[2]["position_after"]["quantity"], 0);
+        // Q75-1: a flatten on a flat contract still cancels manual working orders, first.
+        v.add_manual_order(json!({"symbol": "MNQ", "contract_month": "2026-12"}));
         let rs = v.on_command(&json!({"command_id": "g", "kind": "flatten", "instrument": {"symbol": "MNQ", "contract_month": "2026-12"}, "flatten": {"reason": "close"}}), now());
-        assert_eq!(rs[0]["reason_code"], "command.already_flat");
+        assert_eq!(
+            (rs[0]["origin"].as_str(), rs[0]["status"].as_str()),
+            (Some("external"), Some("cancelled"))
+        );
+        assert_eq!(rs[1]["reason_code"], "command.already_flat");
+        assert_eq!(v.manual_orders(), 0);
     }
 
     #[test]

@@ -16,6 +16,7 @@ use crate::instrument::Instrument;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub enum SyncReason {
+    FlattenFailedUnprotected,
     BracketDoubleFill,
     BracketIncomplete,
     BracketIntegrityUnknown,
@@ -39,7 +40,8 @@ pub enum SyncReason {
 }
 
 impl SyncReason {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
+        Self::FlattenFailedUnprotected,
         Self::BracketDoubleFill,
         Self::BracketIncomplete,
         Self::BracketIntegrityUnknown,
@@ -66,6 +68,7 @@ impl SyncReason {
         match self {
             Self::BracketIncomplete => "sync.bracket_incomplete",
             Self::BracketOrphanLeg => "sync.bracket_orphan_leg",
+            Self::FlattenFailedUnprotected => "sync.flatten_failed_unprotected",
             Self::BracketDoubleFill => "sync.bracket_double_fill",
             Self::BracketIntegrityUnknown => "sync.bracket_integrity_unknown",
             Self::PositionChanged => "sync.position_changed",
@@ -84,6 +87,18 @@ impl SyncReason {
             Self::ConnectionUnpaired => "sync.connection_unpaired",
             Self::AmbiguousReference => "sync.ambiguous_reference",
             Self::CancelFailed => "sync.cancel_failed",
+        }
+    }
+
+    /// The notification code for an added reason (registry 1.x): the bracket reasons and a
+    /// flatten that lost protection use their own code; every other reason is `sync.flagged`.
+    pub const fn notification_code(self) -> &'static str {
+        match self {
+            Self::FlattenFailedUnprotected => "sync.flatten_failed_unprotected",
+            Self::BracketDoubleFill => "sync.bracket_double_fill",
+            Self::BracketIncomplete => "sync.bracket_incomplete",
+            Self::BracketOrphanLeg => "sync.bracket_orphan_leg",
+            _ => "sync.flagged",
         }
     }
 
@@ -440,7 +455,7 @@ mod tests {
             assert!(code.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'));
         }
         let unique: BTreeSet<_> = SyncReason::ALL.iter().map(|r| r.as_str()).collect();
-        assert_eq!(unique.len(), 20);
+        assert_eq!(unique.len(), 21);
         assert_eq!(SyncReason::parse("sync.something_new"), None);
         assert!(
             SyncReason::ALL.windows(2).all(|w| w[0] < w[1]),

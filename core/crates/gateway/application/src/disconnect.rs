@@ -10,21 +10,26 @@ use serde_json::json;
 
 use crate::events::{self, DisconnectReason, SessionStatus};
 use crate::ports::{GatewayStore, StoreError, SyncWrite, UnitOfWork};
-use crate::session::{Session, Sessions};
+use crate::session::Session;
 
 #[derive(Clone)]
 pub struct HandleDisconnect {
     store: Arc<dyn GatewayStore>,
-    sessions: Sessions,
+    sessions: crate::session::Sessions,
 }
 
 impl HandleDisconnect {
-    pub fn new(store: Arc<dyn GatewayStore>, sessions: Sessions) -> Self {
+    pub fn new(store: Arc<dyn GatewayStore>, sessions: crate::session::Sessions) -> Self {
         Self { store, sessions }
     }
 
-    /// `superseded`: closed with 4004 because a new session of the same connection took over;
-    /// nothing is recorded for it (the connection stays connected).
+    /// Records the disconnect rule for an ended session. The caller has already removed it from
+    /// the live registry; on an error it keeps it as a pending disconnect, applied before the
+    /// connection's next `welcome` (fail closed, Grosa M7).
+    ///
+    /// `superseded` (closed with 4004 by a newer session of the same connection): nothing was
+    /// observed in between, so the rule runs as a network drop (Esquadro Q1), but no E3 is
+    /// written: the connection stays connected (B4).
     pub async fn handle(
         &self,
         session: &Session,
@@ -32,9 +37,7 @@ impl HandleDisconnect {
         superseded: bool,
         now: DateTime<Utc>,
     ) -> Result<(), StoreError> {
-        if superseded || !self.sessions.remove(session) {
-            return Ok(());
-        }
+        let end = if superseded { SessionEnd::Network } else { end };
         let user = session.user_id;
         let in_flight = self.store.in_flight(user, session.connection_id).await?;
         let mut attempts = 0;
@@ -44,8 +47,8 @@ impl HandleDisconnect {
                 let account = mapped.account_id;
                 let open = self.store.open_positions(user, account).await?;
                 let mut orders = ExpectedOrders::default();
-                for (instrument, report) in self.store.order_reports(user, account).await? {
-                    orders.apply(&instrument, &report);
+                for (instrument, report, kind) in self.store.order_reports(user, account).await? {
+                    orders.apply(&instrument, &report, kind);
                 }
                 let facts = AccountAtDisconnect {
                     position_open: Some(!open.is_empty()),
@@ -95,19 +98,21 @@ impl HandleDisconnect {
                     });
                 }
             }
-            work.events.push(events::connection_session_changed(
-                session.connection_id,
-                session.id,
-                SessionStatus::Disconnected,
-                Some(match end {
-                    SessionEnd::ByUser => DisconnectReason::User,
-                    SessionEnd::Network => DisconnectReason::Network,
-                }),
-                Some(session.version.to_string()),
-                &session.adapter_version,
-                session.instance_id,
-                now,
-            ));
+            if !superseded {
+                work.events.push(events::connection_session_changed(
+                    session.connection_id,
+                    session.id,
+                    SessionStatus::Disconnected,
+                    Some(match end {
+                        SessionEnd::ByUser => DisconnectReason::User,
+                        SessionEnd::Network => DisconnectReason::Network,
+                    }),
+                    Some(session.version.to_string()),
+                    &session.adapter_version,
+                    session.instance_id,
+                    now,
+                ));
+            }
             match self.store.commit(user, work).await {
                 Err(StoreError::Conflict) if attempts < 3 => attempts += 1,
                 other => return other.map(|_| ()),

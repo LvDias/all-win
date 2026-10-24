@@ -33,6 +33,10 @@ pub struct PgGatewayStore {
 }
 
 fn db(e: sqlx::Error) -> StoreError {
+    // 23514 check_violation (e.g. a token-shaped value): deterministic, retrying cannot help.
+    if e.as_database_error().and_then(|d| d.code()).as_deref() == Some("23514") {
+        return StoreError::Rejected(e.to_string());
+    }
     StoreError::Other(e.to_string())
 }
 
@@ -349,7 +353,7 @@ impl GatewayStore for PgGatewayStore {
             command_columns!(),
             " FROM gateway.command
              WHERE user_id = $1 AND connection_id = $2 AND state IN ('pending','sent')
-             ORDER BY created_at, id"
+             ORDER BY created_at, msg_id"
         ))
         .bind(user_id.as_uuid())
         .bind(connection.as_uuid())
@@ -387,7 +391,7 @@ impl GatewayStore for PgGatewayStore {
     ) -> Result<Vec<StoredCommand>, StoreError> {
         let mut tx = self.begin_for(user_id).await?;
         let rows = sqlx::query(concat!("SELECT ", command_columns!(), " FROM gateway.command
-             WHERE user_id = $1 AND connection_id = $2 AND state IN ('sent','acked') ORDER BY created_at, id"))
+             WHERE user_id = $1 AND connection_id = $2 AND state IN ('sent','acked') ORDER BY created_at, msg_id"))
         .bind(user_id.as_uuid())
         .bind(connection.as_uuid())
         .fetch_all(&mut *tx)
@@ -436,7 +440,8 @@ impl GatewayStore for PgGatewayStore {
     ) -> Result<bool, StoreError> {
         let mut tx = self.begin_for(user_id).await?;
         let done = sqlx::query(
-            "UPDATE gateway.command SET state = 'sent', sent_at = $3 WHERE user_id = $1 AND id = $2 AND state = 'pending'",
+            "UPDATE gateway.command SET state = 'sent', sent_at = $3
+             WHERE user_id = $1 AND id = $2 AND state = 'pending' AND (expires_at IS NULL OR expires_at > $3)",
         )
         .bind(user_id.as_uuid())
         .bind(id.as_uuid())
@@ -603,13 +608,19 @@ impl GatewayStore for PgGatewayStore {
         &self,
         user_id: UserId,
         account: AccountId,
-    ) -> Result<Vec<(Instrument, ReportFact)>, StoreError> {
+    ) -> Result<Vec<(Instrument, ReportFact, Option<CommandKind>)>, StoreError> {
         let mut tx = self.begin_for(user_id).await?;
-        // The last report of each All Win order decides whether it is still live.
-        let rows = sqlx::query(concat!("SELECT DISTINCT ON (command_id, child_role) ", report_columns!(), " FROM gateway.execution_report
-             WHERE user_id = $1 AND account_id = $2 AND origin = 'all_win' AND command_id IS NOT NULL
-               AND child_role IS NOT NULL AND instrument_symbol IS NOT NULL AND status <> 'duplicate'
-             ORDER BY command_id, child_role, seq DESC"))
+        // The last report of each All Win order decides whether it is still live; the command's
+        // kind tells outcome reports (modify/cancel) apart from order identities (Grosa M6).
+        let rows = sqlx::query(concat!(
+            "SELECT r.*, (SELECT c.kind FROM gateway.command c WHERE c.user_id = $1 AND c.id = r.command_id) AS command_kind
+             FROM (SELECT DISTINCT ON (command_id, child_role) ",
+            report_columns!(),
+            " FROM gateway.execution_report
+                   WHERE user_id = $1 AND account_id = $2 AND origin = 'all_win' AND command_id IS NOT NULL
+                     AND child_role IS NOT NULL AND instrument_symbol IS NOT NULL AND status <> 'duplicate'
+                   ORDER BY command_id, child_role, seq DESC) r"
+        ))
         .bind(user_id.as_uuid())
         .bind(account.as_uuid())
         .fetch_all(&mut *tx)
@@ -619,11 +630,116 @@ impl GatewayStore for PgGatewayStore {
         let mut out = Vec::new();
         for r in &rows {
             let (i, f) = report_row(r)?;
+            let kind = r
+                .try_get::<Option<String>, _>("command_kind")
+                .map_err(db)?
+                .as_deref()
+                .map(parse_kind)
+                .transpose()?;
             if let Some(i) = i {
-                out.push((i, f));
+                out.push((i, f, kind));
             }
         }
         Ok(out)
+    }
+
+    async fn receipt_known(
+        &self,
+        user_id: UserId,
+        connection: ConnectionId,
+        msg_id: Uuid,
+    ) -> Result<bool, StoreError> {
+        let mut tx = self.begin_for(user_id).await?;
+        let known: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM gateway.inbound_receipt WHERE connection_id = $1 AND msg_id = $2)",
+        )
+        .bind(connection.as_uuid())
+        .bind(msg_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(known)
+    }
+
+    async fn command_by_msg(
+        &self,
+        user_id: UserId,
+        connection: ConnectionId,
+        msg_id: Uuid,
+    ) -> Result<Option<StoredCommand>, StoreError> {
+        let mut tx = self.begin_for(user_id).await?;
+        let row = sqlx::query(concat!(
+            "SELECT ",
+            command_columns!(),
+            " FROM gateway.command WHERE user_id = $1 AND connection_id = $2 AND msg_id = $3"
+        ))
+        .bind(user_id.as_uuid())
+        .bind(connection.as_uuid())
+        .bind(msg_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.as_ref().map(command_row).transpose()
+    }
+
+    async fn protective_reports_since(
+        &self,
+        user_id: UserId,
+        account: AccountId,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<(CommandId, ChildRole, ReportStatus)>, StoreError> {
+        let mut tx = self.begin_for(user_id).await?;
+        let rows = sqlx::query(concat!(
+            "SELECT ",
+            report_columns!(),
+            " FROM gateway.execution_report
+             WHERE user_id = $1 AND account_id = $2 AND received_at >= $3
+               AND child_role IN ('stop','target') AND command_id IS NOT NULL
+             ORDER BY seq"
+        ))
+        .bind(user_id.as_uuid())
+        .bind(account.as_uuid())
+        .bind(since)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        let mut out = Vec::new();
+        for r in &rows {
+            let (_, f) = report_row(r)?;
+            if let (Some(c), Some(role)) = (f.command_id, f.child_role) {
+                out.push((c, role, f.status));
+            }
+        }
+        Ok(out)
+    }
+
+    async fn position_before(
+        &self,
+        user_id: UserId,
+        account: AccountId,
+        i: &Instrument,
+        seq: i64,
+    ) -> Result<Option<i64>, StoreError> {
+        let mut tx = self.begin_for(user_id).await?;
+        let q: Option<i32> = sqlx::query_scalar(
+            "SELECT position_after FROM gateway.execution_report
+             WHERE user_id = $1 AND account_id = $2 AND instrument_symbol = $3 AND contract_month = $4
+               AND seq < $5 AND position_after IS NOT NULL
+             ORDER BY seq DESC LIMIT 1",
+        )
+        .bind(user_id.as_uuid())
+        .bind(account.as_uuid())
+        .bind(i.symbol())
+        .bind(month_date(i)?)
+        .bind(seq)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(q.map(i64::from))
     }
 
     async fn command_reports(

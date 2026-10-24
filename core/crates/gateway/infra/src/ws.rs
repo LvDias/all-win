@@ -53,7 +53,7 @@ pub struct GatewayRuntime {
     pub disconnect: HandleDisconnect,
     pub settings: SessionSettings,
     pub clock: Arc<dyn Clock>,
-    controls: Mutex<HashMap<SessionId, mpsc::Sender<Control>>>,
+    controls: Mutex<HashMap<SessionId, mpsc::UnboundedSender<Control>>>,
 }
 
 impl GatewayRuntime {
@@ -83,7 +83,9 @@ impl GatewayRuntime {
         }
     }
 
-    fn controls(&self) -> std::sync::MutexGuard<'_, HashMap<SessionId, mpsc::Sender<Control>>> {
+    fn controls(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<SessionId, mpsc::UnboundedSender<Control>>> {
         self.controls
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -94,14 +96,15 @@ impl GatewayRuntime {
         if let Some(session) = self.sessions.get(connection)
             && let Some(tx) = self.controls().get(&session.id)
         {
-            // Full queue: a pending signal already wakes the task.
-            let _ = tx.try_send(control);
+            // Unbounded: a Close can never be dropped (Grosa M8). A closed channel means the
+            // session task already ended.
+            let _ = tx.send(control);
         }
     }
 
     fn signal_session(&self, session: SessionId, control: Control) {
         if let Some(tx) = self.controls().get(&session) {
-            let _ = tx.try_send(control);
+            let _ = tx.send(control);
         }
     }
 }
@@ -138,17 +141,23 @@ async fn upgrade(
         .on_upgrade(move |socket| run(rt, socket, auth))
 }
 
+/// A stalled or half-open peer must not block the session task (heartbeat timeout, token
+/// revocation and supersede depend on it; Grosa M8).
+const SEND_TIMEOUT: Duration = Duration::from_secs(10);
+
 async fn close(socket: &mut WebSocket, code: CloseCode, reason: &'static str) {
-    let _ = socket
-        .send(Message::Close(Some(CloseFrame {
-            code: code.code(),
-            reason: reason.into(),
-        })))
-        .await;
+    let frame = Message::Close(Some(CloseFrame {
+        code: code.code(),
+        reason: reason.into(),
+    }));
+    let _ = tokio::time::timeout(SEND_TIMEOUT, socket.send(frame)).await;
 }
 
 async fn send(socket: &mut WebSocket, frame: String) -> bool {
-    socket.send(Message::Text(frame.into())).await.is_ok()
+    matches!(
+        tokio::time::timeout(SEND_TIMEOUT, socket.send(Message::Text(frame.into()))).await,
+        Ok(Ok(()))
+    )
 }
 
 async fn run(
@@ -175,13 +184,34 @@ async fn run(
         .filter(|v| rt.validator.validate(v).is_ok())
         .and_then(|v| serde_json::from_value::<Envelope>(v).ok())
         .filter(|e| e.kind == "hello")
-        .and_then(|e| serde_json::from_value::<Hello>(e.payload).ok());
-    let Some(hello) = hello else {
+        .and_then(|e| {
+            serde_json::from_value::<Hello>(e.payload)
+                .ok()
+                .map(|h| (h, e.sent_at))
+        });
+    let Some((hello, hello_sent_at)) = hello else {
         return close(&mut socket, CloseCode::ProtocolViolation, "hello_expected").await;
     };
 
+    // A previous session's disconnect that could not be recorded is applied first (fail closed).
+    if let Some((old, end, superseded)) =
+        rt.sessions.take_pending_disconnect(principal.connection_id)
+        && let Err(e) = rt
+            .disconnect
+            .handle(&old, end, superseded, rt.clock.now())
+            .await
+    {
+        tracing::error!(session = %old.id, error = %e, "recording a pending disconnect failed");
+        rt.sessions.defer_disconnect(old, end, superseded);
+        return close(&mut socket, CloseCode::Normal, "unavailable").await;
+    }
+
     let now = rt.clock.now();
-    let (session, welcome, limits) = match rt.hello.handle(&principal, &hello, now).await {
+    let (session, welcome, limits) = match rt
+        .hello
+        .handle(&principal, &hello, hello_sent_at, now)
+        .await
+    {
         Ok(HelloOutcome::Welcome {
             session,
             welcome_frame,
@@ -201,7 +231,7 @@ async fn run(
     };
     tracing::info!(key_id = %principal.key_id, session = %session.id, version = %session.version, "adapter session started");
 
-    let (tx, mut rx) = mpsc::channel(16);
+    let (tx, mut rx) = mpsc::unbounded_channel();
     rt.controls().insert(session.id, tx);
     if let Some(old) = rt.sessions.register(session.clone()) {
         rt.signal_session(old.id, Control::Close(CloseCode::Superseded));
@@ -220,14 +250,37 @@ async fn run(
         superseded = outcome.1;
     }
     rt.controls().remove(&session.id);
-    if let Err(e) = rt
-        .disconnect
-        .handle(&session, end, superseded, rt.clock.now())
-        .await
-    {
-        tracing::error!(session = %session.id, error = %e, "recording the disconnect failed");
-    }
+    // A session that is no longer the connection's current one was replaced: its rule still
+    // runs, but no E3 (the connection is connected through the newer session).
+    let was_current = rt.sessions.remove(&session);
+    record_disconnect(&rt, session.clone(), end, superseded || !was_current).await;
     tracing::info!(key_id = %principal.key_id, session = %session.id, "adapter session ended");
+}
+
+/// The disconnect rule is retried; if it still fails it stays pending and is applied before the
+/// connection's next `welcome`, so it is never skipped (Grosa M7).
+async fn record_disconnect(
+    rt: &GatewayRuntime,
+    session: Arc<Session>,
+    end: SessionEnd,
+    superseded: bool,
+) {
+    let mut wait = Duration::from_millis(500);
+    for _ in 0..3 {
+        match rt
+            .disconnect
+            .handle(&session, end, superseded, rt.clock.now())
+            .await
+        {
+            Ok(()) => return,
+            Err(e) => {
+                tracing::error!(session = %session.id, error = %e, "recording the disconnect failed; retrying")
+            }
+        }
+        tokio::time::sleep(wait).await;
+        wait *= 2;
+    }
+    rt.sessions.defer_disconnect(session, end, superseded);
 }
 
 /// Returns how the session ended and whether it was superseded.
@@ -235,13 +288,14 @@ async fn pump(
     rt: &GatewayRuntime,
     session: &Session,
     socket: &mut WebSocket,
-    rx: &mut mpsc::Receiver<Control>,
+    rx: &mut mpsc::UnboundedReceiver<Control>,
 ) -> (SessionEnd, bool) {
     let heartbeat = Duration::from_millis(u64::from(rt.settings.heartbeat_interval_ms));
     let mut tick = tokio::time::interval(TICK);
     let mut last_rx = tokio::time::Instant::now();
     let mut last_tx = tokio::time::Instant::now();
     let mut last_token_check = tokio::time::Instant::now();
+    let mut token_check_failures = 0u32;
     loop {
         tokio::select! {
             incoming = socket.recv() => {
@@ -249,6 +303,10 @@ async fn pump(
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
                         let outcome = rt.frames.handle(session, text.as_str(), rt.clock.now()).await;
+                        if let Some(a) = &outcome.alert {
+                            // Operational alert (ADR-0004 §5): code and ref only, never the detail.
+                            tracing::error!(session = %session.id, code = %a.code, ref_msg_id = ?a.ref_msg_id, command = a.command, "adapter refused a Core frame");
+                        }
                         for frame in outcome.replies {
                             if !send(socket, frame).await {
                                 return (SessionEnd::Network, false);
@@ -298,9 +356,22 @@ async fn pump(
                 }
                 if now.duration_since(last_token_check) >= TOKEN_RECHECK {
                     last_token_check = now;
-                    if let Ok(false) = rt.tokens.still_valid(&session.key_id).await {
-                        close(socket, CloseCode::Revoked, "revoked").await;
-                        return (SessionEnd::Network, false);
+                    match rt.tokens.still_valid(&session.key_id).await {
+                        Ok(true) => token_check_failures = 0,
+                        Ok(false) => {
+                            close(socket, CloseCode::Revoked, "revoked").await;
+                            return (SessionEnd::Network, false);
+                        }
+                        // Fail closed after repeated failures: a revoked device must not stay
+                        // connected because the check is unavailable (Grosa L4).
+                        Err(e) => {
+                            token_check_failures += 1;
+                            tracing::warn!(session = %session.id, error = %e, failures = token_check_failures, "device token re-check failed");
+                            if token_check_failures >= 3 {
+                                close(socket, CloseCode::Normal, "token_check_unavailable").await;
+                                return (SessionEnd::Network, false);
+                            }
+                        }
                     }
                 }
                 if now.duration_since(last_tx) >= heartbeat {
@@ -321,8 +392,11 @@ async fn pump(
 /// whose write failed is retransmitted at the next session (ADR-0004 §5 acceptance criterion).
 async fn deliver(rt: &GatewayRuntime, session: &Session, socket: &mut WebSocket) -> bool {
     match rt.deliver.handle(session, rt.clock.now()).await {
-        Ok(out) => {
-            for o in out {
+        Ok(pass) => {
+            for e in &pass.failures {
+                tracing::error!(session = %session.id, error = %e, "a command could not be processed; retried next pass");
+            }
+            for o in pass.outgoing {
                 if !send(socket, o.frame).await {
                     return false;
                 }

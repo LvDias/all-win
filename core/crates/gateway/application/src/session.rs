@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Duration, Utc};
 use gateway_enterprise::ids::{AccountId, ConnectionId, SessionId};
 use gateway_enterprise::protocol::ProtocolVersion;
+use gateway_enterprise::triggers::SessionEnd;
 use shared_kernel::UserId;
 use uuid::Uuid;
 
@@ -51,6 +52,9 @@ pub struct Session {
     accounts: BTreeMap<AccountId, MappedAccount>,
     /// Bound accounts left out of the mapping by the environment guard (live/unknown).
     refused: BTreeSet<AccountId>,
+    /// `hello`'s envelope `sent_at` (adapter clock): only a snapshot sent at or after it opens
+    /// the command gate; an old snapshot retransmitted from the outbox does not (Grosa M9).
+    hello_sent_at: Option<DateTime<Utc>>,
     state: Mutex<SessionState>,
 }
 
@@ -84,8 +88,19 @@ impl Session {
             adapter_version,
             accounts: accounts.into_iter().map(|a| (a.account_id, a)).collect(),
             refused: BTreeSet::new(),
+            hello_sent_at: None,
             state: Mutex::new(SessionState::default()),
         }
+    }
+
+    pub fn with_hello_sent_at(mut self, at: DateTime<Utc>) -> Self {
+        self.hello_sent_at = Some(at);
+        self
+    }
+
+    /// A snapshot created by the adapter after this session's `hello`.
+    pub fn is_current_snapshot(&self, sent_at: DateTime<Utc>) -> bool {
+        self.hello_sent_at.is_none_or(|h| sent_at >= h)
     }
 
     pub fn with_refused(mut self, refused: impl IntoIterator<Item = AccountId>) -> Self {
@@ -153,6 +168,10 @@ impl Session {
     }
 }
 
+/// An ended session whose disconnect rule is still to be recorded: (session, how it ended,
+/// superseded).
+pub type PendingDisconnect = (Arc<Session>, SessionEnd, bool);
+
 /// Live sessions by connection.
 #[derive(Debug, Default, Clone)]
 pub struct Sessions {
@@ -161,6 +180,9 @@ pub struct Sessions {
     /// next matching reconnect snapshot records `sync.restored`. In memory: a Core restart loses
     /// only that informational entry, never a flag.
     flat_disconnects: Arc<Mutex<BTreeSet<AccountId>>>,
+    /// Ended sessions whose disconnect rule could not be recorded yet (store failure): applied
+    /// before the next `welcome` of the connection, so the rule is never skipped (Grosa M7).
+    pending_disconnects: Arc<Mutex<HashMap<ConnectionId, PendingDisconnect>>>,
 }
 
 impl Sessions {
@@ -218,6 +240,27 @@ impl Sessions {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&account)
+    }
+
+    pub fn has_flat_disconnect(&self, account: AccountId) -> bool {
+        self.flat_disconnects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&account)
+    }
+
+    pub fn defer_disconnect(&self, session: Arc<Session>, end: SessionEnd, superseded: bool) {
+        self.pending_disconnects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(session.connection_id, (session, end, superseded));
+    }
+
+    pub fn take_pending_disconnect(&self, connection: ConnectionId) -> Option<PendingDisconnect> {
+        self.pending_disconnects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&connection)
     }
 
     pub fn all(&self) -> Vec<Arc<Session>> {
