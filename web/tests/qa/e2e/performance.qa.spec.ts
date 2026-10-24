@@ -28,7 +28,8 @@ async function axe(page: Page) {
 const noHScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
 
 test.describe("S22 performance (mocked Core)", () => {
-  test("desktop: axe clean, table semantics, Total in tfoot with row header, aria-sort", async ({ page }) => {
+  test("desktop: axe clean, table semantics, Total in tfoot with row header, aria-sort", async ({ page, isMobile }) => {
+    test.skip(isMobile, "the table and its sortable column headers are the desktop layout; small screens render cards");
     await mock(page);
     await page.goto("/pt-BR/performance");
     const table = page.getByRole("table");
@@ -49,7 +50,8 @@ test.describe("S22 performance (mocked Core)", () => {
     await expect(page.getByText(/Trades com resultado/)).toBeHidden();
     await expect(info).toBeFocused();
   });
-  test("group-by and sort by keyboard write the URL and call the Core with the same parameters", async ({ page }) => {
+  test("group-by and sort by keyboard write the URL and call the Core with the same parameters", async ({ page, isMobile }) => {
+    test.skip(isMobile, "the table and its sortable column headers are the desktop layout; small screens render cards");
     await mock(page);
     const urls: string[] = [];
     page.on("request", (r) => { if (r.url().includes("/api/v1/performance")) urls.push(r.url()); });

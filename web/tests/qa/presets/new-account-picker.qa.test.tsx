@@ -1,5 +1,5 @@
 // QA (Retina) — V1-S16 AC-2/AC-4/AC-6/AC-7 in "Nova conta": the preset picker composed with the S5 stepper through the public indexes only.
-import { screen, waitFor, within, configure } from "@testing-library/react";
+import { screen, within, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
