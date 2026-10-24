@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Spinner } from "@/shared/ui/spinner";
 import { connectionsQueryKey, useConnections, useNewPairingCode } from "./api";
 
-type Phase = { kind: "waiting" } | { kind: "paired" } | { kind: "superseded" } | { kind: "locked" };
+type Phase = { kind: "waiting" } | { kind: "paired"; at: number } | { kind: "superseded" } | { kind: "locked" };
 
 type Props = {
   connection: { id: string; name: string };
@@ -41,14 +41,18 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
   const [phase, setPhase] = useState<Phase>({ kind: "waiting" });
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Once the new instance is `connected`, a later drop does not send the dialog back to "searching" (it shows what it has).
+  const [reached, setReached] = useState(false);
+  const [connectedEventAt, setConnectedEventAt] = useState<number | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
   const remaining = useCountdown(pairing ? Date.parse(pairing.expires_at) : null);
   const expired = phase.kind === "waiting" && pairing !== null && remaining === 0;
 
   useEvents((event) => {
-    if (event.type === "connection.paired" && event.connection_id === connection.id) setPhase({ kind: "paired" });
+    if (event.type === "connection.paired" && event.connection_id === connection.id) setPhase({ kind: "paired", at: Date.now() });
     // The accounts arrive after the plugin's hello, with the `connected` status, so this dialog refetches the list itself.
+    if (event.type === "connection.status_changed" && event.connection_id === connection.id && event.status === "connected") setConnectedEventAt(Date.now());
     if ((event.type === "connection.paired" || event.type === "connection.status_changed") && event.connection_id === connection.id) void queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
     if (event.type === "connection.pairing_code_invalidated" && event.connection_id === connection.id) {
       setPairing(null);
@@ -84,10 +88,12 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
 
   // `visible_accounts` of `connection.paired` is not used: it is empty by design (S3 pairing step 2). The count comes from the list.
   const row = connections.data?.find((item) => item.id === connection.id);
-  // Once the list has said `connected`, a later drop does not send the dialog back to "searching" (it shows what it has).
-  const [reached, setReached] = useState(false);
-  if (phase.kind === "paired" && !reached && row?.status === "connected") setReached(true);
-  const searching = phase.kind === "paired" && !reached && row?.status !== "connected";
+  // `connected` counts once the list was reloaded after the event, so the line never shows the previous accounts. When moving to
+  // another machine the cached row is still `connected` (old instance), so only an event after `paired` says the new one is.
+  const eventSeen = phase.kind === "paired" && connectedEventAt !== null && connectedEventAt >= phase.at && connections.dataUpdatedAt > connectedEventAt;
+  const connected = reached || eventSeen || (!moving && row?.status === "connected");
+  if (phase.kind === "paired" && !reached && connected) setReached(true);
+  const searching = phase.kind === "paired" && !connected;
   const pairedAccounts = row?.visible_accounts ?? [];
 
   const announce = expired ? t("connections.pairing.expired") : phase.kind === "waiting" && remaining > 0 && remaining <= 60 ? t("connections.pairing.oneMinute") : "";

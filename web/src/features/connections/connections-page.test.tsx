@@ -215,6 +215,41 @@ describe("ConnectionsPage", () => {
     expect(await screen.findByLabelText("Código de pareamento")).toHaveTextContent("K7QM-4D2P");
   });
 
+  it("moving to another machine: keeps searching until the list is reloaded after the event, never showing the old accounts", async () => {
+    list([connection()]);
+    server.use(http.post("*/api/v1/connections/:id/pairing-code", () => HttpResponse.json(pairing, { status: 201 })));
+    renderApp(<ConnectionsPage />);
+    const person = userEvent.setup();
+    await person.click(await screen.findByRole("button", { name: "Ações para VPS Chicago" }));
+    await person.click(await screen.findByRole("menuitem", { name: "Mover para outra máquina" }));
+    await person.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Gerar código" }));
+    const dialog = await screen.findByRole("dialog");
+    const events = await stream();
+    const connectedEvent = { type: "connection.status_changed", at: "2026-10-23T12:00:05Z", connection_id: id, status: "connected" };
+
+    // The old instance reconnecting before the new pairing is not the new instance.
+    act(() => events.emit("connection.status_changed", connectedEvent));
+    act(() => events.emit("connection.paired", { type: "connection.paired", at: "2026-10-23T12:00:00Z", connection_id: id, instance_name: "NEW-PC", visible_accounts: [] }));
+    expect(await within(dialog).findByText("Buscando contas…")).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "“VPS Chicago” pareada" })).toBeInTheDocument();
+
+    // The event arrives but the reloaded list is still on its way: the old accounts must not show.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get("*/api/v1/connections", async () => {
+      await gate;
+      return HttpResponse.json([connection({ visible_accounts: [{ platform_account: "SimNEW", kind: "simulation", oco_location: "local" }] })]);
+    }));
+    act(() => events.emit("connection.status_changed", connectedEvent));
+    expect(within(dialog).getByText("Buscando contas…")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Sim101|Playback101|Nenhuma conta encontrada/)).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "“VPS Chicago” pareada" })).toBeInTheDocument();
+
+    release();
+    expect(await within(dialog).findByRole("heading", { name: "“VPS Chicago” conectada" })).toBeInTheDocument();
+    expect(within(dialog).queryByText("Buscando contas…")).not.toBeInTheDocument();
+  });
+
   it("unpairs with the affected accounts listed and requires acknowledging open positions", async () => {
     list([connection({ open_position_accounts: ["Sim101"] })]);
     const bodies: unknown[] = [];
