@@ -1,7 +1,8 @@
 //! Wiring of the gateway (S2): the `/adapter/v1` WebSocket, the query ports the gateway serves
 //! to accounts (platform accounts, ADR-0008) and routing (position, account kind, out-of-sync
 //! gate), the ports it consumes (bindings from accounts, limits from risk) and its outbox
-//! consumers (C1 commands, C2 token revocation, connection presence for identity).
+//! consumers (C1 commands, C2 token revocation, connection presence for identity), and the
+//! platform accounts per connection for identity's connections view.
 //!
 //! Risk (S13) is not built: without the `dev-stubs` feature the gateway refuses every adapter
 //! session (fail closed). With it, a simulation-only stand-in answers "no limits, no commission
@@ -42,9 +43,12 @@ use gateway_enterprise::position::ExpectedPosition as GatewayPosition;
 use gateway_enterprise::sync::SyncState;
 use gateway_infra::ws::Control;
 use gateway_infra::{GatewayRuntime, PgGatewayStore, ProtocolSchema};
-use identity_application::ports::IdentityStore;
+use identity_application::ports::{
+    ConnectionAccounts, ConnectionPresence, IdentityStore, VisibleAccount,
+};
 use identity_application::usecases::connections::RecordConnectionLiveState;
 use identity_enterprise::connection::LiveState;
+use identity_enterprise::ids::ConnectionId as IdentityConnectionId;
 use routing_application::decisions::{
     AccountKind, AccountKindOf, Contract, EntryGate, ExpectedPosition, PositionFor,
 };
@@ -207,6 +211,87 @@ fn open_position_answer(sync: Option<SyncState>, open: &[(Instrument, i64)]) -> 
     match sync {
         Some(SyncState::InSync) => open.iter().any(|(_, q)| *q != 0),
         Some(SyncState::OutOfSync) | None => true,
+    }
+}
+
+// ---- served to identity (S3 connections view) ----------------------------------------------
+
+/// Identity's `ConnectionPresence`: the platform accounts each connection reported in `hello`
+/// (`gateway.venue_account`, scoped by the caller), with the All Win account bound to each.
+/// Open positions follow [`open_position_answer`]: a bound account out of sync reads "possibly
+/// open", so unpairing asks for the acknowledgement; an unbound platform account carries no All
+/// Win position. Any failed read fails the view (never an empty list on uncertainty).
+pub struct GatewayPresence {
+    pub store: Arc<dyn GatewayStore>,
+    pub accounts: AccountsReads,
+}
+
+#[async_trait]
+impl ConnectionPresence for GatewayPresence {
+    async fn accounts(
+        &self,
+        user_id: UserId,
+        connections: &[IdentityConnectionId],
+    ) -> Result<HashMap<IdentityConnectionId, ConnectionAccounts>, String> {
+        let ids: Vec<ConnectionId> = connections
+            .iter()
+            .map(|c| ConnectionId::from_uuid(c.as_uuid()))
+            .collect();
+        let venues = self
+            .store
+            .venues_of_connections(user_id, &ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        if venues.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let reads = self.accounts.get().ok_or("accounts not wired")?;
+        let venue_ids: Vec<AccountsVenueId> = venues
+            .iter()
+            .map(|(_, v)| AccountsVenueId::from_uuid(v.id.as_uuid()))
+            .collect();
+        let bound = reads
+            .accounts_for_venues(user_id, &venue_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut out: HashMap<IdentityConnectionId, ConnectionAccounts> = HashMap::new();
+        for (connection, venue) in venues {
+            let account = bound
+                .get(&AccountsVenueId::from_uuid(venue.id.as_uuid()))
+                .map(|b| b.account_id.as_uuid());
+            let open = match account {
+                Some(account) => {
+                    let account = GatewayAccountId::from_uuid(account);
+                    let sync = self
+                        .store
+                        .account_sync(user_id, account)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let positions = self
+                        .store
+                        .open_positions(user_id, account)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    open_position_answer(Some(sync.state()), &positions)
+                }
+                None => false,
+            };
+            let entry = out
+                .entry(IdentityConnectionId::from_uuid(connection.as_uuid()))
+                .or_default();
+            if open {
+                entry
+                    .open_position_accounts
+                    .push(venue.platform_account.clone());
+            }
+            entry.visible_accounts.push(VisibleAccount {
+                platform_account: venue.platform_account,
+                kind: venue.kind,
+                oco_location: venue.oco_location,
+                account_id: account,
+            });
+        }
+        Ok(out)
     }
 }
 

@@ -146,6 +146,11 @@ impl App {
         let mut gateway_metrics = None;
         let (identity, sessions) = match &config.identity {
             Some(cfg) => {
+                // accounts and the gateway read each other (ADR-0008): the gateway's reads of
+                // accounts are set once accounts is wired. Identity's connections view reads
+                // the gateway's platform accounts through the same late-set reads.
+                let gateway_store = gateway::store(&db);
+                let accounts_reads: gateway::AccountsReads = Arc::default();
                 let wired = identity::wire(
                     config,
                     cfg,
@@ -154,13 +159,13 @@ impl App {
                     clock.clone(),
                     ingress.clone(),
                     Arc::new(accounts::AccountTargetsAdapter(account_store.clone())),
+                    Arc::new(gateway::GatewayPresence {
+                        store: gateway_store.clone(),
+                        accounts: accounts_reads.clone(),
+                    }),
                     audit.clone(),
                     &mut consumers,
                 )?;
-                // accounts and the gateway read each other (ADR-0008): the gateway's reads of
-                // accounts are set once accounts is wired.
-                let gateway_store = gateway::store(&db);
-                let accounts_reads: gateway::AccountsReads = Arc::default();
                 let venues = Arc::new(gateway::GatewayVenues {
                     store: gateway_store.clone(),
                     identity: wired.deps.store.clone(),

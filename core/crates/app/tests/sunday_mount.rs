@@ -1,7 +1,8 @@
 //! The Sunday composition against PostgreSQL: the gateway's production `DeviceTokens` over
 //! identity (a real device token row, hashed as identity stores it), and accounts over the
 //! gateway's real `VenueAccounts` with a bound account that is out of sync (Grosa: listing and
-//! pausing it still answer 200).
+//! pausing it still answer 200), and identity's connections view over the gateway's platform
+//! accounts, scoped to the caller.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -351,4 +352,87 @@ async fn the_mounted_app_serves_the_gateway_and_its_metrics() {
     let response = router.oneshot(request("/adapter/v1")).await.unwrap();
     assert_ne!(response.status().as_u16(), 404);
     assert_ne!(response.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn the_connections_view_lists_the_gateway_platform_accounts_of_the_caller_only() {
+    let Some(db) = support::db().await else {
+        return;
+    };
+    let (user, connection) = user_with_connection(&db.owner).await;
+    let (sim101, sim102, account) = (Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+    for (venue, name) in [(sim101, "Sim101"), (sim102, "Sim102")] {
+        exec_as(
+            &db.owner,
+            user,
+            "INSERT INTO gateway.venue_account (id, user_id, connection_id, platform_account, kind, oco_location)
+             VALUES ($1, $2, $3, $4, 'simulation', 'local')",
+            &[json!(venue), json!(user), json!(connection), json!(name)],
+        )
+        .await;
+    }
+    // Sim102 is bound to an account the gateway flagged out of sync: possibly open.
+    exec_as(
+        &db.owner,
+        user,
+        "INSERT INTO accounts.account (id, user_id, display_name, kind, size_amount, max_position_qty, venue_account_id, bound_at)
+         VALUES ($1, $2, 'Sim account', 'real', 50000, 1, $3, now())",
+        &[json!(account), json!(user), json!(sim102)],
+    )
+    .await;
+    exec_as(
+        &db.owner,
+        user,
+        "INSERT INTO gateway.account_sync (user_id, account_id, sync_state, flagged_at)
+         VALUES ($1, $2, 'out_of_sync', now())",
+        &[json!(user), json!(account)],
+    )
+    .await;
+    let (other, other_connection) = user_with_connection(&db.owner).await;
+
+    // The port `App::wire` hands identity (the connections view and the unpair confirmation).
+    let wired = support::wire(&db, &config());
+    let presence = wired.identity.unwrap().deps.presence;
+    let id = identity_enterprise::ids::ConnectionId::from_uuid(connection);
+    let mut seen = presence
+        .accounts(shared_kernel::UserId::from_uuid(user), &[id])
+        .await
+        .unwrap();
+    let accounts = seen
+        .remove(&id)
+        .expect("the connection's platform accounts");
+    let visible: Vec<_> = accounts
+        .visible_accounts
+        .iter()
+        .map(|a| {
+            (
+                a.platform_account.as_str(),
+                a.kind.as_str(),
+                a.oco_location.as_str(),
+                a.account_id,
+            )
+        })
+        .collect();
+    assert_eq!(
+        visible,
+        [
+            ("Sim101", "simulation", "local", None),
+            ("Sim102", "simulation", "local", Some(account)),
+        ]
+    );
+    assert_eq!(accounts.open_position_accounts, ["Sim102"]);
+
+    // Cross-user: another user asking for this connection sees nothing, and the owner's own
+    // view never lists another user's connection.
+    let other_id = identity_enterprise::ids::ConnectionId::from_uuid(other_connection);
+    let theirs = presence
+        .accounts(shared_kernel::UserId::from_uuid(other), &[id, other_id])
+        .await
+        .unwrap();
+    assert!(theirs.is_empty(), "{theirs:?}");
+    let mine = presence
+        .accounts(shared_kernel::UserId::from_uuid(user), &[other_id])
+        .await
+        .unwrap();
+    assert!(mine.is_empty(), "{mine:?}");
 }

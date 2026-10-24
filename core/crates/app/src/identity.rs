@@ -15,13 +15,12 @@ use identity_application::changes::{
 };
 use identity_application::deps::{IdentityDeps, IdentitySettings};
 use identity_application::ports::{
-    AccountTargets, CodeSender, ConnectionAccounts, ConnectionPresence, Mailer, SourceActivity,
-    SourceKeyListener,
+    AccountTargets, CodeSender, ConnectionPresence, Mailer, SourceActivity, SourceKeyListener,
 };
 use identity_application::usecases::access_port::IdentityAccess;
 use identity_application::usecases::channel_change::ApplyDueChannelHolds;
 use identity_application::usecases::connections::DisconnectLiveConnectionsAtStartup;
-use identity_enterprise::ids::{ConnectionId, SourceId};
+use identity_enterprise::ids::SourceId;
 use identity_enterprise::tokens::KeyId;
 use identity_infra::crypto::{OsRandom, PepperedHasher, VersionedKeys};
 use identity_infra::delivery::{
@@ -90,20 +89,6 @@ struct IngressKeyListener(Arc<IngressState>);
 impl SourceKeyListener for IngressKeyListener {
     fn key_activated(&self, key_id: &KeyId) {
         self.0.unknown_keys.invalidate(key_id.as_str());
-    }
-}
-
-/// The gateway (S2) reports visible accounts; until it is wired, none.
-struct NoPresence;
-
-#[async_trait]
-impl ConnectionPresence for NoPresence {
-    async fn accounts(
-        &self,
-        _: UserId,
-        _: &[ConnectionId],
-    ) -> Result<std::collections::HashMap<ConnectionId, ConnectionAccounts>, String> {
-        Ok(std::collections::HashMap::new())
     }
 }
 
@@ -251,6 +236,7 @@ pub fn wire(
     clock: Arc<dyn Clock>,
     ingress: Arc<IngressState>,
     account_targets: Arc<dyn AccountTargets>,
+    presence: Arc<dyn ConnectionPresence>,
     audit: Arc<dyn EventConsumer>,
     consumers: &mut Consumers,
 ) -> anyhow::Result<IdentityWiring> {
@@ -285,7 +271,7 @@ pub fn wire(
         hasher: Arc::new(PepperedHasher::new(versioned_keys(cfg)?)),
         random: Arc::new(OsRandom),
         mailer,
-        presence: Arc::new(NoPresence),
+        presence,
         source_activity: Arc::new(NoSourceActivity),
         source_keys: Arc::new(IngressKeyListener(ingress)),
         adapters: Arc::new(adapters),
