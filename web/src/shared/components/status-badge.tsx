@@ -26,8 +26,13 @@ const kinds = {
 
 export type StatusKind = keyof typeof kinds;
 
+type TimedKind = "blocked" | "blockedByTarget";
+
+/** The two "blocked until" kinds need their time: a badge reading "Blocked until " with nothing after it is not allowed by the type. */
+type StatusBadgeProps = { className?: string } & ({ kind: TimedKind; time: string } | { kind: Exclude<StatusKind, TimedKind>; time?: undefined });
+
 /** Icon plus text, never color alone. `time` fills "Blocked until {time}". */
-export function StatusBadge({ kind, time, className }: { kind: StatusKind; time?: string; className?: string }) {
+export function StatusBadge({ kind, time, className }: StatusBadgeProps) {
   const t = useTranslations("status");
   const { tone, icon: Icon } = kinds[kind];
   return (

@@ -191,6 +191,15 @@
       "rate_limited": "Too many pairing attempts. Wait a moment.",
       "temporarily_locked": "Pairing is temporarily locked. Wait a few minutes."
     },
+    "risk": {
+      "daily_loss_required": "Enter this account's daily loss limit.",
+      "amount_invalid": "The amount must be greater than zero.",
+      "required_value_unresolved": "Resolve this value to save.",
+      "flatten_requires_enforcement": "Flatten and block needs automatic enforcement turned on.",
+      "reset_not_editable": "This account uses the CME session close; the reset is not editable.",
+      "consistency_not_applicable": "This account has no consistency rule.",
+      "reached_not_acknowledged": "Confirm that the limit was already passed today to save."
+    },
     "routing": {
       "automation_not_accepted": "This account does not accept automated orders (or the choice is pending).",
       "copy_not_accepted": "This account does not accept trade copying (or the choice is pending)."
@@ -342,8 +351,7 @@
       "profileSize": {
         "label": "Starting profile",
         "help": "The account size is exactly between two standard sizes. Choose which one to copy stops and targets from; balance and limits use the account size."
-      },
-      "stepUpDescriptionBinding": "change the platform account linked to this account"
+      }
     },
     "optIn": {
       "automation": {
@@ -909,5 +917,214 @@
     "caption": "{firm} · {page} · accessed on {date}",
     "viewPage": "View official page",
     "newTab": "(opens in a new tab)"
+  },
+  "risk": {
+    "title": "Risk",
+    "edit": {
+      "title": "Edit risk rules",
+      "description": "Set this account's limits. A tighter limit applies at once; a looser one applies from the next trading day.",
+      "loadError": "Could not load the rules.",
+      "back": "Back to risk",
+      "reload": "Reload",
+      "save": "Save rules",
+      "saved": "Risk rules saved.",
+      "choose": "Choose",
+      "summary": "{count, plural, one {Fix # field.} other {Fix # fields.}}",
+      "sections": {
+        "loss": "Loss and drawdown",
+        "target": "Daily profit target",
+        "consistency": "Consistency rule",
+        "commission": "Commissions",
+        "tradingDay": "Trading day"
+      },
+      "fields": {
+        "drawdownAmount": "Drawdown, in dollars",
+        "drawdownType": "Drawdown type",
+        "dailyLoss": "Daily loss limit, in dollars",
+        "profitTarget": "Target amount, in dollars",
+        "onReach": "When the target is reached",
+        "consistency": "Consistency limit, in %",
+        "commission": "Commission per contract per side, in dollars",
+        "resetTime": "Daily reset time ({zone})"
+      },
+      "tighterNow": "A tighter limit applies at once.",
+      "looserLater": "A looser limit applies from the next trading day. If the account is already blocked, the block lasts until the reset.",
+      "consistencyHelp": "All Win tracks this rule and warns at 80%, but never blocks the account.",
+      "onReach": {
+        "notify": {
+          "label": "Notify only",
+          "body": "You get one notice when the target is reached. The account keeps trading."
+        },
+        "flatten": {
+          "label": "Flatten and block until the reset",
+          "body": "When the target is reached, the plugin closes positions, cancels orders and blocks the account until the reset, as with a loss limit.",
+          "unavailable": "Available when automatic enforcement is on for this account."
+        }
+      },
+      "enforcement": {
+        "on": "Automatic enforcement: on.",
+        "off": "Automatic enforcement: off."
+      },
+      "reached": {
+        "title": "This limit has already been passed today",
+        "body": "With this limit the account has already passed the limit today. All Win will stop accepting new entries now. Exits are still allowed.",
+        "bodyEnforced": "With this limit the account has already passed the limit today. All Win will stop accepting new entries now, and the plugin closes positions and blocks the account until the reset. Exits are still allowed.",
+        "back": "Back",
+        "confirm": "Save and apply now"
+      },
+      "errors": {
+        "amountInvalid": "Invalid amount. Use up to 2 decimals.",
+        "drawdownTypeRequired": "Choose the drawdown type.",
+        "drawdownAmountRequired": "Enter the drawdown amount.",
+        "consistencyInvalid": "Use a number from 0 to 100 with at most one decimal.",
+        "conflict": "These rules changed somewhere else.",
+        "commissionInvalid": "Use a dollar amount with up to 4 decimals.",
+        "resetInvalid": "Use a valid time (hh:mm).",
+        "rulesSavedCommissionFailed": "The rules were saved, but the commission was not. Fix the field and save again.",
+        "rulesSavedCommissionFailedWith": "The rules were saved, but the commission was not: {message}",
+        "amountAmbiguous": "Type the decimal part explicitly, for example 2500.00 or 2.5."
+      },
+      "commission": {
+        "help": "For each fill, All Win uses the greater of the platform-reported commission and this value × quantity. Limits use the net result.",
+        "empty": "Commission not provided. Without it the net result equals gross and limits may be too loose.",
+        "lowerLater": "A lower commission applies from the next trading day."
+      },
+      "tradingDay": {
+        "cme": "Daily reset: CME session close. Real accounts cannot edit this time.",
+        "editLater": "A change of time applies from the next trading day."
+      },
+      "dailyLossNone": "The firm states there is no daily loss limit.",
+      "drawdownOther": "Firm rule: {description}",
+      "discard": {
+        "title": "Discard changes?",
+        "body": "What you filled in will be lost.",
+        "stay": "Keep editing",
+        "confirm": "Discard"
+      },
+      "understood": "Understood as {value}"
+    },
+    "loadError": "Could not load this account's risk.",
+    "limits": "Limits",
+    "kind": {
+      "daily_loss": "Daily loss",
+      "drawdown": "Drawdown",
+      "daily_profit_target": "Daily profit target",
+      "consistency": "Consistency rule"
+    },
+    "drawdownType": {
+      "trailing_intraday": "Intraday trailing",
+      "trailing_eod": "End-of-day trailing",
+      "static": "Static",
+      "other": "Other"
+    },
+    "meter": {
+      "state": {
+        "warning": "warning",
+        "reached": "limit reached",
+        "target_reached": "target reached"
+      },
+      "percent": "{percent}%",
+      "drawdown": "Drawdown ({type})",
+      "usedOf": "{used} of {limit}",
+      "progress": "{used} of {limit}",
+      "consistency": "Largest day: {used}% of total profit (firm limit: {limit}%)",
+      "floor": "Current floor: {value}"
+    },
+    "announce": {
+      "normal": "Risk is back to normal.",
+      "warning": "Warning: 80% of a limit.",
+      "reached": "Limit reached.",
+      "target_reached": "Daily profit target reached."
+    },
+    "strip": {
+      "day": "Trading day: {start} → {end}",
+      "nextReset": "Next reset: {time}",
+      "sourceFirm": "Firm reset: {time} ({zone})",
+      "sourceCme": "Reset: CME session close",
+      "playback": "Playback clock: the reset and the day's P&L follow the simulated clock ({time}), not the computer's.",
+      "asOf": "Updated at",
+      "connectionDown": "NinjaTrader disconnected: the values below may be out of date."
+    },
+    "blocked": {
+      "title": "Account blocked until {time} · reason: {reason}",
+      "noUnlock": "There is no early unlock. Changing limits does not lift the block: it lasts until the reset.",
+      "reason": {
+        "daily_loss": "daily loss reached",
+        "drawdown": "drawdown reached",
+        "daily_profit_target": "daily profit target reached"
+      }
+    },
+    "basis": {
+      "net": "Net values, after commissions.",
+      "gross": "Gross values, before commissions.",
+      "manual": "Manually entered trades do not count toward this account's risk."
+    },
+    "commission": {
+      "none": "Commission not provided: limits may be too loose. Net equals gross on this account.",
+      "inform": "Add commission"
+    },
+    "limitsPending": "The new limits are still being applied. Until then the meters show the previous limits and new entries are skipped.",
+    "untracked": "{rule}: rule not confirmed — not tracked.",
+    "unset": "{rule}: no limit set. All Win does not warn or refuse entries for this rule.",
+    "define": "Set",
+    "pending": {
+      "commissionLowered": "New commission per contract/side {value} from {time}.",
+      "commissionRemoved": "The minimum commission will be removed from {time}.",
+      "removed": "{rule}: the rule will be removed from {time}.",
+      "toNotify": "When the target is reached, notify only, from {time}.",
+      "drawdownType": "New drawdown type: {type}, from {time}.",
+      "limit": "{rule}: new limit {value} from {time}.",
+      "generic": "{rule}: change from {time}.",
+      "reset": "New daily reset {value} ({zone}) from {time}."
+    },
+    "empty": {
+      "title": "This account has no risk rules yet.",
+      "body": "Set limits to get warnings at 80% and to have All Win refuse entries when they are reached.",
+      "action": "Set rules"
+    },
+    "whatHappens": {
+      "title": "What happens when I reach a limit?",
+      "refuse": "All Win refuses new entries on this account until the next reset, even with automatic enforcement off. Exits are still allowed.",
+      "enforcement": "With automatic enforcement on, the plugin closes positions, cancels orders and blocks the account until the reset. There is no early unlock.",
+      "target": "The daily profit target only warns, unless you choose to flatten and block.",
+      "consistency": "Consistency rules only warn; they never block."
+    },
+    "evaluation": {
+      "title": "Evaluation target",
+      "progress": "{percent}% of the target",
+      "target": "Target",
+      "achieved": "Earned (net)",
+      "remaining": "Left",
+      "reachedLabel": "Target reached at",
+      "countSince": "Counting since {start}. Only trades captured by All Win from that date count, plus the amount you enter. Manually entered trades do not count.",
+      "countSinceWithBefore": "Counting since {start}; includes {earned} already earned before. Only trades captured by All Win from that date count, plus the amount you enter. Manually entered trades do not count.",
+      "asOf": "Updated at",
+      "reachedNotice": "Target reached. Nothing is closed or blocked automatically.",
+      "adjust": "Adjust count",
+      "restart": {
+        "title": "Adjust the evaluation count",
+        "description": "Only what All Win captured from the start date counts, plus the amount you enter here. A Sim or Playback reset does not restart the count.",
+        "start": "Count start",
+        "earnedBefore": "Already earned before the start (net)",
+        "submit": "Restart count",
+        "reload": "Reload",
+        "done": "Count restarted.",
+        "errors": {
+          "startRequired": "Enter the start date.",
+          "earnedInvalid": "Invalid amount. Use up to 4 decimals.",
+          "conflict": "The account changed. Reload.",
+          "earnedAmbiguous": "Type the decimal part explicitly, for example 250.00 or 2.5."
+        },
+        "confirm": {
+          "title": "Restart the evaluation count?",
+          "body": "The count applies from the date and amount above. The earlier history stays in the activity log.",
+          "back": "Back",
+          "action": "Restart count"
+        }
+      },
+      "commissionNone": "Commission not provided: the total may be higher than the real figure.",
+      "commissionEstimated": "Commission estimated from the configured minimum: the total may be higher than the real figure."
+    },
+    "editAction": "Edit rules"
   }
 }

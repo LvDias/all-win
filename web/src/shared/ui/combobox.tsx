@@ -35,7 +35,10 @@ export function Combobox({ id, options, value, onChange, label, placeholder, dis
     return needle ? options.filter((option) => fold(`${option.label} ${option.keywords ?? ""}`).includes(needle)) : options;
   }, [options, query]);
   const selected = options.find((option) => option.value === value);
-  const activeOption = filtered[Math.min(active, filtered.length - 1)];
+  const activePosition = Math.min(active, filtered.length - 1);
+  const activeOption = filtered[activePosition];
+  /** Option ids use the position, not the value: values can hold spaces or other characters that are invalid in an id. */
+  const optionId = (position: number) => `${listId}-opt-${position}`;
 
   function choose(next: string) {
     setOpen(false);
@@ -74,7 +77,7 @@ export function Combobox({ id, options, value, onChange, label, placeholder, dis
           role="combobox"
           aria-expanded="true"
           aria-controls={listId}
-          aria-activedescendant={activeOption ? `${listId}-${activeOption.value}` : undefined}
+          aria-activedescendant={activeOption ? optionId(activePosition) : undefined}
           aria-label={t("search", { label })}
           autoComplete="off"
           value={query}
@@ -106,7 +109,7 @@ export function Combobox({ id, options, value, onChange, label, placeholder, dis
                 </p>
               ) : null}
               <div
-                id={`${listId}-${option.value}`}
+                id={optionId(position)}
                 role="option"
                 aria-selected={option.value === value}
                 onClick={() => choose(option.value)}

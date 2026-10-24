@@ -191,6 +191,15 @@
       "rate_limited": "Muitas tentativas de pareamento. Aguarde um pouco.",
       "temporarily_locked": "Pareamento bloqueado temporariamente. Aguarde alguns minutos."
     },
+    "risk": {
+      "daily_loss_required": "Informe o limite de perda diária desta conta.",
+      "amount_invalid": "O valor precisa ser maior que zero.",
+      "required_value_unresolved": "Resolva este valor para salvar.",
+      "flatten_requires_enforcement": "Fechar e bloquear exige a aplicação automática ligada.",
+      "reset_not_editable": "Esta conta usa o fechamento da sessão CME; o reset não é editável.",
+      "consistency_not_applicable": "Esta conta não tem regra de consistência.",
+      "reached_not_acknowledged": "Confirme que o limite já foi ultrapassado hoje para salvar."
+    },
     "routing": {
       "automation_not_accepted": "Esta conta não aceita ordens automatizadas (ou a escolha está pendente).",
       "copy_not_accepted": "Esta conta não aceita cópia de operações (ou a escolha está pendente)."
@@ -342,8 +351,7 @@
       "profileSize": {
         "label": "Perfil inicial",
         "help": "O tamanho da conta fica exatamente entre dois tamanhos padrão. Escolha de qual copiar os stops e alvos; o saldo e os limites usam o tamanho da conta."
-      },
-      "stepUpDescriptionBinding": "alterar a conta da plataforma vinculada a esta conta"
+      }
     },
     "optIn": {
       "automation": {
@@ -909,5 +917,214 @@
     "caption": "{firm} · {page} · acessado em {date}",
     "viewPage": "Ver página oficial",
     "newTab": "(abre em nova aba)"
+  },
+  "risk": {
+    "title": "Risco",
+    "edit": {
+      "title": "Editar regras de risco",
+      "description": "Defina os limites desta conta. Um limite mais apertado vale na hora; um mais folgado vale a partir do próximo dia de trading.",
+      "loadError": "Não foi possível carregar as regras.",
+      "back": "Voltar ao risco",
+      "reload": "Recarregar",
+      "save": "Salvar regras",
+      "saved": "Regras de risco salvas.",
+      "choose": "Escolha",
+      "summary": "{count, plural, one {Corrija # campo.} other {Corrija # campos.}}",
+      "sections": {
+        "loss": "Perda e drawdown",
+        "target": "Meta de lucro diária",
+        "consistency": "Regra de consistência",
+        "commission": "Comissões",
+        "tradingDay": "Dia de trading"
+      },
+      "fields": {
+        "drawdownAmount": "Drawdown, em dólares",
+        "drawdownType": "Tipo de drawdown",
+        "dailyLoss": "Limite de perda diária, em dólares",
+        "profitTarget": "Valor da meta, em dólares",
+        "onReach": "Ao atingir a meta",
+        "consistency": "Limite de consistência, em %",
+        "commission": "Comissão por contrato e lado, em dólares",
+        "resetTime": "Horário do reset do dia ({zone})"
+      },
+      "tighterNow": "Um limite mais apertado vale na hora.",
+      "looserLater": "Um limite mais folgado vale a partir do próximo dia de trading. Se a conta já estiver bloqueada, o bloqueio continua até o reset.",
+      "consistencyHelp": "O All Win acompanha esta regra e avisa aos 80 %, mas não bloqueia a conta.",
+      "onReach": {
+        "notify": {
+          "label": "Só avisar",
+          "body": "Você recebe um aviso uma vez quando a meta for atingida. A conta continua operando."
+        },
+        "flatten": {
+          "label": "Fechar posições e bloquear até o reset",
+          "body": "Ao atingir a meta, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset, como em um limite de perda.",
+          "unavailable": "Disponível quando a aplicação automática estiver ligada nesta conta."
+        }
+      },
+      "enforcement": {
+        "on": "Aplicação automática: ligada.",
+        "off": "Aplicação automática: desligada."
+      },
+      "reached": {
+        "title": "Este limite já foi ultrapassado hoje",
+        "body": "Com este limite a conta já passou do limite hoje. O All Win vai parar de aceitar novas entradas agora. Saídas continuam permitidas.",
+        "bodyEnforced": "Com este limite a conta já passou do limite hoje. O All Win vai parar de aceitar novas entradas agora, o plugin fecha as posições e bloqueia a conta até o reset. Saídas continuam permitidas.",
+        "back": "Voltar",
+        "confirm": "Salvar e aplicar agora"
+      },
+      "errors": {
+        "amountInvalid": "Valor inválido. Use até 2 casas decimais.",
+        "drawdownTypeRequired": "Escolha o tipo de drawdown.",
+        "drawdownAmountRequired": "Informe o valor do drawdown.",
+        "consistencyInvalid": "Use um número de 0 a 100 com até uma casa decimal.",
+        "conflict": "Estas regras mudaram em outro lugar.",
+        "commissionInvalid": "Use um valor em dólares, com até 4 casas.",
+        "resetInvalid": "Use um horário válido (hh:mm).",
+        "rulesSavedCommissionFailed": "As regras foram salvas, mas a comissão não. Corrija o campo e salve de novo.",
+        "rulesSavedCommissionFailedWith": "As regras foram salvas, mas a comissão não: {message}",
+        "amountAmbiguous": "Digite a parte decimal explicitamente, por exemplo 2500,00 ou 2,5."
+      },
+      "commission": {
+        "help": "O All Win usa, em cada execução, o maior valor entre a comissão informada pela plataforma e este valor × quantidade. Os limites usam o resultado líquido.",
+        "empty": "Comissão não informada. Sem ela o resultado líquido é igual ao bruto e os limites podem ficar folgados demais.",
+        "lowerLater": "Uma comissão menor vale a partir do próximo dia de trading."
+      },
+      "tradingDay": {
+        "cme": "Reset do dia: fechamento da sessão CME. Contas reais não editam este horário.",
+        "editLater": "Uma mudança no horário vale a partir do próximo dia de trading."
+      },
+      "dailyLossNone": "A firma informa que não há limite de perda diária.",
+      "drawdownOther": "Regra da firma: {description}",
+      "discard": {
+        "title": "Descartar alterações?",
+        "body": "O que você preencheu será perdido.",
+        "stay": "Continuar editando",
+        "confirm": "Descartar"
+      },
+      "understood": "Entendido como {value}"
+    },
+    "loadError": "Não foi possível carregar o risco desta conta.",
+    "limits": "Limites",
+    "kind": {
+      "daily_loss": "Perda diária",
+      "drawdown": "Drawdown",
+      "daily_profit_target": "Meta de lucro diária",
+      "consistency": "Regra de consistência"
+    },
+    "drawdownType": {
+      "trailing_intraday": "Trailing intradiário",
+      "trailing_eod": "Trailing fim do dia",
+      "static": "Estático",
+      "other": "Outro"
+    },
+    "meter": {
+      "state": {
+        "warning": "alerta",
+        "reached": "limite atingido",
+        "target_reached": "meta atingida"
+      },
+      "percent": "{percent} %",
+      "drawdown": "Drawdown ({type})",
+      "usedOf": "{used} de {limit}",
+      "progress": "{used} de {limit}",
+      "consistency": "Maior dia: {used} % do lucro total (limite da firma: {limit} %)",
+      "floor": "Piso atual: {value}"
+    },
+    "announce": {
+      "normal": "Risco voltou ao normal.",
+      "warning": "Alerta: 80 % de um limite.",
+      "reached": "Limite atingido.",
+      "target_reached": "Meta de lucro diária atingida."
+    },
+    "strip": {
+      "day": "Dia de trading: {start} → {end}",
+      "nextReset": "Próximo reset: {time}",
+      "sourceFirm": "Reset da firma: {time} ({zone})",
+      "sourceCme": "Reset: fechamento da sessão CME",
+      "playback": "Relógio de Playback: o reset e o P&L do dia seguem o relógio simulado ({time}), não o do computador.",
+      "asOf": "Atualizado às",
+      "connectionDown": "NinjaTrader desconectado: os valores abaixo podem estar desatualizados."
+    },
+    "blocked": {
+      "title": "Conta bloqueada até {time} · motivo: {reason}",
+      "noUnlock": "Não há desbloqueio antecipado. Mudar limites não remove o bloqueio: ele continua até o reset.",
+      "reason": {
+        "daily_loss": "perda diária atingida",
+        "drawdown": "drawdown atingido",
+        "daily_profit_target": "meta de lucro diária atingida"
+      }
+    },
+    "basis": {
+      "net": "Valores líquidos, depois de comissões.",
+      "gross": "Valores brutos, antes de comissões.",
+      "manual": "Operações lançadas à mão não entram no risco desta conta."
+    },
+    "commission": {
+      "none": "Comissão não informada: os limites podem estar folgados demais. O líquido é igual ao bruto nesta conta.",
+      "inform": "Informar comissão"
+    },
+    "limitsPending": "Os novos limites ainda estão sendo aplicados. Até lá, os medidores mostram os limites anteriores e novas entradas são ignoradas.",
+    "untracked": "{rule}: regra não confirmada — não acompanhada.",
+    "unset": "{rule}: sem limite definido. O All Win não avisa nem recusa entradas por esta regra.",
+    "define": "Definir",
+    "pending": {
+      "commissionLowered": "Nova comissão por contrato/lado {value} a partir de {time}.",
+      "commissionRemoved": "A comissão mínima será removida a partir de {time}.",
+      "removed": "{rule}: a regra será removida a partir de {time}.",
+      "toNotify": "Ao atingir a meta, só avisar, a partir de {time}.",
+      "drawdownType": "Novo tipo de drawdown: {type}, a partir de {time}.",
+      "limit": "{rule}: novo limite {value} a partir de {time}.",
+      "generic": "{rule}: alteração a partir de {time}.",
+      "reset": "Novo reset do dia {value} ({zone}) a partir de {time}."
+    },
+    "empty": {
+      "title": "Esta conta ainda não tem regras de risco.",
+      "body": "Defina limites para receber alertas aos 80 % e para o All Win recusar entradas ao atingi-los.",
+      "action": "Definir regras"
+    },
+    "whatHappens": {
+      "title": "O que acontece quando eu atingir um limite?",
+      "refuse": "O All Win recusa novas entradas nesta conta até o próximo reset, mesmo com a aplicação automática desligada. Saídas continuam permitidas.",
+      "enforcement": "Com a aplicação automática ligada, o plugin fecha posições, cancela ordens e bloqueia a conta até o reset. Não há desbloqueio antecipado.",
+      "target": "A meta de lucro diária só avisa, a menos que você escolha fechar e bloquear.",
+      "consistency": "Regras de consistência só avisam; nunca bloqueiam."
+    },
+    "evaluation": {
+      "title": "Meta da avaliação",
+      "progress": "{percent} % da meta",
+      "target": "Meta",
+      "achieved": "Acumulado (líquido)",
+      "remaining": "Falta",
+      "reachedLabel": "Meta atingida em",
+      "countSince": "Contagem desde {start}. Só entram operações capturadas pelo All Win a partir dessa data, mais o valor informado. Operações lançadas à mão não contam.",
+      "countSinceWithBefore": "Contagem desde {start}; inclui {earned} já ganhos antes. Só entram operações capturadas pelo All Win a partir dessa data, mais o valor informado. Operações lançadas à mão não contam.",
+      "asOf": "Atualizado às",
+      "reachedNotice": "Meta atingida. Nada é fechado nem bloqueado automaticamente.",
+      "adjust": "Ajustar contagem",
+      "restart": {
+        "title": "Ajustar contagem da avaliação",
+        "description": "Só entra o que o All Win capturou a partir da data de início, mais o valor que você informar aqui. Uma reinicialização da simulação ou do Playback não reinicia a contagem.",
+        "start": "Início da contagem",
+        "earnedBefore": "Já ganho antes do início (líquido)",
+        "submit": "Reiniciar contagem",
+        "reload": "Recarregar",
+        "done": "Contagem reiniciada.",
+        "errors": {
+          "startRequired": "Informe a data de início.",
+          "earnedInvalid": "Valor inválido. Use até 4 casas decimais.",
+          "conflict": "A conta mudou. Recarregue.",
+          "earnedAmbiguous": "Digite a parte decimal explicitamente, por exemplo 250,00 ou 2,5."
+        },
+        "confirm": {
+          "title": "Reiniciar a contagem da avaliação?",
+          "body": "A contagem passa a valer a partir da data e do valor acima. O histórico anterior continua no registro de atividade.",
+          "back": "Voltar",
+          "action": "Reiniciar contagem"
+        }
+      },
+      "commissionNone": "Comissão não informada: o acumulado pode estar acima do real.",
+      "commissionEstimated": "Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real."
+    },
+    "editAction": "Editar regras"
   }
 }
