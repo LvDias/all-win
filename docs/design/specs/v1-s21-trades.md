@@ -55,7 +55,7 @@ State lives in the URL (`?period=…&account=…&source=…&signal=…`). Filter
 
 ### 3.2 Totals strip
 
-A `Card` above the table with values **from the Core for the whole filtered set** (not only the loaded page): number of trades, total **net** P&L (signed money, `pnl_basis: net`), total gross and total commission in the secondary line, and the same period/accounts as the filter in text. S22 uses the same Core figures, so both screens reconcile exactly (S22 AC-2). If `uncommissioned_count` > 0 the strip shows a warning line "{n} trades sem comissão informada: neles o líquido é igual ao bruto." / "{n} trades without commission data: net equals gross." While loading: `Skeleton`; on error the strip shows `—` with a retry.
+A `Card` above the table with values **from the Core for the whole filtered set** (not only the loaded page): number of trades, total **net** P&L (signed money, `pnl_basis: net`), total gross and total commission in the secondary line, and the same period/accounts as the filter in text. S22 uses the same Core figures, so both screens reconcile exactly (S22 AC-2). If `uncommissioned_count` > 0 the strip shows a warning line, the same sentence as S22 §3.2 (plural/singular): "{n} trades sem comissão informada: neles, o líquido é igual ao bruto." / "1 trade sem comissão informada: nele, o líquido é igual ao bruto."; en "{n} trades have no commission entered: for those, net equals gross." / "1 trade has no commission entered: for it, net equals gross." While loading: `Skeleton`; on error the strip shows `—` with a retry.
 
 ### 3.3 Table
 
@@ -74,7 +74,7 @@ Default sort: exit time, newest first (stated in the caption). Sortable headers 
 | Origem | source name + signal type chip; `Manual`; `Plataforma (sem sinal)` (§3.4) |
 | Ações | kebab: `Ver detalhes`, `Ver instrução` (when originating instruction exists, → S10 timeline), `Ver conta` |
 
-The table scrolls horizontally inside its container with a sticky first column (F§9). Below `md`, each trade is a `Card`: account + direction as title, P&L top-right, then the definition list in the same order.
+The table scrolls horizontally inside its container with a sticky first column (F§9). Below `md`, each trade is a `Card`: account + direction as title, P&L top-right, then the definition list in the same order. The cards keep the table's sort control (C§4, rule from Aquarela): a `Select` "Ordenar por" / "Sort by" above the list with the same sort keys and directions as the sortable headers (`Saída`, `P&L`, `Tempo na operação`, each newest/highest first or oldest/lowest first), the same default, and the same URL state.
 
 ### 3.4 Origin labels
 
