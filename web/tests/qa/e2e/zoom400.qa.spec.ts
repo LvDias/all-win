@@ -44,7 +44,7 @@ async function reachable(target: Locator) {
 }
 
 test("negative control: the reflow helpers do detect a 600 px wide page", async ({ page }) => {
-  await page.setContent('<body><div style="width:600px;height:20px">wide content that does not fit</div></body>');
+  await page.setContent('<head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div style="width:600px;height:20px">wide content that does not fit</div></body>'); // like the app's pages; without it a mobile browser lays out at 980 px
   expect(await noHorizontalScroll(page)).toBe(false);
   expect((await clippedRight(page)).length).toBeGreaterThan(0);
 });

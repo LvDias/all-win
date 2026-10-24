@@ -62,6 +62,7 @@ test.describe("S5 stepper a11y", () => {
     await api.signedIn();
     await page.route("**/api/v1/connections", (route) => route.fulfill({ json: [] }));
     await page.route("**/api/v1/accounts", (route) => route.fulfill({ json: { accounts: [] } }));
+    await page.route("**/api/v1/firms", (route) => route.fulfill({ json: { firms: [] } })); // S16 preset picker on the firm step; this spec takes the manual path
     await page.route("**/api/v1/opt-in-rules**", (route) => route.fulfill({ json: { automation: rule("forbidden"), copy: { ...rule("forbidden"), id: "3b4c5d6e-7f8a-4b9c-8d1e-2f3a4b5c6d7e", kind: "copy" } } }));
   });
 
@@ -91,6 +92,7 @@ test.describe("S5 stepper a11y", () => {
     await page.goto("/pt-BR/accounts/new");
     await page.getByRole("radio", { name: "Conta de prop firm" }).click();
     await page.getByRole("button", { name: "Continuar" }).click();
+    await page.getByRole("button", { name: "Cadastrar sem preset" }).click();
     await page.getByRole("textbox", { name: "Firma" }).fill("Apex");
     await page.getByRole("textbox", { name: "Plano" }).fill("50K");
     await page.getByRole("textbox", { name: "Fase" }).fill("Avaliação");
