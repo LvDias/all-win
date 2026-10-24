@@ -1,21 +1,25 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, Copy, Check } from "lucide-react";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { errorMessage } from "@/shared/api/error-message";
-import type { PairingCode, VisibleAccount } from "@/shared/api/types";
+import type { PairingCode } from "@/shared/api/types";
 import { formatClock } from "@/shared/format";
 import { useCountdown } from "@/shared/lib/use-countdown";
+import { useLocalePath } from "@/shared/i18n/navigation";
+import { accountsPath } from "@/shared/routes";
 import { useEvents } from "@/shared/session/events";
 import { StepUpCancelled, useStepUp } from "@/shared/session/step-up";
 import { Alert } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Spinner } from "@/shared/ui/spinner";
-import { useNewPairingCode } from "./api";
+import { connectionsQueryKey, useConnections, useNewPairingCode } from "./api";
 
-type Phase = { kind: "waiting" } | { kind: "paired"; accounts: VisibleAccount[] } | { kind: "superseded" } | { kind: "locked" };
+type Phase = { kind: "waiting" } | { kind: "paired" } | { kind: "superseded" } | { kind: "locked" };
 
 type Props = {
   connection: { id: string; name: string };
@@ -30,6 +34,9 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
   const t = useTranslations();
   const stepUp = useStepUp();
   const newCode = useNewPairingCode();
+  const queryClient = useQueryClient();
+  const connections = useConnections(false);
+  const path = useLocalePath();
   const [pairing, setPairing] = useState<PairingCode | null>(initial);
   const [phase, setPhase] = useState<Phase>({ kind: "waiting" });
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +47,9 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
   const expired = phase.kind === "waiting" && pairing !== null && remaining === 0;
 
   useEvents((event) => {
-    if (event.type === "connection.paired" && event.connection_id === connection.id) setPhase({ kind: "paired", accounts: event.visible_accounts });
+    if (event.type === "connection.paired" && event.connection_id === connection.id) setPhase({ kind: "paired" });
+    // The accounts arrive after the plugin's hello, with the `connected` status, so this dialog refetches the list itself.
+    if ((event.type === "connection.paired" || event.type === "connection.status_changed") && event.connection_id === connection.id) void queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
     if (event.type === "connection.pairing_code_invalidated" && event.connection_id === connection.id) {
       setPairing(null);
       setPhase({ kind: event.reason === "superseded" ? "superseded" : "locked" });
@@ -73,6 +82,11 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
     }
   }
 
+  // `visible_accounts` of `connection.paired` is not used: it is empty by design (S3 pairing step 2). The count comes from the list.
+  const row = connections.data?.find((item) => item.id === connection.id);
+  const searching = phase.kind === "paired" && !moving && row?.status !== "connected";
+  const pairedAccounts = row?.visible_accounts ?? [];
+
   const announce = expired ? t("connections.pairing.expired") : phase.kind === "waiting" && remaining > 0 && remaining <= 60 ? t("connections.pairing.oneMinute") : "";
 
   return (
@@ -80,21 +94,31 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
       <DialogContent>
         <DialogHeader>
           <DialogTitle ref={heading} tabIndex={-1}>
-            {phase.kind === "paired" ? t("connections.pairing.pairedTitle") : moving ? t("connections.pairing.moveTitle") : t("connections.pairing.title", { name: connection.name })}
+            {phase.kind === "paired" ? t(searching ? "connections.pairing.pairedName" : "connections.pairing.connectedName", { name: connection.name }) : moving ? t("connections.pairing.moveTitle") : t("connections.pairing.title", { name: connection.name })}
           </DialogTitle>
           <DialogDescription>{phase.kind === "paired" ? t("connections.pairing.pairedDescription") : t("connections.pairing.share")}</DialogDescription>
         </DialogHeader>
 
         {phase.kind === "paired" ? (
           <div className="grid gap-4">
-            <Alert tone="success">
-              <CircleCheck aria-hidden="true" />
+            {/* One persistent live region: only its content changes, so the final count is announced. */}
+            <Alert tone={searching ? "info" : "success"}>
+              {searching ? <Spinner /> : <CircleCheck aria-hidden="true" />}
               <p>
-                {moving ? t("connections.pairing.moved", { name: connection.name }) : t("connections.pairing.paired", { name: connection.name, count: phase.accounts.length })}
-                {phase.accounts.length > 0 ? ` ${phase.accounts.map((account) => account.platform_account).join(", ")}` : ""}
+                {searching
+                  ? t("connections.pairing.searchingAccounts")
+                  : moving
+                    ? t("connections.pairing.moved", { name: connection.name })
+                    : t("connections.pairing.accountsFound", { count: pairedAccounts.length })}
+                {!searching && !moving && pairedAccounts.length > 0 ? ` ${pairedAccounts.map((account) => account.platform_account).join(", ")}` : ""}
               </p>
             </Alert>
-            <Button onClick={onClose}>{t("common.actions.done")}</Button>
+            {!searching && !moving && pairedAccounts.length > 0 && accountsPath ? (
+              <Button asChild>
+                <Link href={path(accountsPath)}>{t("connections.pairing.bindAccounts")}</Link>
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={onClose}>{t("common.actions.done")}</Button>
           </div>
         ) : (
           <div className="grid gap-4">

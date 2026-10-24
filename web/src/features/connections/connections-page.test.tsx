@@ -98,8 +98,37 @@ describe("ConnectionsPage", () => {
     expect(within(dialog).getByText("Aguardando o plugin…")).toBeInTheDocument();
 
     const events = await stream();
-    act(() => events.emit("connection.paired", { type: "connection.paired", at: "2026-10-23T12:00:00Z", connection_id: id, instance_name: "WIN-CHI", visible_accounts: [{ platform_account: "Sim101", kind: "simulation", oco_location: "local" }] }));
-    expect(await within(dialog).findByText(/conectada\. 1 conta encontrada: Sim101/)).toBeInTheDocument();
+    list([connection({ visible_accounts: [{ platform_account: "Sim101", kind: "simulation", oco_location: "local" }] })]);
+    act(() => events.emit("connection.paired", { type: "connection.paired", at: "2026-10-23T12:00:00Z", connection_id: id, instance_name: "WIN-CHI", visible_accounts: [] }));
+    expect(await within(dialog).findByText(/1 conta encontrada: Sim101/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "“VPS Chicago” conectada" })).toBeInTheDocument();
+  });
+
+  it("shows a neutral line while the paired event has no accounts, then the accounts once the list says connected", async () => {
+    list([connection({ status: "awaiting_pairing", visible_accounts: [] })]);
+    server.use(http.post("*/api/v1/connections", () => HttpResponse.json({ connection: connection({ status: "awaiting_pairing" }), pairing }, { status: 201 })));
+    renderApp(<ConnectionsPage />);
+    const person = userEvent.setup();
+    await person.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0] as HTMLElement);
+    await person.type(await screen.findByLabelText("Nome da conexão"), "VPS Chicago");
+    await person.click(screen.getByRole("button", { name: "Criar" }));
+    const dialog = await screen.findByRole("dialog");
+    const events = await stream();
+
+    act(() => events.emit("connection.paired", { type: "connection.paired", at: "2026-10-23T12:00:00Z", connection_id: id, instance_name: "WIN-CHI", visible_accounts: [] }));
+    const status = (await within(dialog).findByText("Buscando contas…")).closest('[role="status"]');
+    expect(status).not.toBeNull();
+    expect(within(dialog).getByRole("heading", { name: "“VPS Chicago” pareada" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("link", { name: "Vincular contas" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Nenhuma conta encontrada/)).not.toBeInTheDocument();
+
+    list([connection()]);
+    act(() => events.emit("connection.status_changed", { type: "connection.status_changed", at: "2026-10-23T12:00:05Z", connection_id: id, status: "connected" }));
+    await waitFor(() => expect(status).toHaveTextContent("2 contas encontradas: Sim101, Playback101"));
+    expect(status).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "“VPS Chicago” conectada" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Vincular contas" })).toHaveAttribute("href", "/pt-BR/accounts");
+    expect(within(dialog).queryByText("Buscando contas…")).not.toBeInTheDocument();
   });
 
   it("ignores events of other connections", async () => {

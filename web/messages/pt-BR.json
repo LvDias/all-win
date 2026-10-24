@@ -860,10 +860,13 @@
       "newCode": "Gerar novo código",
       "superseded": "Um código mais novo foi gerado para esta conexão. Este não vale mais.",
       "locked": "O pareamento está temporariamente bloqueado por excesso de tentativas erradas. Aguarde alguns minutos e gere um novo código.",
-      "pairedTitle": "Conexão pareada",
       "pairedDescription": "O plugin já está conectado.",
-      "paired": "“{name}” conectada. {count, plural, =0 {Nenhuma conta encontrada.} one {# conta encontrada:} other {# contas encontradas:}}",
-      "moved": "“{name}” agora está em outra máquina."
+      "moved": "“{name}” agora está em outra máquina.",
+      "pairedName": "“{name}” pareada",
+      "connectedName": "“{name}” conectada",
+      "searchingAccounts": "Buscando contas…",
+      "accountsFound": "{count, plural, =0 {Nenhuma conta encontrada.} one {# conta encontrada:} other {# contas encontradas:}}",
+      "bindAccounts": "Vincular contas"
     },
     "move": {
       "title": "Mover “{name}” para outra máquina?",
