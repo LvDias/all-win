@@ -81,6 +81,13 @@ pub enum AccountsError {
     /// 422 `presets.value_not_confirmed`.
     #[error("presets.value_not_confirmed")]
     ValueNotConfirmed,
+    /// 422 `presets.value_not_confirmed` (`/choices/<field>`): `use_preset` on a field the target
+    /// does not confirm.
+    #[error("presets.value_not_confirmed")]
+    UsePresetNotConfirmed { field: RuleField },
+    /// 422 `presets.value_not_defined`: restore of a field the preset has no rule for.
+    #[error("presets.value_not_defined")]
+    ValueNotDefined,
     /// 500 `common.internal`; the detail is logged, never returned.
     #[error("common.internal")]
     Internal(String),
@@ -128,7 +135,10 @@ impl AccountsError {
             Self::VersionNotNewer { .. } => "presets.version_not_newer",
             Self::ChoiceRequired { .. } => "presets.choice_required",
             Self::RequiredFieldUnresolved { .. } => "presets.required_field_unresolved",
-            Self::ValueNotConfirmed => "presets.value_not_confirmed",
+            Self::ValueNotConfirmed | Self::UsePresetNotConfirmed { .. } => {
+                "presets.value_not_confirmed"
+            }
+            Self::ValueNotDefined => "presets.value_not_defined",
             Self::Internal(_) => "common.internal",
         }
     }
@@ -173,7 +183,13 @@ impl AccountsError {
             Self::EvaluationNotApplicable { field: Some(f) } => f,
             Self::VersionNotNewer { pointer } => pointer,
             Self::FirmPlatformUnknownInQuery => "/query/firm_platform",
-            Self::ChoiceRequired { field } => return Some(format!("/choices/{}", field.as_str())),
+            Self::ChoiceRequired { field } | Self::UsePresetNotConfirmed { field } => {
+                return Some(format!("/choices/{}", field.as_str()));
+            }
+            // The maximum position is answered by the top-level field (s16 §3).
+            Self::RequiredFieldUnresolved {
+                field: RuleField::MaxPositionQty,
+            } => "/max_position_qty",
             Self::RequiredFieldUnresolved { field } => {
                 return Some(format!("/rule_values/{}", field.as_str()));
             }
@@ -210,7 +226,8 @@ impl AccountsError {
             Self::VersionNotNewer { .. } => 23,
             Self::ChoiceRequired { .. } => 24,
             Self::RequiredFieldUnresolved { .. } => 25,
-            Self::ValueNotConfirmed => 26,
+            Self::ValueNotConfirmed | Self::UsePresetNotConfirmed { .. } => 26,
+            Self::ValueNotDefined => 27,
             _ => 30,
         };
         (self.http_status(), index)
@@ -262,5 +279,38 @@ mod tests {
         assert_eq!(e.pointer().as_deref(), Some("/opt_ins/automation"));
         assert_eq!(e.http_status(), 422);
         assert!(Refusals::default().first().is_ok());
+    }
+    #[test]
+    fn preset_refusals_point_at_the_field_the_contract_names() {
+        let p = |e: AccountsError| (e.code(), e.http_status(), e.pointer());
+        let field = RuleField::DailyProfitTarget;
+        assert_eq!(
+            p(AccountsError::UsePresetNotConfirmed { field }),
+            (
+                "presets.value_not_confirmed",
+                422,
+                Some("/choices/daily_profit_target".into())
+            )
+        );
+        assert_eq!(
+            p(AccountsError::ValueNotDefined),
+            ("presets.value_not_defined", 422, None)
+        );
+        assert_eq!(
+            p(AccountsError::RequiredFieldUnresolved {
+                field: RuleField::MaxPositionQty
+            })
+            .2
+            .as_deref(),
+            Some("/max_position_qty")
+        );
+        assert_eq!(
+            p(AccountsError::RequiredFieldUnresolved {
+                field: RuleField::Drawdown
+            })
+            .2
+            .as_deref(),
+            Some("/rule_values/drawdown")
+        );
     }
 }

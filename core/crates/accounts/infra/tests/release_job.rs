@@ -212,20 +212,24 @@ async fn releases_suspend_announce_and_never_repeat() {
     );
 
     let mine = outbox(&db, me).await;
-    let types: Vec<&str> = mine.iter().map(|(_, t, _)| t.as_str()).collect();
+    // One transaction writes them with the same `occurred_at`; the ids are UUIDv5, so their order
+    // is not the write order: compare as a set and pick each event by its type.
+    let mut types: Vec<&str> = mine.iter().map(|(_, t, _)| t.as_str()).collect();
+    types.sort_unstable();
     assert_eq!(
         types,
         [
-            "accounts.opt_in_suspended",
             "account.changed",
+            "accounts.opt_in_suspended",
             "presets.version_available"
         ]
     );
-    let (_, _, suspended) = &mine[0];
+    let event = |ty: &str| mine.iter().find(|(_, t, _)| t == ty).unwrap();
+    let (_, _, suspended) = event("accounts.opt_in_suspended");
     assert_eq!(suspended["actor"], "system");
     assert_eq!(suspended["refs"]["account_id"], hit.to_string());
     conforms("accounts.opt_in_suspended", &suspended["details"]);
-    let (va_id, _, va) = &mine[2];
+    let (va_id, _, va) = event("presets.version_available");
     assert_eq!(va["account_ids"], serde_json::json!([hit.to_string()]));
     let theirs_events = outbox(&db, them).await;
     assert!(
@@ -249,8 +253,10 @@ async fn releases_suspend_announce_and_never_repeat() {
     );
     let mine_again = outbox(&db, me).await;
     assert_eq!(mine_again.len(), mine.len(), "no duplicate event");
-    assert_eq!(
-        mine_again[2].0, *va_id,
+    assert!(
+        mine_again
+            .iter()
+            .any(|(id, t, _)| t == "presets.version_available" && id == va_id),
         "the version_available id is deterministic"
     );
 

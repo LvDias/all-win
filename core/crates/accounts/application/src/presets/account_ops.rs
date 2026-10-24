@@ -172,6 +172,10 @@ fn value_error(e: PresetValueError) -> AccountsError {
         PresetValueError::MaxPositionExceedsPreset => AccountsError::MaxPositionExceedsPreset,
         PresetValueError::ChoiceRequired(field) => AccountsError::ChoiceRequired { field },
         PresetValueError::ValueNotConfirmed => AccountsError::ValueNotConfirmed,
+        PresetValueError::UsePresetNotConfirmed(field) => {
+            AccountsError::UsePresetNotConfirmed { field }
+        }
+        PresetValueError::ValueNotDefined => AccountsError::ValueNotDefined,
     }
 }
 

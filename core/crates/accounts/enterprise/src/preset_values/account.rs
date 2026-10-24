@@ -228,6 +228,14 @@ pub enum PresetValueError {
     /// 422 `presets.value_not_confirmed`.
     #[error("presets.value_not_confirmed")]
     ValueNotConfirmed,
+    /// 422 `presets.value_not_confirmed` (`/choices/<field>`): `use_preset` on a field the target
+    /// does not confirm; it would erase the user's value and leave no limit.
+    #[error("presets.value_not_confirmed")]
+    UsePresetNotConfirmed(RuleField),
+    /// 422 `presets.value_not_defined`: `restorePresetValue` on a field the preset has no rule for;
+    /// a restore never removes a limit silently (PROVISIONAL, Esquadro 2026-10-24).
+    #[error("presets.value_not_defined")]
+    ValueNotDefined,
 }
 
 /// The row a requested value needs against the preset rule (`None`: it equals the verified value).
@@ -455,7 +463,7 @@ pub fn apply(
         if field == RuleField::MaxPositionQty {
             let max = match (requested_max, choice(field)) {
                 (Some(m), _) => m,
-                (None, Some(ApplyChoice::KeepMine)) => {
+                (None, Some(ApplyChoice::KeepMine)) if row.edited => {
                     plan.kept.push(field);
                     max_position_qty
                 }
@@ -463,14 +471,15 @@ pub fn apply(
                     Some(v) => v,
                     None => return Err(PresetValueError::RequiredFieldUnresolved(field)),
                 },
-                (None, None) if row.requires_choice || row.cap_conflict => {
+                // No choice, or `keep_mine` on a maximum the user never edited.
+                (None, _) if row.requires_choice || row.cap_conflict => {
                     return Err(if row.cap_conflict {
                         PresetValueError::MaxPositionExceedsPreset
                     } else {
                         PresetValueError::ChoiceRequired(field)
                     });
                 }
-                (None, None) => max_position_qty,
+                (None, _) => max_position_qty,
             };
             plan.max_position_qty = max;
             plan.rows.push((field, max_position_row(max, target, now)?));
@@ -498,12 +507,26 @@ pub fn apply(
             (_, Some(Provenance::NotConfirmed { .. })) if required(field) => {
                 return Err(PresetValueError::RequiredFieldUnresolved(field));
             }
-            (None, _) if row.requires_choice && row.edited => {
-                return Err(PresetValueError::ChoiceRequired(field));
+            (Some(ApplyChoice::UsePreset), Some(Provenance::NotConfirmed { .. })) => {
+                return Err(PresetValueError::UsePresetNotConfirmed(field));
             }
-            // Not edited: follows the new preset (an optional not-confirmed field stays unresolved).
+            // No choice, or `keep_mine` on a field the user never edited: nothing resolves it.
+            _ if row.requires_choice => return Err(PresetValueError::ChoiceRequired(field)),
+            // Not listed as a choice: follows the new preset.
             _ => plan.rows.push((field, None)),
         }
+    }
+    // A requested maximum the diff does not list (the cap and the published values did not change)
+    // still answers to the target's cap (Sonar F1).
+    if let Some(max) = requested_max
+        && max != max_position_qty
+        && !plan
+            .rows
+            .iter()
+            .any(|(f, _)| *f == RuleField::MaxPositionQty)
+    {
+        let row = max_position_row(max, target, now)?;
+        plan.rows.push((RuleField::MaxPositionQty, row));
     }
     Ok(plan)
 }
@@ -520,7 +543,8 @@ pub fn has_evaluation_target(rules: &PresetRules, stored: &[AccountRuleValue]) -
     }
 }
 
-/// `restorePresetValue`: back to the preset's value (`None`: the field is not edited, a no-op).
+/// `restorePresetValue`: back to the preset's value (`None`: the field is not edited, a no-op). The
+/// preset must confirm the field, and define it at all.
 pub fn restore(
     rules: &PresetRules,
     stored: &[AccountRuleValue],
@@ -532,7 +556,10 @@ pub fn restore(
     let not_confirmed = if field == RuleField::MaxPositionQty {
         rules.max_position_qty.is_not_confirmed()
     } else {
-        preset_field(rules, field).is_some_and(|p| p.is_not_confirmed())
+        match preset_field(rules, field) {
+            Some(p) => p.is_not_confirmed(),
+            None => return Err(PresetValueError::ValueNotDefined),
+        }
     };
     if not_confirmed {
         return Err(PresetValueError::ValueNotConfirmed);
@@ -886,6 +913,186 @@ mod tests {
         );
     }
 
+    fn unconfirmed_target() -> (PresetRules, PresetRules) {
+        let mut c = base();
+        c["daily_profit_target"] = verified(json!({"amount": "500.00"}));
+        let mut t = base();
+        t["daily_profit_target"] = not_published();
+        (rules(c), rules(t))
+    }
+
+    fn ask_apply(
+        stored: &[AccountRuleValue],
+        choices: Vec<(RuleField, ApplyChoice)>,
+        values: Vec<RuleValue>,
+    ) -> Result<ApplyPlan, PresetValueError> {
+        let (current, target) = unconfirmed_target();
+        apply(
+            stored,
+            50,
+            &current,
+            &target,
+            &ApplyRequest {
+                choices,
+                values,
+                max_position_qty: None,
+            },
+            now(),
+        )
+    }
+
+    /// Lince M1: a field the target does not confirm needs a choice or the user's value even when it
+    /// was never edited; `keep_mine` keeps nothing there.
+    #[test]
+    fn unconfirmed_targets_of_unedited_fields_need_the_users_value() {
+        let (current, target) = unconfirmed_target();
+        let field = RuleField::DailyProfitTarget;
+        let ask = ask_apply;
+        let rows = diff(&[], 50, &current, &target);
+        let row = rows.iter().find(|r| r.field == field).unwrap();
+        assert!(row.requires_choice && !row.edited);
+        assert_eq!(
+            ask(&[], vec![], vec![]),
+            Err(PresetValueError::ChoiceRequired(field))
+        );
+        assert_eq!(
+            ask(&[], vec![(field, ApplyChoice::KeepMine)], vec![]),
+            Err(PresetValueError::ChoiceRequired(field))
+        );
+        let mine = RuleValue::DailyProfitTarget(money("450.00"));
+        let plan = ask(&[], vec![], vec![mine.clone()]).unwrap();
+        let (_, written) = plan.rows.iter().find(|(f, _)| *f == field).unwrap();
+        assert_eq!(written.as_ref().and_then(|r| r.value.clone()), Some(mine));
+    }
+
+    /// Lince M1: `use_preset` on a field the target does not confirm would erase the user's value
+    /// and leave no limit: 422 `presets.value_not_confirmed`; `keep_mine` keeps the user's.
+    #[test]
+    fn use_preset_refuses_an_unconfirmed_target() {
+        let (current, _) = unconfirmed_target();
+        let field = RuleField::DailyProfitTarget;
+        let ask = ask_apply;
+        let own = RuleValue::DailyProfitTarget(money("400.00"));
+        let stored = fill_from_preset(&current, std::slice::from_ref(&own), 50, now()).unwrap();
+        assert_eq!(
+            ask(&stored, vec![(field, ApplyChoice::UsePreset)], vec![]),
+            Err(PresetValueError::UsePresetNotConfirmed(field))
+        );
+        assert_eq!(
+            ask(&stored, vec![], vec![]),
+            Err(PresetValueError::ChoiceRequired(field))
+        );
+        let plan = ask(&stored, vec![(field, ApplyChoice::KeepMine)], vec![]).unwrap();
+        assert_eq!(plan.kept, [field]);
+        let (_, kept) = plan.rows.iter().find(|(f, _)| *f == field).unwrap();
+        assert_eq!(kept.as_ref().and_then(|r| r.value.clone()), Some(own));
+    }
+
+    /// Sonar F1: the cap holds when the maximum is not a diff row (same cap in both versions).
+    #[test]
+    fn apply_refuses_a_requested_maximum_above_the_cap_when_the_cap_is_unchanged() {
+        let current = rules(base());
+        let mut t = base();
+        t["drawdown"] = verified(json!({"type": "trailing_eod", "amount": "2500.00"}));
+        let target = rules(t);
+        let stored = fill_from_preset(&current, &[], 50, now()).unwrap();
+        assert!(
+            diff(&stored, 50, &current, &target)
+                .iter()
+                .all(|r| r.field != RuleField::MaxPositionQty),
+            "precondition: the maximum is not a diff row"
+        );
+        let ask = |max| {
+            apply(
+                &stored,
+                50,
+                &current,
+                &target,
+                &ApplyRequest {
+                    choices: vec![],
+                    values: vec![],
+                    max_position_qty: Some(max),
+                },
+                now(),
+            )
+        };
+        assert_eq!(ask(9999), Err(PresetValueError::MaxPositionExceedsPreset));
+        assert_eq!(ask(51), Err(PresetValueError::MaxPositionExceedsPreset));
+        let plan = ask(30).unwrap();
+        assert_eq!(plan.max_position_qty, 30);
+        let (_, row) = plan
+            .rows
+            .iter()
+            .find(|(f, _)| *f == RuleField::MaxPositionQty)
+            .unwrap();
+        assert_eq!(row.as_ref().map(|r| r.origin), Some(RuleOrigin::Edited));
+        let plan = ask(50).unwrap();
+        assert!(
+            plan.rows
+                .iter()
+                .all(|(f, _)| *f != RuleField::MaxPositionQty)
+        );
+    }
+
+    /// `keep_mine` answers only an edited maximum (HTTP 6.4.0).
+    #[test]
+    fn keep_mine_does_not_answer_an_unedited_maximum() {
+        let current = rules(base());
+        let mut t = base();
+        t["max_position_qty"] = conflict(json!({"contracts": 40}), json!({"contracts": 60}));
+        let target = rules(t);
+        let stored = fill_from_preset(&current, &[], 50, now()).unwrap();
+        let rows = diff(&stored, 50, &current, &target);
+        let row = rows
+            .iter()
+            .find(|r| r.field == RuleField::MaxPositionQty)
+            .unwrap();
+        assert!(row.requires_choice && !row.edited);
+        assert_eq!(
+            apply(
+                &stored,
+                50,
+                &current,
+                &target,
+                &ApplyRequest {
+                    choices: vec![(RuleField::MaxPositionQty, ApplyChoice::KeepMine)],
+                    values: vec![],
+                    max_position_qty: None,
+                },
+                now(),
+            ),
+            Err(PresetValueError::ChoiceRequired(RuleField::MaxPositionQty))
+        );
+    }
+
+    /// `use_preset` on a required field the target does not confirm: the required refusal first.
+    #[test]
+    fn use_preset_on_a_required_unconfirmed_field_is_unresolved() {
+        let current = rules(base());
+        let mut t = base();
+        t["drawdown"] = not_published();
+        let target = rules(t);
+        let stored =
+            fill_from_preset(&current, std::slice::from_ref(&dd("1500.00")), 50, now()).unwrap();
+        assert_eq!(
+            apply(
+                &stored,
+                50,
+                &current,
+                &target,
+                &ApplyRequest {
+                    choices: vec![(RuleField::Drawdown, ApplyChoice::UsePreset)],
+                    values: vec![],
+                    max_position_qty: None,
+                },
+                now(),
+            ),
+            Err(PresetValueError::RequiredFieldUnresolved(
+                RuleField::Drawdown
+            ))
+        );
+    }
+
     #[test]
     fn restore_rules() {
         let r = rules(base());
@@ -909,6 +1116,20 @@ mod tests {
         assert_eq!(
             restore(&nc, &stored, RuleField::Drawdown),
             Err(PresetValueError::ValueNotConfirmed)
+        );
+    }
+
+    /// A restore never removes a limit silently: an edited field the preset has no rule for is
+    /// refused (PROVISIONAL, Esquadro 2026-10-24).
+    #[test]
+    fn restore_refuses_a_field_the_preset_does_not_define() {
+        let r = rules(base());
+        let own = RuleValue::DailyProfitTarget(money("400.00"));
+        let stored = fill_from_preset(&r, &[own], 50, now()).unwrap();
+        assert!(find(&stored, RuleField::DailyProfitTarget).is_some());
+        assert_eq!(
+            restore(&r, &stored, RuleField::DailyProfitTarget),
+            Err(PresetValueError::ValueNotDefined)
         );
     }
 }
