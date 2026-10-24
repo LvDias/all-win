@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 5.1.1
+  version: 5.2.0
   description: |
     Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.
     Covers V1-S1 (TradingView webhook ingress), V1-S3 (passwordless sign-in by one-time code, invitations,
@@ -1391,6 +1391,14 @@ components:
       type: string
       minLength: 1
       maxLength: 60
+      description: |
+        A user-chosen name (sources, connections, and every other field that uses this schema).
+        The Core trims leading and trailing white space before validating and storing, and checks the
+        1–60 length on the TRIMMED value. The schema's `minLength` / `maxLength` are the client-side
+        form: clients send trimmed names (Crivo R2, the approved S3 implementation). A name that is blank after trimming,
+        contains a control character (Unicode Cc) or contains a token-shaped part (`aw[kd]_…`, a source
+        or device token, ADR-0003 §7) is refused with 400 `common.invalid_request` and the field's
+        pointer (e.g. `/name`). Nothing is stored (5.2.0, Crivo L1, Esquadro).
     TokenBody:
       type: object
       additionalProperties: false
@@ -1493,8 +1501,7 @@ components:
           `connection_unpair` (target = connection), `account_opt_in_accept` (target = account; automation or copy,
           setAccountOptIn, applyPresetVersion and the S5/S7 update operations), `account_create_opt_in_accept` (no
           target; S5 create with an accepted opt-in), `admin_invitation_create`.
-        - `route_enable` (target = account; createRoute/updateRoute enabling an automated-source route to an account
-          whose automation was not accepted with step-up: a real account or opt-in not_required).
+        - `route_enable` (target = account; createRoute/updateRoute switching any route on, Q35 / S3 AC-10).
         - `account_binding_change` (target = account; updateAccount changing the platform binding of an account that
           receives automation: opt-in accepted or an active automated route).
       enum: [source_create, source_rotate, connection_create, pairing_code_new, connection_unpair, account_opt_in_accept, account_create_opt_in_accept, admin_invitation_create, route_enable, account_binding_change]

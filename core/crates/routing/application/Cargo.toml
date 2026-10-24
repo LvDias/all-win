@@ -18,4 +18,6 @@ shared-kernel.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+jsonschema.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+yaml_serde.workspace = true

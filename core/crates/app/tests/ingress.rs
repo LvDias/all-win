@@ -763,3 +763,57 @@ async fn p95_latency_is_well_under_budget() {
     eprintln!("ingress p95 in-process: {p95:?}");
     assert!(p95 < std::time::Duration::from_millis(300), "p95 {p95:?}");
 }
+
+/// Crivo L1 on 196a30a (Architect): a source whose name passes the identity rules at its edge
+/// (60 characters, non-ASCII) is audited with that exact name, and its events are never
+/// dead-lettered.
+#[tokio::test]
+async fn an_edge_case_valid_source_name_is_audited_and_never_dead_lettered() {
+    let db = db_or_skip!();
+    let app = wire(db, &config());
+    let s = seed(db).await;
+    let name = "é".repeat(60);
+    let mut tx = db.owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(s.user_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let renamed = sqlx::query("UPDATE identity.source SET name = $1 WHERE user_id = $2")
+        .bind(&name)
+        .bind(s.user_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(renamed.rows_affected(), 1);
+    tx.commit().await.unwrap();
+
+    let (status, _, _) = send(
+        &app.state,
+        post_json(&ingress_path(&s.token), instruction(&unique_message_id())),
+    )
+    .await;
+    assert_eq!(status, 200);
+    drain(&app, db, s.user_id).await;
+
+    let (dead, published): (i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE dead_lettered_at IS NOT NULL),
+                count(*) FILTER (WHERE published_at IS NOT NULL)
+           FROM app.outbox WHERE user_id = $1",
+    )
+    .bind(s.user_id)
+    .fetch_one(&db.worker)
+    .await
+    .unwrap();
+    assert_eq!((dead, published), (0, 1));
+    let audited: Vec<(String, Option<String>)> = as_user(db, s.user_id, |c| {
+        Box::pin(async move {
+            sqlx::query_as("SELECT code, source_name FROM audit.audit_entry")
+                .fetch_all(c)
+                .await
+                .unwrap()
+        })
+    })
+    .await;
+    assert_eq!(audited, [("ingress.received".to_owned(), Some(name))]);
+}

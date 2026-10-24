@@ -2,25 +2,27 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 macro_rules! id {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
+            ::serde::Serialize, ::serde::Deserialize,
+        )]
         #[serde(transparent)]
-        pub struct $name(Uuid);
+        pub struct $name(::uuid::Uuid);
 
         impl $name {
             pub fn new_v7() -> Self {
-                Self(Uuid::now_v7())
+                Self(::uuid::Uuid::now_v7())
             }
 
-            pub const fn from_uuid(id: Uuid) -> Self {
+            pub const fn from_uuid(id: ::uuid::Uuid) -> Self {
                 Self(id)
             }
 
-            pub const fn as_uuid(&self) -> Uuid {
+            pub const fn as_uuid(&self) -> ::uuid::Uuid {
                 self.0
             }
         }
@@ -32,6 +34,7 @@ macro_rules! id {
         }
     };
 }
+pub(crate) use id;
 
 id!(
     /// Core-assigned id of an accepted instruction (UUIDv7).

@@ -248,18 +248,49 @@ components:
       additionalProperties: false
       required: [reason_code, closed_qty, closed_side]
       description: |
-        Q74 (Vigia I1): a `reverse` that closed the position and skipped the open, because the account is
-        barred for entries or has no room. Always notified, one per occurrence, whatever the gate
+        Q74 (Vigia I1): a `reverse` that closed the position and skipped the open. The cause is one of the
+        four Q74 bars, or one of two cases with the same outcome by existing rules: no room (M = 0, ADR-0003
+        §4.2) or the open expired at routing (T1). Always notified, one per occurrence, whatever the gate
         (including `routing.limits_pending`, which is otherwise not notified). It replaces the gate's own
-        grouped notification for that occurrence. The audit entry carries the gate code
-        (`DetailsRoutingDecision.reverse_closed_qty`).
+        grouped notification for that occurrence. Audit entries behind it: at routing (gates, M = 0,
+        `routing.expired`) the routing entry carries the gate code and
+        `DetailsRoutingDecision.reverse_closed_qty`; in the gateway-queue exception (5.1.1) the decision
+        entry stays `routing.routed`, the open leg's entry is `execution.expired` and the closed quantity
+        is in the flatten's execution entries; under Q75 the routing entry is `routing.out_of_sync` with
+        `expected_flat` and no `reverse_closed_qty`, and the closed quantity is in the flatten's
+        `execution.filled` entries. Q75 (5.2.0, decision 4b A): when the account is
+        out of sync and the expected position was flat (`expected_flat`), nothing is notified at the
+        decision. When the flatten is terminal: filled → this notification with `reason_code`
+        `routing.out_of_sync` and `closed_qty` / `closed_side` from the flatten's fills (when the real
+        position was already the reverse side, `closed_side` is that side); `command.already_flat` → not
+        this code but `routing.out_of_sync_flatten` (`ParamsOutOfSyncFlatten`), and the grouped
+        `routing.out_of_sync` notification covers the skipped open.
       properties:
         reason_code:
           type: string
           enum: [routing.out_of_sync, routing.risk_blocked, routing.limits_pending, routing.no_bracket_profile, routing.max_position_reached, routing.expired]
           description: The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL exceeded (5.1.0), or when the open leg expired in the gateway queue under the ADR-0004 §5 reverse exception (5.1.1).
-        closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`).' }
-        closed_side: { type: string, enum: [long, short], description: The side of the position that was closed. }
+        closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`). Q75 (`expected_flat`): the quantity filled by the flatten.' }
+        closed_side: { type: string, enum: [long, short], description: 'The side of the position that was closed (Q75: from the flatten''s fills).' }
+    ParamsOutOfSyncFlatten:
+      type: object
+      additionalProperties: false
+      required: [action, result]
+      description: |
+        Q75 (5.2.0, ADR-0003 r4): a flatten sent on an out-of-sync account whose expected position was
+        flat (`DetailsRoutingDecision.expected_flat`) ended in a terminal success. Sent once per such
+        flatten, except a `reverse` whose flatten filled, which is `routing.reverse_close_only`. As every
+        flatten, it first cancelled every working order on the contract, manual and other All Win orders
+        included, even when the position turned out flat; the text says so. The Core does not count the
+        cancelled orders (the adapter does not correlate them with the flatten).
+      properties:
+        action: { type: string, enum: [close, reverse], description: The source instruction's action. }
+        result: { type: string, enum: [filled, already_flat], description: '`filled`: the account held a position the Core did not expect, now closed; `already_flat`: `command.already_flat`.' }
+        closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'Only with `filled`: the quantity filled by the flatten.' }
+        closed_side: { type: string, enum: [long, short], description: 'Only with `filled`: the side of the position that was closed.' }
+      if: { properties: { result: { const: filled } } }
+      then: { required: [closed_qty, closed_side] }
+      else: { not: { anyOf: [ { required: [closed_qty] }, { required: [closed_side] } ] } }
     ParamsPresetNewVersion:
       type: object
       additionalProperties: false
@@ -286,7 +317,10 @@ components:
         routing.out_of_sync: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.expired: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.no_bracket_profile: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.instrument_unavailable: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.nothing_to_reduce: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.reverse_close_only: { $ref: '#/components/schemas/ParamsReverseCloseOnly' }
+        routing.out_of_sync_flatten: { $ref: '#/components/schemas/ParamsOutOfSyncFlatten' }
         risk.warning: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.limit_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }

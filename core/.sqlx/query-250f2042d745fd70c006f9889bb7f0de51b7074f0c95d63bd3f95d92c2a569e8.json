@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM routing.routing_decision\n                        WHERE user_id = $1 AND instruction_id = $2 AND account_id = $3\n                          AND leg = 'close') AS \"close!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "close!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "250f2042d745fd70c006f9889bb7f0de51b7074f0c95d63bd3f95d92c2a569e8"
+}
