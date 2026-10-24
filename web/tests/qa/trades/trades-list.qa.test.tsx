@@ -175,6 +175,7 @@ describe("AC-4 filters", () => {
   });
 });
 
+const EMPTY_ARCHIVED_TITLE = "Seus trades estão em contas arquivadas.";
 describe("Q79 archived accounts (decided)", () => {
   it("excluded by default: switch off, nothing sent on the list or the summary; turning it on writes archived=1 to the URL", async () => {
     serve([{ trades: [trade()] }]); renderApp(<TradesPage />);
@@ -197,6 +198,30 @@ describe("Q79 archived accounts (decided)", () => {
     expect(screen.getAllByText(/\(excluída\)/).length).toBeGreaterThan(0);
     await userEvent.setup().click(screen.getByRole("button", { name: "Limpar filtros" }));
     expect(navigation.replace).toHaveBeenCalledWith(expect.not.stringContaining("archived"));
+  });
+  it("empty list with NO filters but trades only on archived accounts: not 'first use' - says so and offers to include archived; the probe asks include_archived=true and is not asked when rows exist", async () => {
+    const probes: URL[] = [];
+    serve([{ trades: [] }], summary({ count: 0 }));
+    server.use(http.get("*/api/v1/trades/summary", ({ request }) => {
+      const u = new URL(request.url);
+      if (u.searchParams.get("include_archived") === "true") { probes.push(u); return HttpResponse.json(summary({ count: 7 })); }
+      return HttpResponse.json(summary({ count: 0 }));
+    }));
+    renderApp(<TradesPage />);
+    expect(await screen.findByText(EMPTY_ARCHIVED_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum trade ainda.")).not.toBeInTheDocument();
+    expect(probes.length).toBeGreaterThan(0);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Incluir contas arquivadas" }));
+    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived=1"));
+  });
+  it("probe says the user has no trade at all (archived included): real first use; and it is not even asked when the list has rows", async () => {
+    let probes = 0;
+    serve([{ trades: [trade()] }]);
+    server.use(http.get("*/api/v1/trades/summary", ({ request }) => { if (new URL(request.url).searchParams.get("include_archived") === "true") probes++; return HttpResponse.json(summary()); }));
+    renderApp(<TradesPage />);
+    await screen.findAllByRole("button", { name: "Apex 50K" });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(probes).toBe(0);
   });
   it("the cursor of an archived-inclusive list is not reused after switching it off (a new query starts from the first page)", async () => {
     navigation.search = "archived=1";
@@ -300,7 +325,7 @@ describe("AC-8 detail: captured read-only, manual edit/delete", () => {
     expect(await screen.findByText("Este trade mudou em outro lugar.")).toBeInTheDocument();
   });
   it("detail of another user's trade (404) is not found, no data from the row leaks", async () => {
-    serve([{ trades: [] }]);
+    serve([{ trades: [] }], summary({ count: 0 }));
     renderApp(<TradesPage />);
     // the list can't open an id it doesn't list; the detail query itself must map 404 safely
     expect(await screen.findByText("Nenhum trade ainda.")).toBeInTheDocument();

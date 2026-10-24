@@ -149,6 +149,14 @@ describe("Q55 basis line and AC-5 empties", () => {
     expect(document.body.textContent).not.toMatch(/NaN|0,0\s?%|0 s\b/);
     expect(screen.queryByRole("link", { name: "Registrar trade" })).not.toBeInTheDocument();
   });
+  it("first-use probe counts archived accounts: it asks include_archived=true, and trades that exist only on archived accounts are NOT first use", async () => {
+    const probes: URL[] = [];
+    server.use(http.get("*/api/v1/trades/summary", ({ request }) => { const u = new URL(request.url); probes.push(u); return HttpResponse.json({ count: u.searchParams.get("include_archived") === "true" ? 4 : 0, total_pnl: "0.00" }); }));
+    serve(empty); renderApp(<PerformancePage />);
+    expect(await screen.findByText("Nenhum trade neste filtro.")).toBeInTheDocument();
+    expect(probes.some((u) => u.searchParams.get("include_archived") === "true")).toBe(true);
+    expect(screen.queryByText("Ainda não há trades para analisar.")).not.toBeInTheDocument();
+  });
   it("first use (no filters, no trades): guidance with links to connections and register", async () => {
     serve(empty); renderApp(<PerformancePage />);
     expect(await screen.findByText("Ainda não há trades para analisar.")).toBeInTheDocument();
