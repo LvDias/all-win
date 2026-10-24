@@ -126,6 +126,8 @@ pub enum StepUpAction {
     AdminInvitationCreate,
     RouteEnable,
     AccountBindingChange,
+    AccountSyncClear,
+    TradingDayRestart,
 }
 
 impl StepUpAction {
@@ -142,6 +144,8 @@ impl StepUpAction {
             Self::AdminInvitationCreate => A::AdminInvitationCreate,
             Self::RouteEnable => A::RouteEnable,
             Self::AccountBindingChange => A::AccountBindingChange,
+            Self::AccountSyncClear => A::AccountSyncClear,
+            Self::TradingDayRestart => A::TradingDayRestart,
         }
     }
 }
