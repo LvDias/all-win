@@ -43,6 +43,24 @@ describe("AccountFormPage (edit)", () => {
     expect(calls.update[0]).not.toHaveProperty("opt_ins");
   });
 
+  it("keeps a preset account on its preset: sends preset_version_id and firm_platform, never the manual fields or rule_values", async () => {
+    const presetVersion = "00000000-0000-4000-8000-0000000000c1";
+    const acc = propAccount({ row_version: 7, preset_version_id: presetVersion, firm_platform: "rithmic", firm_name: "Apex", plan_name: "Plan A", phase: "evaluation", size_amount: "50000.00" });
+    const { handlers, calls } = accountHandlers([acc]);
+    server.use(connectionsHandler, ...handlers);
+    const user = userEvent.setup();
+    renderAccounts(<AccountFormPage accountId={acc.id} />);
+    const name = await screen.findByLabelText("Nome");
+    expect(screen.queryByLabelText("Firma")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Tamanho (USD)")).not.toBeInTheDocument();
+    await user.clear(name);
+    await user.type(name, "Renomeada");
+    await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+    await waitFor(() => expect(calls.update).toHaveLength(1));
+    expect(calls.update[0]).toMatchObject({ row_version: 7, display_name: "Renomeada", preset_version_id: presetVersion, firm_platform: "rithmic" });
+    for (const forbidden of ["firm_name", "plan_name", "phase", "size_amount", "rule_values"]) expect(calls.update[0]).not.toHaveProperty(forbidden);
+  });
+
   it("shows the reload alert on a version conflict and keeps typed values", async () => {
     const acc = propAccount({ row_version: 7 });
     const { handlers } = accountHandlers([acc]);

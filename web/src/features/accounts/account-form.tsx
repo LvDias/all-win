@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useId, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
+import { formatMoney } from "@/shared/format";
 import { ApiError } from "@/shared/api/client";
 import { errorMessage } from "@/shared/api/error-message";
 import { defaultLocale, isLocale } from "@/shared/i18n/config";
@@ -106,7 +107,10 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
       if (first && first !== "automationChoice" && first !== "automationAck") form.setFocus(first);
       return;
     }
-    const body = toWriteBody(merged, { kind: account.kind, locale, automationRuleVersionId: rule?.id });
+    // A preset account stays on its preset: only the selection is sent, never the manual fields (that would switch it to manual
+    // mode and drop the preset link and each value's origin). `rule_values` is omitted: the stored values are kept (contract).
+    const preset = account.preset_version_id ? { presetVersionId: account.preset_version_id, firmPlatform: account.firm_platform ?? null, ruleValues: {} } : undefined;
+    const body = toWriteBody(merged, { kind: account.kind, locale, automationRuleVersionId: rule?.id, ...(preset ? { preset } : {}) });
     const send = (proof?: { challenge_id: string; code: string }) => update.mutateAsync(toUpdateBody({ ...body, ...(proof ? { step_up: proof } : {}) }, account.row_version));
     try {
       // Always through the runner: it sends without proof first and only opens the dialog when the Core asks, which also covers
@@ -171,7 +175,7 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
 
       <Card className="space-y-4 p-4">
         <h2 className="text-base font-semibold">{t("accounts.form.sections.data")}</h2>
-        <DataFields form={form} formId={formId} editing withFirm={prop} />
+        <DataFields form={form} formId={formId} editing withFirm={prop && !account.preset_version_id} preset={account.preset_version_id ? { sizeText: formatMoney(account.size_amount, locale), maxPositionCap: null } : undefined} />
       </Card>
 
       <Card className="space-y-3 p-4">

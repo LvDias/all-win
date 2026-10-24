@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { ApiError } from "@/shared/api/client";
@@ -13,6 +13,7 @@ import { defaultLocale, isLocale } from "@/shared/i18n/config";
 import { withLocale } from "@/shared/i18n/paths";
 import { StepUpCancelled } from "@/shared/session/step-up";
 import { Alert } from "@/shared/ui/alert";
+import { Button } from "@/shared/ui/button";
 import { Label } from "@/shared/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -21,6 +22,7 @@ import { useConnections } from "./api/use-connections";
 import { getNearestProfileSizeCandidates } from "./api/accounts-api";
 import { useCreateAccount, useOptInRules } from "./api/use-accounts";
 import type { AccountKind } from "./api/types";
+import type { PresetSlot } from "./api/preset-slot";
 import { OptInFormSection } from "./opt-in-form-section";
 import { emptyAccountForm, formErrorKeys, fieldFromPointer, stepSchemas, toWriteBody, type AccountFormValues } from "./lib/account-form";
 import { useStepUpRunner, type StepUpRunner } from "./lib/use-step-up";
@@ -30,7 +32,7 @@ import { PageHeader } from "@/shared/components/page-header";
  * "Nova conta" as a step-by-step flow (S5 rev. 4 §4.0, F§10.1). Prop: Tipo → Firma e plano → Dados da conta →
  * Conta na plataforma → Ordens automatizadas → Revisar. Real: Tipo → Dados → Conta na plataforma → Revisar.
  */
-export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
+export function AccountCreateStepper({ stepUp, preset }: { stepUp?: StepUpRunner; preset?: PresetSlot }) {
   const t = useTranslations();
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
@@ -57,11 +59,28 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
 
   const kind: AccountKind | null = values.kind === "" ? null : values.kind;
   const firmFilled = values.firmName.trim() !== "" && values.planName.trim() !== "" && values.phase.trim() !== "";
-  const rules = useOptInRules(null, null, kind === "prop" && firmFilled);
+  // With a preset slot the firm step is the picker; "Cadastrar sem preset" (Q40) falls back to the free-text firm, plan and phase.
+  const [manual, setManual] = useState(false);
+  const withPreset = preset !== undefined && kind === "prop" && !manual;
+  const outcome = withPreset ? (preset.outcome ?? null) : null;
+  const presetReady = outcome?.valid === true;
+  const presetId = outcome?.presetVersionId ?? "";
+  const presetSize = outcome?.sizeAmount;
+  const presetDefault = outcome?.maxPositionDefault;
+  // The picker lives outside the form; the form learns only what the steps validate: a resolved preset, its size, a default cap.
+  useEffect(() => {
+    form.setValue("presetVersionId", withPreset && presetReady ? presetId : "");
+    if (withPreset && presetSize !== undefined) form.setValue("size", presetSize);
+  }, [form, withPreset, presetReady, presetId, presetSize]);
+  useEffect(() => {
+    if (withPreset && presetDefault != null) form.setValue("maxPosition", String(presetDefault));
+  }, [form, withPreset, presetId, presetDefault]);
+  const rules = useOptInRules(outcome?.presetVersionId ?? null, outcome?.firmPlatform ?? null, kind === "prop" && (withPreset ? presetReady : firmFilled));
   const rule = rules.data?.automation;
   // The step stays while the rule is unknown; it leaves once the firm is known to allow automation (nothing to ask).
   const optInApplies = kind === "prop" && (rule === undefined || rule.firm_stance !== "allowed");
-  const schemas = useMemo(() => stepSchemas(locale, { automationRuleId: rule?.id }), [locale, rule?.id]);
+  const maxPositionCap = outcome?.maxPositionCap ?? null;
+  const schemas = useMemo(() => stepSchemas(locale, { automationRuleId: rule?.id, maxPositionCap }), [locale, rule?.id, maxPositionCap]);
 
   const moneyOrNull = (input: string) => {
     const parsed = parseDecimalInput(input, locale, { scale: 2 });
@@ -103,22 +122,32 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
     {
       id: "firm",
       label: t("accounts.form.steps.firm"),
-      fields: ["firmName", "planName", "phase"],
+      fields: withPreset ? ["presetVersionId"] : ["firmName", "planName", "phase"],
       when: (v) => v.kind === "prop",
-      schema: schemas.firm,
-      content: <FirmFields form={form} formId={formId} />,
-      review: (v) => [
-        { label: t("accounts.form.fields.firm"), value: v.firmName },
-        { label: t("accounts.form.fields.plan"), value: v.planName },
-        { label: t("accounts.form.fields.phase"), value: v.phase },
-      ],
+      schema: withPreset ? schemas.preset : schemas.firm,
+      content: withPreset ? (
+        preset.render({ switchToManual: () => setManual(true), error: fieldError("presetVersionId") })
+      ) : (
+        <>
+          {preset ? <Button type="button" variant="link" className="h-auto justify-start px-0" onClick={() => setManual(false)}>{t("accounts.form.preset.choose")}</Button> : null}
+          <FirmFields form={form} formId={formId} />
+        </>
+      ),
+      review: (v) =>
+        withPreset
+          ? [{ label: t("accounts.form.steps.firm"), value: outcome?.label ?? null }]
+          : [
+              { label: t("accounts.form.fields.firm"), value: v.firmName },
+              { label: t("accounts.form.fields.plan"), value: v.planName },
+              { label: t("accounts.form.fields.phase"), value: v.phase },
+            ],
     },
     {
       id: "data",
       label: t("accounts.form.sections.data"),
       fields: ["displayName", "size", "profileSize", "maxPosition", "multiplier"],
       schema: schemas.data,
-      content: <DataFields form={form} formId={formId} editing={false} withFirm={false} profileSizeCandidates={profileSizeCandidates} />,
+      content: <DataFields form={form} formId={formId} editing={false} withFirm={false} profileSizeCandidates={withPreset ? undefined : profileSizeCandidates} preset={withPreset && outcome ? { sizeText: moneyOrNull(outcome.sizeAmount) ?? outcome.sizeAmount, maxPositionCap: outcome.maxPositionCap } : undefined} />,
       review: (v) => [
         { label: t("accounts.form.fields.name"), value: v.displayName },
         { label: t("accounts.form.fields.size"), value: moneyOrNull(v.size) },
@@ -161,8 +190,8 @@ export function AccountCreateStepper({ stepUp }: { stepUp?: StepUpRunner }) {
   async function onSubmit(v: AccountFormValues): Promise<SubmitError[] | void> {
     if (kind === null) return;
     const withChoice = optInApplies && v.automationChoice !== "";
-    const body = toWriteBody({ ...v, automationChoice: optInApplies ? v.automationChoice : "" }, { kind, locale, automationRuleVersionId: rule?.id });
-    const payload = { ...body, kind, ...(profileSizeCandidates && v.profileSize !== "" ? { profile_size: v.profileSize } : {}) };
+    const body = toWriteBody({ ...v, automationChoice: optInApplies ? v.automationChoice : "" }, { kind, locale, automationRuleVersionId: rule?.id, ...(withPreset && outcome ? { preset: outcome } : {}) });
+    const payload = { ...body, kind, ...(!withPreset && profileSizeCandidates && v.profileSize !== "" ? { profile_size: v.profileSize } : {}) };
     const idempotencyKey = keyFor(payload);
     const send = (proof?: { challenge_id: string; code: string }) =>
       create.mutateAsync({ body: { ...payload, ...(proof ? { step_up: proof } : {}) }, idempotencyKey });

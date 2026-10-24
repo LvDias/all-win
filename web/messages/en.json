@@ -177,8 +177,7 @@
       "source_mismatch": "The instruction does not match the source that sent it.",
       "unsupported_instrument": "Unsupported instrument.",
       "unsupported_media_type": "Unsupported content type.",
-      "unsupported_version": "Unsupported instruction version.",
-      "signal_type_not_allowed_for_source": "The signal type is not allowed for this source."
+      "unsupported_version": "Unsupported instruction version."
     },
     "invites": {
       "email_send_failed": "Could not send the invitation email.",
@@ -220,6 +219,13 @@
     },
     "trades": {
       "idempotency_key_reused": "This form already recorded a trade. Check the trades list before trying again."
+    },
+    "presets": {
+      "choice_required": "Choose whether to keep your value or use the preset's for this field.",
+      "required_field_unresolved": "Resolve this value to continue: pick one of the published values or type another.",
+      "value_not_confirmed": "The preset has no confirmed value for this field, so it cannot be restored. Edit the value yourself.",
+      "version_not_newer": "That version is not newer than the one on the account. Reload and review again.",
+      "version_superseded": "A newer preset version came out while you were reviewing. Review again."
     }
   },
   "accounts": {
@@ -318,7 +324,9 @@
         "maxPositionHelp": "Contract limit All Win sends to this account. Instructions above it are cut and logged.",
         "maxPositionShrink": "Open positions are not changed.",
         "multiplier": "Multiplier",
-        "multiplierHelp": "Executed quantity = instruction quantity × multiplier."
+        "multiplierHelp": "Executed quantity = instruction quantity × multiplier.",
+        "sizeFromPreset": "Taken from the preset.",
+        "maxPositionPresetCap": "At most {n} contracts, the preset's limit."
       },
       "binding": {
         "label": "NinjaTrader account",
@@ -345,7 +353,9 @@
         "optInRequired": "Choose whether this account accepts automated orders.",
         "ackRequired": "Confirm that you read the rule to accept.",
         "summary": "Fix the highlighted fields.",
-        "sizeAmbiguous": "Type the decimal part explicitly, for example 25000.00 or 2.5."
+        "sizeAmbiguous": "Type the decimal part explicitly, for example 25000.00 or 2.5.",
+        "maxPositionAbovePreset": "Can't exceed the preset's maximum.",
+        "presetRequired": "Choose a preset and resolve the required values."
       },
       "success": {
         "created": "Account created.",
@@ -361,6 +371,9 @@
       "profileSize": {
         "label": "Starting profile",
         "help": "The account size is exactly between two standard sizes. Choose which one to copy stops and targets from; balance and limits use the account size."
+      },
+      "preset": {
+        "choose": "Choose a firm preset"
       }
     },
     "optIn": {
@@ -579,7 +592,8 @@
     "accounts": "Accounts",
     "userMenuName": "{email}, user menu",
     "trades": "Trades",
-    "performance": "Performance"
+    "performance": "Performance",
+    "presets": "Presets"
   },
   "security": {
     "title": "Security",
@@ -1435,6 +1449,292 @@
       "filteredTitle": "No trades match these filters.",
       "filteredBody": "Change or clear the filters to see performance.",
       "noTrades": "No trades in this filter."
+    }
+  },
+  "stanceBadge": {
+    "feminine": {
+      "allowed": "Allowed",
+      "forbidden": "Forbidden",
+      "conditional": "Conditional",
+      "unknown": "Unknown",
+      "not_confirmed": "Not confirmed",
+      "varies_by_platform": "Varies by platform",
+      "required": "Required",
+      "not_required": "Not required"
+    },
+    "masculine": {
+      "allowed": "Allowed",
+      "forbidden": "Forbidden",
+      "conditional": "Conditional",
+      "unknown": "Unknown",
+      "not_confirmed": "Not confirmed",
+      "varies_by_platform": "Varies by platform",
+      "required": "Required",
+      "not_required": "Not required"
+    },
+    "device": {
+      "allowed": "Allowed",
+      "forbidden": "Forbidden",
+      "conditional": "Conditional",
+      "unknown": "Unknown",
+      "not_confirmed": "Unknown",
+      "varies_by_platform": "Varies by platform",
+      "required": "Required",
+      "not_required": "Not required"
+    }
+  },
+  "stanceBlock": {
+    "heading": {
+      "automation": "Automation",
+      "copy": "Copying",
+      "vps": "VPS / server",
+      "personalDevice": "Personal device"
+    },
+    "summary": {
+      "automation": {
+        "allowed": "{firm} allows automated trading.",
+        "forbidden": "{firm} prohibits automated trading in its official rules.",
+        "conditional": "{firm} only allows automated trading under conditions. Read the rule.",
+        "unknown": "We found no official {firm} rule about automation.",
+        "not_confirmed": "{firm}'s official pages disagree about automation."
+      },
+      "copy": {
+        "allowed": "{firm} allows copying trades between accounts.",
+        "forbidden": "{firm} prohibits copying trades between accounts in its official rules.",
+        "conditional": "{firm} only allows copying under conditions. Read the rule.",
+        "unknown": "We found no official {firm} rule about copying.",
+        "not_confirmed": "{firm}'s official pages disagree about copying."
+      },
+      "vps": {
+        "allowed": "{firm} allows using a VPS/server.",
+        "forbidden": "{firm} prohibits using a VPS/server in its official rules.",
+        "conditional": "{firm} only allows a VPS/server under conditions. Read the rule.",
+        "unknown": "We found no official {firm} rule about a VPS/server.",
+        "not_confirmed": "{firm}'s official pages disagree about a VPS/server."
+      },
+      "personalDevice": {
+        "required": "{firm} requires orders to come from your personal device.",
+        "not_required": "{firm} does not require a personal device.",
+        "unknown": "We found no official {firm} rule about a personal device.",
+        "not_confirmed": "The official pages disagree on this point."
+      }
+    },
+    "summaryLabel": "All Win summary (not legal advice):",
+    "diverge": "The official pages disagree:",
+    "unknownSearched": "We searched the official pages on {date} and found no rule.",
+    "verifiedOn": "Verified on {date}"
+  },
+  "conflictPicker": {
+    "intro": "The firm's official pages disagree. Choose a value or type another:",
+    "other": "Another value",
+    "source": "{page} · accessed on {date}",
+    "newTab": "(opens in a new tab)"
+  },
+  "presets": {
+    "manualOnly": "Manual tracking only",
+    "manualOnlyWorks": {
+      "title": "What works",
+      "text": "Risk rules, 80% alerts, manual trades and performance."
+    },
+    "manualOnlyFails": {
+      "title": "What does not work",
+      "text": "Signal routing and copying."
+    },
+    "catalog": {
+      "title": "Firm presets",
+      "intro": "Official rules and positions of each firm, with source and date. All Win shows the firm's text; it is not legal advice.",
+      "search": "Search firm or plan",
+      "more": "+{count}",
+      "notConfirmed": "{count, plural, one {# item not confirmed} other {# items not confirmed}}",
+      "empty": "Presets are not available yet.",
+      "noResults": "No firm found.",
+      "clearSearch": "Clear search",
+      "columns": {
+        "firm": "Firm",
+        "plans": "Plans",
+        "automation": "Automation",
+        "copy": "Copying",
+        "unconfirmed": "Not confirmed",
+        "verified": "Verified on"
+      }
+    },
+    "stances": {
+      "disclaimer": "Positions are quoted from the firm's official pages. All Win does not interpret them for you."
+    },
+    "firm": {
+      "backToCatalog": "Back to presets",
+      "notFound": "Firm not found.",
+      "verified": "Verified on {date} · version {n}",
+      "tabs": {
+        "stances": "Firm positions",
+        "plans": "Plans and rules",
+        "versions": "Versions"
+      }
+    },
+    "rule": {
+      "notConfirmed": "Not confirmed",
+      "source": "{page} · accessed on {date}",
+      "newTab": "(opens in a new tab)",
+      "sourcesFor": "Sources for {field}"
+    },
+    "plans": {
+      "none": "This firm has no plans available as presets.",
+      "caption": "Rules of {plan} by size",
+      "filters": {
+        "plan": "Plan",
+        "phase": "Phase",
+        "platform": "Platform"
+      },
+      "phase": {
+        "evaluation": "Evaluation",
+        "funded": "Funded",
+        "live": "Live"
+      },
+      "columns": {
+        "size": "Size",
+        "drawdown": "Drawdown",
+        "dailyLoss": "Daily loss",
+        "dailyTarget": "Daily profit target",
+        "maxContracts": "Max. contracts",
+        "reset": "Day reset",
+        "consistency": "Consistency rule",
+        "commission": "Commission per contract/side",
+        "evaluationTarget": "Evaluation target"
+      },
+      "drawdown": {
+        "trailing_intraday": "Intraday trailing",
+        "trailing_eod": "End-of-day trailing",
+        "static": "Static",
+        "other": "Other"
+      },
+      "dailyLoss": {
+        "hard": "hard limit",
+        "soft_pause": "pause for the day",
+        "none": "No limit"
+      },
+      "excluded": "These plans are not available as presets: {list}. Register them manually.",
+      "commissionMissing": "A dash in the commission column means the firm does not publish it; the account will show \"commission not informed\" until you enter a value.",
+      "registerManually": "Register an account without a preset",
+      "resetBoth": "Firm: {firm} · Your time: {user}"
+    },
+    "versions": {
+      "version": "Version {n}",
+      "material": "Material change",
+      "dates": "Published {published} · verified {verified}",
+      "noChanges": "First version.",
+      "stance": {
+        "automation": "automation",
+        "copy": "copying",
+        "vps": "VPS/server",
+        "personal_device": "personal device"
+      },
+      "changes": {
+        "stanceChanged": "Position on {stance} changed: {from} → {to}",
+        "stanceTextChanged": "The text of the {stance} rule changed. {reason}",
+        "ruleValueChanged": "A rule value changed.",
+        "presetAdded": "A preset was added.",
+        "presetRemoved": "A preset was removed."
+      },
+      "seeTexts": "See this version's texts",
+      "hideTexts": "Hide this version's texts",
+      "textsError": "Could not load this version's texts."
+    },
+    "account": {
+      "title": "Firm preset",
+      "version": "Preset version {n}, verified on {date}",
+      "fields": {
+        "max_position_qty": "Maximum position",
+        "drawdown": "Drawdown",
+        "daily_loss_limit": "Daily loss",
+        "daily_profit_target": "Daily profit target",
+        "trading_day_reset": "Trading-day reset",
+        "consistency_rule": "Consistency rule",
+        "commission_per_contract_side": "Commission per contract/side",
+        "evaluation_profit_target": "Evaluation target"
+      },
+      "unresolved": "Not confirmed — not tracked",
+      "edited": "Edited",
+      "editedFor": "{field}: edited, see the preset value",
+      "presetValue": "Preset value: {value}",
+      "presetValueUnknown": "The preset has no confirmed value for this field.",
+      "restore": "Restore preset value",
+      "restored": "Preset value restored.",
+      "conflict": "The account changed elsewhere. Reload and try again.",
+      "chosen": "Chosen by you among conflicting values on {date}",
+      "newer": "There is a new version of the {firm} preset: version {n}, from {date}.",
+      "suspends": "This version changed the automation rule. Automated orders are suspended until you review it.",
+      "seeChanges": "See changes"
+    },
+    "diff": {
+      "title": "Changes in version {n}",
+      "description": "Compare your account with the new {firm} preset. Nothing changes until you apply.",
+      "caption": "Fields that differ",
+      "columns": {
+        "field": "Field",
+        "account": "On your account",
+        "current": "Current preset",
+        "new": "New version"
+      },
+      "youEdited": "You edited this value",
+      "notConfirmed": "Not confirmed",
+      "none": "—",
+      "noRows": "No rule values differ.",
+      "capConflict": "The new version limits this to {n} contracts",
+      "lowerCap": "{field}: lower it to apply",
+      "keepOrUse": "{field}: keep your value or use the preset?",
+      "choice": {
+        "keep_mine": "Keep my value",
+        "use_preset": "Use the preset value"
+      },
+      "platform": "Platform of the account at the firm",
+      "choose": "Choose",
+      "errors": {
+        "required": "Fill in this value.",
+        "invalid": "Enter a valid value.",
+        "aboveCap": "At most {n}.",
+        "choiceRequired": "Choose one to continue.",
+        "unresolved": "Resolve this value to apply.",
+        "platformRequired": "Choose the platform."
+      },
+      "stepUp": "Apply the new preset version and accept automated orders",
+      "applied": "Version {n} applied.",
+      "superseded": "A newer version came out while you were reviewing. Review again.",
+      "ruleChanged": "The firm's rule was updated while you were reviewing. Read it again and choose.",
+      "conflict": "The account changed while you were reviewing. Review again.",
+      "keepCurrent": "Keep current version",
+      "apply": "Apply version {n}"
+    },
+    "other": {
+      "choose": "Choose",
+      "contracts": "Contracts",
+      "type": "Type",
+      "kind": "Kind",
+      "amount": "Amount (US$)",
+      "time": "Time (HH:MM)",
+      "zone": "Time zone",
+      "text": "Rule text"
+    },
+    "picker": {
+      "firm": "Firm",
+      "plan": "Plan",
+      "phase": "Phase",
+      "size": "Size",
+      "platform": "Account platform at the firm",
+      "afterPlan": "Choose the plan first.",
+      "afterPhase": "Choose the phase first.",
+      "notFound": "Can't find your firm or plan? Plans outside the presets can be registered manually.",
+      "manual": "Register without a preset",
+      "previewTitle": "Rules of this preset",
+      "previewHeader": "{label} · version {n} · verified on {date}",
+      "officialRules": "See the firm's official rules",
+      "unconfirmedNotice": "Some values are not confirmed: the firm's official pages disagree. Resolve the required ones to save; nothing was chosen for you.",
+      "resolveToSave": "Resolve this value to save.",
+      "edit": "Edit",
+      "usePresetValue": "Use the preset value",
+      "replaceTitle": "Replace your choices?",
+      "replaceText": "Changing the selection replaces {count, plural, one {# value you chose or edited} other {# values you chose or edited}}. Continue?",
+      "continue": "Continue",
+      "platformUnavailable": "This preset has no rules for that platform. Choose another platform or register without a preset."
     }
   }
 }

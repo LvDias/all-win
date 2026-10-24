@@ -177,8 +177,7 @@
       "source_mismatch": "A instrução não corresponde à fonte que a enviou.",
       "unsupported_instrument": "Instrumento não suportado.",
       "unsupported_media_type": "Tipo de conteúdo não suportado.",
-      "unsupported_version": "Versão da instrução não suportada.",
-      "signal_type_not_allowed_for_source": "O tipo de sinal não é permitido para esta fonte."
+      "unsupported_version": "Versão da instrução não suportada."
     },
     "invites": {
       "email_send_failed": "Não foi possível enviar o e-mail do convite.",
@@ -220,6 +219,13 @@
     },
     "trades": {
       "idempotency_key_reused": "Este formulário já registrou um trade. Confira a lista de trades antes de tentar de novo."
+    },
+    "presets": {
+      "choice_required": "Escolha se mantém o seu valor ou usa o do preset neste campo.",
+      "required_field_unresolved": "Resolva este valor para continuar: escolha um dos valores publicados ou digite outro.",
+      "value_not_confirmed": "O preset não tem valor confirmado para este campo, então não dá para restaurar. Edite o valor você mesmo.",
+      "version_not_newer": "Essa versão não é mais nova que a da conta. Recarregue e revise de novo.",
+      "version_superseded": "Saiu uma versão mais nova do preset enquanto você revisava. Revise de novo."
     }
   },
   "accounts": {
@@ -318,7 +324,9 @@
         "maxPositionHelp": "Limite de contratos que o All Win envia a esta conta. Instruções acima disso são cortadas e registradas.",
         "maxPositionShrink": "Posições abertas não são alteradas.",
         "multiplier": "Multiplicador",
-        "multiplierHelp": "Quantidade executada = quantidade da instrução × multiplicador."
+        "multiplierHelp": "Quantidade executada = quantidade da instrução × multiplicador.",
+        "sizeFromPreset": "Vem do preset.",
+        "maxPositionPresetCap": "No máximo {n} contratos, o limite do preset."
       },
       "binding": {
         "label": "Conta no NinjaTrader",
@@ -345,7 +353,9 @@
         "optInRequired": "Escolha se esta conta aceita ordens automatizadas.",
         "ackRequired": "Confirme que leu a regra para aceitar.",
         "summary": "Corrija os campos destacados.",
-        "sizeAmbiguous": "Digite a parte decimal explicitamente, por exemplo 25000,00 ou 2,5."
+        "sizeAmbiguous": "Digite a parte decimal explicitamente, por exemplo 25000,00 ou 2,5.",
+        "maxPositionAbovePreset": "Não pode passar do máximo do preset.",
+        "presetRequired": "Escolha um preset e resolva os valores obrigatórios."
       },
       "success": {
         "created": "Conta criada.",
@@ -361,6 +371,9 @@
       "profileSize": {
         "label": "Perfil inicial",
         "help": "O tamanho da conta fica exatamente entre dois tamanhos padrão. Escolha de qual copiar os stops e alvos; o saldo e os limites usam o tamanho da conta."
+      },
+      "preset": {
+        "choose": "Escolher um preset da firma"
       }
     },
     "optIn": {
@@ -579,7 +592,8 @@
     "accounts": "Contas",
     "userMenuName": "{email}, menu do usuário",
     "trades": "Trades",
-    "performance": "Desempenho"
+    "performance": "Desempenho",
+    "presets": "Presets"
   },
   "security": {
     "title": "Segurança",
@@ -1435,6 +1449,292 @@
       "filteredTitle": "Nenhum trade com estes filtros.",
       "filteredBody": "Mude ou limpe os filtros para ver o desempenho.",
       "noTrades": "Nenhum trade neste filtro."
+    }
+  },
+  "stanceBadge": {
+    "feminine": {
+      "allowed": "Permitida",
+      "forbidden": "Proibida",
+      "conditional": "Condicional",
+      "unknown": "Desconhecida",
+      "not_confirmed": "Não confirmada",
+      "varies_by_platform": "Varia por plataforma",
+      "required": "Exigida",
+      "not_required": "Não exigida"
+    },
+    "masculine": {
+      "allowed": "Permitido",
+      "forbidden": "Proibido",
+      "conditional": "Condicional",
+      "unknown": "Desconhecido",
+      "not_confirmed": "Não confirmado",
+      "varies_by_platform": "Varia por plataforma",
+      "required": "Exigido",
+      "not_required": "Não exigido"
+    },
+    "device": {
+      "allowed": "Permitido",
+      "forbidden": "Proibido",
+      "conditional": "Condicional",
+      "unknown": "Desconhecido",
+      "not_confirmed": "Desconhecido",
+      "varies_by_platform": "Varia por plataforma",
+      "required": "Exigido",
+      "not_required": "Não exigido"
+    }
+  },
+  "stanceBlock": {
+    "heading": {
+      "automation": "Automação",
+      "copy": "Replicação",
+      "vps": "Servidor / VPS",
+      "personalDevice": "Dispositivo pessoal"
+    },
+    "summary": {
+      "automation": {
+        "allowed": "A {firm} permite negociação automatizada.",
+        "forbidden": "A {firm} proíbe negociação automatizada nas regras oficiais.",
+        "conditional": "A {firm} só permite negociação automatizada sob condições. Leia a regra.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre automação.",
+        "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre automação."
+      },
+      "copy": {
+        "allowed": "A {firm} permite a replicação de operações entre contas.",
+        "forbidden": "A {firm} proíbe a replicação de operações entre contas nas regras oficiais.",
+        "conditional": "A {firm} só permite a replicação sob condições. Leia a regra.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre replicação.",
+        "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre replicação."
+      },
+      "vps": {
+        "allowed": "A {firm} permite o uso de VPS/servidor.",
+        "forbidden": "A {firm} proíbe o uso de VPS/servidor nas regras oficiais.",
+        "conditional": "A {firm} só permite VPS/servidor sob condições. Leia a regra.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre VPS/servidor.",
+        "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre VPS/servidor."
+      },
+      "personalDevice": {
+        "required": "A {firm} exige que as ordens saiam do seu dispositivo pessoal.",
+        "not_required": "A {firm} não exige dispositivo pessoal.",
+        "unknown": "Não encontramos uma regra oficial da {firm} sobre dispositivo pessoal.",
+        "not_confirmed": "As páginas oficiais divergem sobre este ponto."
+      }
+    },
+    "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",
+    "diverge": "As páginas oficiais divergem:",
+    "unknownSearched": "Pesquisamos as páginas oficiais em {date} e não encontramos uma regra.",
+    "verifiedOn": "Verificado em {date}"
+  },
+  "conflictPicker": {
+    "intro": "As páginas oficiais da firma divergem. Escolha um valor ou digite outro:",
+    "other": "Outro valor",
+    "source": "{page} · acessado em {date}",
+    "newTab": "(abre em nova aba)"
+  },
+  "presets": {
+    "manualOnly": "Só acompanhamento manual",
+    "manualOnlyWorks": {
+      "title": "O que funciona",
+      "text": "Regras de risco, alertas de 80 %, operações manuais e desempenho."
+    },
+    "manualOnlyFails": {
+      "title": "O que não funciona",
+      "text": "Roteamento de sinais e replicação."
+    },
+    "catalog": {
+      "title": "Presets de firmas",
+      "intro": "Regras e posições oficiais de cada firma, com fonte e data. O All Win mostra o texto da firma; não é aconselhamento jurídico.",
+      "search": "Buscar firma ou plano",
+      "more": "+{count}",
+      "notConfirmed": "{count, plural, one {# item não confirmado} other {# itens não confirmados}}",
+      "empty": "Os presets ainda não estão disponíveis.",
+      "noResults": "Nenhuma firma encontrada.",
+      "clearSearch": "Limpar busca",
+      "columns": {
+        "firm": "Firma",
+        "plans": "Planos",
+        "automation": "Automação",
+        "copy": "Replicação",
+        "unconfirmed": "Não confirmados",
+        "verified": "Verificado em"
+      }
+    },
+    "stances": {
+      "disclaimer": "As posições são citações das páginas oficiais da firma. O All Win não as interpreta por você."
+    },
+    "firm": {
+      "backToCatalog": "Voltar aos presets",
+      "notFound": "Firma não encontrada.",
+      "verified": "Verificado em {date} · versão {n}",
+      "tabs": {
+        "stances": "Posições da firma",
+        "plans": "Planos e regras",
+        "versions": "Versões"
+      }
+    },
+    "rule": {
+      "notConfirmed": "Não confirmado",
+      "source": "{page} · acessado em {date}",
+      "newTab": "(abre em nova aba)",
+      "sourcesFor": "Fontes de {field}"
+    },
+    "plans": {
+      "none": "Esta firma não tem planos disponíveis como preset.",
+      "caption": "Regras de {plan} por tamanho",
+      "filters": {
+        "plan": "Plano",
+        "phase": "Fase",
+        "platform": "Plataforma"
+      },
+      "phase": {
+        "evaluation": "Avaliação",
+        "funded": "Financiada",
+        "live": "Real"
+      },
+      "columns": {
+        "size": "Tamanho",
+        "drawdown": "Drawdown",
+        "dailyLoss": "Perda diária",
+        "dailyTarget": "Meta diária de lucro",
+        "maxContracts": "Máx. contratos",
+        "reset": "Reset do dia",
+        "consistency": "Regra de consistência",
+        "commission": "Comissão por contrato/lado",
+        "evaluationTarget": "Meta da avaliação"
+      },
+      "drawdown": {
+        "trailing_intraday": "Trailing intradiário",
+        "trailing_eod": "Trailing fim do dia",
+        "static": "Estático",
+        "other": "Outro"
+      },
+      "dailyLoss": {
+        "hard": "limite rígido",
+        "soft_pause": "pausa do dia",
+        "none": "Sem limite"
+      },
+      "excluded": "Estes planos não estão disponíveis como preset: {list}. Cadastre-os manualmente.",
+      "commissionMissing": "Traço na coluna de comissão significa que a firma não a publica; a conta mostrará \"comissão não informada\" até você informar um valor.",
+      "registerManually": "Cadastrar conta sem preset",
+      "resetBoth": "Firma: {firm} · Seu horário: {user}"
+    },
+    "versions": {
+      "version": "Versão {n}",
+      "material": "Mudança material",
+      "dates": "Publicada em {published} · verificada em {verified}",
+      "noChanges": "Primeira versão.",
+      "stance": {
+        "automation": "automação",
+        "copy": "replicação",
+        "vps": "VPS/servidor",
+        "personal_device": "dispositivo pessoal"
+      },
+      "changes": {
+        "stanceChanged": "A posição sobre {stance} mudou: {from} → {to}",
+        "stanceTextChanged": "O texto da regra de {stance} mudou. {reason}",
+        "ruleValueChanged": "Um valor de regra mudou.",
+        "presetAdded": "Um preset foi adicionado.",
+        "presetRemoved": "Um preset foi removido."
+      },
+      "seeTexts": "Ver textos desta versão",
+      "hideTexts": "Ocultar textos desta versão",
+      "textsError": "Não foi possível carregar os textos desta versão."
+    },
+    "account": {
+      "title": "Preset da firma",
+      "version": "Versão {n} do preset, verificada em {date}",
+      "fields": {
+        "max_position_qty": "Posição máxima",
+        "drawdown": "Drawdown",
+        "daily_loss_limit": "Perda diária",
+        "daily_profit_target": "Meta diária de lucro",
+        "trading_day_reset": "Reset do dia",
+        "consistency_rule": "Regra de consistência",
+        "commission_per_contract_side": "Comissão por contrato/lado",
+        "evaluation_profit_target": "Meta da avaliação"
+      },
+      "unresolved": "Não confirmado — não acompanhado",
+      "edited": "Editado",
+      "editedFor": "{field}: editado, ver valor do preset",
+      "presetValue": "Valor do preset: {value}",
+      "presetValueUnknown": "O preset não tem valor confirmado para este campo.",
+      "restore": "Restaurar valor do preset",
+      "restored": "Valor do preset restaurado.",
+      "conflict": "A conta mudou em outro lugar. Recarregue e tente de novo.",
+      "chosen": "Escolhido por você entre valores divergentes em {date}",
+      "newer": "Há uma nova versão do preset da {firm}: versão {n}, de {date}.",
+      "suspends": "Esta versão mudou a regra de automação. Ordens automatizadas estão suspensas até você revisar.",
+      "seeChanges": "Ver mudanças"
+    },
+    "diff": {
+      "title": "Mudanças da versão {n}",
+      "description": "Compare sua conta com o novo preset da {firm}. Nada muda até você aplicar.",
+      "caption": "Campos que diferem",
+      "columns": {
+        "field": "Campo",
+        "account": "Na sua conta",
+        "current": "Preset atual",
+        "new": "Nova versão"
+      },
+      "youEdited": "Você editou este valor",
+      "notConfirmed": "Não confirmado",
+      "none": "—",
+      "noRows": "Nenhum valor de regra mudou.",
+      "capConflict": "A nova versão limita a {n} contratos",
+      "lowerCap": "{field}: reduza para aplicar",
+      "keepOrUse": "{field}: manter seu valor ou usar o do preset?",
+      "choice": {
+        "keep_mine": "Manter meu valor",
+        "use_preset": "Usar o valor do preset"
+      },
+      "platform": "Plataforma da conta na firma",
+      "choose": "Escolha",
+      "errors": {
+        "required": "Preencha este valor.",
+        "invalid": "Informe um valor válido.",
+        "aboveCap": "No máximo {n}.",
+        "choiceRequired": "Escolha uma opção para continuar.",
+        "unresolved": "Resolva este valor para aplicar.",
+        "platformRequired": "Escolha a plataforma."
+      },
+      "stepUp": "Aplicar a nova versão do preset e aceitar ordens automatizadas",
+      "applied": "Versão {n} aplicada.",
+      "superseded": "Saiu uma versão mais nova enquanto você revisava. Revise de novo.",
+      "ruleChanged": "A regra da firma foi atualizada enquanto você revisava. Leia de novo e escolha.",
+      "conflict": "A conta mudou enquanto você revisava. Revise de novo.",
+      "keepCurrent": "Manter versão atual",
+      "apply": "Aplicar versão {n}"
+    },
+    "other": {
+      "choose": "Escolha",
+      "contracts": "Contratos",
+      "type": "Tipo",
+      "kind": "Tipo",
+      "amount": "Valor (US$)",
+      "time": "Horário (HH:MM)",
+      "zone": "Fuso horário",
+      "text": "Texto da regra"
+    },
+    "picker": {
+      "firm": "Firma",
+      "plan": "Plano",
+      "phase": "Fase",
+      "size": "Tamanho",
+      "platform": "Plataforma da conta na firma",
+      "afterPlan": "Escolha o plano antes.",
+      "afterPhase": "Escolha a fase antes.",
+      "notFound": "Não encontrou sua firma ou plano? Planos fora dos presets podem ser cadastrados manualmente.",
+      "manual": "Cadastrar sem preset",
+      "previewTitle": "Regras deste preset",
+      "previewHeader": "{label} · versão {n} · verificado em {date}",
+      "officialRules": "Ver as regras oficiais da firma",
+      "unconfirmedNotice": "Alguns valores não estão confirmados: as páginas oficiais da firma divergem. Resolva os obrigatórios para salvar; nada foi escolhido por você.",
+      "resolveToSave": "Resolva este valor para salvar.",
+      "edit": "Editar",
+      "usePresetValue": "Usar o valor do preset",
+      "replaceTitle": "Substituir suas escolhas?",
+      "replaceText": "Trocar a seleção substitui {count, plural, one {# valor que você escolheu ou editou} other {# valores que você escolheu ou editou}}. Continuar?",
+      "continue": "Continuar",
+      "platformUnavailable": "Este preset não tem regras para essa plataforma. Escolha outra plataforma ou cadastre sem preset."
     }
   }
 }

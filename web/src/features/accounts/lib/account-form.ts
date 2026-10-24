@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Locale } from "@/shared/i18n/config";
 import { parseDecimalInput } from "@/shared/format";
 import type { AccountCreateBody, AccountKind, AccountUpdateBody, OptInChoice, OptInChoices } from "../api/types";
+import type { PresetOutcome } from "../api/preset-slot";
 
 /** Messages are i18n keys under `accounts.form.errors.*`; the component translates them. */
 export const formErrorKeys = {
@@ -11,6 +12,8 @@ export const formErrorKeys = {
   sizeAmbiguous: "sizeAmbiguous",
   integer: "integerMin1",
   maxPosition: "maxPositionInvalid",
+  maxPositionAbovePreset: "maxPositionAbovePreset",
+  presetRequired: "presetRequired",
   optInRequired: "optInRequired",
   ackRequired: "ackRequired",
 } as const;
@@ -20,12 +23,13 @@ const text = z.string().trim().max(80, formErrorKeys.tooLong);
 const requiredText = z.string().trim().min(1, formErrorKeys.required).max(80, formErrorKeys.tooLong);
 type Fail = (path: string, message: string) => void;
 
-function refineData(v: { size: string; maxPosition: string; multiplier: string }, locale: Locale, fail: Fail) {
+function refineData(v: { size: string; maxPosition: string; multiplier: string }, locale: Locale, fail: Fail, maxPositionCap: number | null = null) {
   const size = parseDecimalInput(v.size, locale, { scale: 2 });
   // pt-BR "25.000" may be 25 or 25000: the parser refuses it and the user types the decimals (never guessed).
   if (!size.ok && size.reason === "ambiguous") fail("size", formErrorKeys.sizeAmbiguous);
   else if (!size.ok || Number(size.value) <= 0) fail("size", formErrorKeys.size);
   if (!wholeNumber(v.maxPosition)) fail("maxPosition", formErrorKeys.maxPosition);
+  else if (maxPositionCap !== null && Number(v.maxPosition) > maxPositionCap) fail("maxPosition", formErrorKeys.maxPositionAbovePreset);
   if (v.multiplier.trim() !== "" && !wholeNumber(v.multiplier)) fail("multiplier", formErrorKeys.integer);
 }
 
@@ -37,13 +41,15 @@ function refineOptIn(v: { automationChoice: string; automationAck: boolean }, fa
 const issueFailer = (ctx: z.RefinementCtx): Fail => (path, message) => ctx.addIssue({ code: "custom", path: [path], message });
 
 /** One schema per step of "Nova conta"; `Continue` validates only the current step (F§10.1). */
-export function stepSchemas(locale: Locale, current: { automationRuleId: string | undefined }) {
+export function stepSchemas(locale: Locale, current: { automationRuleId: string | undefined; maxPositionCap?: number | null }) {
   return {
     type: z.object({ kind: z.enum(["prop", "real"], { message: formErrorKeys.required }) }),
     firm: z.object({ firmName: requiredText, planName: requiredText, phase: requiredText }),
+    /** The preset path: the picker reports a valid, fully resolved preset by filling `presetVersionId`. */
+    preset: z.object({ presetVersionId: z.string().min(1, formErrorKeys.presetRequired) }),
     data: z
       .object({ displayName: requiredText, size: z.string(), maxPosition: z.string(), multiplier: z.string(), profileSize: z.string() })
-      .superRefine((v, ctx) => refineData(v, locale, issueFailer(ctx))),
+      .superRefine((v, ctx) => refineData(v, locale, issueFailer(ctx), current.maxPositionCap ?? null)),
     platform: z.object({ binding: z.string() }),
     optIn: z
       .object({ automationChoice: z.enum(["accepted", "declined", ""]), automationAck: z.boolean(), automationRuleId: z.string() })
@@ -75,6 +81,7 @@ export function accountFormSchema(locale: Locale, opts: { kind: AccountKind; opt
       /** Rule version the choice was made against; compared with the version now shown. */
       automationRuleId: z.string(),
       profileSize: z.string(),
+      presetVersionId: z.string(),
     })
     .superRefine((v, ctx) => {
       const fail = issueFailer(ctx);
@@ -104,6 +111,7 @@ export const emptyAccountForm: AccountFormValues = {
   automationAck: false,
   automationRuleId: "",
   profileSize: "",
+  presetVersionId: "",
 };
 
 export function bindingToValue(b: { connection_id: string; platform_account: string } | undefined): string {
@@ -118,7 +126,7 @@ function parseBinding(value: string) {
 /** Builds the write body from validated values. Sizes stay decimal strings; no arithmetic. */
 export function toWriteBody(
   v: AccountFormValues,
-  ctx: { kind: AccountKind; locale: Locale; automationRuleVersionId?: string },
+  ctx: { kind: AccountKind; locale: Locale; automationRuleVersionId?: string; preset?: Pick<PresetOutcome, "presetVersionId" | "firmPlatform" | "ruleValues"> },
 ): Omit<AccountCreateBody, "kind"> {
   const size = parseDecimalInput(v.size, ctx.locale, { scale: 2 });
   const choice: OptInChoice | undefined = v.automationChoice === "" ? undefined : v.automationChoice;
@@ -127,10 +135,20 @@ export function toWriteBody(
       ? { automation: { choice, rule_version_id: ctx.automationRuleVersionId } }
       : undefined;
   const binding = parseBinding(v.binding);
+  // With a preset the Core takes firm, plan, phase and size from it: sending them is a 400.
+  const preset = ctx.kind === "prop" ? ctx.preset : undefined;
   return {
     display_name: v.displayName.trim(),
-    ...(ctx.kind === "prop" ? { firm_name: v.firmName.trim(), plan_name: v.planName.trim(), phase: v.phase.trim() } : {}),
-    size_amount: size.ok ? size.value : v.size,
+    ...(preset
+      ? {
+          preset_version_id: preset.presetVersionId,
+          ...(preset.firmPlatform ? { firm_platform: preset.firmPlatform } : {}),
+          ...(Object.keys(preset.ruleValues).length > 0 ? { rule_values: preset.ruleValues as AccountCreateBody["rule_values"] } : {}),
+        }
+      : {
+          ...(ctx.kind === "prop" ? { firm_name: v.firmName.trim(), plan_name: v.planName.trim(), phase: v.phase.trim() } : {}),
+          size_amount: size.ok ? size.value : v.size,
+        }),
     max_position_qty: Number(v.maxPosition),
     ...(v.multiplier.trim() === "" ? {} : { multiplier: Number(v.multiplier) }),
     ...(binding ? { binding } : {}),
@@ -160,6 +178,9 @@ export function fieldFromPointer(pointer: string | undefined): keyof AccountForm
       return "binding";
     case "/firm_name":
       return "firmName";
+    case "/preset_version_id":
+    case "/firm_platform":
+      return "presetVersionId";
     case "/plan_name":
       return "planName";
     case "/phase":
