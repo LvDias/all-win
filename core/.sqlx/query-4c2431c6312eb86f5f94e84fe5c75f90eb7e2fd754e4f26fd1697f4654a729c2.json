@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.session SET last_activity_at = $2, idle_expires_at = $3\n                    WHERE id = $1 AND ended_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4c2431c6312eb86f5f94e84fe5c75f90eb7e2fd754e4f26fd1697f4654a729c2"
+}

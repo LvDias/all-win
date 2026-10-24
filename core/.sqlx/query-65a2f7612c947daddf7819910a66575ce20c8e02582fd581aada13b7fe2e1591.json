@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.adapter_connection SET status = 'unpaired', status_changed_at = $3, archived_at = $3\n                    WHERE user_id = $1 AND id = $2 AND archived_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "65a2f7612c947daddf7819910a66575ce20c8e02582fd581aada13b7fe2e1591"
+}

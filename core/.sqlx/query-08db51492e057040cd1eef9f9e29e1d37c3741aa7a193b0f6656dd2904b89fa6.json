@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT value->>'amount' AS \"amount!\"\n                 FROM accounts.account_rule_value\n                WHERE user_id = $1 AND account_id = $2 AND field = 'evaluation_profit_target'\n                  AND NOT is_unset",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "amount!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "08db51492e057040cd1eef9f9e29e1d37c3741aa7a193b0f6656dd2904b89fa6"
+}

@@ -1,0 +1,161 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, user_id, device_id, token_hash, is_persistent, login_channel, login_at, last_activity_at,\n                      idle_expires_at, absolute_expires_at, ended_at, end_reason\n                 FROM identity.session WHERE user_id = $1 AND id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "device_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "device_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "token_hash",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "token_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "is_persistent",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "is_persistent"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "login_channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "login_channel"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "login_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "login_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "last_activity_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "last_activity_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "idle_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "idle_expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "absolute_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "absolute_expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "ended_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "ended_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "end_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.session",
+            "name": "end_reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "f89972be34039c71e98b053c5560e54e0ddb61ab9ef39a58e129b764bbec81fe"
+}

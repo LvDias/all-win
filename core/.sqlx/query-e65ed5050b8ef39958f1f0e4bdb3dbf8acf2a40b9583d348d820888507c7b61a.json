@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO accounts.account_rule_value\n             (user_id, account_id, field, origin, value, is_unset, saved_at, updated_at)\n           VALUES ($1, $2, $3, $4, $5, $6, $7, $7)\n           ON CONFLICT (account_id, field) DO UPDATE\n             SET origin = EXCLUDED.origin, value = EXCLUDED.value, is_unset = EXCLUDED.is_unset,\n                 chose = NULL, chosen_at = NULL, saved_at = EXCLUDED.saved_at,\n                 updated_at = EXCLUDED.updated_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e65ed5050b8ef39958f1f0e4bdb3dbf8acf2a40b9583d348d820888507c7b61a"
+}

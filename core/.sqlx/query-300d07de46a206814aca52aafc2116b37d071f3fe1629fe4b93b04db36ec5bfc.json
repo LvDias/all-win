@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.known_device SET last_seen_at = $3, last_ip = $4::text::inet WHERE user_id = $1 AND id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "300d07de46a206814aca52aafc2116b37d071f3fe1629fe4b93b04db36ec5bfc"
+}

@@ -1,0 +1,413 @@
+# Module `routing` — V1-S7 (routing configuration: source → account routes with signal-type filter).
+# Owner: Compasso (Software Architect). Notes: docs/architecture/contracts/s7-routing.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/routes:
+    get:
+      tags: [routing]
+      operationId: listRoutes
+      summary: The caller's routes, with the effective status computed by the Core
+      description: |
+        Filter by `source_id` (routing page) or `account_id` (account `Rotas` tab); without filters, all
+        routes. Routes of revoked sources are included (read-only, Q-S7-3); routes of archived accounts
+        no longer exist (S5 `archiveAccount`). Account facts (name, firm, multiplier, max position,
+        opt-ins) come from `listAccounts`; the client joins by `account_id` (two calls, no N+1). After
+        `account.changed`, `connection.status_changed` or `route.changed` the client refetches.
+        An unknown or foreign `source_id` / `account_id` filter returns an empty list.
+      parameters:
+        - name: source_id
+          in: query
+          required: false
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        - name: account_id
+          in: query
+          required: false
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: The routes, sorted by account `display_name`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteList' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+    post:
+      tags: [routing]
+      operationId: createRoute
+      summary: Route a source to an account with the selected signal types
+      description: |
+        Duplicate-protected by its natural key: one route per (source, account). A second create for the same
+        pair gets 409 `routing.route_exists` (the client refetches and switches to edit). The account must
+        be routable for that source (`listRouteCandidates`); a race is answered with the same code the
+        picker showed. Audited as `routing.subscription_changed` (`created`).
+        Copy routes of a follower (S19, V1.1) are not created here.
+        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
+        server configuration only, missing/invalid = on): when the source is automated, the route is
+        enabled by this request, and the account's automation was not accepted with a step-up (a real
+        account, or an opt-in that is `not_required`), the body must carry `step_up` for action
+        `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
+        `auth.code_invalid` (`StepUpFailed`).
+      x-step-up: conditional
+      x-step-up-when: source is automated and is_enabled and the account's automation was not accepted with step-up (Q35 decided, setting on)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteCreateRequest' }
+            examples:
+              route:
+                value:
+                  source_id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                  account_id: 0b9f4c1e-7d2a-4e7b-9a52-3c1d8e6f2a10
+                  signal_types: [trigger, trade_plan]
+                  is_enabled: true
+      responses:
+        '201':
+          description: Created and audited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/StepUpFailed' }
+        '409':
+          description: '`routing.route_exists` — nothing created.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/RouteRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/routes/{route_id}:
+    put:
+      tags: [routing]
+      operationId: updateRoute
+      summary: Change a route's signal types or switch it on/off (optimistic concurrency)
+      description: |
+        Full replacement of `signal_types` and `is_enabled`. Switching off is always accepted. Switching
+        on while the account is not eligible for the source is refused with 422 and the blocking reason
+        code (same codes as `createRoute`, pointer `/is_enabled`; Q67 b, decided). When an account becomes
+        ineligible (automation `declined` / `pending_review`, or unbound), the Core switches its routes
+        from that source off and audits `routing.subscription_changed` (`disabled`, cause
+        `account_ineligible`); when it becomes eligible again the route stays off (`route_disabled`) until
+        the user switches it on. Routes of a revoked source are read-only. Check order after
+        authentication, Origin and schema: 404 → 409 `routing.source_revoked` → 409
+        `common.version_conflict` → 422. Audited as `routing.subscription_changed` (`updated`, `enabled`
+        or `disabled`, with previous and new values).
+        Step-up (QA Security M1; Q35 decided 2026-10-23: setting `step_up.q35_persistence_actions` on,
+        server configuration only, missing/invalid = on): when the source is automated, the route goes
+        from off to on by this request, and the account's automation was not accepted with a step-up (a real
+        account, or an opt-in that is `not_required`), the body must carry `step_up` for action
+        `route_enable` (target = the account). Missing → 403 `auth.step_up_required`; wrong → 403
+        `auth.code_invalid` (`StepUpFailed`).
+      x-step-up: conditional
+      x-step-up-when: source is automated and is_enabled changes false → true and the account's automation was not accepted with step-up (Q35 decided, setting on)
+      parameters:
+        - { $ref: '#/components/parameters/RouteId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteUpdateRequest' }
+      responses:
+        '200':
+          description: Saved (a request that changes nothing is not audited).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/StepUpFailed' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`routing.source_revoked` or `common.version_conflict`; nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422':
+          description: '`routing.automation_not_accepted` / `routing.platform_unbound` (pointer `/is_enabled`) — switching on a route whose account is not eligible for the source (Q67 b).'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+    delete:
+      tags: [routing]
+      operationId: deleteRoute
+      summary: Remove a route
+      description: |
+        Open positions and orders are not changed. Routes of a revoked source cannot be removed (409
+        `routing.source_revoked`, Q-S7-3). Audited as `routing.subscription_changed` (`removed`).
+      parameters:
+        - { $ref: '#/components/parameters/RouteId' }
+      responses:
+        '204': { description: Removed and audited. }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`routing.source_revoked` — nothing removed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/route-candidates:
+    get:
+      tags: [routing]
+      operationId: listRouteCandidates
+      summary: Accounts the user can route a source to, the unavailable ones with reasons, and manual-only accounts
+      description: |
+        For the account picker of the route dialog. Accounts that already have a route for the source
+        are not listed. Manual-only accounts (S16 AC-7) are never in `candidates`; they are listed in
+        `manual_only` with the preset's reason, for the "Can't find an account?" explanation (S7 AC-7b).
+        Before S16 `manual_only` is always empty. An unknown or foreign `source_id` gets 404.
+      parameters:
+        - name: source_id
+          in: query
+          required: true
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: The candidates.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteCandidates' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  parameters:
+    RouteId:
+      name: route_id
+      in: path
+      required: true
+      schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+
+  responses:
+    RouteRejected:
+      description: |
+        Valid shape, refused by a rule; nothing created. Codes and pointers:
+        - `routing.source_unknown` — `/source_id` (unknown or another user's; identical);
+        - `routing.source_revoked` — `/source_id`;
+        - `routing.account_unknown` — `/account_id` (unknown, archived or another user's; identical);
+        - `routing.account_manual_only` — `/account_id` (S16 AC-7);
+        - `routing.automation_not_accepted` — `/account_id` (automated source; the account's automation
+          opt-in is `declined` or `pending_review`);
+        - `routing.platform_unbound` — `/account_id` (Q37).
+      content:
+        application/json:
+          schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+          examples:
+            not_accepted:
+              value: { error: { code: routing.automation_not_accepted, pointer: /account_id } }
+
+  schemas:
+    SignalType:
+      type: string
+      enum: [trigger, trade_plan, nq_trigger]
+      description: Selectable signal types of a TradingView route (ADR-0003). `master_account` belongs to follower routes (S19) and is not accepted here.
+    SignalTypes:
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items: { $ref: '#/components/schemas/SignalType' }
+      description: At least one (S7 AC-2, Q-S7-1); an empty list gets 400 `common.invalid_request` with pointer `/signal_types`.
+    RouteReasonCode:
+      type: string
+      enum:
+        - routing.account_inactive
+        - routing.source_revoked
+        - routing.platform_unbound
+        - routing.automation_not_accepted
+        - routing.copy_not_accepted
+        - routing.connection_disconnected
+        - routing.out_of_sync
+        - routing.risk_blocked
+        - routing.no_bracket_profile
+        - routing.limits_pending
+        - routing.route_disabled
+      description: |
+        Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,
+        in this order (F§7.2 extended with the route-level states): `source_revoked`, `route_disabled`,
+        `platform_unbound`, `out_of_sync`, `connection_disconnected`, `risk_blocked`, `limits_pending`,
+        `no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.
+        This is a display order only. The instruction gates and their order are ADR-0003 §4.1 (Esquadro's
+        S7 delta, with ADR-0008): `account_inactive` → `platform_unbound` → `automation_not_accepted` →
+        `copy_not_accepted` → `signal_type_not_selected` → `out_of_sync` → `risk_blocked` →
+        `limits_pending` → `no_bracket_profile` → action rules → `expired` (entries only). The audit code of a skipped
+        instruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and
+        `no_bracket_profile` block entries only. For a `reverse` the §4.2 position check runs before the
+        entry gates (Q74): position opposite → the close leg runs and the open is skipped with the gate
+        code; flat → skipped with the gate code; already on the reverse side → `routing.position_conflict`
+        (rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction
+        reaches the gates); `connection_disconnected` (every connection status other than `connected`:
+        disconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an
+        entry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a
+        protective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as
+        late (ADR-0003 §4.1, ADR-0004 T1).
+        New codes may be added in a minor version; clients show a generic text for an unknown code.
+    RouteReason:
+      type: object
+      additionalProperties: false
+      required: [code, blocks]
+      properties:
+        code: { $ref: '#/components/schemas/RouteReasonCode' }
+        blocks:
+          type: string
+          enum: [all_actions, entries_only]
+          description: |
+            `entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`
+            (exits still go through, S7 AC-8 / P1); `all_actions` for every other code (a paused or
+            disabled account receives no exit either). Fixed per code.
+        lifecycle_state:
+          description: With `routing.account_inactive` (`paused` or `disabled`), so the text can name it.
+          type: string
+          enum: [paused, disabled]
+        opt_in_state:
+          description: With `routing.automation_not_accepted` / `routing.copy_not_accepted`. `declined` = the state is `chosen` with choice `declined`; `pending_review` = the state is `pending_review`.
+          type: string
+          enum: [declined, pending_review]
+        instrument_ids:
+          description: With `routing.no_bracket_profile` — the enabled instruments for which the account has no stop/target profile (profiles are per account × instrument); entries in other instruments still go through.
+          type: array
+          minItems: 1
+          items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      allOf:
+        - if: { properties: { code: { enum: [routing.out_of_sync, routing.risk_blocked, routing.no_bracket_profile, routing.limits_pending] } } }
+          then: { properties: { blocks: { const: entries_only } } }
+          else: { properties: { blocks: { const: all_actions } } }
+        - if: { properties: { code: { const: routing.account_inactive } } }
+          then: { required: [lifecycle_state] }
+          else: { not: { required: [lifecycle_state] } }
+        - if: { properties: { code: { enum: [routing.automation_not_accepted, routing.copy_not_accepted] } } }
+          then: { required: [opt_in_state] }
+          else: { not: { required: [opt_in_state] } }
+        - if: { properties: { code: { const: routing.no_bracket_profile } } }
+          then: { required: [instrument_ids] }
+          else: { not: { required: [instrument_ids] } }
+    RouteStatus:
+      type: object
+      additionalProperties: false
+      required: [status, reasons, computed_at]
+      description: Computed by the Core from the account, source, connection, opt-in, sync and risk state; the UI renders it and never re-implements a gate.
+      properties:
+        status:
+          type: string
+          enum: [receiving, exits_only, not_receiving]
+          description: |
+            `receiving` = no reason; `exits_only` = only `entries_only` reasons; `not_receiving` = at least
+            one `all_actions` reason.
+        reasons:
+          type: array
+          description: Every reason that applies, most severe first (the Core's order follows the UI badge priority); empty with `receiving`.
+          items: { $ref: '#/components/schemas/RouteReason' }
+        computed_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+      allOf:
+        - if: { properties: { status: { const: receiving } } }
+          then: { properties: { reasons: { maxItems: 0 } } }
+        - if: { properties: { status: { const: exits_only } } }
+          then: { properties: { reasons: { minItems: 1, items: { properties: { blocks: { const: entries_only } } } } } }
+        - if: { properties: { status: { const: not_receiving } } }
+          then: { properties: { reasons: { contains: { properties: { blocks: { const: all_actions } } } } } }
+    Route:
+      type: object
+      additionalProperties: false
+      required: [id, source_id, account_id, signal_types, is_enabled, effective, row_version, created_at, updated_at]
+      properties:
+        id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        signal_types: { $ref: '#/components/schemas/SignalTypes' }
+        is_enabled: { type: boolean }
+        effective: { $ref: '#/components/schemas/RouteStatus' }
+        row_version: { type: integer, minimum: 1 }
+        created_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        updated_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    RouteList:
+      type: object
+      additionalProperties: false
+      required: [routes]
+      properties:
+        routes:
+          type: array
+          items: { $ref: '#/components/schemas/Route' }
+    RouteCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [source_id, account_id, signal_types]
+      properties:
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        signal_types: { $ref: '#/components/schemas/SignalTypes' }
+        is_enabled: { type: boolean, description: Defaults to true. }
+        step_up:
+          description: See `createRoute` (action `route_enable`, target = the account).
+          $ref: '../openapi.yaml#/components/schemas/StepUpProof'
+    RouteUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [signal_types, is_enabled, row_version]
+      properties:
+        signal_types: { $ref: '#/components/schemas/SignalTypes' }
+        is_enabled: { type: boolean }
+        row_version: { type: integer, minimum: 1 }
+        step_up:
+          description: See `updateRoute` (action `route_enable`, target = the account).
+          $ref: '../openapi.yaml#/components/schemas/StepUpProof'
+    RouteCandidate:
+      type: object
+      additionalProperties: false
+      required: [account_id, blocking_reasons, status_if_routed]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        blocking_reasons:
+          type: array
+          description: |
+            Empty → selectable. Otherwise the option is shown disabled with these reasons, most severe
+            first. Only `routing.automation_not_accepted` (automated source) and `routing.platform_unbound`
+            (Q37) block creation; every other reason only affects `status_if_routed`.
+          items: { $ref: '#/components/schemas/RouteReason' }
+        status_if_routed:
+          description: The status a new enabled route would have now (e.g. `exits_only` for an out-of-sync account).
+          $ref: '#/components/schemas/RouteStatus'
+    RouteCandidates:
+      type: object
+      additionalProperties: false
+      required: [source_id, candidates, manual_only]
+      properties:
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        candidates:
+          type: array
+          description: Sorted by account `display_name`.
+          items: { $ref: '#/components/schemas/RouteCandidate' }
+        manual_only:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [account_id, reason]
+            properties:
+              account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              reason:
+                description: The preset's own explanation, verbatim with source and date (S16 AC-7, Q-S16-6); the UI frames it.
+                $ref: 'presets.yaml#/components/schemas/RuleQuote'
+    RouteChangedEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, route_id, source_id, account_id]
+      description: |
+        Sent when a route is created, changed or removed, AND whenever the effective status of a route
+        changes for any cause (source revoked, account lifecycle or opt-in, binding, connection, out of
+        sync, risk block, stop/target profile created or removed). One event per affected route; the
+        client refetches `listRoutes` (and `listRouteCandidates` if the picker is open).
+      properties:
+        type: { const: route.changed }
+        cause: { type: string, enum: [configuration, status] }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        route_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }

@@ -7,7 +7,7 @@
 
 use anyhow::{Context, bail};
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::{Rng, RngExt};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -47,11 +47,10 @@ pub async fn seed(owner: &PgPool, label: &str) -> anyhow::Result<String> {
     .context("user context")?;
     if existing.is_none() {
         sqlx::query!(
-            r#"INSERT INTO identity.app_user (id, email, email_normalized, password_hash, locale, time_zone)
-               VALUES ($1, $2, $2, $3, 'en', 'UTC')"#,
+            r#"INSERT INTO identity.app_user (id, email, email_normalized, email_verified_at, locale, time_zone)
+               VALUES ($1, $2, $2, now(), 'en', 'UTC')"#,
             user_id,
             email,
-            unusable_password_hash(),
         )
         .execute(&mut *tx)
         .await
@@ -150,18 +149,4 @@ pub async fn revoke_key(owner: &PgPool, key_id: &str) -> anyhow::Result<bool> {
     .rows_affected();
     tx.commit().await.context("commit")?;
     Ok(revoked == 1)
-}
-
-/// A well-formed argon2id PHC string over random bytes: no password verifies against it.
-fn unusable_password_hash() -> String {
-    let mut rng = rand::rng();
-    let mut salt = [0u8; 16];
-    let mut hash = [0u8; 32];
-    rng.fill_bytes(&mut salt);
-    rng.fill_bytes(&mut hash);
-    format!(
-        "$argon2id$v=19$m=19456,t=2,p=1${}${}",
-        STANDARD_NO_PAD.encode(salt),
-        STANDARD_NO_PAD.encode(hash)
-    )
 }

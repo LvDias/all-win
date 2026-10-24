@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.invitation SET revoked_at = $2\n                    WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL AND superseded_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "068c353fd3504f9d5ebee84e3b02fc8d3c1361126a72c755bbe6164a53d9c157"
+}

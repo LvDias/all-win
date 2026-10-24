@@ -1,0 +1,992 @@
+# Module `audit` — V1-S10 (activity log: list with filters, entry detail, instruction timeline).
+# Read-only: no operation edits or deletes an entry (S10 AC-3). Entries are written by the Core only.
+# Owner: Compasso (Software Architect). Notes: docs/architecture/contracts/s10-audit.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/activity:
+    get:
+      tags: [audit]
+      operationId: listActivity
+      summary: The caller's activity entries, newest first, filtered, with a cursor
+      description: |
+        Filters combine with AND; the values inside one array filter combine with OR. Array filters
+        repeat the parameter (`account_id=a&account_id=b`). `from` defaults to the retention horizon and
+        `to` to now; both are instants (X-8); the UI sends `from` for its period chips (default 24 h), so a
+        search or a deep link without `from` covers the whole retained history. `from` after `to` gets 400
+        `common.invalid_request` (pointer `/query/from`). `q` is an exact instruction id or `message_id`:
+        a UUID-shaped `q` is tried as both; it returns the entries of that instruction, including its
+        duplicates (no free-text search). An ingress rejection creates no instruction, so `q` never finds
+        `ingress.rejected` entries. An unknown or foreign id in a filter simply matches nothing.
+        Paging: the first page resolves `from` / `to` (so `to` = the time of the first request) and the
+        filters into `next_cursor`, an opaque token authenticated by the Core (MAC). Later pages send
+        `cursor` (and optionally `limit`); filter parameters sent with a cursor must equal the captured
+        ones. A tampered, foreign or mismatching cursor gets 400 (pointer `/query/cursor`). Paging is
+        eventually consistent: an entry recorded late with an older `occurred_at` may be missed once
+        paged past; the "n new entries" banner covers newer ones. Order: newest first by
+        (`occurred_at`, event sequence, `id`); `id` breaks ties for old rows without a sequence. The
+        cursor carries all three.
+      parameters:
+        - { name: from, in: query, required: false, schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' } }
+        - { name: to, in: query, required: false, schema: { $ref: '../openapi.yaml#/components/schemas/Timestamp' } }
+        - name: account_id
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 50, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+        - name: source_id
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 50, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+        - name: signal_type
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 8, items: { $ref: '#/components/schemas/AuditSignalType' } }
+        - name: outcome
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/AuditOutcome' } }
+        - name: category
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 7, items: { $ref: '#/components/schemas/AuditCategory' } }
+        - name: code
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/AuditCode' } }
+        - name: q
+          in: query
+          required: false
+          description: Exact instruction id or `message_id`.
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$' }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: One page of entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivityPage' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/activity/filter-options:
+    get:
+      tags: [audit]
+      operationId: getActivityFilterOptions
+      summary: Values for the activity filters, including archived accounts and revoked sources
+      responses:
+        '200':
+          description: The options.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivityFilterOptions' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/activity/{entry_id}:
+    get:
+      tags: [audit]
+      operationId: getActivityEntry
+      summary: One activity entry (detail panel)
+      parameters:
+        - name: entry_id
+          in: path
+          required: true
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: The entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditEntry' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/instructions/{instruction_id}/timeline:
+    get:
+      tags: [audit]
+      operationId: getInstructionTimeline
+      summary: One instruction from receipt to every account's result (S10 AC-2), in one call
+      description: |
+        `intake` holds the receipt steps, including every `ingress.duplicate_ignored` of the same
+        `message_id` (Q-S10-6). `accounts` holds one block per account the instruction was routed to or
+        skipped for, sorted by account name, each with its steps in causal order (the event
+        sequence the Core assigns when it records the event, `audit_entry.event_seq`: a later step always
+        has a higher sequence) and its final outcome. Unknown, foreign and purged-by-retention ids all get the
+        same 404 `common.not_found`. While `status` is `in_progress` new steps arrive as
+        `audit.entry_recorded` events; the client refetches.
+      parameters:
+        - name: instruction_id
+          in: path
+          required: true
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: The timeline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructionTimeline' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  schemas:
+    AuditCategory:
+      type: string
+      enum: [ingress, routing, execution, risk, connection, security, config]
+    AuditOutcome:
+      type: string
+      enum: [received, routed, executed, partial, skipped, refused, rejected, expired, unknown, info]
+      description: |
+        Final taxonomy (Q-S10-2), set by the Core on every entry, never derived by the client:
+        - `received` — instruction accepted at ingress;
+        - `routed` — routing decision to send to an account (full quantity);
+        - `executed` — an order filled;
+        - `partial` — quantity capped at the maximum position, or a partial fill;
+        - `skipped` — not sent by a configuration rule (duplicate, signal type not selected, opt-in not
+          accepted, account inactive, no stop/target profile, limits not yet derived, maximum already
+          reached, nothing to close);
+        - `refused` — not sent by a protective gate (out of sync, risk block, position conflict);
+        - `rejected` — refused by validation (ingress) or by the platform;
+        - `expired` — command TTL exceeded, not executed;
+        - `unknown` — the order's state could not be determined after a recovery (the account is
+          flagged out of sync);
+        - `info` — everything else (configuration, connection, security, order received/working/cancelled,
+          bracket calculation, command sent). No badge in the UI.
+    AuditSignalType:
+      type: string
+      enum: [trigger, trade_plan, nq_trigger, master_account]
+    AuditCode:
+      type: string
+      pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+      maxLength: 96
+      description: |
+        Stable code; clients translate it (ADR-0001 §9). The set is open: a code the client does not know
+        is shown with the fallback text and the technical data. `KnownAuditCode` lists the codes defined
+        by the contract so far (the i18n parity check uses it).
+    KnownAuditCode:
+      type: string
+      enum:
+        - ingress.received
+        - ingress.duplicate_ignored
+        - ingress.rejected
+        - ingress.rate_limited
+        - routing.routed
+        - routing.quantity_capped
+        - routing.max_position_reached
+        - routing.signal_type_not_selected
+        - routing.automation_not_accepted
+        - routing.copy_not_accepted
+        - routing.account_inactive
+        - routing.platform_unbound
+        - routing.no_bracket_profile
+        - routing.limits_pending
+        - routing.out_of_sync
+        - routing.risk_blocked
+        - routing.position_conflict
+        - routing.nothing_to_close
+        - routing.nothing_to_reduce
+        - routing.no_correlated_order
+        - routing.expired
+        - execution.command_sent
+        - execution.bracket_calculated
+        - execution.order_received
+        - execution.order_working
+        - execution.partially_filled
+        - execution.filled
+        - execution.cancelled
+        - execution.rejected
+        - execution.expired
+        - execution.state_unknown
+        - execution.fill_corrected
+        - connection.status_changed
+        - sources.created
+        - sources.renamed
+        - sources.rotated
+        - sources.revoked
+        - connections.created
+        - connections.renamed
+        - connections.pairing_code_issued
+        - connections.paired
+        - connections.repaired
+        - connections.unpaired
+        - security.signed_in
+        - security.sign_in_failed
+        - security.code_rate_limited
+        - security.code_delivery_failed
+        - security.new_device_notice_sent
+        - security.step_up_succeeded
+        - security.step_up_failed
+        - security.channel_change_requested
+        - security.channel_change_on_hold
+        - security.channel_change_completed
+        - security.channel_change_cancelled
+        - security.channel_change_not_completed
+        - security.device_forgotten
+        - security.signed_out_everywhere
+        - security.invitation_issued
+        - security.invitation_revoked
+        - security.account_created
+        - accounts.created
+        - accounts.updated
+        - accounts.archived
+        - accounts.lifecycle_changed
+        - accounts.opt_in_chosen
+        - accounts.opt_in_suspended
+        - routing.subscription_changed
+        - profiles.default_changed
+        - profiles.account_changed
+        - presets.version_applied
+        - presets.value_restored
+        - risk.rules_changed
+        - risk.warning
+        - risk.limit_reached
+        - risk.target_reached
+        - risk.consistency_warning
+        - risk.evaluation_target_reached
+        - accounts.evaluation_restarted
+        - trades.captured
+        - trades.manual_created
+        - trades.manual_changed
+        - trades.manual_deleted
+        - trades.reconcile_mismatch
+      description: |
+        Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
+        auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
+        `sync.*` (S11), `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
+        Category by code family (the `category` of each entry): `ingress.*` → ingress; `routing.*` →
+        routing, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →
+        execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →
+        connection (a plugin restart is a `connection.status_changed` with `previous_status`);
+        `security.*` → security; `sources.*`, `connections.*`, `accounts.*`, `profiles.*`, `presets.*`
+        and `trades.manual_*` → config; `trades.reconcile_mismatch` → execution.
+    AuditEntry:
+      type: object
+      additionalProperties: false
+      required: [id, occurred_at, recorded_at, category, code, outcome, details, safe_to_display]
+      properties:
+        id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        occurred_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        recorded_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        category: { $ref: '#/components/schemas/AuditCategory' }
+        code: { $ref: '#/components/schemas/AuditCode' }
+        outcome: { $ref: '#/components/schemas/AuditOutcome' }
+        is_exit:
+          type: boolean
+          description: With routing and execution entries of an exit action (`close`, reduce, protective modify/cancel), so the text can say "saída".
+        instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        message_id: { type: string, pattern: '^[A-Za-z0-9._:-]{1,128}$' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_name: { type: string, maxLength: 80, description: Snapshot at the time of the entry. }
+        account_deleted: { type: boolean, description: True when the account has been archived since (UI `(excluída)`). }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_name: { type: string, minLength: 1, maxLength: 60 }
+        source_key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$', description: The only part of a source token that may be shown. }
+        signal_type: { $ref: '#/components/schemas/AuditSignalType' }
+        command_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        actor:
+          type: string
+          enum: [user, system, platform_admin]
+          description: Who caused the entry. `platform_admin` is reserved for admin actions on the user's data (Q28 recovery); absent on old entries.
+        details:
+          type: object
+          description: |
+            Typed per code: the schema is `AuditDetailsByCode[code]` (an empty object for codes without
+            one). Money, prices and distances are decimal strings. Never holds a secret, whatever
+            `safe_to_display` says: the Core redacts before writing (free-text fields such as pointers and
+            device labels are truncated and redacted) and storage refuses token-shaped strings.
+        safe_to_display:
+          type: boolean
+          description: Presentation only — true when the raw `details` JSON may be shown in "technical data". The rendered fields of the catalog are always shown. It is not a secrecy flag (see `details`).
+      allOf:
+        - if: { required: [account_id] }
+          then: { required: [account_name, account_deleted] }
+        - if: { required: [source_id] }
+          then: { required: [source_name] }
+    ActivityPage:
+      type: object
+      additionalProperties: false
+      required: [entries, retention_months, horizon]
+      properties:
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEntry' }
+        next_cursor:
+          type: string
+          description: Absent on the last page.
+        retention_months:
+          type: integer
+          minimum: 1
+          description: Rolling retention of the activity record (24 in V1, configurable by the admin; Q13, Q45).
+        horizon:
+          description: The oldest instant still kept; a `from` before it gets the "only the last n months" line.
+          $ref: '../openapi.yaml#/components/schemas/Timestamp'
+    ActivityFilterOptions:
+      type: object
+      additionalProperties: false
+      required: [accounts, sources, signal_types]
+      properties:
+        accounts:
+          type: array
+          description: Every account that appears in the caller's activity, archived ones included.
+          items:
+            type: object
+            additionalProperties: false
+            required: [account_id, account_name, account_deleted]
+            properties:
+              account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              account_name: { type: string, maxLength: 80 }
+              account_deleted: { type: boolean }
+        sources:
+          type: array
+          description: Every source, revoked ones included.
+          items:
+            type: object
+            additionalProperties: false
+            required: [source_id, source_name, revoked]
+            properties:
+              source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              source_name: { type: string, minLength: 1, maxLength: 60 }
+              revoked: { type: boolean }
+        signal_types:
+          type: array
+          description: Signal types present in the caller's retained activity (`master_account` only once S19 produces it; Q-S10-7).
+          items: { $ref: '#/components/schemas/AuditSignalType' }
+    InstructionSummary:
+      type: object
+      additionalProperties: false
+      required: [instruction_id, message_id, source_id, source_name, signal_type, action, instrument_symbol, sent_at, received_at]
+      properties:
+        instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        message_id: { type: string, pattern: '^[A-Za-z0-9._:-]{1,128}$' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_name: { type: string, minLength: 1, maxLength: 60 }
+        source_key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$' }
+        signal_type: { $ref: '#/components/schemas/AuditSignalType' }
+        action: { type: string, enum: [buy, sell, close, reverse, modify, cancel] }
+        instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$' }
+        contract_month: { type: string, pattern: '^[0-9]{4}-[0-9]{2}$' }
+        quantity: { type: integer, minimum: 1, maximum: 1000, description: Absent for `close` (ignored). }
+        sent_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        received_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    TimelineAccount:
+      type: object
+      additionalProperties: false
+      required: [account_id, account_name, account_deleted, outcome, final, steps]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_name: { type: string, maxLength: 80 }
+        account_deleted: { type: boolean }
+        outcome:
+          description: The account's result so far (the last decisive step).
+          $ref: '#/components/schemas/AuditOutcome'
+        final:
+          type: boolean
+          description: False while commands for this account are still open; the UI announces the outcome once it becomes final.
+        quantity:
+          description: How the quantity was decided (absent when the account was skipped before sizing).
+          $ref: '#/components/schemas/DetailsSizing'
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEntry' }
+    InstructionTimeline:
+      type: object
+      additionalProperties: false
+      required: [instruction, status, intake, accounts]
+      properties:
+        instruction: { $ref: '#/components/schemas/InstructionSummary' }
+        status:
+          type: string
+          enum: [in_progress, completed]
+          description: '`completed` when every account block is final.'
+        intake:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEntry' }
+        accounts:
+          type: array
+          items: { $ref: '#/components/schemas/TimelineAccount' }
+    AuditEntryRecordedEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, entry_id, occurred_at, category, code, outcome]
+      description: A new entry was recorded for the caller. Carries the filter keys (so the "n new entries" banner counts only entries that match the active filters) and no details.
+      properties:
+        type: { const: audit.entry_recorded }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        entry_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        occurred_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        category: { $ref: '#/components/schemas/AuditCategory' }
+        code: { $ref: '#/components/schemas/AuditCode' }
+        outcome: { $ref: '#/components/schemas/AuditOutcome' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        signal_type: { $ref: '#/components/schemas/AuditSignalType' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+
+    # ---- details per code ----
+    Money:
+      type: string
+      pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
+      description: Money as a decimal string (NUMERIC(18,4)).
+    Price:
+      type: string
+      pattern: '^[0-9]{1,12}(\.[0-9]{1,10})?$'
+    DetailsSizing:
+      type: object
+      additionalProperties: false
+      required: [multiplier, max_position_qty]
+      properties:
+        instruction_qty: { type: integer, minimum: 1, maximum: 1000 }
+        multiplier: { type: integer, minimum: 1, maximum: 1000 }
+        requested_qty: { type: integer, minimum: 0, description: instruction quantity × multiplier. }
+        max_position_qty: { type: integer, minimum: 1, maximum: 10000 }
+        position_before: { type: integer, description: 'Signed, the Core''s expected position.' }
+        executed_qty: { type: integer, minimum: 0, description: After the cap. }
+        skipped_qty: { type: integer, minimum: 0, description: requested − executed. }
+    DetailsIngressReceived:
+      type: object
+      additionalProperties: false
+      required: [action, instrument_symbol, sent_at]
+      properties:
+        action: { type: string, enum: [buy, sell, close, reverse, modify, cancel] }
+        instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$' }
+        quantity: { type: integer, minimum: 1, maximum: 1000 }
+        sent_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    DetailsIngressDuplicate:
+      type: object
+      additionalProperties: false
+      required: [original_instruction_id]
+      properties:
+        original_instruction_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+    DetailsIngressRejected:
+      type: object
+      additionalProperties: false
+      required: [error_code, pointer, body_size]
+      description: Never the body (Q13 §8).
+      properties:
+        error_code: { $ref: '../openapi.yaml#/components/schemas/ErrorCode' }
+        pointer: { type: string, maxLength: 256, description: 'Truncated and redacted by the Core (it derives from client input).' }
+        body_size: { type: integer, minimum: 0 }
+    DetailsIngressRateLimited:
+      type: object
+      additionalProperties: false
+      required: [retry_after_s]
+      properties:
+        retry_after_s: { type: integer, minimum: 1 }
+    DetailsRoutingDecision:
+      type: object
+      additionalProperties: false
+      description: |
+        Every `routing.*` decision code (routed, capped, skipped, refused, expired). Q74: for a `reverse`
+        the position check (ADR-0003 §4.2) runs before the entry gates. On an account barred for entries
+        (`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`), or with no room
+        (`max_position_reached`, derived M = 0): position opposite → only the close leg runs, and the
+        entry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0
+        for the open, and `reverse_closed_qty`; flat → skipped with the gate code, no
+        `reverse_closed_qty`; already on the reverse side → `routing.position_conflict` (rejected and
+        notified, never a flatten). The same holds when the open leg of a reverse with an opposite
+        position expires at routing (gate `expired`, TTL; 5.1.0): the close leg runs (no expiry; audited as
+        late if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty` = 0 for
+        the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening leg of a reverse", 5.1.1): the open is held until the flatten it depends on is terminal; if it then expires it is `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left the Core, (2) the flatten succeeded with a proven flat position (`already_flat`, or for `filled` the latest report with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
+      properties:
+        sizing: { $ref: '#/components/schemas/DetailsSizing' }
+        lifecycle_state: { type: string, enum: [paused, disabled] }
+        opt_in_state: { type: string, enum: [declined, pending_review] }
+        rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        sync_reasons:
+          type: array
+          items: { type: string, pattern: '^sync\.[a-z][a-z0-9_]*$' }
+        position_side: { type: string, enum: [long, short, flat] }
+        account_size: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        instrument_ids:
+          description: With `routing.no_bracket_profile`.
+          type: array
+          items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        limits_version: { type: integer, minimum: 1, description: With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006). }
+        reverse_closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'Q74: abs(position) read at the decision, i.e. the quantity the close leg of a reverse is sent to flatten when its open leg is skipped with this code. The executed result is in the execution entries.' }
+        ttl_ms: { type: integer, minimum: 1 }
+        expiry_base: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    DetailsCommandSent:
+      type: object
+      additionalProperties: false
+      required: [step, kind]
+      properties:
+        step: { type: string, maxLength: 64 }
+        kind: { type: string, enum: [place, modify, cancel, flatten] }
+        expires_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    DetailsBracketCalculated:
+      type: object
+      additionalProperties: false
+      required: [distance_unit, stop_requested, target_requested, stop_ticks, target_ticks, stop_rounded, target_rounded, mode]
+      description: 'S6 AC-4: requested distance → whole ticks used → resulting price, per side.'
+      properties:
+        mode: { type: string, enum: [individual, shared] }
+        distance_unit: { $ref: 'profiles.yaml#/components/schemas/DistanceUnit' }
+        stop_requested: { $ref: 'profiles.yaml#/components/schemas/DistanceValue' }
+        target_requested: { $ref: 'profiles.yaml#/components/schemas/DistanceValue' }
+        stop_ticks: { type: integer, minimum: 1, maximum: 10000 }
+        target_ticks: { type: integer, minimum: 1, maximum: 10000 }
+        stop_rounded: { type: boolean }
+        target_rounded: { type: boolean }
+        entry_price: { $ref: '#/components/schemas/Price' }
+        stop_price: { $ref: '#/components/schemas/Price' }
+        target_price: { $ref: '#/components/schemas/Price' }
+    DetailsExecution:
+      type: object
+      additionalProperties: false
+      required: [origin]
+      description: Every `execution.order_*`, `execution.filled` … `execution.state_unknown` and `execution.fill_corrected` code.
+      properties:
+        origin: { type: string, enum: [all_win, local_enforcement, external] }
+        child_role: { type: string, enum: [entry, stop, target] }
+        platform_order_id: { type: string, maxLength: 128 }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        fill_qty: { type: integer, minimum: 1 }
+        fill_price: { $ref: '#/components/schemas/Price' }
+        fill_operation: { type: string, enum: [add, amend, remove] }
+        commission: { $ref: '#/components/schemas/Money' }
+        position_after: { type: integer }
+        avg_price_after: { $ref: '#/components/schemas/Price' }
+        platform_reason: { $ref: '../openapi.yaml#/components/schemas/ErrorCode' }
+        platform_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        latency_ms: { type: integer, minimum: 0, description: Instruction receipt → this report (S19 AC-4 for followers). }
+    DetailsConnectionStatus:
+      type: object
+      additionalProperties: false
+      required: [connection_id, connection_name, status]
+      properties:
+        connection_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        connection_name: { type: string, maxLength: 60 }
+        previous_status: { type: string, enum: [awaiting_pairing, connected, disconnected, outdated, unpaired] }
+        status: { type: string, enum: [awaiting_pairing, connected, disconnected, outdated, unpaired] }
+    FieldChange:
+      type: object
+      additionalProperties: false
+      required: [field]
+      description: |
+        One changed field; values are strings, absent when empty. Scalars as their string form (money as
+        decimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string
+        amounts, e.g. `{"amount":"2000.00","type":"static"}`.
+      properties:
+        field: { type: string, pattern: '^[a-z][a-z0-9_.]*$', maxLength: 64 }
+        old: { type: string, maxLength: 1000 }
+        new: { type: string, maxLength: 1000 }
+    DetailsAccountChange:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      description: '`accounts.created` / `.updated` / `.archived`. `archived` also lists what was removed.'
+      properties:
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/FieldChange' }
+        removed_routes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [source_id, source_name]
+            properties:
+              source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              source_name: { type: string, minLength: 1, maxLength: 60 }
+        removed_follower_links:
+          type: array
+          items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+    DetailsLifecycleChanged:
+      type: object
+      additionalProperties: false
+      required: [previous_state, new_state, had_open_position]
+      properties:
+        previous_state: { $ref: 'accounts.yaml#/components/schemas/LifecycleState' }
+        new_state: { $ref: 'accounts.yaml#/components/schemas/LifecycleState' }
+        had_open_position: { type: boolean }
+    DetailsOptInChosen:
+      type: object
+      additionalProperties: false
+      required: [kind, choice, rule_version_id, firm_stance, sources]
+      description: 'S5 AC-8: the choice and the exact rule text version the user saw.'
+      properties:
+        kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
+        choice: { type: string, enum: [accepted, declined] }
+        previous_choice: { type: string, enum: [accepted, declined] }
+        rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        rule_version_number: { type: integer, minimum: 1 }
+        firm_name: { type: string, maxLength: 120 }
+        firm_stance: { $ref: 'accounts.yaml#/components/schemas/FirmStance' }
+        sources:
+          type: array
+          description: URL and access date of each quote shown (empty for the generic rule).
+          items:
+            type: object
+            additionalProperties: false
+            required: [url, accessed_at]
+            properties:
+              url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
+              accessed_at: { type: string, format: date }
+    DetailsOptInSuspended:
+      type: object
+      additionalProperties: false
+      required: [kind, cause, rule_version_id]
+      properties:
+        kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
+        cause: { type: string, enum: [stance_changed, text_changed, preset_attached] }
+        previous_rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        rule_version_number: { type: integer, minimum: 1 }
+        firm_name: { type: string, maxLength: 120 }
+    DetailsSubscriptionChanged:
+      type: object
+      additionalProperties: false
+      required: [action, route_id, source_id, source_name]
+      properties:
+        action: { type: string, enum: [created, updated, enabled, disabled, removed] }
+        route_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_name: { type: string, minLength: 1, maxLength: 60 }
+        previous_signal_types: { type: array, items: { $ref: 'routing.yaml#/components/schemas/SignalType' } }
+        signal_types: { type: array, items: { $ref: 'routing.yaml#/components/schemas/SignalType' } }
+        previous_is_enabled: { type: boolean }
+        is_enabled: { type: boolean }
+        cause:
+          type: string
+          enum: [user, account_ineligible]
+          description: '`account_ineligible` — the Core switched the route off because its account became ineligible for the source (Q67 b).'
+    DetailsProfileChanged:
+      type: object
+      additionalProperties: false
+      required: [instrument_id, new]
+      description: '`profiles.default_changed` (with `size_amount`) and `profiles.account_changed` (with `action`).'
+      properties:
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        action: { type: string, enum: [initial_copy, edited, restored] }
+        copied_from_size: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
+        previous: { $ref: 'profiles.yaml#/components/schemas/DistanceProfile' }
+        new: { $ref: 'profiles.yaml#/components/schemas/DistanceProfile' }
+    # security.* (S3 AC-16, auth policy rev. 2): never a code, challenge_id, token, cookie, or an unmasked e-mail or number.
+    MaskedChannelValue:
+      type: string
+      maxLength: 64
+      pattern: '^[^@\s]*\*[^\s]*$'
+      description: "Masked by the Core: e-mail `j***@d***.com`, number `+55******1234`. Always contains `*`."
+    DeviceLabel:
+      type: string
+      maxLength: 64
+      description: Coarse browser/OS family (`Device.label`), never a full user agent; truncated and redacted by the Core.
+    DetailsSecuritySignedIn:
+      type: object
+      additionalProperties: false
+      required: [channel, new_device, device_label]
+      properties:
+        channel: { $ref: '../openapi.yaml#/components/schemas/CodeChannel' }
+        new_device: { type: boolean }
+        device_label: { $ref: '#/components/schemas/DeviceLabel' }
+    DetailsSecurityChannel:
+      type: object
+      additionalProperties: false
+      required: [channel]
+      description: '`security.sign_in_failed` (registered identifier only; the reason is always code_invalid, never detailed).'
+      properties:
+        channel: { $ref: '../openapi.yaml#/components/schemas/CodeChannel' }
+    CodePurpose:
+      type: string
+      enum: [login, signup, step_up, channel_change]
+    DetailsSecurityRateLimited:
+      type: object
+      additionalProperties: false
+      required: [purpose]
+      properties:
+        purpose: { $ref: '#/components/schemas/CodePurpose' }
+    DetailsSecurityDeliveryFailed:
+      type: object
+      additionalProperties: false
+      required: [channel, purpose]
+      properties:
+        channel: { $ref: '../openapi.yaml#/components/schemas/CodeChannel' }
+        purpose: { $ref: '#/components/schemas/CodePurpose' }
+    DetailsSecurityDevice:
+      type: object
+      additionalProperties: false
+      required: [device_label]
+      description: '`security.new_device_notice_sent`; with `device_id` for `security.device_forgotten`.'
+      properties:
+        device_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        device_label: { $ref: '#/components/schemas/DeviceLabel' }
+    DetailsSecurityStepUp:
+      type: object
+      additionalProperties: false
+      required: [action]
+      description: '`security.step_up_succeeded`; with `reason` for `security.step_up_failed`.'
+      properties:
+        action: { $ref: '../openapi.yaml#/components/schemas/StepUpAction' }
+        target_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        reason: { type: string, enum: [missing, code_invalid] }
+    DetailsSecurityChannelChange:
+      type: object
+      additionalProperties: false
+      required: [change_id, channel]
+      description: |
+        Every `security.channel_change_*` code: `requested` adds `masked_new_value`; `on_hold` adds
+        `hold_until`; `completed` adds `masked_old_value` and `masked_new_value`; `cancelled` adds `by`;
+        `not_completed` adds nothing (expired, or the new value was taken during the hold; the reason is
+        never shown, auth policy §3).
+      properties:
+        change_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        channel: { $ref: '../openapi.yaml#/components/schemas/CodeChannel' }
+        masked_old_value: { $ref: '#/components/schemas/MaskedChannelValue' }
+        masked_new_value: { $ref: '#/components/schemas/MaskedChannelValue' }
+        hold_until: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        by: { type: string, enum: [user, system] }
+    DetailsEmpty:
+      type: object
+      additionalProperties: false
+      maxProperties: 0
+    DetailsPresetApplied:
+      type: object
+      additionalProperties: false
+      required: [from_preset_version_id, to_preset_version_id, from_version_number, to_version_number, changes]
+      properties:
+        from_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        to_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        from_version_number: { type: integer, minimum: 1 }
+        to_version_number: { type: integer, minimum: 1 }
+        changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
+        kept_fields: { type: array, description: 'Edited fields the user kept (`keep_mine`).', items: { $ref: 'presets.yaml#/components/schemas/RuleField' } }
+    DetailsPresetValueRestored:
+      type: object
+      additionalProperties: false
+      required: [change]
+      properties:
+        change: { $ref: '#/components/schemas/FieldChange' }
+    DetailsSourceLifecycle:
+      type: object
+      additionalProperties: false
+      required: [source_id, source_name, key_id]
+      description: '`sources.*` (S3). Only the 12-character `key_id` of a token, never the URL or the token.'
+      properties:
+        source_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        source_name: { type: string, minLength: 1, maxLength: 60 }
+        previous_name: { type: string, maxLength: 60 }
+        key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$' }
+        previous_key_id: { type: string, pattern: '^[A-Za-z0-9]{12}$', description: With `sources.rotated`. }
+    DetailsConnectionLifecycle:
+      type: object
+      additionalProperties: false
+      required: [connection_id, connection_name]
+      description: '`connections.*` (S3). Never a pairing code or device token.'
+      properties:
+        connection_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        connection_name: { type: string, maxLength: 60 }
+        previous_name: { type: string, maxLength: 60 }
+        instance_name: { type: string, maxLength: 64 }
+        adapter_version: { type: string, maxLength: 32 }
+        code_expires_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        open_positions_acknowledged: { type: boolean, description: With `connections.unpaired`. }
+    DetailsRiskRulesChanged:
+      type: object
+      additionalProperties: false
+      required: [changes, limits_version]
+      properties:
+        changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
+        limits_version: { type: integer, minimum: 1 }
+        effective:
+          type: array
+          description: When each changed rule applies (Q48).
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, effective_from]
+            properties:
+              kind: { $ref: 'risk.yaml#/components/schemas/RiskRuleKind' }
+              effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    DetailsRiskState:
+      type: object
+      additionalProperties: false
+      required: [kind, limit, used, percent]
+      description: '`risk.warning`, `risk.limit_reached`, `risk.target_reached` (+ `action`), `risk.consistency_warning`.'
+      properties:
+        kind: { $ref: 'risk.yaml#/components/schemas/RiskRuleKind' }
+        limit: { type: string, pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$', description: 'Money, or a percent string for consistency.' }
+        used: { type: string, pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$', description: 'Money, or a percent string for consistency.' }
+        percent: { type: integer, minimum: 0 }
+        action: { type: string, enum: [notify, flatten_and_block] }
+    DetailsTrade:
+      type: object
+      additionalProperties: false
+      required: [trade_id, direction, quantity, pnl]
+      description: '`trades.captured` (category `execution`) and `trades.manual_created` / `trades.manual_deleted` (`config`; the deleted trade''s values are kept here).'
+      properties:
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        origin: { $ref: 'trades.yaml#/components/schemas/TradeOrigin' }
+        direction: { $ref: 'trades.yaml#/components/schemas/TradeDirection' }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        entry_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        entry_price: { $ref: '#/components/schemas/Price' }
+        exit_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        exit_price: { $ref: '#/components/schemas/Price' }
+        pnl:
+          description: Net (main value from 3.5.0).
+          $ref: '#/components/schemas/Money'
+        gross_pnl: { $ref: '#/components/schemas/Money' }
+        commission: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        commission_source: { $ref: 'trades.yaml#/components/schemas/CommissionSource' }
+        mae: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        mfe: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+    DetailsTradeChanged:
+      type: object
+      additionalProperties: false
+      required: [trade_id, changes]
+      properties:
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        changes: { type: array, items: { $ref: '#/components/schemas/FieldChange' } }
+    DetailsTradeMismatch:
+      type: object
+      additionalProperties: false
+      required: [trade_id, mismatch]
+      description: The plugin's trade does not match the fills the Core knows; the plugin's numbers are kept (S21 AC-2).
+      properties:
+        trade_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        mismatch: { type: string, enum: [unknown_fills, pnl_differs, quantity_differs] }
+        plugin_pnl: { $ref: '#/components/schemas/Money' }
+        fills_pnl: { $ref: '#/components/schemas/Money' }
+    DetailsEvaluation:
+      type: object
+      additionalProperties: false
+      required: [profit_target, achieved, start]
+      description: '`risk.evaluation_target_reached` (notify only, Q70).'
+      properties:
+        start: { type: string, format: date }
+        previous_start: { type: string, format: date }
+        earned_before: { $ref: '#/components/schemas/Money' }
+        previous_earned_before: { $ref: '#/components/schemas/Money' }
+        profit_target: { $ref: '#/components/schemas/Money' }
+        achieved: { $ref: '#/components/schemas/Money' }
+    DetailsEvaluationRestarted:
+      type: object
+      additionalProperties: false
+      required: [start, previous_start, profit_target]
+      description: '`accounts.evaluation_restarted`: old and new start and earned-before, and the target in force. No progress figure (that is risk data, S13b).'
+      properties:
+        start: { type: string, format: date }
+        previous_start: { type: string, format: date }
+        earned_before: { $ref: '#/components/schemas/Money' }
+        previous_earned_before: { $ref: '#/components/schemas/Money' }
+        profit_target: { $ref: '#/components/schemas/Money' }
+    DetailsSecurityInvitation:
+      type: object
+      additionalProperties: false
+      required: [invitation_id]
+      description: |
+        `security.invitation_issued` (the admin's trail; with `masked_email` and `email_sent`),
+        `security.invitation_revoked`, and `security.account_created` (the new user's log: the
+        invitation that created the account). Never an unmasked address or the invitation token.
+      properties:
+        invitation_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        masked_email: { $ref: '#/components/schemas/MaskedChannelValue' }
+        email_sent: { type: boolean, description: Whether the invitation e-mail was handed to the mail provider. }
+    AuditDetailsByCode:
+      type: object
+      additionalProperties: false
+      description: |
+        Type map, not a payload: `details` of an entry with code `<code>` matches property `<code>`.
+        Codes not listed have empty `details` (`{}`) unless their own contract adds a schema.
+      properties:
+        ingress.received: { $ref: '#/components/schemas/DetailsIngressReceived' }
+        ingress.duplicate_ignored: { $ref: '#/components/schemas/DetailsIngressDuplicate' }
+        ingress.rejected: { $ref: '#/components/schemas/DetailsIngressRejected' }
+        ingress.rate_limited: { $ref: '#/components/schemas/DetailsIngressRateLimited' }
+        routing.routed: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.quantity_capped: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.max_position_reached: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.signal_type_not_selected: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.automation_not_accepted: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.copy_not_accepted: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.account_inactive: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.platform_unbound: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.no_bracket_profile: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.limits_pending: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.out_of_sync: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.risk_blocked: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.position_conflict: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.nothing_to_close: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.nothing_to_reduce: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.no_correlated_order: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.expired: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        execution.command_sent: { $ref: '#/components/schemas/DetailsCommandSent' }
+        execution.bracket_calculated: { $ref: '#/components/schemas/DetailsBracketCalculated' }
+        execution.order_received: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.order_working: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.partially_filled: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.filled: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.cancelled: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.rejected: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.expired: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.state_unknown: { $ref: '#/components/schemas/DetailsExecution' }
+        execution.fill_corrected: { $ref: '#/components/schemas/DetailsExecution' }
+        connection.status_changed: { $ref: '#/components/schemas/DetailsConnectionStatus' }
+        sources.created: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        sources.renamed: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        sources.rotated: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        sources.revoked: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
+        connections.created: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.renamed: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.pairing_code_issued: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.paired: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.repaired: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        connections.unpaired: { $ref: '#/components/schemas/DetailsConnectionLifecycle' }
+        security.signed_in: { $ref: '#/components/schemas/DetailsSecuritySignedIn' }
+        security.sign_in_failed: { $ref: '#/components/schemas/DetailsSecurityChannel' }
+        security.code_rate_limited: { $ref: '#/components/schemas/DetailsSecurityRateLimited' }
+        security.code_delivery_failed: { $ref: '#/components/schemas/DetailsSecurityDeliveryFailed' }
+        security.new_device_notice_sent: { $ref: '#/components/schemas/DetailsSecurityDevice' }
+        security.step_up_succeeded: { $ref: '#/components/schemas/DetailsSecurityStepUp' }
+        security.step_up_failed: { $ref: '#/components/schemas/DetailsSecurityStepUp' }
+        security.channel_change_requested: { $ref: '#/components/schemas/DetailsSecurityChannelChange' }
+        security.channel_change_on_hold: { $ref: '#/components/schemas/DetailsSecurityChannelChange' }
+        security.channel_change_completed: { $ref: '#/components/schemas/DetailsSecurityChannelChange' }
+        security.channel_change_cancelled: { $ref: '#/components/schemas/DetailsSecurityChannelChange' }
+        security.channel_change_not_completed: { $ref: '#/components/schemas/DetailsSecurityChannelChange' }
+        security.device_forgotten: { $ref: '#/components/schemas/DetailsSecurityDevice' }
+        security.signed_out_everywhere: { $ref: '#/components/schemas/DetailsEmpty' }
+        security.invitation_issued: { $ref: '#/components/schemas/DetailsSecurityInvitation' }
+        security.invitation_revoked: { $ref: '#/components/schemas/DetailsSecurityInvitation' }
+        security.account_created: { $ref: '#/components/schemas/DetailsSecurityInvitation' }
+        accounts.created: { $ref: '#/components/schemas/DetailsAccountChange' }
+        accounts.updated: { $ref: '#/components/schemas/DetailsAccountChange' }
+        accounts.archived: { $ref: '#/components/schemas/DetailsAccountChange' }
+        accounts.lifecycle_changed: { $ref: '#/components/schemas/DetailsLifecycleChanged' }
+        accounts.opt_in_chosen: { $ref: '#/components/schemas/DetailsOptInChosen' }
+        accounts.opt_in_suspended: { $ref: '#/components/schemas/DetailsOptInSuspended' }
+        routing.subscription_changed: { $ref: '#/components/schemas/DetailsSubscriptionChanged' }
+        profiles.default_changed: { $ref: '#/components/schemas/DetailsProfileChanged' }
+        profiles.account_changed: { $ref: '#/components/schemas/DetailsProfileChanged' }
+        presets.version_applied: { $ref: '#/components/schemas/DetailsPresetApplied' }
+        presets.value_restored: { $ref: '#/components/schemas/DetailsPresetValueRestored' }
+        risk.rules_changed: { $ref: '#/components/schemas/DetailsRiskRulesChanged' }
+        risk.warning: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.limit_reached: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.target_reached: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }
+        risk.evaluation_target_reached: { $ref: '#/components/schemas/DetailsEvaluation' }
+        accounts.evaluation_restarted: { $ref: '#/components/schemas/DetailsEvaluationRestarted' }
+        trades.captured: { $ref: '#/components/schemas/DetailsTrade' }
+        trades.manual_created: { $ref: '#/components/schemas/DetailsTrade' }
+        trades.manual_changed: { $ref: '#/components/schemas/DetailsTradeChanged' }
+        trades.manual_deleted: { $ref: '#/components/schemas/DetailsTrade' }
+        trades.reconcile_mismatch: { $ref: '#/components/schemas/DetailsTradeMismatch' }

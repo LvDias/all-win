@@ -1,0 +1,327 @@
+# Module `notifications` — V1-S18 (in-app notification center, Web side; the plugin gets the same items
+# through adapter protocol 1.3). Codes, categories, severities and params schemas: the registry
+# ../../notifications/v1/registry.json (+ generated params.schema.json).
+# Owner: Compasso (Software Architect). Notes: docs/architecture/contracts/s18-notifications.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/notifications:
+    get:
+      tags: [notifications]
+      operationId: listNotifications
+      summary: The caller's notifications, critical unread first, then newest first, with a cursor
+      description: |
+        One set of notifications per user, shared by the Web and the plugin (Q-S18-4): the same
+        `notification_id` and `revision` on both channels. Order: unread `critical` items first, then by
+        `updated_at` (last occurrence), newest first, ties by `notification_id`. `next_cursor` is opaque,
+        authenticated by the Core (MAC) and bound to the filters (a tampered or mismatching cursor gets
+        400, pointer `/query/cursor`). Retention equals the audit's (24 months; Q-S18-6). Every response
+        carries the current unread count, so the bell never counts.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [all, unread, read], default: all }
+        - name: category
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 7, items: { $ref: 'audit.yaml#/components/schemas/AuditCategory' } }
+        - name: account_id
+          in: query
+          required: false
+          explode: true
+          schema: { type: array, maxItems: 50, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$' }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPage' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/notifications/unread-count:
+    get:
+      tags: [notifications]
+      operationId: getUnreadCount
+      summary: Unread count and worst unread severity (bell and shell)
+      description: The same pair the adapter protocol 1.3 snapshot carries; authoritative (the client never counts).
+      responses:
+        '200':
+          description: The count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnreadCount' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/notifications/{notification_id}/read:
+    post:
+      tags: [notifications]
+      operationId: markNotificationRead
+      summary: Mark one notification read (idempotent)
+      description: |
+        Sets `read_at` and bumps `revision` (so the plugin's upsert sees it); already read → 200 with the
+        item unchanged. Reading never changes or hides the state it reports (a block, a risk level, an out-
+        of-sync flag stays visible in banners and badges). A later occurrence of a grouped item makes it
+        unread again only when its registry code has `reopen_on_occurrence: true` (Q68 b: the
+        `danger` routing codes); otherwise only `count` and `updated_at` change. Emits `notification.read`.
+      parameters:
+        - { $ref: '#/components/parameters/NotificationId' }
+      responses:
+        '200':
+          description: The item and the new unread count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MarkReadResult' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/notifications/read:
+    post:
+      tags: [notifications]
+      operationId: markNotificationsRead
+      summary: Mark several notifications read — a list of ids, or everything up to an instant (idempotent)
+      description: |
+        Either `notification_ids` (≤ 200; unknown or foreign ids are ignored, never reported) or `up_to`
+        (every unread item, optionally limited by `category` / `account_id`, whose `updated_at` is at or
+        before `up_to`, so an item that arrives while the user clicks "mark all" stays unread). Returns the
+        new unread count. Emits one `notification.read`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MarkManyRequest' }
+            examples:
+              all:
+                value: { up_to: '2026-10-23T14:31:05Z' }
+      responses:
+        '200':
+          description: The new unread count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnreadCount' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  parameters:
+    NotificationId:
+      name: notification_id
+      in: path
+      required: true
+      schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+
+  schemas:
+    NotificationSeverity:
+      type: string
+      enum: [info, success, warning, danger, critical]
+      description: |
+        Set by the Core from the registry. Web behaviour (S18 §3/§5): `info` / `warning` update the bell
+        silently; `success` uses the success colour; `danger` raises a destructive toast; `critical` is the
+        top severity of the ADRs and shows the `CriticalBanner`, which stays until the item is read
+        (Q51). The plugin may map `success` → `info` and `danger` → `warning` in its UI; the
+        protocol carries the five values unchanged.
+    NotificationCode:
+      type: string
+      pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+      maxLength: 96
+      description: A code of the registry (`contracts/notifications/v1/registry.json`); `NotificationParamsByCode` lists them with their params. Unknown codes are shown with the fallback "Aviso {code}".
+    NotificationTarget:
+      type: object
+      additionalProperties: false
+      required: [kind, id]
+      description: Structured link; the client builds the URL (Web route; plugin `welcome.app_url` + route). Never a URL in the payload.
+      properties:
+        kind: { type: string, enum: [account, connection, instruction, route, activity_entry] }
+        id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+    Notification:
+      type: object
+      additionalProperties: false
+      required: [notification_id, revision, code, category, severity, params, count, created_at, updated_at]
+      properties:
+        notification_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        revision:
+          type: integer
+          minimum: 1
+          description: Monotonic per `notification_id`; every change (new occurrence, read) bumps it. Clients upsert only with a higher revision.
+        code: { $ref: '#/components/schemas/NotificationCode' }
+        category: { $ref: 'audit.yaml#/components/schemas/AuditCategory' }
+        severity: { $ref: '#/components/schemas/NotificationSeverity' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        account_name: { type: string, maxLength: 80, description: Snapshot (Web only; the plugin shows its platform account name). }
+        params:
+          type: object
+          description: Typed per code — `NotificationParamsByCode[code]` (the same schemas as `params.schema.json`). For grouped items, the params of the last occurrence.
+        count:
+          type: integer
+          minimum: 1
+          description: Occurrences grouped into this item (same code + account + trading day; registry `grouping`, and `reopen_on_occurrence` for whether a new occurrence marks it unread). The audit keeps one entry per occurrence.
+        source_event_ids:
+          type: array
+          maxItems: 50
+          description: event_ids of the adapter→Core messages aggregated (only for notifications caused by plugin events).
+          items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        audit_entry_id:
+          description: The audit entry of the last occurrence (Web link "Ver no registro").
+          $ref: '../openapi.yaml#/components/schemas/Uuid'
+        created_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        updated_at:
+          description: The last occurrence (equals `created_at` while `count` is 1) or the last change.
+          $ref: '../openapi.yaml#/components/schemas/Timestamp'
+        read_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        target: { $ref: '#/components/schemas/NotificationTarget' }
+    UnreadCount:
+      type: object
+      additionalProperties: false
+      required: [unread_count]
+      properties:
+        unread_count: { type: integer, minimum: 0 }
+        worst_severity:
+          description: The worst severity among unread items; absent when there are none.
+          $ref: '#/components/schemas/NotificationSeverity'
+    NotificationPage:
+      type: object
+      additionalProperties: false
+      required: [notifications, unread]
+      properties:
+        notifications:
+          type: array
+          items: { $ref: '#/components/schemas/Notification' }
+        next_cursor: { type: string, description: Absent on the last page. }
+        unread: { $ref: '#/components/schemas/UnreadCount' }
+    MarkReadResult:
+      type: object
+      additionalProperties: false
+      required: [notification, unread]
+      properties:
+        notification: { $ref: '#/components/schemas/Notification' }
+        unread: { $ref: '#/components/schemas/UnreadCount' }
+    MarkManyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        notification_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        up_to: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        category: { type: array, maxItems: 7, items: { $ref: 'audit.yaml#/components/schemas/AuditCategory' } }
+        account_id: { type: array, maxItems: 50, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+      oneOf:
+        - required: [notification_ids]
+          not: { anyOf: [{ required: [up_to] }, { required: [category] }, { required: [account_id] }] }
+        - required: [up_to]
+          not: { required: [notification_ids] }
+
+    # ---- params of notification-only codes (not audit codes) ----
+    ParamsOptInSuspendedByFirm:
+      type: object
+      additionalProperties: false
+      required: [kind, firm_id, firm_name, account_count, rule_version_id]
+      description: '`accounts.opt_in_suspended` grouped per firm and release (one notification, "{k} contas"); the audit keeps one entry per account.'
+      properties:
+        kind: { $ref: 'accounts.yaml#/components/schemas/OptInKind' }
+        firm_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        firm_name: { type: string, maxLength: 120 }
+        account_count: { type: integer, minimum: 1 }
+        rule_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        cause: { type: string, enum: [stance_changed, text_changed, preset_attached] }
+    ParamsReverseCloseOnly:
+      type: object
+      additionalProperties: false
+      required: [reason_code, closed_qty, closed_side]
+      description: |
+        Q74 (Vigia I1): a `reverse` that closed the position and skipped the open, because the account is
+        barred for entries or has no room. Always notified, one per occurrence, whatever the gate
+        (including `routing.limits_pending`, which is otherwise not notified). It replaces the gate's own
+        grouped notification for that occurrence. The audit entry carries the gate code
+        (`DetailsRoutingDecision.reverse_closed_qty`).
+      properties:
+        reason_code:
+          type: string
+          enum: [routing.out_of_sync, routing.risk_blocked, routing.limits_pending, routing.no_bracket_profile, routing.max_position_reached, routing.expired]
+          description: The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL exceeded (5.1.0), or when the open leg expired in the gateway queue under the ADR-0004 §5 reverse exception (5.1.1).
+        closed_qty: { type: integer, minimum: 1, maximum: 10000, description: 'abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`).' }
+        closed_side: { type: string, enum: [long, short], description: The side of the position that was closed. }
+    ParamsPresetNewVersion:
+      type: object
+      additionalProperties: false
+      required: [firm_id, firm_name, version_number, account_count]
+      description: '`presets.new_version` — one per firm (Q-S16-5): a newer release affects `account_count` of the caller''s accounts.'
+      properties:
+        firm_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        firm_name: { type: string, maxLength: 120 }
+        version_number: { type: integer, minimum: 1 }
+        account_count: { type: integer, minimum: 1 }
+    NotificationParamsByCode:
+      type: object
+      additionalProperties: false
+      description: |
+        Type map, not a payload: `params` of a notification with code `<code>` matches property `<code>`.
+        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S11
+        (`sync.*`) and S15 (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
+        are added with those contracts.
+      properties:
+        routing.quantity_capped: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.max_position_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.position_conflict: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.risk_blocked: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.out_of_sync: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.expired: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.no_bracket_profile: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.reverse_close_only: { $ref: '#/components/schemas/ParamsReverseCloseOnly' }
+        risk.warning: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
+        risk.limit_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
+        risk.target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
+        risk.consistency_warning: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
+        risk.evaluation_target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsEvaluation' }
+        connection.status_changed: { $ref: 'audit.yaml#/components/schemas/DetailsConnectionStatus' }
+        accounts.opt_in_suspended: { $ref: '#/components/schemas/ParamsOptInSuspendedByFirm' }
+        presets.new_version: { $ref: '#/components/schemas/ParamsPresetNewVersion' }
+
+    NotificationCreatedEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, notification, unread]
+      properties:
+        type: { const: notification.created }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        notification: { $ref: '#/components/schemas/Notification' }
+        unread: { $ref: '#/components/schemas/UnreadCount' }
+    NotificationUpdatedEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, notification, unread]
+      description: A grouped item got a new occurrence (count, last time, params), or another change; upsert by revision.
+      properties:
+        type: { const: notification.updated }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        notification: { $ref: '#/components/schemas/Notification' }
+        unread: { $ref: '#/components/schemas/UnreadCount' }
+    NotificationReadEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, unread]
+      description: Items were read on any channel (Web tab or plugin); `notification_ids` lists them (absent after a large `up_to` read, then refetch).
+      properties:
+        type: { const: notification.read }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        notification_ids: { type: array, maxItems: 200, items: { $ref: '../openapi.yaml#/components/schemas/Uuid' } }
+        unread: { $ref: '#/components/schemas/UnreadCount' }

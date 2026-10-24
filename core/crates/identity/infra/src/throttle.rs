@@ -1,0 +1,588 @@
+//! In-memory throttles (single Core instance, data model §4.1; a restart resets them).
+//!
+//! - [`PairingThrottlePolicy`] / [`PrefixPairingThrottle`]: U11 — attempts per IP and per /24
+//!   (IPv4) or /64 (IPv6) prefix; the global failure threshold raises an alert and never
+//!   blocks pairing.
+//! - [`PerIpPublicThrottle`]: public token/e-mail endpoints, per IP.
+
+use std::collections::{HashMap, VecDeque};
+use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use identity_application::ports::{SecurityAlert, SecurityAlerts};
+use identity_application::throttle::{
+    CodeThrottle, PairingDecision, PairingThrottle, PublicEndpointThrottle, ThrottleDecision,
+};
+
+/// Sliding-window counter per key.
+struct Window<K> {
+    hits: HashMap<K, VecDeque<DateTime<Utc>>>,
+}
+
+impl<K> Default for Window<K> {
+    fn default() -> Self {
+        Self {
+            hits: HashMap::new(),
+        }
+    }
+}
+
+impl<K: std::hash::Hash + Eq + Clone> Window<K> {
+    fn prune(&mut self, key: &K, now: DateTime<Utc>, span: chrono::Duration) -> usize {
+        let Some(q) = self.hits.get_mut(key) else {
+            return 0;
+        };
+        while q.front().is_some_and(|t| *t <= now - span) {
+            q.pop_front();
+        }
+        let n = q.len();
+        if n == 0 {
+            self.hits.remove(key);
+        }
+        n
+    }
+
+    /// Seconds until the oldest hit leaves the window (at least 1).
+    fn retry_after(&self, key: &K, now: DateTime<Utc>, span: chrono::Duration) -> Duration {
+        let oldest = self
+            .hits
+            .get(key)
+            .and_then(|q| q.front().copied())
+            .unwrap_or(now);
+        secs((oldest + span - now).num_seconds())
+    }
+
+    fn push(&mut self, key: K, now: DateTime<Utc>) {
+        self.hits.entry(key).or_default().push_back(now);
+    }
+}
+
+fn secs(s: i64) -> Duration {
+    Duration::from_secs(u64::try_from(s.max(1)).unwrap_or(1))
+}
+
+/// U11 (decisions 2026-10-23); ADR-0004 §8 without its global lock.
+#[derive(Clone, Copy, Debug)]
+pub struct PairingThrottlePolicy {
+    pub per_ip_per_minute: usize,
+    pub per_prefix_per_minute: usize,
+    /// Failed attempts across all clients within [`Self::global_window`] that raise the alert.
+    pub global_failures_alert: usize,
+    pub global_window: chrono::Duration,
+}
+
+impl Default for PairingThrottlePolicy {
+    /// 10/min per IP, 30/min per /24 or /64, alert at 100 failures in 10 minutes.
+    fn default() -> Self {
+        Self {
+            per_ip_per_minute: 10,
+            per_prefix_per_minute: 30,
+            global_failures_alert: 100,
+            global_window: chrono::Duration::minutes(10),
+        }
+    }
+}
+
+/// Receives the operational alert when failed pairings cross the global threshold.
+pub trait PairingAlertSink: Send + Sync {
+    fn global_failures_exceeded(&self, failures: usize, window: chrono::Duration);
+}
+
+/// Writes the alert to the technical log (no IPs or codes, only the count).
+pub struct LogPairingAlerts;
+
+impl PairingAlertSink for LogPairingAlerts {
+    fn global_failures_exceeded(&self, failures: usize, window: chrono::Duration) {
+        tracing::warn!(
+            target: "security_alert",
+            failures,
+            window_seconds = window.num_seconds(),
+            "pairing failures crossed the global alert threshold"
+        );
+    }
+}
+
+/// The /24 (IPv4) or /64 (IPv6) network an address belongs to; IPv4-mapped IPv6 counts as IPv4.
+fn network_prefix(ip: IpAddr) -> IpAddr {
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => IpAddr::V4(std::net::Ipv4Addr::from(u32::from(v4) & 0xFFFF_FF00)),
+        IpAddr::V6(v6) => IpAddr::V6(std::net::Ipv6Addr::from(
+            u128::from(v6) & !((1u128 << 64) - 1),
+        )),
+    }
+}
+
+#[derive(Default)]
+struct PairingState {
+    per_ip: Window<IpAddr>,
+    per_prefix: Window<IpAddr>,
+    failures: Window<()>,
+    /// Set while the global count stays at or above the threshold, so the alert fires once
+    /// per episode.
+    alerting: bool,
+}
+
+pub struct PrefixPairingThrottle {
+    policy: PairingThrottlePolicy,
+    alerts: Arc<dyn PairingAlertSink>,
+    state: Mutex<PairingState>,
+}
+
+impl PrefixPairingThrottle {
+    pub fn new(policy: PairingThrottlePolicy, alerts: Arc<dyn PairingAlertSink>) -> Self {
+        Self {
+            policy,
+            alerts,
+            state: Mutex::new(PairingState::default()),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, PairingState> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[async_trait]
+impl PairingThrottle for PrefixPairingThrottle {
+    async fn admit(&self, ip: IpAddr, now: DateTime<Utc>) -> PairingDecision {
+        let minute = chrono::Duration::minutes(1);
+        let ip = ip.to_canonical();
+        let prefix = network_prefix(ip);
+        let mut st = self.lock();
+        let ip_full = st.per_ip.prune(&ip, now, minute) >= self.policy.per_ip_per_minute;
+        let prefix_full =
+            st.per_prefix.prune(&prefix, now, minute) >= self.policy.per_prefix_per_minute;
+        if ip_full || prefix_full {
+            let mut retry_after = Duration::ZERO;
+            if ip_full {
+                retry_after = retry_after.max(st.per_ip.retry_after(&ip, now, minute));
+            }
+            if prefix_full {
+                retry_after = retry_after.max(st.per_prefix.retry_after(&prefix, now, minute));
+            }
+            return PairingDecision::RateLimited { retry_after };
+        }
+        st.per_ip.push(ip, now);
+        st.per_prefix.push(prefix, now);
+        PairingDecision::Allow
+    }
+
+    async fn record_failure(&self, _ip: IpAddr, now: DateTime<Utc>) {
+        let window = self.policy.global_window;
+        let crossed = {
+            let mut st = self.lock();
+            st.failures.push((), now);
+            let failures = st.failures.prune(&(), now, window);
+            let over = failures >= self.policy.global_failures_alert;
+            let crossed = over && !st.alerting;
+            st.alerting = over;
+            crossed.then_some(failures)
+        };
+        if let Some(failures) = crossed {
+            self.alerts.global_failures_exceeded(failures, window);
+        }
+    }
+}
+
+/// Masks an address to `v4_bits` (IPv4, IPv4-mapped included) or `v6_bits` (IPv6).
+fn masked(ip: IpAddr, v4_bits: u32, v6_bits: u32) -> IpAddr {
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => {
+            let mask = u32::MAX.checked_shl(32 - v4_bits).unwrap_or(0);
+            IpAddr::V4(std::net::Ipv4Addr::from(u32::from(v4) & mask))
+        }
+        IpAddr::V6(v6) => {
+            let mask = u128::MAX.checked_shl(128 - v6_bits).unwrap_or(0);
+            IpAddr::V6(std::net::Ipv6Addr::from(u128::from(v6) & mask))
+        }
+    }
+}
+
+/// Auth policy rev. 2 §4 — in-memory rows (the per-identifier and per-user limits are durable).
+#[derive(Clone, Copy, Debug)]
+pub struct CodeThrottlePolicy {
+    /// Sends per IP (IPv4 /32, IPv6 /64): 10 per 15 min and 50 per 24 h.
+    pub per_ip_15min: usize,
+    pub per_ip_24h: usize,
+    /// Sends per prefix (IPv4 /24, IPv6 /48): 100 per hour, then 429 for that prefix and an alert.
+    pub per_prefix_hour: usize,
+    /// Global sends above this per hour raise an alert (never a lock).
+    pub global_alert_hour: usize,
+    /// Wrong attempts per IP across codes: 30 per 15 min.
+    pub wrong_per_ip_15min: usize,
+}
+
+impl Default for CodeThrottlePolicy {
+    fn default() -> Self {
+        Self {
+            per_ip_15min: 10,
+            per_ip_24h: 50,
+            per_prefix_hour: 100,
+            global_alert_hour: 300,
+            wrong_per_ip_15min: 30,
+        }
+    }
+}
+
+#[derive(Default)]
+struct CodeState {
+    ip_15: Window<IpAddr>,
+    ip_24: Window<IpAddr>,
+    prefix: Window<IpAddr>,
+    global: Window<()>,
+    wrong: Window<IpAddr>,
+    prefix_alerted: bool,
+    global_alerted: bool,
+}
+
+pub struct PrefixCodeThrottle {
+    policy: CodeThrottlePolicy,
+    alerts: Arc<dyn SecurityAlerts>,
+    state: Mutex<CodeState>,
+}
+
+impl PrefixCodeThrottle {
+    pub fn new(policy: CodeThrottlePolicy, alerts: Arc<dyn SecurityAlerts>) -> Self {
+        Self {
+            policy,
+            alerts,
+            state: Mutex::new(CodeState::default()),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, CodeState> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[async_trait]
+impl CodeThrottle for PrefixCodeThrottle {
+    async fn admit_send(&self, ip: IpAddr, now: DateTime<Utc>) -> ThrottleDecision {
+        let (m15, h24, hour) = (
+            chrono::Duration::minutes(15),
+            chrono::Duration::hours(24),
+            chrono::Duration::hours(1),
+        );
+        let host = masked(ip, 32, 64);
+        let prefix = masked(ip, 24, 48);
+        let mut alert = None;
+        let decision = {
+            let mut st = self.lock();
+            let p = &self.policy;
+            let limited = if st.ip_15.prune(&host, now, m15) >= p.per_ip_15min {
+                Some(st.ip_15.retry_after(&host, now, m15))
+            } else if st.ip_24.prune(&host, now, h24) >= p.per_ip_24h {
+                Some(st.ip_24.retry_after(&host, now, h24))
+            } else if st.prefix.prune(&prefix, now, hour) >= p.per_prefix_hour {
+                if !st.prefix_alerted {
+                    st.prefix_alerted = true;
+                    alert = Some(SecurityAlert::PrefixSendsExceeded);
+                }
+                Some(st.prefix.retry_after(&prefix, now, hour))
+            } else {
+                None
+            };
+            match limited {
+                Some(retry_after) => ThrottleDecision::Limited { retry_after },
+                None => {
+                    st.ip_15.push(host, now);
+                    st.ip_24.push(host, now);
+                    st.prefix.push(prefix, now);
+                    st.global.push((), now);
+                    let global = st.global.prune(&(), now, hour);
+                    if global > p.global_alert_hour && !st.global_alerted {
+                        st.global_alerted = true;
+                        alert = Some(SecurityAlert::GlobalSendsExceeded { sends: global });
+                    } else if global <= p.global_alert_hour {
+                        st.global_alerted = false;
+                    }
+                    if st.prefix.prune(&prefix, now, hour) < p.per_prefix_hour {
+                        st.prefix_alerted = false;
+                    }
+                    ThrottleDecision::Allow
+                }
+            }
+        };
+        if let Some(a) = alert {
+            self.alerts.raise(a);
+        }
+        decision
+    }
+
+    async fn admit_verify(&self, ip: IpAddr, now: DateTime<Utc>) -> ThrottleDecision {
+        let m15 = chrono::Duration::minutes(15);
+        let host = masked(ip, 32, 64);
+        let mut st = self.lock();
+        if st.wrong.prune(&host, now, m15) >= self.policy.wrong_per_ip_15min {
+            ThrottleDecision::Limited {
+                retry_after: st.wrong.retry_after(&host, now, m15),
+            }
+        } else {
+            ThrottleDecision::Allow
+        }
+    }
+
+    async fn record_wrong(&self, ip: IpAddr, now: DateTime<Utc>) {
+        self.lock().wrong.push(masked(ip, 32, 64), now);
+    }
+}
+
+/// Writes security alerts to the technical log (no user data beyond an id).
+pub struct LogSecurityAlerts;
+
+impl SecurityAlerts for LogSecurityAlerts {
+    fn raise(&self, alert: SecurityAlert) {
+        tracing::warn!(target: "security_alert", alert = ?alert, "security alert");
+    }
+}
+
+pub struct PerIpPublicThrottle {
+    per_minute: usize,
+    attempts: Mutex<Window<IpAddr>>,
+}
+
+impl PerIpPublicThrottle {
+    pub fn new(per_minute: usize) -> Self {
+        Self {
+            per_minute,
+            attempts: Mutex::new(Window::default()),
+        }
+    }
+}
+
+#[async_trait]
+impl PublicEndpointThrottle for PerIpPublicThrottle {
+    async fn admit(&self, ip: IpAddr, now: DateTime<Utc>) -> ThrottleDecision {
+        let minute = chrono::Duration::minutes(1);
+        let mut w = self
+            .attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if w.prune(&ip, now, minute) >= self.per_minute {
+            return ThrottleDecision::Limited {
+                retry_after: w.retry_after(&ip, now, minute),
+            };
+        }
+        w.push(ip, now);
+        ThrottleDecision::Allow
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+    use std::net::Ipv4Addr;
+
+    fn t0() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 10, 23, 9, 0, 0).unwrap()
+    }
+
+    #[derive(Default)]
+    struct RecordingAlerts(Mutex<Vec<usize>>);
+
+    impl PairingAlertSink for RecordingAlerts {
+        fn global_failures_exceeded(&self, failures: usize, _window: chrono::Duration) {
+            self.0.lock().unwrap().push(failures);
+        }
+    }
+
+    fn pairing() -> (PrefixPairingThrottle, Arc<RecordingAlerts>) {
+        let alerts = Arc::new(RecordingAlerts::default());
+        (
+            PrefixPairingThrottle::new(PairingThrottlePolicy::default(), alerts.clone()),
+            alerts,
+        )
+    }
+
+    fn v4(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(a, b, c, d))
+    }
+
+    #[test]
+    fn prefixes_are_slash_24_and_slash_64() {
+        assert_eq!(network_prefix(v4(192, 0, 2, 77)), v4(192, 0, 2, 0));
+        let v6: IpAddr = "2001:db8:1:2:aaaa:bbbb:cccc:dddd".parse().unwrap();
+        assert_eq!(
+            network_prefix(v6),
+            "2001:db8:1:2::".parse::<IpAddr>().unwrap()
+        );
+        let mapped: IpAddr = "::ffff:192.0.2.77".parse().unwrap();
+        assert_eq!(network_prefix(mapped), v4(192, 0, 2, 0));
+    }
+
+    #[tokio::test]
+    async fn pairing_limits_ten_per_minute_per_ip() {
+        let (t, _) = pairing();
+        for _ in 0..10 {
+            assert_eq!(
+                t.admit(v4(192, 0, 2, 1), t0()).await,
+                PairingDecision::Allow
+            );
+        }
+        assert!(matches!(
+            t.admit(v4(192, 0, 2, 1), t0()).await,
+            PairingDecision::RateLimited { retry_after } if retry_after == Duration::from_secs(60)
+        ));
+        assert_eq!(
+            t.admit(v4(192, 0, 2, 2), t0()).await,
+            PairingDecision::Allow,
+            "other IP in the prefix still has room"
+        );
+        let mapped: IpAddr = "::ffff:192.0.2.1".parse().unwrap();
+        assert!(
+            matches!(
+                t.admit(mapped, t0()).await,
+                PairingDecision::RateLimited { .. }
+            ),
+            "IPv4-mapped IPv6 is the same client"
+        );
+        assert_eq!(
+            t.admit(v4(192, 0, 2, 1), t0() + chrono::Duration::seconds(61))
+                .await,
+            PairingDecision::Allow
+        );
+    }
+
+    #[tokio::test]
+    async fn pairing_limits_thirty_per_minute_per_prefix() {
+        let (t, _) = pairing();
+        for n in 1..=30u8 {
+            assert_eq!(
+                t.admit(v4(192, 0, 2, n), t0()).await,
+                PairingDecision::Allow
+            );
+        }
+        assert!(
+            matches!(
+                t.admit(v4(192, 0, 2, 99), t0()).await,
+                PairingDecision::RateLimited { .. }
+            ),
+            "fresh IP in a full /24"
+        );
+        assert_eq!(
+            t.admit(v4(192, 0, 3, 1), t0()).await,
+            PairingDecision::Allow,
+            "neighbouring /24 unaffected"
+        );
+
+        let v6 = |host: u16| -> IpAddr { format!("2001:db8:0:7::{host:x}").parse().unwrap() };
+        for h in 1..=30u16 {
+            assert_eq!(t.admit(v6(h), t0()).await, PairingDecision::Allow);
+        }
+        assert!(matches!(
+            t.admit(v6(999), t0()).await,
+            PairingDecision::RateLimited { .. }
+        ));
+        let other: IpAddr = "2001:db8:0:8::1".parse().unwrap();
+        assert_eq!(t.admit(other, t0()).await, PairingDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn global_failures_alert_once_and_never_lock() {
+        let (t, alerts) = pairing();
+        for i in 0..150u32 {
+            let ip = v4(10, (i / 250) as u8, (i % 250) as u8, 1);
+            t.record_failure(ip, t0()).await;
+        }
+        assert_eq!(
+            *alerts.0.lock().unwrap(),
+            vec![100],
+            "one alert per episode"
+        );
+        assert_eq!(
+            t.admit(v4(203, 0, 113, 5), t0()).await,
+            PairingDecision::Allow,
+            "the alert does not block pairing"
+        );
+
+        // After the window drains the alert re-arms.
+        let later = t0() + chrono::Duration::minutes(11);
+        for _ in 0..100 {
+            t.record_failure(v4(10, 9, 9, 9), later).await;
+        }
+        assert_eq!(*alerts.0.lock().unwrap(), vec![100, 100]);
+    }
+
+    #[derive(Default)]
+    struct Alerts(Mutex<Vec<SecurityAlert>>);
+
+    impl SecurityAlerts for Alerts {
+        fn raise(&self, a: SecurityAlert) {
+            self.0.lock().unwrap().push(a);
+        }
+    }
+
+    #[tokio::test]
+    async fn code_sends_per_ip_prefix_and_global_alert() {
+        let alerts = Arc::new(Alerts::default());
+        let t = PrefixCodeThrottle::new(
+            CodeThrottlePolicy {
+                global_alert_hour: 15,
+                ..CodeThrottlePolicy::default()
+            },
+            alerts.clone(),
+        );
+        for _ in 0..10 {
+            assert_eq!(
+                t.admit_send(v4(198, 51, 100, 1), t0()).await,
+                ThrottleDecision::Allow
+            );
+        }
+        assert!(matches!(
+            t.admit_send(v4(198, 51, 100, 1), t0()).await,
+            ThrottleDecision::Limited { retry_after } if retry_after == Duration::from_secs(900)
+        ));
+        // Another host of the same /24 still sends; the global alert fires once past 15.
+        for n in 2..9u8 {
+            assert_eq!(
+                t.admit_send(v4(198, 51, 100, n), t0()).await,
+                ThrottleDecision::Allow
+            );
+        }
+        assert_eq!(
+            *alerts.0.lock().unwrap(),
+            vec![SecurityAlert::GlobalSendsExceeded { sends: 16 }]
+        );
+        let v6a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let v6b: IpAddr = "2001:db8:1:2::2".parse().unwrap();
+        for _ in 0..10 {
+            assert_eq!(t.admit_send(v6a, t0()).await, ThrottleDecision::Allow);
+        }
+        assert!(
+            matches!(
+                t.admit_send(v6b, t0()).await,
+                ThrottleDecision::Limited { .. }
+            ),
+            "same /64"
+        );
+    }
+
+    #[tokio::test]
+    async fn wrong_attempts_per_ip() {
+        let t = PrefixCodeThrottle::new(CodeThrottlePolicy::default(), Arc::new(LogSecurityAlerts));
+        for _ in 0..30 {
+            assert_eq!(
+                t.admit_verify(v4(10, 0, 0, 1), t0()).await,
+                ThrottleDecision::Allow
+            );
+            t.record_wrong(v4(10, 0, 0, 1), t0()).await;
+        }
+        assert!(matches!(
+            t.admit_verify(v4(10, 0, 0, 1), t0()).await,
+            ThrottleDecision::Limited { .. }
+        ));
+        assert_eq!(
+            t.admit_verify(v4(10, 0, 0, 1), t0() + chrono::Duration::minutes(15))
+                .await,
+            ThrottleDecision::Allow
+        );
+    }
+}

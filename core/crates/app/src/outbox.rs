@@ -7,7 +7,7 @@
 //! every consumer registered for its type handled it. Events without a consumer are not
 //! even fetched, so they stay visible and never block the queue. Consumers are registered
 //! before the dispatcher starts, and startup fails when an event type a module emits has
-//! no consumer ([`Consumers::require`]).
+//! no consumer ([`Consumers::require`]), unless the type is allowlisted ([`crate::unconsumed`]).
 //!
 //! A failed delivery is retried with exponential backoff (`next_attempt_at`), so it never
 //! blocks newer events; after [`MAX_ATTEMPTS`] it is dead-lettered and logged as an alert.
@@ -71,11 +71,16 @@ impl Consumers {
             .push(consumer);
     }
 
-    /// Fails unless every type in `emitted` has at least one consumer.
-    pub fn require(&self, emitted: &[&str]) -> Result<(), MissingConsumer> {
+    /// Fails unless every type in `emitted` has at least one consumer or is in `allowed`.
+    pub fn require(
+        &self,
+        emitted: &[&str],
+        allowed: &[crate::unconsumed::Unconsumed],
+    ) -> Result<(), MissingConsumer> {
         let missing: Vec<String> = emitted
             .iter()
             .filter(|t| !self.by_type.contains_key(**t))
+            .filter(|t| !allowed.iter().any(|u| u.event_type == **t))
             .map(|t| (*t).to_owned())
             .collect();
         if missing.is_empty() {
@@ -274,9 +279,9 @@ mod tests {
     fn startup_fails_when_an_emitted_type_has_no_consumer() {
         let mut consumers = Consumers::default();
         consumers.register("ingress.received", Arc::new(Noop));
-        assert!(consumers.require(&["ingress.received"]).is_ok());
+        assert!(consumers.require(&["ingress.received"], &[]).is_ok());
         let err = consumers
-            .require(&["ingress.received", "instruction.accepted"])
+            .require(&["ingress.received", "instruction.accepted"], &[])
             .unwrap_err();
         assert_eq!(err.0, ["instruction.accepted"]);
     }

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.channel_change SET status = 'completed', completed_at = $2\n                    WHERE id = $1 AND status = 'on_hold'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "594a58672b1c726dde870e3191b50d4f99b184b176aab78793b135e997ca48d8"
+}

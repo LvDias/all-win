@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO accounts.account_bracket_profile\n             (user_id, account_id, instrument_id, distance_unit, stop_distance, target_distance,\n              copied_from_size, origin, copied_at, customized, row_version, updated_at)\n           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n           ON CONFLICT (account_id, instrument_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Numeric",
+        "Numeric",
+        "Numeric",
+        "Text",
+        "Timestamptz",
+        "Bool",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "205f4bdefa53333be2f2e38fa8f6a00b241141390a82cb2ff1e1600c34f31a97"
+}

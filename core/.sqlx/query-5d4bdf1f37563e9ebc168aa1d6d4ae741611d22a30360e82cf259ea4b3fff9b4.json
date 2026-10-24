@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.app_user\n                          SET whatsapp_e164 = $2, whatsapp_verified_at = $3, channel_changed_at = $3, updated_at = $3\n                        WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5d4bdf1f37563e9ebc168aa1d6d4ae741611d22a30360e82cf259ea4b3fff9b4"
+}

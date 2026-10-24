@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.device_token SET revoked_at = $3 WHERE user_id = $1 AND connection_id = $2 AND revoked_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "df425208df6db69b92b3e94a51eeb34ad34da5459c13402c5383500e666d8629"
+}

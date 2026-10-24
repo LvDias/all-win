@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identity.adapter_connection SET name = $3 WHERE user_id = $1 AND id = $2 AND archived_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3d67f73fe04bd9231b586cde51680f9fd5701e6ae6d0ae438d32a0ce646cbe15"
+}

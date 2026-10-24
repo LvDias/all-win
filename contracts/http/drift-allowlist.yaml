@@ -1,0 +1,61 @@
+# OpenAPI drift allowlist (Architect-owned). Rules: core/crates/app/tests/openapi_drift.rs.
+# Checked against contracts/http/openapi.bundled.yaml (HTTP contract 4.3.0, 88 operations).
+# not_implemented: contract operations without a Core handler yet. The check fails when one
+# gains a handler while still listed, or when it is not in the contract. Each slice's core
+# merge gate removes its own operations.
+not_implemented:
+  - applyPresetVersion
+  - createManualTrade
+  - createRoute
+  - deleteManualTrade
+  - deleteRoute
+  - getAccountPreset
+  - getAccountPresetDiff
+  - getAccountRisk
+  - getAccountRiskRules
+  - getActivityEntry
+  - getActivityFilterOptions
+  - getFirm
+  - getInstructionTimeline
+  - getPerformance
+  - getPresetVersion
+  - getTrade
+  - getTradesSummary
+  - getUnreadCount
+  - listActivity
+  - listFirmReleases
+  - listFirms
+  - listNotifications
+  - listRiskSummaries
+  - listRouteCandidates
+  - listRoutes
+  - listTrades
+  - markNotificationRead
+  - markNotificationsRead
+  - previewAccountRiskRules
+  - previewManualTrade
+  - putAccountRiskRules
+  - restorePresetValue
+  - updateManualTrade
+  - updateRoute
+
+# Differences utoipa cannot express: {operationId, pointer (in the canonical operation), reason}.
+# `const: X` and the single-value `enum: [X]` are equivalent in JSON Schema; the check normalizes
+# const to the enum form on both sides, so that difference needs no entry here.
+entries:
+  # S3 (contract 2.0.0+). ChannelChange: on_hold requires hold_until.
+  - operationId: getMySecurity
+    pointer: /responses/200/content/application~1json/schema/properties/pending_channel_change/allOf
+    reason: "the Core generator (utoipa) cannot express if/then; the handler always sends hold_until with status on_hold (tested in identity-infra http handlers: on_hold_changes_always_carry_hold_until). Remove when the generator can emit allOf if/then."
+  - operationId: startChannelChange
+    pointer: /responses/202/content/application~1json/schema/allOf
+    reason: "the Core generator (utoipa) cannot express if/then; the handler always sends hold_until with status on_hold (tested in identity-infra http handlers: on_hold_changes_always_carry_hold_until). Remove when the generator can emit allOf if/then."
+  - operationId: verifyChannelChangeCode
+    pointer: /responses/200/content/application~1json/schema/allOf
+    reason: "the Core generator (utoipa) cannot express if/then; the handler always sends hold_until with status on_hold (tested in identity-infra http handlers: on_hold_changes_always_carry_hold_until). Remove when the generator can emit allOf if/then."
+  # Not a schema difference, so not an entry (the check rejects entries without a difference):
+  # Connection.disconnect_reason (createConnection, listConnections, renameConnection; SSE
+  # connection.status_changed) is omitted for status disconnected, against "present when
+  # disconnected" (Esquadro, temporary exception): only the gateway knows user (close 4100) vs
+  # network. outdated/unpaired are always sent. Removed when S2 records the close code
+  # (identity.adapter_connection.disconnect_reason).

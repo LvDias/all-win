@@ -13,7 +13,7 @@ pub mod ports;
 pub mod rate_limit;
 pub mod token;
 
-pub use http::{INGRESS_ROUTE, IngressState, IpLimits, router, unmatched};
+pub use http::{INGRESS_ROUTE, IngressApi, IngressState, IpLimits, router, unmatched};
 pub use ip::{Cidr, IpKey};
 pub use metrics::IngressMetrics;
 pub use negative_cache::UnknownKeyCache;

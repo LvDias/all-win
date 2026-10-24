@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/app",
     "crates/shared-kernel",
+    "crates/access",
     "crates/contracts",
     "crates/*/enterprise",
     "crates/*/application",
@@ -22,12 +23,16 @@ publish = false
 # internal
 shared-kernel = { path = "crates/shared-kernel" }
 contracts = { path = "crates/contracts" }
+access = { path = "crates/access" }
 identity-enterprise = { path = "crates/identity/enterprise" }
 identity-application = { path = "crates/identity/application" }
 identity-infra = { path = "crates/identity/infra" }
 catalog-enterprise = { path = "crates/catalog/enterprise" }
 catalog-application = { path = "crates/catalog/application" }
 catalog-infra = { path = "crates/catalog/infra" }
+accounts-enterprise = { path = "crates/accounts/enterprise" }
+accounts-application = { path = "crates/accounts/application" }
+accounts-infra = { path = "crates/accounts/infra" }
 routing-enterprise = { path = "crates/routing/enterprise" }
 routing-application = { path = "crates/routing/application" }
 routing-infra = { path = "crates/routing/infra" }
@@ -56,6 +61,10 @@ serde_json = "1.0.154"
 sqlx = { version = "0.9.0", default-features = false }
 uuid = "1.28.0"
 jsonschema = { version = "0.60.0", default-features = false }
+
+# OpenAPI generated from handlers; drift-checked against contracts/http/openapi.yaml
+utoipa = "6.0.0"
+yaml_serde = "0.10.7"
 
 # crypto
 argon2 = "0.6.0"

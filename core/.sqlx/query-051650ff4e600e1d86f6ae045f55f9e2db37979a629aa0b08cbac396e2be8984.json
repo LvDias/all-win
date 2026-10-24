@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.signup_code\n                     (id, invitation_id, code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at,\n                      request_ip, delivery_state)\n                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::text::inet, $10)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Int2",
+        "Int2",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "051650ff4e600e1d86f6ae045f55f9e2db37979a629aa0b08cbac396e2be8984"
+}

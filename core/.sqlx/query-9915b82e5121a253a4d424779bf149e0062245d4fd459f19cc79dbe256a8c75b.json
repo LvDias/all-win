@@ -1,0 +1,167 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, invitation_id, code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at,\n                      consumed_at, invalidated_at, invalidated_reason, request_ip::text AS request_ip, delivery_state\n                 FROM identity.signup_code WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "invitation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "invitation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "code_hmac",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "code_hmac"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "pepper_version",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "pepper_version"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "failed_attempts",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "failed_attempts"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "sent_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "sent_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "consumed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "consumed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "invalidated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "invalidated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "invalidated_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "invalidated_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "request_ip",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 12,
+        "name": "delivery_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.signup_code",
+            "name": "delivery_state"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      null,
+      false
+    ]
+  },
+  "hash": "9915b82e5121a253a4d424779bf149e0062245d4fd459f19cc79dbe256a8c75b"
+}

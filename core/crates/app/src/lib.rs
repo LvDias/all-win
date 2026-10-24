@@ -1,10 +1,14 @@
 //! Composition root: configuration, telemetry, HTTP server and wiring of module ports.
 
+pub mod accounts;
 pub mod config;
 pub mod dev;
 pub mod http;
+pub mod identity;
+pub mod openapi;
 pub mod outbox;
 pub mod telemetry;
+pub mod unconsumed;
 pub mod wiring;
 
 use std::sync::Arc;
@@ -40,12 +44,19 @@ pub struct AppState {
     /// Outbox event types with a registered consumer (for the unconsumed-events metric).
     pub consumed_event_types: Arc<[String]>,
     pub ingress: Arc<IngressState>,
+    /// The routes behind the session authenticator: identity (`/api/v1/auth`, `/me`, `/admin`,
+    /// `/sources`, `/connections`, `/adapter/v1/pairings`, `/events`), accounts and profiles,
+    /// opt-in rules and instruments; `None` without `IDENTITY_PEPPERS`.
+    pub sessions: Option<axum::Router>,
 }
 
 /// The wired application plus its background workers.
 pub struct App {
     pub state: AppState,
     pub dispatcher: outbox::OutboxDispatcher,
+    /// Identity startup work and background tasks; run [`identity::IdentityWiring::start`]
+    /// before accepting connections.
+    pub identity: Option<identity::IdentityWiring>,
 }
 
 /// Connects a pool without echoing connection details (they hold credentials).
@@ -107,7 +118,7 @@ impl App {
                 UNKNOWN_KEY_CACHE_CAPACITY,
             ),
             metrics: Arc::new(IngressMetrics::default()),
-            clock,
+            clock: clock.clone(),
             trust_forwarded_for: config.trust_forwarded_for,
         });
         // Consumers are registered before the dispatcher exists (architecture rule).
@@ -118,15 +129,63 @@ impl App {
         for event_type in IngressEvent::TYPES {
             consumers.register(event_type, audit.clone());
         }
-        consumers.require(&IngressEvent::TYPES)?;
+        consumers.require(&IngressEvent::TYPES, unconsumed::UNCONSUMED)?;
+        let account_store = accounts::store(&db);
+        let (identity, sessions) = match &config.identity {
+            Some(cfg) => {
+                let wired = identity::wire(
+                    config,
+                    cfg,
+                    &db,
+                    &worker,
+                    clock.clone(),
+                    ingress.clone(),
+                    Arc::new(accounts::AccountTargetsAdapter(account_store.clone())),
+                    audit.clone(),
+                    &mut consumers,
+                )?;
+                let modules = accounts::wire(
+                    &db,
+                    account_store,
+                    clock,
+                    accounts::SessionPorts {
+                        authenticator: wired.authenticator.clone(),
+                        step_up: wired.step_up.clone(),
+                        identity_store: wired.deps.store.clone(),
+                    },
+                    wired.public_origin.clone(),
+                    config.trust_forwarded_for,
+                    config.app_env.is_production(),
+                    audit,
+                    &mut consumers,
+                );
+                let emitted: Vec<&str> = accounts_application::EMITTED_EVENT_TYPES
+                    .iter()
+                    .chain(accounts_application::profiles::PROFILE_EVENT_TYPES.iter())
+                    .copied()
+                    .collect();
+                consumers.require(&emitted, unconsumed::UNCONSUMED)?;
+                let sessions = wired.router.clone().merge(modules.router);
+                (Some(wired), Some(sessions))
+            }
+            None => {
+                tracing::warn!(
+                    "IDENTITY_PEPPERS is not set: the identity, accounts and profile routes are not mounted"
+                );
+                (None, None)
+            }
+        };
+        unconsumed::check(&consumers, unconsumed::UNCONSUMED)?;
         Ok(Self {
             state: AppState {
                 db,
                 worker: worker.clone(),
                 consumed_event_types: consumers.types().into(),
                 ingress,
+                sessions,
             },
             dispatcher: outbox::OutboxDispatcher::new(worker, consumers, wake),
+            identity,
         })
     }
 }
