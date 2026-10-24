@@ -79,12 +79,12 @@ fi
 # user's runtime dir: the server runs inside this job's scope (its CPU counts against the job's quota), serves only this
 # job, and is stopped when the job ends. Never the default TCP port: a client uses whatever server answers there,
 # whichever account started it. Incremental compilation is off because sccache cannot cache it.
-# OFF by default until QA has verified the per-job server as every account: ALLWIN_HEAVY_SCCACHE_ENABLE=1 turns it on.
+# ON by default (verified per job server as dev2 and dev3). ALLWIN_HEAVY_NO_SCCACHE=1 turns it off.
 SCCACHE_BIN="${ALLWIN_HEAVY_SCCACHE:-/opt/rust/cargo/bin/sccache}"
 SCCACHE_ON=0
 unset SCCACHE_NO_DAEMON SCCACHE_SERVER_PORT SCCACHE_START_SERVER
 RUNDIR="/run/user/$(id -u)"
-if [ "${ALLWIN_HEAVY_SCCACHE_ENABLE:-0}" = 1 ] && [ "${ALLWIN_HEAVY_NO_SCCACHE:-0}" != 1 ] && [ -x "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER:-}" ] \
+if [ "${ALLWIN_HEAVY_NO_SCCACHE:-0}" != 1 ] && [ -x "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER:-}" ] \
    && [ -d "$RUNDIR" ] && [ -w "$RUNDIR" ]; then
   export SCCACHE_DIR="${SCCACHE_DIR:-/srv/www/allwin.worktrees/.sccache}"
   mkdir -p -- "$SCCACHE_DIR" 2>/dev/null || true
@@ -98,7 +98,7 @@ fi
 
 SLOT_TARGET=0
 if [ "$SCCACHE_ON" = 1 ] && [ -z "${CARGO_TARGET_DIR:-}" ]; then
-  # With the compile cache on, the target path is what keys it: use ONE fixed path per (account, slot), identical for every
+  # With the compile cache on, the target path is what keys it: use ONE fixed path per (account, slot), identical for every job on that slot,
   # worktree and every job, and empty it when the job starts. The slot gives exclusivity, the empty dir gives a clean
   # build (nothing from another worktree or SHA can mix in), and the cache restores third-party crates by content.
   export CARGO_TARGET_DIR="$TARGET_ROOT/slot-$held"
