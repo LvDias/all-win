@@ -17,7 +17,8 @@ pub use usecases::audit::AUDITED_FIELDS;
 pub use usecases::create::{CreateAccountUseCase, CreateOutcome};
 pub use usecases::update::UpdateAccountUseCase;
 pub use usecases::{
-    ArchiveAccount, ReadAccounts, RestartAccountEvaluation, SetAccountLifecycle, SetAccountOptIn,
+    ArchiveAccount, BoundAccount, ReadAccounts, RestartAccountEvaluation, SetAccountLifecycle,
+    SetAccountOptIn,
 };
 
 #[cfg(any(test, feature = "testing"))]

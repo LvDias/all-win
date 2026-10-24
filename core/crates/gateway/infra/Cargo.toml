@@ -1,0 +1,32 @@
+[package]
+name = "gateway-infra"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait.workspace = true
+axum = { workspace = true, features = ["ws"] }
+chrono.workspace = true
+gateway-application.workspace = true
+gateway-enterprise.workspace = true
+jsonschema.workspace = true
+rust_decimal.workspace = true
+serde_json.workspace = true
+shared-kernel = { workspace = true, features = ["sqlx"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "rust_decimal"] }
+uuid = { workspace = true, features = ["v7"] }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tracing.workspace = true
+
+[dev-dependencies]
+adapter-sim.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
