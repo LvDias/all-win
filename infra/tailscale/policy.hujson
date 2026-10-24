@@ -2,7 +2,7 @@
 // Tailscale admin console (Access controls). Default deny: only the rules below exist.
 //
 // Nodes:  the user's devices (untagged)        -> autogroup:member
-//         the Linux dev server                 -> tag:allwin-dev   (outbound-only)
+//         the Linux dev server                 -> tag:allwin-dev   (no rule in either direction)
 //         the Windows test VPS                 -> tag:allwin-nt8
 // Tailscale SSH stays OFF (no "ssh" section): OpenSSH with keys is the audited path.
 // No exit nodes, no subnet routes, no auto approvers.
@@ -13,18 +13,14 @@
 	},
 
 	"acls": [
-		// The user's devices reach the VPS: RDP and SSH.
+		// The user's devices reach the VPS: RDP and SSH (SSH is only usable if sshd is ever started; Phase 2 is parked).
 		{
 			"action": "accept",
 			"src":    ["autogroup:member"],
 			"dst":    ["tag:allwin-nt8:3389", "tag:allwin-nt8:22"],
 		},
-		// The dev server reaches the VPS over SSH only (agents run `ssh allwin-agent@allwin-nt8-01`).
-		{
-			"action": "accept",
-			"src":    ["tag:allwin-dev"],
-			"dst":    ["tag:allwin-nt8:22"],
-		},
+		// The dev server has no rule towards the VPS: NinjaTrader 8 tests are manual, run by the user over RDP
+		// (decision 2026-10-24); files travel through the user's Mac.
 		// Nothing else is allowed:
 		//  - tag:allwin-nt8 -> anything: no rule, so the VPS cannot open connections to the dev server or the Mac.
 		//  - anything -> tag:allwin-dev: no rule, so the dev server is outbound-only in the tailnet.
@@ -39,8 +35,7 @@
 		},
 		{
 			"src":    "tag:allwin-dev",
-			"accept": ["tag:allwin-nt8:22"],
-			"deny":   ["tag:allwin-nt8:3389", "tag:allwin-nt8:80", "tag:allwin-nt8:445"],
+			"deny":   ["tag:allwin-nt8:22", "tag:allwin-nt8:3389", "tag:allwin-nt8:80", "tag:allwin-nt8:445"],
 		},
 		{
 			"src":  "tag:allwin-nt8",
