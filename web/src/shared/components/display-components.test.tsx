@@ -62,6 +62,18 @@ describe("FirmRuleQuote", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
+  it("accepts a quote without a page title: the caption shows the URL and the Core's note", () => {
+    renderApp(<FirmRuleQuote firm="Apex" accessedAt="2026-10-20T12:00:00Z" url="https://firm.example/rules" lang="en" text="Rule." titleNote="Page has no title" />);
+    expect(screen.getByText(/Apex · https:\/\/firm\.example\/rules · acessado em 20\/10\/2026/)).toBeInTheDocument();
+    expect(screen.getByText("Page has no title")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Ver página oficial/ })).toHaveAttribute("href", "https://firm.example/rules");
+  });
+
+  it("ignores a note when the page does have a title", () => {
+    renderApp(<FirmRuleQuote {...props} titleNote="should not show" text="Rule." />);
+    expect(screen.queryByText("should not show")).not.toBeInTheDocument();
+  });
+
   it("renders only an https source as a link", () => {
     renderApp(<FirmRuleQuote {...props} url="javascript:alert(1)" text="Rule." />);
     expect(screen.queryByRole("link", { name: /Ver página oficial/ })).not.toBeInTheDocument();
