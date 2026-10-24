@@ -40,6 +40,12 @@ log** (tracing target `operator`, server side), never to the user-visible audit,
 `ALLWIN_OPERATOR_LOGIN`. The compose file and env file default to the dev stack; for another host set
 `ALLWIN_COMPOSE_FILE` and `ALLWIN_COMPOSE_ENV_FILE`.
 
+The wrapper also copies what the command prints to the host's syslog/journald (tag `allwin-admin-recovery`, priority `authpriv.notice`), with a
+`start` line (login, SSH connection, key fingerprint, subcommand and flag names without values) and an `end` line with the exit code. Terminal
+control characters are stripped. The codes are read from the terminal by the Core and are never printed, so they never reach the log. It fails
+closed: without a working `logger` the command does not run. This is a second record next to the Core's operator event, not independent proof (it
+exists only when the operator uses the wrapper); keep the host's syslog retention and access under the operator's control.
+
 **Production host (operator/user decision, documented here, not changed by this repository):** set `ExposeAuthInfo yes` in
 `sshd_config` so `$SSH_USER_AUTH` exists, and `LogLevel VERBOSE`, which makes sshd log the fingerprint of the key used. That
 log line, correlated by time and `change_id`, is the strong evidence; the variables above are the convenience copy.
