@@ -1119,3 +1119,52 @@ fn emitted_types_cover_every_event() {
             .all(|t| crate::EMITTED_EVENT_TYPES.contains(t))
     );
 }
+
+#[tokio::test]
+async fn accounts_for_venues_returns_only_the_users_live_bound_accounts() {
+    let w = world();
+    let mut a = real("A");
+    a.binding = Some(bind(&w, w.me.user_id, "Sim101", VenueKind::Simulation));
+    let a = created(&w, a).await;
+    let venue = a.account.binding.unwrap().venue_account_id;
+    created(&w, real("B")).await;
+    let unknown = VenueAccountId::from_uuid(Uuid::now_v7());
+    let read = ReadAccounts::new(w.deps.clone());
+
+    let found = read
+        .accounts_for_venues(w.me.user_id, &[venue, unknown])
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[&venue],
+        BoundAccount {
+            account_id: a.account.id,
+            display_name: AccountName::parse("A").unwrap(),
+        }
+    );
+    assert!(
+        read.accounts_for_venues(w.me.user_id, &[])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        read.accounts_for_venues(w.other.user_id, &[venue])
+            .await
+            .unwrap()
+            .is_empty(),
+        "another user's binding is never returned"
+    );
+    ArchiveAccount::new(w.deps.clone())
+        .handle(&w.me, a.account.id)
+        .await
+        .unwrap();
+    assert!(
+        read.accounts_for_venues(w.me.user_id, &[venue])
+            .await
+            .unwrap()
+            .is_empty(),
+        "archived (and released) accounts are absent"
+    );
+}

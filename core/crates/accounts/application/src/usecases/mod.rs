@@ -29,6 +29,13 @@ pub(crate) fn opt_in_error(kind: OptInKind, e: OptInError) -> AccountsError {
     }
 }
 
+/// A live account bound to a platform account (`ReadAccounts::accounts_for_venues`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoundAccount {
+    pub account_id: AccountId,
+    pub display_name: accounts_enterprise::AccountName,
+}
+
 /// `listAccounts` / `getAccount` / `getAccountArchiveImpact`.
 pub struct ReadAccounts {
     deps: AccountsDeps,
@@ -85,6 +92,36 @@ impl ReadAccounts {
             .await
             .map_err(store_err)?
             .and_then(|a| a.binding.map(|b| b.venue_account_id)))
+    }
+
+    /// Query read for gateway's welcome (ADR-0008; the trait is the consumer's): the user's live
+    /// accounts bound to any of `venues`, keyed by platform account. An unbound, archived or
+    /// unknown platform account, or one bound to another user's account, is absent.
+    pub async fn accounts_for_venues(
+        &self,
+        user_id: shared_kernel::UserId,
+        venues: &[accounts_enterprise::VenueAccountId],
+    ) -> Result<
+        std::collections::HashMap<accounts_enterprise::VenueAccountId, BoundAccount>,
+        AccountsError,
+    > {
+        if venues.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let accounts = self.deps.store.list(user_id).await.map_err(store_err)?;
+        Ok(accounts
+            .into_iter()
+            .filter_map(|a| {
+                let venue = a.binding.as_ref()?.venue_account_id;
+                venues.contains(&venue).then_some((
+                    venue,
+                    BoundAccount {
+                        account_id: a.id,
+                        display_name: a.display_name,
+                    },
+                ))
+            })
+            .collect())
     }
 
     pub async fn archive_impact(
