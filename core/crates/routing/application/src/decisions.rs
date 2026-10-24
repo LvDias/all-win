@@ -170,15 +170,17 @@ pub struct DecisionRecord {
     pub reason_code: Option<&'static str>,
     pub multiplier: u32,
     pub max_position_qty: u32,
-    pub position_before: i64,
+    /// `None` when the decision never read a position (`routing.instrument_unavailable`).
+    pub position_before: Option<i64>,
     pub requested_qty: Option<u32>,
     pub executed_qty: Option<u32>,
     pub decided_at: DateTime<Utc>,
     pub leg: Leg,
-    /// Decided after the TTL without answers from gates 6–9 (Architect, N1).
+    /// Decided after the TTL without answers from gates 6–9 (Architect, N1; details
+    /// `gates_unknown`).
     pub gates_unknown: bool,
-    /// Q75: a flatten sent against a flat expected position on an out-of-sync account. Like
-    /// `gates_unknown`, it reaches the details (`expected_flat`) with HTTP 5.2.0.
+    /// Q75: a flatten sent against a flat expected position on an out-of-sync account (details
+    /// `expected_flat`).
     pub expected_flat: bool,
     /// The audit code (`reason_code`, or `routing.routed`) and envelope `{actor, details,
     /// refs}`. A `close` leg has none: the pair gets its one decision entry with the opening
@@ -252,10 +254,6 @@ pub enum DecideError {
     NotRoutable,
     #[error(transparent)]
     Port(#[from] PortError),
-    /// The instrument has no active contract: the instruction waits (fail closed) until
-    /// `routing.instrument_unavailable` ships with HTTP 5.2.0.
-    #[error("no active contract for the instrument")]
-    NoActiveContract,
     /// Some accounts wait for a gate that did not answer; what could be decided (exits, close
     /// legs) is committed, and the delivery is retried. The text names the instruction, each
     /// waiting account and why, so the dead-letter alert says what is stuck (Esmeril, 5.2.0).
@@ -388,12 +386,57 @@ impl DecideInstruction {
         // base, not the retry's clock, so every attempt and both legs of a reverse resolve the
         // same contract across a roll.
         let month = match &i.contract_month {
-            Some(m) => m.clone(),
-            None => d
-                .contracts
-                .active(&i.instrument_symbol, i.expiry_base)
-                .await?
-                .ok_or(DecideError::NoActiveContract)?,
+            Some(m) => Some(m.clone()),
+            None => {
+                d.contracts
+                    .active(&i.instrument_symbol, i.expiry_base)
+                    .await?
+            }
+        };
+        // In the catalog but no active contract now: skipped before any gate, for every
+        // account, without reading a position (HTTP 5.2.0 `routing.instrument_unavailable`).
+        let Some(month) = month else {
+            let now = d.clock.now();
+            let out: Vec<DecisionRecord> = targets
+                .iter()
+                .map(|(account, signal_types)| {
+                    let facts = DecisionFacts {
+                        account_active: account.lifecycle.is_none(),
+                        platform_bound: account.platform_bound,
+                        automation_not_accepted: source.automated
+                            && account.automation.not_accepted().is_some(),
+                        signal_types: (*signal_types).clone(),
+                        out_of_sync: true,
+                        risk_blocked: true,
+                        expired: false,
+                        limits_pending: true,
+                        has_bracket_profile: false,
+                        multiplier: account.sizing.multiplier,
+                        max_position: account.sizing.max_position_qty,
+                        position: 0,
+                    };
+                    let decision =
+                        decision::instrument_unavailable(action, account.sizing.multiplier);
+                    record(
+                        user,
+                        &i,
+                        &source,
+                        account,
+                        action,
+                        &facts,
+                        &decision,
+                        now,
+                        Leg::Whole,
+                        Known {
+                            month: None,
+                            position: None,
+                            gates_unknown: false,
+                        },
+                    )
+                })
+                .collect();
+            d.store.record(user, &out).await?;
+            return Ok(out);
         };
         let contract = Contract {
             symbol: i.instrument_symbol.clone(),
@@ -512,6 +555,11 @@ impl DecideInstruction {
                         &close,
                         now,
                         Leg::Close,
+                        Known {
+                            month: Some(&contract.month),
+                            position: Some(position),
+                            gates_unknown: false,
+                        },
                     ));
                 }
                 waiting.push((account.id, Waiting::EntryForGates));
@@ -530,13 +578,22 @@ impl DecideInstruction {
             if has_close_leg {
                 decision.steps.retain(|s| *s != decision::Step::Flatten);
             }
-            let mut row = record(
-                user, &i, &source, account, action, &facts, &decision, now, leg,
-            );
-            // `DetailsRoutingDecision.gates_unknown` (HTTP 5.2.0 draft) is emitted once the
-            // branch carries that contract; the closed 5.1.1 schema has no such field yet.
-            row.gates_unknown = unanswered;
-            out.push(row);
+            out.push(record(
+                user,
+                &i,
+                &source,
+                account,
+                action,
+                &facts,
+                &decision,
+                now,
+                leg,
+                Known {
+                    month: Some(&contract.month),
+                    position: Some(position),
+                    gates_unknown: unanswered,
+                },
+            ));
         }
         d.store.record(user, &out).await?;
         if !waiting.is_empty() {
@@ -557,6 +614,15 @@ impl DecideInstruction {
 /// The decision's row and audit event (`DetailsRoutingDecision`, HTTP 5.1.0; s10 §5: actor
 /// `system`). `refs.outcome` follows the Architect's per-code table (decision `capped` is
 /// audited `partial`).
+/// What the decision knew besides the facts: the resolved contract month, the position it
+/// read (none when it never read one), and whether gates 6–9 never answered (N1).
+#[derive(Debug, Clone, Copy)]
+struct Known<'a> {
+    month: Option<&'a str>,
+    position: Option<i64>,
+    gates_unknown: bool,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn record(
     user: UserId,
@@ -568,6 +634,7 @@ fn record(
     d: &Decision,
     now: DateTime<Utc>,
     leg: Leg,
+    known: Known<'_>,
 ) -> DecisionRecord {
     let code = d.reason_code.unwrap_or("routing.routed");
     let outcome = match d.outcome {
@@ -584,7 +651,9 @@ fn record(
     }
     sizing.insert("multiplier".into(), json!(f.multiplier));
     sizing.insert("max_position_qty".into(), json!(f.max_position));
-    sizing.insert("position_before".into(), json!(f.position));
+    if let Some(p) = known.position {
+        sizing.insert("position_before".into(), json!(p));
+    }
     if let Some(q) = d.requested_qty {
         sizing.insert("requested_qty".into(), json!(q));
     }
@@ -597,7 +666,20 @@ fn record(
 
     let mut details = Map::new();
     details.insert("sizing".into(), Value::Object(sizing));
-    details.insert("position_side".into(), json!(Side::of_position(f.position)));
+    if let Some(p) = known.position {
+        details.insert("position_side".into(), json!(Side::of_position(p)));
+    }
+    // The contract the decision used (HTTP 5.2.0, D2).
+    details.insert("instrument_symbol".into(), json!(i.instrument_symbol));
+    if let Some(month) = known.month {
+        details.insert("contract_month".into(), json!(month));
+    }
+    if known.gates_unknown {
+        details.insert("gates_unknown".into(), json!(true));
+    }
+    if d.expected_flat {
+        details.insert("expected_flat".into(), json!(true));
+    }
     match code {
         "routing.account_inactive" => {
             if let Some(state) = account.lifecycle {
@@ -650,12 +732,12 @@ fn record(
         reason_code: d.reason_code,
         multiplier: f.multiplier,
         max_position_qty: f.max_position,
-        position_before: f.position,
+        position_before: known.position,
         requested_qty: d.requested_qty,
         executed_qty: d.executed_qty,
         decided_at: now,
         leg,
-        gates_unknown: false,
+        gates_unknown: known.gates_unknown,
         expected_flat: d.expected_flat,
         audit: (leg != Leg::Close).then_some((code, payload)),
     }

@@ -53,7 +53,7 @@ impl DecisionStore for Store {
             .map(|r| DecidedLeg {
                 account_id: r.account_id,
                 leg: r.leg,
-                position_before: r.position_before,
+                position_before: r.position_before.unwrap_or(0),
             })
             .collect())
     }
@@ -398,6 +398,8 @@ async fn an_entry_is_routed_with_the_multiplier_and_audited() {
                        "position_before": 0, "requested_qty": 2, "executed_qty": 2,
                        "skipped_qty": 0},
             "position_side": "flat",
+            "instrument_symbol": "MNQ",
+            "contract_month": "2026-12",
         })
     );
     assert_eq!(
@@ -633,20 +635,32 @@ async fn the_instruction_month_wins_over_the_catalog() {
     assert_eq!(*w.gates.0[0].seen.lock().unwrap(), [mnq("2027-03")]);
 }
 
-/// Interim until `routing.instrument_unavailable` (HTTP 5.2.0): no active contract → the
-/// instruction is not decided and waits (fail closed).
+/// HTTP 5.2.0: in the catalog but no active contract at the decision → every account skipped
+/// with `routing.instrument_unavailable`, before any gate and without reading a position.
 #[tokio::test]
-async fn without_an_active_contract_nothing_is_decided() {
+async fn without_an_active_contract_the_instrument_is_unavailable() {
     let w = world();
     w.facts.active.lock().unwrap().clear();
-    let err = w
-        .use_case()
-        .handle(w.user, w.instruction)
-        .await
-        .unwrap_err();
-    assert!(matches!(err, DecideError::NoActiveContract));
-    assert!(w.store.legs().is_empty());
+    let (code, p) = w.only_event().await;
+    assert_eq!(code, "routing.instrument_unavailable");
+    assert_eq!(p["refs"]["outcome"], "skipped");
+    assert_eq!(p["details"]["instrument_symbol"], "MNQ");
+    assert!(p["details"].get("contract_month").is_none());
+    assert!(p["details"].get("position_side").is_none());
+    assert!(p["details"]["sizing"].get("position_before").is_none());
     assert!(w.facts.position_reads.lock().unwrap().is_empty());
+    assert!(w.gates.0.iter().all(|g| g.seen.lock().unwrap().is_empty()));
+    assert_eq!(
+        w.store
+            .rows
+            .lock()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .position_before,
+        None
+    );
 }
 
 /// The expected position decides what is an exit: without it the whole instruction waits.
@@ -700,7 +714,7 @@ async fn a_reverse_closes_at_once_and_opens_when_the_gates_answer() {
     let d = w.decide().await;
     assert_eq!(d.len(), 1);
     assert_eq!(d[0].leg, Leg::Open);
-    assert_eq!(d[0].position_before, 3);
+    assert_eq!(d[0].position_before, Some(3));
     assert_eq!(w.store.legs(), [Leg::Close, Leg::Open]);
     let events = w.store.events.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
@@ -767,6 +781,8 @@ async fn past_the_ttl_without_answers_no_gate_is_named() {
     assert_eq!(d[0].reason_code, Some("routing.position_conflict"));
     assert_eq!(d[0].outcome, Outcome::Refused);
     assert!(d[0].gates_unknown);
+    let details = &d[0].audit.as_ref().unwrap().1["details"];
+    assert_eq!(details["gates_unknown"], true);
     assert_eq!(d[0].executed_qty, Some(0));
 
     // With answers, the gate is named and nothing is unknown.
@@ -848,6 +864,10 @@ async fn a_flat_close_waits_for_gate_6_and_then_trusts_it_only_in_sync() {
     let d = w.decide().await;
     assert_eq!((d[0].outcome, d[0].reason_code), (Outcome::Routed, None));
     assert!(d[0].expected_flat);
+    assert_eq!(
+        d[0].audit.as_ref().unwrap().1["details"]["expected_flat"],
+        true
+    );
 }
 
 /// Q75-2: a reverse on a flat expected position of an out-of-sync account closes whatever the
@@ -998,6 +1018,22 @@ async fn emitted_events() -> Vec<(&'static str, Value)> {
     let mut w = world();
     w.now_ms = 9000;
     out.push(w.only_event().await);
+    // 5.2.0 fields: instrument_unavailable, expected_flat (Q75), gates_unknown (N1).
+    let w = world();
+    w.facts.active.lock().unwrap().clear();
+    out.push(w.only_event().await);
+    let w = world();
+    w.set_instruction("close", None, None);
+    w.bar(0);
+    out.push(w.only_event().await);
+    let mut w = world();
+    w.set_position(-1);
+    *w.gates.0[2].unavailable.lock().unwrap() = true;
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    w.now_ms = 5000;
+    let (code, p) = w.only_event().await;
+    assert_eq!(p["details"]["gates_unknown"], true);
+    out.push((code, p));
     out
 }
 
@@ -1012,6 +1048,7 @@ async fn emitted_decision_details_match_the_contract() {
             "routing.account_inactive",
             "routing.automation_not_accepted",
             "routing.expired",
+            "routing.instrument_unavailable",
             "routing.limits_pending",
             "routing.max_position_reached",
             "routing.no_bracket_profile",

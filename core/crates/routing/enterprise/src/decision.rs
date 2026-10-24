@@ -369,6 +369,22 @@ pub fn decide_expired_unanswered(
     }
 }
 
+/// The instrument is in the catalog but has no active contract at the decision (HTTP 5.2.0,
+/// ADR-0003 §4.1 contract resolution): skipped before any gate, for every action.
+pub fn instrument_unavailable(action: Action, multiplier: u32) -> Decision {
+    let requested = match action {
+        Action::Open { quantity, .. } | Action::Reverse { quantity, .. } => {
+            Some(quantity.saturating_mul(multiplier))
+        }
+        Action::Close => None,
+    };
+    Decision::not_executed(
+        Outcome::Skipped,
+        "routing.instrument_unavailable",
+        requested,
+    )
+}
+
 /// Gates for every action (1–5), in ADR-0003 §4.1 order.
 fn common_gate(signal_type: RouteSignalType, f: &DecisionFacts) -> Option<&'static str> {
     if !f.account_active {

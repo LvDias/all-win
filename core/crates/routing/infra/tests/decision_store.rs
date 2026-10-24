@@ -62,7 +62,7 @@ fn decision(user: UserId, instruction: InstructionId, account: AccountId) -> Dec
         reason_code: Some("routing.out_of_sync"),
         multiplier: 1,
         max_position_qty: 5,
-        position_before: 3,
+        position_before: Some(3),
         requested_qty: Some(2),
         executed_qty: Some(0),
         decided_at: Utc.with_ymd_and_hms(2026, 10, 23, 12, 0, 1).unwrap(),

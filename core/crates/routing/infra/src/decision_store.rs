@@ -148,7 +148,9 @@ impl DecisionStore for PgDecisionStore {
                 d.reason_code,
                 int(d.multiplier)?,
                 int(d.max_position_qty)?,
-                i32::try_from(d.position_before)
+                d.position_before
+                    .map(i32::try_from)
+                    .transpose()
                     .map_err(|_| PortError("position_before out of range".into()))?,
                 d.requested_qty.map(int).transpose()?,
                 d.executed_qty.map(int).transpose()?,

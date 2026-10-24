@@ -32,7 +32,7 @@ CREATE TABLE routing.routing_decision (
   instruction_id   uuid NOT NULL,
   account_id       uuid NOT NULL,                        -- accounts.account
   account_name     text NOT NULL,                        -- snapshot
-  outcome          text NOT NULL CHECK (outcome IN ('routed','capped','skipped','rejected','refused','expired')),
+  outcome          text NOT NULL CHECK (outcome IN ('routed','capped','skipped','refused','expired')),  -- HTTP 5.2.0 decision terms
   reason_code      text CHECK (reason_code ~ '^routing\.[a-z][a-z0-9_]{0,63}$'),  -- NULL when routed
   multiplier       integer NOT NULL,                     -- snapshots used for the decision
   max_position_qty integer NOT NULL,

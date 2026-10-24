@@ -131,6 +131,7 @@ pub fn rule_for(code: &str) -> Option<CodeRule> {
         | "routing.no_bracket_profile" => decision(&[Skipped, Partial]),
         "routing.expired" => decision(&[Expired, Partial]),
         "routing.account_inactive"
+        | "routing.instrument_unavailable"
         | "routing.platform_unbound"
         | "routing.automation_not_accepted"
         | "routing.copy_not_accepted"
@@ -369,6 +370,7 @@ mod tests {
         assert_eq!(allowed("routing.expired"), [Expired, Partial]);
         for skip in [
             "routing.account_inactive",
+            "routing.instrument_unavailable",
             "routing.platform_unbound",
             "routing.automation_not_accepted",
             "routing.copy_not_accepted",
