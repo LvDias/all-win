@@ -1,0 +1,26 @@
+[package]
+name = "risk-application"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "risk module — application layer: limits derivation, trading-day reset, fills, risk state queries (S13/S13b)."
+
+[lints]
+workspace = true
+
+[dependencies]
+# `path` until core/Cargo.toml (Brasa) lists the risk crates.
+risk-enterprise = { path = "../enterprise" }
+shared-kernel.workspace = true
+async-trait.workspace = true
+chrono = { workspace = true, features = ["std"] }
+rust_decimal.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+chrono-tz.workspace = true

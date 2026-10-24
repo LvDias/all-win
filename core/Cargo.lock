@@ -1736,6 +1736,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "risk-application"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "chrono-tz",
+ "risk-enterprise",
+ "rust_decimal",
+ "serde_json",
+ "shared-kernel",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "risk-enterprise"
 version = "0.1.0"
 dependencies = [
