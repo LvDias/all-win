@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S6](../../product/release-1/slice-plan.md) AC-1 … AC-5 (slice-plan rev. 7); touch points: S5 (accounts, sizes), S8 (shared mode, executions), S10 (audit of the rounding).
 > **Foundations:** [foundations.md](../foundations.md) (F§6.2 distance units, F§6.3 number input) · **Related:** [S5 spec](v1-s5-automation-opt-in.md) (nav §0, account detail tabs, account form).
-> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/profiles.yaml` and the notes [s6-profiles](../../architecture/contracts/s6-profiles.md). Operations `listInstruments`, `listDefaultProfiles`, `putDefaultProfile`, `listAccountProfiles`, `putAccountProfile`, `restoreAccountProfile`, `getNearestProfileSize`, `previewProfile`; normalization to whole ticks: ADR-0004 §5. **Where this spec and the contract differ, the contract wins.**
+> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9, branch `s/v1-contracts-wave2--contracts`; 5.2.0 with Q75/Q76 is TODO and not designed here): `contracts/http/modules/profiles.yaml` and the notes [s6-profiles](../../architecture/contracts/s6-profiles.md). Operations `listInstruments`, `listDefaultProfiles`, `putDefaultProfile`, `listAccountProfiles`, `putAccountProfile`, `restoreAccountProfile`, `getNearestProfileSize`, `previewProfile`; normalization to whole ticks: ADR-0004 §5. **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Tick conversion, rounding and audit are the Core's (Backend). QA owns the checks.
 
 ---
@@ -23,7 +23,7 @@
 
 - A **profile** = stop distance + target distance in one **unit** (points, ticks or dollars, chosen per profile; AC-1), for one **instrument**. V1 has only MNQ; profiles are keyed by instrument so new futures need no rework (Q-A2).
 - **Default profiles** exist per standard size: **25k, 50k, 100k, 150k, 200k, 300k**, including sizes the user does not hold (AC-1).
-- A **new account starts with the profile of its size** (a real account of another size uses the nearest standard size) and can be customized **without changing the default** (AC-2, Q12).
+- A **new account starts with the profile of its size** (an account whose size is not a standard size, **real or prop**, uses the nearest standard size, Q73 b; the nearest size only picks the profile, balance, limits and risk always use the account's own size) and can be customized **without changing the default** (AC-2, Q12).
 - **Individual mode (default):** each entry gets its own stop and target from its own fill price; a second entry does not move the first entry's orders (AC-3). Shared mode is S8.
 - **Stop and target values coming in an instruction are ignored; the profile always wins** (AC-5).
 - Distances in dollars are converted to **whole ticks** with the instrument's exact tick value. A distance that is not a whole number of ticks is **rounded toward the entry**, for stop and target, so risk is never more than configured. The adjustment and the resulting price appear in the audit entry (AC-4, Q-N1).
@@ -183,7 +183,7 @@ Help under the unit: "Dólares são convertidos em ticks inteiros usando o valor
 
 **Architect (Compasso), resolved in the contract:** dollars accept at most 2 decimals; off-tick points and dollars are rounded toward the entry (not rejected); `profiles.default_missing` on restore when the size has no default; `previewProfile` is a `GET` with query parameters.
 
-**User question drawn as recommendation, provisional:** **Q60** which standard size a real account between two sizes copies: the Core offers the nearest candidate (below 25k → 25k, above 300k → 300k); on an **exact tie** the user picks one of the two in the account form (`getNearestProfileSize`, `createAccount.profile_size`); the Core never chooses. If the user later decides "smaller" or "larger", the list always has one entry and nothing else changes.
+**Decided by the user (Q60 option c, extended by Q73 b; contract 5.0.0+):** which standard size an account outside the standard list copies, **real or prop**: the Core offers the nearest candidate (below 25k → 25k, above 300k → 300k); on an **exact tie** the user picks one of the two in the account form (`getNearestProfileSize`, `createAccount.profile_size`, required on a tie, else 422 `accounts.profile_size_required` / `accounts.profile_size_invalid` with pointer `/profile_size` on `createAccount`; `restoreAccountProfile` answers `profiles.profile_size_required` / `profiles.profile_size_invalid`); the Core never chooses. `restoreAccountProfile` reuses the stored `copied_from_size` and asks `profile_size` again only when none is stored and there is a tie. Wherever the nearest size is shown, a one-line note says it only picks the stop/target profile: "O tamanho mais próximo só define o perfil de stop e alvo; limites e risco usam o tamanho da sua conta." / "The nearest size only sets the stop/target profile; limits and risk use your account's own size."
 
 ## 11. Accessibility
 

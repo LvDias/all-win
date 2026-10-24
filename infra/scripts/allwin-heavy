@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Run a heavy command (cargo build/test/clippy, dotnet build/test, pnpm build, full vitest, playwright, e2e stack)
+# under a host-wide 3-slot semaphore, a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
+#   allwin-heavy cargo test --workspace
+#   allwin-heavy --fresh-target cargo test --workspace   (QA verdict run: private target per SHA, removed after)
+set -euo pipefail
+
+SLOTS="${ALLWIN_HEAVY_SLOTS:-3}"
+LOCK_DIR="${ALLWIN_HEAVY_LOCK_DIR:-/srv/www/allwin.worktrees/.heavy-locks}"
+CPU_QUOTA="${ALLWIN_HEAVY_CPU_QUOTA:-200%}"
+WAIT_MAX="${ALLWIN_HEAVY_WAIT_S:-1800}"   # seconds to wait for a slot
+
+FRESH=0
+if [ "${1:-}" = "--fresh-target" ]; then FRESH=1; shift; fi
+[ "${ALLWIN_HEAVY_FRESH_TARGET:-0}" = 1 ] && FRESH=1
+
+[ $# -gt 0 ] || { echo "usage: allwin-heavy <command> [args...]" >&2; exit 2; }
+[[ "$SLOTS" =~ ^[1-9][0-9]?$ ]] || { echo "allwin-heavy: ALLWIN_HEAVY_SLOTS must be 1..99" >&2; exit 2; }
+
+# Shared lock dir for every account in group devs (setgid 2770); lock files are 0660.
+( umask 007; mkdir -p -- "$LOCK_DIR" ) 2>/dev/null || true
+[ -d "$LOCK_DIR" ] && [ -w "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] \
+  || { echo "allwin-heavy: lock dir $LOCK_DIR is missing, a symlink or not writable" >&2; exit 1; }
+chmod 2770 -- "$LOCK_DIR" 2>/dev/null || true
+
+# Take any free slot; poll every 5 seconds. The slot is held by this shell's fd until the command ends
+# (the child inherits it too, so the slot stays taken even if this wrapper is killed).
+waited=0 announced=0 paused_said=0 held=""
+while [ -z "$held" ]; do
+  # Planned quiet window (SRE perf measurement): while LOCK_DIR/PAUSE exists, NEW jobs wait; running jobs finish.
+  # Waiting under a pause does not count against the wait limit. Only ALLWIN_HEAVY_IGNORE_PAUSE=1 (the measuring
+  # account's own run) goes through.
+  if [ -e "$LOCK_DIR/PAUSE" ] && [ "${ALLWIN_HEAVY_IGNORE_PAUSE:-0}" != 1 ]; then
+    if [ "$paused_said" = 0 ]; then
+      note="$(head -c 200 "$LOCK_DIR/PAUSE" 2>/dev/null | tr -d '\000-\037')"
+      echo "allwin-heavy: paused for SRE quiet window${note:+ ($note)}; waiting for it to end..." >&2; paused_said=1
+    fi
+    sleep 5; continue
+  fi
+  for i in $(seq 1 "$SLOTS"); do
+    f="$LOCK_DIR/slot.$i"
+    ( umask 007; : >> "$f" ) 2>/dev/null || true
+    exec {fd}>>"$f" || continue
+    if flock -n "$fd"; then held="$i"; break; fi
+    exec {fd}>&-
+  done
+  [ -n "$held" ] && break
+  if [ "$announced" = 0 ]; then
+    echo "allwin-heavy: all $SLOTS slots busy, waiting (max ${WAIT_MAX}s)..." >&2; announced=1
+  fi
+  [ "$waited" -lt "$WAIT_MAX" ] || { echo "allwin-heavy: gave up waiting for a slot" >&2; exit 75; }
+  sleep 5; waited=$((waited + 5))
+done
+
+# Defaults that keep the build small; the caller can override any of them.
+umask 002   # files created under the shared toolchain and caches stay group-writable (group devs)
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+TARGET_ROOT="${ALLWIN_HEAVY_TARGET_ROOT:-$HOME/.cache/allwin/cargo-target}"
+# Web Playwright (web/playwright.config.ts reuses any server already listening on PLAYWRIGHT_PORT when not in CI):
+# give every worktree its own free port so a run never talks to another worktree's server.
+if [ -z "${PLAYWRIGHT_PORT:-}" ]; then
+  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  base=$(( 3200 + $(printf '%s' "$root" | cksum | cut -d' ' -f1) % 700 ))
+  for off in $(seq 0 699); do
+    cand=$(( 3200 + (base - 3200 + off) % 700 ))
+    if ! ss -ltnH "sport = :$cand" 2>/dev/null | grep -q .; then PLAYWRIGHT_PORT="$cand"; break; fi
+  done
+  [ -n "${PLAYWRIGHT_PORT:-}" ] || { echo "allwin-heavy: no free port in 3200-3899" >&2; exit 1; }
+  export PLAYWRIGHT_PORT
+fi
+export PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://localhost:$PLAYWRIGHT_PORT}"
+# Same toolchain for every account (rustc 1.99.1 under /opt/rust), so compile-cache keys match across accounts.
+if [ -z "${RUSTUP_HOME:-}" ] && [ -d /opt/rust/rustup ]; then
+  export RUSTUP_HOME=/opt/rust/rustup CARGO_HOME="${CARGO_HOME:-/opt/rust/cargo}"
+  case ":$PATH:" in *":/opt/rust/cargo/bin:"*) ;; *) export PATH="/opt/rust/cargo/bin:$PATH" ;; esac
+fi
+
+# Shared compile cache (sccache, group-devs directory). One sccache server PER JOB, on a unix socket inside the
+# user's runtime dir: the server runs inside this job's scope (its CPU counts against the job's quota), serves only this
+# job, and is stopped when the job ends. Never the default TCP port: a client uses whatever server answers there,
+# whichever account started it. Incremental compilation is off because sccache cannot cache it.
+# ON by default (verified per job server as dev2 and dev3). ALLWIN_HEAVY_NO_SCCACHE=1 turns it off.
+SCCACHE_BIN="${ALLWIN_HEAVY_SCCACHE:-/opt/rust/cargo/bin/sccache}"
+SCCACHE_ON=0
+unset SCCACHE_NO_DAEMON SCCACHE_SERVER_PORT SCCACHE_START_SERVER
+RUNDIR="/run/user/$(id -u)"
+if [ "${ALLWIN_HEAVY_NO_SCCACHE:-0}" != 1 ] && [ -x "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER:-}" ] \
+   && [ -d "$RUNDIR" ] && [ -w "$RUNDIR" ]; then
+  export SCCACHE_DIR="${SCCACHE_DIR:-/srv/www/allwin.worktrees/.sccache}"
+  mkdir -p -- "$SCCACHE_DIR" 2>/dev/null || true
+  if [ -d "$SCCACHE_DIR" ] && [ -w "$SCCACHE_DIR" ]; then
+    export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-30G}" CARGO_INCREMENTAL=0 SCCACHE_IDLE_TIMEOUT=0
+    export SCCACHE_SERVER_UDS="$RUNDIR/allwin-sccache-$$.sock"   # short path: SUN_LEN limit
+    export RUSTC_WRAPPER="$SCCACHE_BIN"
+    SCCACHE_ON=1
+  fi
+fi
+
+SLOT_TARGET=0
+if [ "$SCCACHE_ON" = 1 ] && [ -z "${CARGO_TARGET_DIR:-}" ]; then
+  # With the compile cache on, the target path is what keys it: use ONE fixed path per (account, slot), identical for every job on that slot,
+  # worktree and every job, and empty it when the job starts. The slot gives exclusivity, the empty dir gives a clean
+  # build (nothing from another worktree or SHA can mix in), and the cache restores third-party crates by content.
+  export CARGO_TARGET_DIR="$TARGET_ROOT/slot-$held"
+  SLOT_TARGET=1
+elif [ "$FRESH" = 1 ]; then
+  # A snapshot of another SHA must never see this one's artifacts (same layout, same metadata hash):
+  # verdict runs get a target of their own, named by the commit, and remove it afterwards.
+  sha="$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)"
+  git diff --quiet HEAD 2>/dev/null || sha="$sha-dirty"
+  export CARGO_TARGET_DIR="$TARGET_ROOT/verify-$sha-$$"
+elif [ -z "${CARGO_TARGET_DIR:-}" ]; then
+  # One target per worktree: two worktrees with the same layout give our path crates the same metadata, so a shared
+  # target mixes their artifacts (false failures, and a test could pass against another worktree's code).
+  wt_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+  export CARGO_TARGET_DIR="$TARGET_ROOT/wt-$(printf '%s' "${wt_root##*/}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-40)-$(printf '%s' "$wt_root" | sha1sum | cut -c1-10)"
+fi
+mkdir -p -- "$CARGO_TARGET_DIR"
+if [ "$SLOT_TARGET" = 1 ]; then
+  case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/slot-[0-9]*) find "$CARGO_TARGET_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + ;; esac
+fi
+
+# dotnet: no resident MSBuild nodes or build servers holding memory (and the slot) after the command.
+export MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_CLI_USE_MSBUILD_SERVER=0
+export RUST_TEST_THREADS="${RUST_TEST_THREADS:-2}"
+
+# --scope runs in the foreground (cwd, env, tty and exit code pass through) and keeps the slot fd.
+# Docker containers run under dockerd, so the quota caps only the client/build side.
+run=(ionice -c2 -n7 "$@")
+if systemd-run --user --scope --quiet --collect -p "CPUQuota=$CPU_QUOTA" -- true >/dev/null 2>&1; then
+  run=(systemd-run --user --scope --quiet --collect -p "CPUQuota=$CPU_QUOTA" -p CPUWeight=20
+       -p MemoryHigh="${ALLWIN_HEAVY_MEMORY_HIGH:-8G}" --nice=10 -- "${run[@]}")
+else
+  echo "allwin-heavy: no usable systemd --user scope; running with nice only (no CPU quota)" >&2
+  run=(nice -n 10 "${run[@]}")
+fi
+
+if [ "$FRESH" != 1 ] && [ "$SCCACHE_ON" != 1 ]; then exec "${run[@]}"; fi
+
+# The wrapper stays alive (the slot stays held) to stop this job's sccache server and remove the fresh target.
+if [ "$FRESH" = 1 ] && [ "$SLOT_TARGET" != 1 ]; then
+  case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/verify-*) ;; *) echo "allwin-heavy: unexpected target dir" >&2; exit 1 ;; esac
+fi
+cleanup() {
+  if [ "$SCCACHE_ON" = 1 ]; then
+    "$SCCACHE_BIN" --stop-server >/dev/null 2>&1 || true
+    rm -f -- "$SCCACHE_SERVER_UDS"
+  fi
+  if [ "$FRESH" = 1 ] && [ "$SLOT_TARGET" != 1 ] && [ "${ALLWIN_HEAVY_KEEP_TARGET:-0}" != 1 ]; then rm -rf -- "$CARGO_TARGET_DIR"; fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+rc=0
+"${run[@]}" || rc=$?
+exit "$rc"

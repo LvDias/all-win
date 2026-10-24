@@ -1,0 +1,39 @@
+{
+  "protocol_version": "1.2",
+  "msg_id": "0192b3c4-0000-7000-8000-000000001312",
+  "type": "trade_completed",
+  "sent_at": "2026-10-23T13:05:01.000Z",
+  "payload": {
+    "event_id": "0192b3c4-0000-7000-8000-0000000013d1",
+    "trade_id": "0192b3c4-0000-7000-8000-0000000013d2",
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "platform_account": "Sim101",
+    "instrument": {
+      "symbol": "MNQ",
+      "contract_month": "2026-12"
+    },
+    "direction": "long",
+    "quantity": 2,
+    "entry_time": "2026-10-23T13:30:00.000Z",
+    "entry_price": "21050.25",
+    "exit_time": "2026-10-23T13:42:10.000Z",
+    "exit_price": "21062.75",
+    "duration_seconds": 730,
+    "net_pnl": "47.52",
+    "gross_pnl": "50.00",
+    "commission": "2.48",
+    "mae": "8.50",
+    "mfe": "61.00",
+    "command_id": "0192b3c4-0000-7000-8000-000000000007",
+    "opening_fill": {
+      "fill_id": "exec-1001",
+      "quantity": 2
+    },
+    "closing_fills": [
+      {
+        "fill_id": "exec-1007",
+        "quantity": 2
+      }
+    ]
+  }
+}

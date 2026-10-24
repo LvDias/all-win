@@ -1,6 +1,6 @@
 # V1 — NinjaTrader 8 plugin panels (AddOn window) — Screen spec
 
-> **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review and Plugin Engineer feasibility check · **Revision:** 1 · **Date:** 2026-10-23
+> **Owner:** Product Designer (Nanquim) · **Status:** proposed, PO review (Rumo) applied; Plugin Engineer feasibility answered · **Revision:** 2 · **Date:** 2026-10-23
 > **Surface:** the All Win AddOn window inside NinjaTrader 8 (WPF, `net48`, host project `AllWin.NinjaTrader`). Implemented by the **Plugin Engineer (Elo)**; QA checks on the Windows machine with Sim/Playback only (X-7).
 > **Slices covered:** S3 (pairing and connection, plugin side of AC-4), S13 (live risk state and 80 % warnings, AC-3), S15 (enforcement and block until the reset, AC-2/3/4/6/7), S18 (notification list in the plugin, AC-1/2). Web counterparts: [S3](v1-s3-access-sources-pairing.md) (S3-10, S3-11), [S13](v1-s13-risk.md), [S15](v1-s15-enforcement.md), [S18](v1-s18-notifications.md).
 > **Inputs read:** [NT8 platform profile](../../architecture/platforms/ninjatrader8-profile.md) (§3 AddOn window, §5 threading, §8 Sim/Playback, §12 lockout, §16 pitfalls), [ADR-0005](../../architecture/adr/0005-nt8-plugin-implementation.md) (N4, N6, N10, N11), [ADR-0004](../../architecture/adr/0004-adapter-protocol-v1.md) (§3 messages, §7 local enforcement, §8 pairing), [messages.schema.json](../../../contracts/adapter-protocol/v1/messages.schema.json), [foundations.md](../foundations.md).
@@ -33,7 +33,7 @@
 ```
 ┌ All Win ─────────────────────────────────────────────────────────────────┐
 │ ● Conectado   Contas reais: bloqueadas   ▲ 1 conta em alerta   🔔 3       │ header (always visible)
-│ ┌ ⚠ Alerta crítico: APEX-1 desconectou com posição aberta. [Ver] ───────┐ │ critical strip (only when a critical item is unread)
+│ ┌ ⚠ Alerta máximo: APEX-1 perna órfã (sem stop/alvo). [Ver] ───────────┐ │ critical strip (only when a critical item is unread; `critical` applies to two cases only: the Q27 orphan leg (S18 AC-5/Q51 "maximum alert") and, by U19 [Decision 2026-10-23], a flatten that fails after cancelling the legs (top-severity alert + out of sync); "disconnected with position" and everything else are `danger`)
 │ [ Contas ] [ Avisos (3) ] [ Conexão ]                                    │ NTTabControl
 │  … tab content …                                                         │
 │ Fechar esta janela não desliga o All Win.                                │ footer
@@ -122,11 +122,12 @@ A section "Segurança deste computador" with the always-visible state: "Contas r
 - Every change is written to the local log with the time (ADR-0005 N11). Development builds do not show this section and never act on live accounts (N4).
 - `kind: unknown` accounts are always refused; the account row says "Tipo desconhecido: o All Win não opera nesta conta."
 
-### 4.5 Disconnect this computer (local) **[Provisional, Q66 rec. (a); user decides]**
+### 4.5 Disconnect this computer (local) **[Provisional, Q66 rec. (a); not yet decided in the PO's copy]**
 
 The plugin does **not** revoke the pairing. `Desconectar este computador` only **stops the connection from this computer**; the pairing stays in the Core as `Desconectada` with the usual out-of-sync rules (S11), and **revoking the pairing is done in the web with a code** (S3-10; Q18 stays: confirmation listing the accounts, strong warning with an open position or enforcement on, nothing is closed).
-- Dialog: title "Desconectar este computador?"; body "O All Win para de enviar ordens e de receber as suas execuções neste computador. No All Win a conexão aparece como desconectada. Para encerrar o pareamento de vez, desparear no All Win → Conexões." and, when applicable (the plugin knows its mapped accounts' positions and orders): danger text "Há posição aberta em: {accounts}. Ela continua aberta no NinjaTrader e o All Win não a acompanhará; as contas ficarão fora de sincronia no All Win." with a required checkbox "Entendo" only in that case. If enforcement is on: "Com a aplicação automática ligada, o NinjaTrader continua aplicando os últimos limites recebidos, como em uma queda de conexão." **[Elo: confirm that local enforcement keeps running with the cached limits after a user disconnect, ADR-0004 §7]**
+- Dialog: title "Desconectar este computador?"; body "O All Win para de enviar ordens e de receber as suas execuções neste computador. No All Win a conexão aparece como desconectada. Para encerrar o pareamento de vez, desparear no All Win → Conexões." and, when applicable (the plugin knows its mapped accounts' positions and orders): danger text "Há posição aberta em: {accounts}. Ela continua aberta no NinjaTrader e o All Win não a acompanhará; as contas ficarão fora de sincronia no All Win." with a required checkbox "Entendo" only in that case. If enforcement is on: "Com a aplicação automática ligada, o NinjaTrader continua aplicando os últimos limites recebidos, como em uma queda de conexão." **Requirement (S15 AC-4):** local enforcement MUST keep running with the cached limits after a user disconnect, and the block stays reactive. A disconnect is not an unpair (G7 applies only to unpairing or unmapping). An account must not be able to escape a block by disconnecting. Open question to the Plugin Engineer (Elo): confirm this in the host and the Adapter.Core design (ADR-0004 §7).
 - With an open position or a command in flight, the account is flagged out of sync and an alert is raised (`sync.disconnected_by_user` **[Proposal: not yet in the contract or ADR-0004; the protocol owner adds it to the 1.3 / S11 delta]**: "Você desconectou o plugin com posição aberta; o All Win não está acompanhando esta conta"); without a position there is only the status and the audit entry, no alert (ADR-0004 §6).
+- **While any mapped account is blocked until the reset (Q82 (a) [Decision 2026-10-24]):** `Desconectar este computador` still works (enforcement keeps running, see above), but unpairing from the web or unlinking/disabling that account is refused until the reset (S15 §3). In the plugin, a refused revocation appears as the notice "Conta bloqueada até {time}: o pareamento só pode ser encerrado depois do reset."
 - Buttons `Desconectar` (destructive style) / `Cancelar` (default).
 - Result: badge `Desconectado por você`, the plugin does not reconnect on its own, a `Reconectar` button reconnects with the stored credential (no code needed). The credential stays in the protected store; **[Elo/PO: whether to forget it]**. The same state survives a NinjaTrader restart until the user reconnects **[Elo]**.
 - To remove the credential from this computer the user revokes in the web (state `Despareado`, back to the pairing form).
@@ -151,11 +152,12 @@ A vertical list of **account cards**, one per mapped account, each collapsible (
 | Perda diária | `US$ 820,00 de US$ 1.000,00 · 82 %` |
 | Drawdown ({type}) | `used / limit` and "Piso atual: US$ …" when `floor_balance` is present |
 | Meta de lucro diária | progress, success color, text `Meta atingida` when reached |
-| P&L do dia | realized + unrealized as signed money (information, not a limit) |
+| P&L líquido do dia | realized + unrealized as signed money, **net** of commissions using the effective commission (S15 AC-13; S13 AC-11: the greater of the platform-reported value and the configured value × quantity); information, not a limit |
 
    - Each meter is a `ProgressBar` (0–100) with a fixed **80 % tick**, a text value beside it, and the state badge when not `normal` (F§7.1: exactly three levels, **no 90 % band**). The fill color follows the state tokens; the text and badge carry the meaning.
    - `AutomationProperties.Name` = limit name; `AutomationProperties.HelpText`/value text = the full sentence ("Perda diária: US$ 820,00 de US$ 1.000,00, 82 %, alerta"); UIA `RangeValue` provider so Narrator reads it.
    - Values come from `risk_state` (`realized_pnl`, `unrealized_pnl`, `daily_loss_remaining`, `drawdown_remaining`, `balance`) and the cached `limits`; percentages are computed by `AllWin.Adapter.Core` with `decimal` and **truncated** so `80 %` is never shown while the state is `normal`. Redraws are throttled to 2 per second per account (matches `risk_state`). No announcement per tick; only state changes (§5.4).
+   - **Net everywhere (S15 AC-13).** The used values of the daily loss and drawdown meters and the value that triggered a block are net of commissions, and the labels say so (`líquido`, with a tooltip "Já descontadas as comissões" / "After commissions"). The plugin shows no gross figure in V1.
    - A limit not set shows no meter: "Perda diária: sem limite definido."
 3. **Limits footer:** "Limites versão {n}, recebidos às {time}" and, if the plugin holds a version older than the Core's, "Desatualizados" (only knowable while connected).
 4. **Block card** when `blocked_until` is set (§5.3).
@@ -165,9 +167,9 @@ A vertical list of **account cards**, one per mapped account, each collapsible (
 
 A card section with danger border (success border when the reason is the daily profit target, F§7.1) and text:
 - Title: "Conta bloqueada até {date-time (zone)}" + reason: "motivo: perda diária atingida" / "drawdown atingido" / "meta de lucro diária atingida".
-- Why: limit name, limit, value that triggered it, time with seconds.
+- Why: limit name, limit, **net** value that triggered it, time with seconds.
 - What was done: "Posições fechadas: {n}. Ordens canceladas: {m}." (from the plugin's own actions).
-- What happens now (fixed text, AC-6): "Qualquer ordem manual enviada nesta conta será cancelada e a posição resultante será fechada logo depois. O NinjaTrader não consegue travar a conta. **Não há desbloqueio antecipado.**"
+- What happens now (fixed text, AC-6): "Qualquer ordem manual enviada nesta conta será cancelada e a posição resultante será fechada logo depois. O NinjaTrader não consegue travar a conta. **Não há desbloqueio antecipado.**" The plugin's "cancelled" and "saídas" wording follows S15 §5: "saídas" means exits sent by All Win instructions; manual orders on a blocked account are cancelled.
 - A list "Ordens canceladas desde o bloqueio" with time and order summary (each `blocked_order_cancelled`).
 - **No button unblocks** (S15 AC-3). The block ends only at the reset, when the card disappears and the account shows "Liberada às {time}" for the rest of the session.
 - If a flatten or cancel failed: `Alert`-style row (danger): "Não foi possível fechar tudo em {account}. A conta foi marcada fora de sincronia." (the account is flagged; the plugin waits for the user, never auto-resyncs).
@@ -180,7 +182,7 @@ A card section with danger border (success border when the reason is the daily p
 | `limit_reached` | badge, meter | Log (error) + toast that stays until dismissed | yes |
 | `flattened`, `orders_cancelled`, `blocked` | block card | Log + persistent toast | yes |
 | `blocked_order_cancelled` | row in the block card | Log + toast "Ordem cancelada: conta {account} bloqueada até {time}" (this is how the user is told **at that moment** that the account is blocked and why, AC-6) | yes |
-| `unblocked` (reset) | card disappears; "Liberada" line | Log (info) | informational (Q62 provisional) |
+| `unblocked` (reset) | card disappears; "Liberada" line | Log (info) | informational (Q62 [Decision 2026-10-23]) |
 | daily profit target reached | `Meta atingida`; with `flatten_and_block` the block card applies | Log + toast | once |
 
 State changes are announced once through UI Automation (`LiveSetting=Polite`; limit reached/block `Assertive`), never per tick.
@@ -234,9 +236,9 @@ Enforcement, warnings and notifications keep running without the window (§2.1).
 
 One log line per state change (same dedupe key as the warning); reactive-cancel bursts collapse to at most one line per account every 5 s with "(+n)", plus a global per-minute cap, because each entry costs memory in the Control Center. Text follows `welcome.locale` and never contains a pairing code or token (Adapter.Core redaction). The Log timestamp follows NinjaTrader's configured time zone.
 
-**The plugin never steals focus [Provisional, Q65 rec. (a)]**: Log + non-activating toast + the permanent status on each account in the `Contas` tab (badge and block card). The window never opens itself. The user is advised to keep the All Win window in their workspace (footer hint).
+**The plugin never steals focus** (Q65 [Decision 2026-10-23]): Log + non-activating toast + the permanent status on each account in the `Contas` tab (badge and block card). The window never opens itself. The user is advised to keep the All Win window in their workspace (footer hint).
 
-**Alternative to evaluate (Q-P7, PO):** `NinjaScript.Alert.AlertCallback` writes to NinjaTrader's **Alerts Log** window (priority, colors, re-arm, optional sound; none in V1), which traders already watch. It could complement the toast for limit reached and block. [EXP] whether the Alerts window opens by itself or takes focus; not the default until verified.
+**No Alerts Log in V1 (Q-P7, answered by the PO):** the plugin does not use `NinjaScript.Alert.AlertCallback` / NinjaTrader's Alerts Log. It may be revisited only after the Windows experiment shows that the Alerts window neither opens by itself nor takes focus.
 
 ---
 
@@ -330,7 +332,7 @@ Legend: [OFF] official NinjaScript docs, [INF] WPF/.NET 4.8 inference, [EXP] nee
 | 2 | Skin | Standard controls inherit the skin; keys only for our own elements, listed on the Windows machine with `SystemColors` fallback [EXP]; set chosen by measured contrast; High Contrast handled in our window only (§3.2, §9) |
 | 3 | Numerals | `Tabular` setting plus a Consolas fallback in numeric columns; width test [EXP] (§3.1) |
 | 4 | Toast | Plain WPF window, own STA thread, `WS_EX_NOACTIVATE`; no keyboard focus; UIA notification; max 3 stacked; fixed corner in V1 (§7) |
-| 5 | Log | `NinjaScript.Log` Information/Warning/Error; never Alert; collapsing and caps (§7); `AlertCallback` is an option for the PO (Q-P7) |
+| 5 | Log | `NinjaScript.Log` Information/Warning/Error; never Alert; collapsing and caps (§7); no `AlertCallback` in V1 (Q-P7, PO) |
 | 6 | UIA | `LiveSetting` and `LiveRegionChanged` exist since .NET 4.7.1; `ProgressBar` already exposes read-only `RangeValue`, so only `Name`, `HelpText` and `ItemStatus` (state) are set [EXP: Narrator/NVDA with Accessibility Insights] |
 | 7 | Browser | `Process.Start` with `UseShellExecute` only for an absolute `https` URI whose host equals the Core's app host; the path is built only from validated ids; no token or secret; the user's browser session, the plugin authenticates nothing |
 | 8 | DPI and size | Minimum 640 × 440 with vertical scroll: ok; per-monitor DPI depends on NinjaTrader's manifest, not ours [EXP] |
@@ -346,16 +348,19 @@ Legend: [OFF] official NinjaScript docs, [INF] WPF/.NET 4.8 inference, [EXP] nee
 
 **Accepted by the PO (Rumo, 2026-10-23):** Q-P3 clearing an out-of-sync flag is web-only in V1; Q-P4 consistency in the plugin is a notification only, no meter; Q-P5 the last 200 items are a **display cache** (the record is the audit log); Q-P6 no sound in V1.
 
-**User questions drawn as recommendation (a), provisional:**
+**Decided by the user (2026-10-23):** Q65 (S15 AC-12) the plugin never steals focus: Log + non-activating toast + permanent per-account status in the panel; the window never opens itself. Q62 (S15 AC-9) release at the reset: informational notification + audit entry.
+
+**Decided (2026-10-24):** Q82 (a) while an account is blocked, unpair / unlink / disable is refused until the reset, with the reason (§4.5, S15 §3).
+
+**Not decided (provisional):**
 
 | ID | Question | Spec default (provisional) |
 |---|---|---|
-| Q65 | The plugin never steals focus | Log + non-activating toast (if feasible) + permanent per-account status in the panel; the window never opens itself |
 | Q66 | Unpair in the plugin | Only **disconnects** locally (warning + checkbox when a position is open); the pairing stays in the Core as disconnected with the out-of-sync rules; revoking is in the web with a code (Q18 unchanged) |
 
-**For the PO:** Q-P7 — complement the toast with NinjaTrader's Alerts Log (`AlertCallback`, no sound) for limit reached and block? Default: no, until the [EXP] shows it does not open by itself or take focus.
+**Answered by the PO:** Q-P7 — no Alerts Log (`AlertCallback`) in V1 (§7).
 
-**For the Plugin Engineer (Elo):** §11 answered; still open: does local enforcement keep running after a user disconnect, does the disconnect survive a NinjaTrader restart, and whether the credential is kept (§4.5).
+**For the Plugin Engineer (Elo):** §11 answered; still open: confirm that local enforcement keeps running after a user disconnect (it is a requirement, §4.5), does the disconnect survive a NinjaTrader restart, and whether the credential is kept (§4.5).
 
 **Consequence for other specs:** the S3 spec's S3-11 table says the plugin's `Desparear` "forgets the token after confirmation"; under Q66 it becomes `Desconectar` (credential kept). Aquarela updates S3-11 when Q66 is decided.
 

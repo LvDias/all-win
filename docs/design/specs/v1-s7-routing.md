@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
 > **Slice:** [V1-S7](../../product/release-1/slice-plan.md) AC-1 … AC-8 (slice-plan rev. 7); touch points: S5 (opt-ins), S3 (sources), S10 (audit), S11/S14 (gates), S16 (stances, manual-only firms), S19 (followers, V1.1).
 > **Foundations:** [foundations.md](../foundations.md) · **Related specs:** [S5](v1-s5-automation-opt-in.md) (account states, `OptInSection`, nav tree §0), [S3](v1-s3-access-sources-pairing.md) (sources).
-> **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/routing.yaml` and the notes [s7-routing](../../architecture/contracts/s7-routing.md). Operations `listRoutes`, `createRoute`, `updateRoute`, `deleteRoute`, `listRouteCandidates`; `listSources` / `Source.is_automated` in the main file; `routing.subscription` in [wave1-data-model.md §5.5](../../architecture/data/wave1-data-model.md). **Where this spec and the contract differ, the contract wins.**
+> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9, branch `s/v1-contracts-wave2--contracts`; 5.2.0 Q75/Q76 is TODO, see §5.4): `contracts/http/modules/routing.yaml` and the notes [s7-routing](../../architecture/contracts/s7-routing.md). Operations `listRoutes`, `createRoute`, `updateRoute`, `deleteRoute`, `listRouteCandidates`; `listSources` / `Source.is_automated` in the main file; `routing.subscription` in [wave1-data-model.md §5.5](../../architecture/data/wave1-data-model.md). **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Gate logic and audit are the Core's (Backend). QA owns the checks.
 
 ---
@@ -63,7 +63,7 @@ PageHeader: Roteamento                                         [Adicionar conta]
 | Situação / Status | see S7-03: `Recebe` (success) or `Não recebe agora` (neutral/warning) + the reason |
 | Ações | kebab: `Configurar` (opens S7-02), `Remover rota` |
 
-**Turning the switch** off saves immediately, toast "Rota desativada." / on: "Rota ativada." (no step-up). Failure: switch returns, toast with code. While saving, the switch is `aria-busy` and disabled. The route's saved signal types are kept when switched off. Turning **on** is unavailable while the account is ineligible (§5.2, Q67 provisional); turning off is always allowed.
+**Turning the switch** off saves immediately, toast "Rota desativada." / on: "Rota ativada." **Turning on may need a step-up** (Q35 decided; contract `createRoute` / `updateRoute`, `x-step-up: conditional`, action `route_enable`, target = the account): required when the source is automated and the route becomes enabled and the account's automation was **not** accepted with a step-up (a real account, or an opt-in that is `not_required`). **The flow is reactive:** the web sends the request; if the Core answers 403 `auth.step_up_required` the `StepUpDialog` (C§9, F§8.2) opens and the original request is sent again once with `challenge_id` + `code`; cancel leaves the switch off. The web does not decide the condition; it only reacts to that answer. Turning off and creating a route that starts disabled never need it. The same applies to `Ativar rota` in the S7-02 dialog when it saves an enabled route. Failure: switch returns, toast with code. While saving, the switch is `aria-busy` and disabled. The route's saved signal types are kept when switched off. Turning **on** is unavailable while the account is ineligible (§5.2, Q67 provisional); turning off is always allowed.
 
 **States**
 
@@ -149,6 +149,19 @@ Compliance rule (S7 AC-6, S5 AC-11): nothing restarts by itself when an account 
 | connection disconnected | "NinjaTrader desconectado." | live state from S3/S11 |
 
 The status is live (SSE). When the stream is not fresh the cell shows `Sem dados recentes` (F§7.2), never a stale `Recebe`.
+
+---
+
+### 5.4 Reverse on an account barred for entries (Q74 b, contract 5.0.0+)
+
+No new screen. When a `reverse` arrives for an account that is barred for entries (`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`) or has no room (`max_position_reached`) and the position is opposite, the Core runs **only the close leg** and skips the open. What the user sees:
+
+- **Notification** `routing.reverse_close_only` (S18 catalog, severity `danger`, one per occurrence, always sent, including when the gate is `limits_pending`; it replaces the gate's grouped notification for that occurrence). Params: `reason_code` (the gate that skipped the open), `closed_qty`, `closed_side`. Text: "Inversão em {account}: só a posição foi fechada ({closed_qty} {long|short}). A nova entrada não foi aberta: {reason}." / "Reverse on {account}: only the position was closed ({closed_qty} {long|short}). The new entry was not opened: {reason}."
+- **Activity (S10):** the routing entry carries the gate code with outcome *Parcial* and `reverse_closed_qty` in the details.
+- **Flat account or position already on the reverse side:** with the account **in sync**, a flat account is skipped with the gate code and nothing is flattened; a position already on the reverse side is `routing.position_conflict`, never a flatten. **Exception (Q75 b, contract 5.2.0 draft, TODO):** on an **out-of-sync** account a flat *expected* position is not trusted for exits, so a barred `reverse` with gate `routing.out_of_sync` sends its close leg as a flatten (the open is never created; audit *Parcial*, no `reverse_closed_qty`), and the result is `flattened` or `already_flat`. Same texts as §5.3 otherwise.
+- The route status cell is unchanged: the account is `Não recebe agora` with the gate reason; the reverse special case is an event, not a state.
+
+**TODO (contract 5.2.0, Q75/Q76, not final):** when the flatten ends terminal (filled vs already flat) and the account is out of sync the notification is sent only when the flatten filled, with `reason_code: routing.out_of_sync`; update this section when 5.2.0 is approved.
 
 ---
 

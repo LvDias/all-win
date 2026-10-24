@@ -1,0 +1,35 @@
+{
+  "protocol_version": "1.4",
+  "msg_id": "0192b3c4-0000-7000-8000-000000001406",
+  "type": "account_state",
+  "sent_at": "2026-10-22T14:40:00.250Z",
+  "payload": {
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "platform_account": "Sim101",
+    "sync_state": "out_of_sync",
+    "sync_reasons": [
+      "sync.c0",
+      "sync.c1",
+      "sync.c2",
+      "sync.c3",
+      "sync.c4",
+      "sync.c5",
+      "sync.c6",
+      "sync.c7",
+      "sync.c8",
+      "sync.c9",
+      "sync.c10",
+      "sync.c11",
+      "sync.c12",
+      "sync.c13",
+      "sync.c14",
+      "sync.c15",
+      "sync.c16",
+      "sync.c17",
+      "sync.c18",
+      "sync.c19",
+      "sync.c20"
+    ],
+    "changed_at": "2026-10-22T14:40:00.100Z"
+  }
+}

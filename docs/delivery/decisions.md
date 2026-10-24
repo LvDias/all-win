@@ -152,3 +152,65 @@
 - **Decision:** DevOps provides an isolated Docker PostgreSQL test environment for QA, reused by every slice.
 - **Decision:** agents not reconnected within 10 minutes are replaced with a state handoff; if Esquadro does not return, ADR-0003/0004 r4 goes to Compasso.
 - **Canonical doc:** this log.
+
+## 2026-10-24 — User accepts all pending recommendations (Q75 side effects, Q77, Q79–Q90, migrations 061300/061310, presets S-R3-1..5, 2nd VPS timing)
+- **Q75-1: yes.** A Q75 flatten on an out-of-sync account that is really flat cancels every working order on the contract, manual ones included; the user is notified (routing.out_of_sync_flatten).
+- **Q75-2: yes.** A reverse X on an out-of-sync account that All Win believes flat but really holds X closes that real X position and opens nothing.
+- **Q77 (a):** keep the source policy — `position_effect: reduce` stays refused from TradingView in V1, allowed from master replication.
+- **Q79 (a):** archived accounts' trades are kept, selectable through an "archived" filter.
+- **Q80 (a/b):** trades closed while NT/plugin was off are captured on reconnect from the execution history (deduplicated, labelled "recovered") if the Architect confirms the platform exposes it; otherwise (b).
+- **Q81 (a):** alert only for venue accounts that were bound then unbound/archived while they still had All Win working orders; never-bound (manual) accounts are ignored.
+- **Q82 (a):** while an account is blocked until the reset, unpairing the instance, unlinking or disabling the account is refused until the reset, with the reason.
+- **Q83 (a):** out-of-sync cannot be cleared while the account is unobservable; only after the reconnect check reports.
+- **Q84 (a):** out-of-sync may be cleared with a position open, with a confirmation dialog that lists the position and whether it is protected.
+- **Q85 (a):** confirms the contract: a lower or removed commission floor applies from the next trading day; a higher one at once.
+- **Q86 (b):** changing the stop/target mode (individual/shared) is refused while the account has an open position or working orders.
+- **Q87 (a):** no narrowing — with the server setting on, every route switch-on requires the route_enable step-up.
+- **Q88 (a):** "sign out everywhere" cancels a pending user-requested channel change; "forget device" only when that device requested it; notices to all channels, audited, no 24 h freeze; admin recovery (AC-12) only by explicit "Cancelar troca".
+- **Q89 (b):** V1 treats CME holidays/early closes as normal days with the limitation stated in the Risk tab and guide.
+- **Q90 (a):** model the trailing-drawdown lock point (stops_trailing_at) as a structured preset/rule field used by the Core and the plugin floor; until it lands, the floor keeps trailing with a visible warning.
+- **Migrations A (061300) and B (061310): authorized.** They only add CHECK constraints (no data deleted; 0 violations measured in all test databases; no production exists). The user asks to be told BEFORE any migration that deletes non-test data.
+- **Presets S-R3-1..5: (a)** — FFF opt-in with the verbatim ban; Phoenix per-platform preset, dxFeed manual-tracking-only; Elite conditional, off by default, written-authorisation warning; NT8-unreachable platforms → preset shown, account manual-tracking-only; Earn2Trade follower opt-in with the text.
+- **2nd Windows VPS:** contract only when V1.1 (S19) tests are near; the Maestro warns the user in advance.
+- **Canonical docs:** slice-plan / presets (PO); ADR-0003/0004 r4 + r5, auth policy rev. 3.2 (Architect); HTTP contracts 5.2.0–5.4.0 (Compasso); data model (Database Architect).
+
+## 2026-10-24 — Q91, Q92 and the S17 Pine signal rules
+- **Q91 (a): risk ACCEPTED by the user.** Shared-browser device cookie (Vigia I11): a previous user of the same browser who also obtains a sign-in code could sign in without the new-device notice / M3. Accepted because the attack already requires access to the user's e-mail.
+- **Q92 (c):** when the plugin cannot establish the trading-day start (NT8 closed at the boundary, no proven reconstruction), new automated entries on that account stay blocked (exits pass) until the user confirms "restart today's count" in the web; the Core sends the re-anchor (day_realized_net_known with watermark) per Esquadro's final rule; the confirmation warns that losses All Win did not see may be left out. Never re-anchored automatically.
+- **S17-a:** trigger setups and NQ Triggers by engulfing → alert at bar close; Trade Plan and Trigger in "touch" mode → intrabar.
+- **S17-b:** one signal per bar / setup / direction.
+- **S17-c:** opening = BUY/SELL; Trade Plan by the target's direction; Bull buys, Bear sells. The indicator's take/stop alerts never become orders (stop/target come from the account profile); they are only recorded. Opposite signal with an open position: ANSWER PENDING.
+- **S17-d:** base quantity 1 for every signal (the account multiplier applies on top).
+- **Canonical docs:** auth policy rev. 3.2 (Q91 risk acceptance, Architect); adapter protocol 1.4 + S13/S15 (Q92, Compasso/Esquadro/Malha); integrations/tradingview guide + Pine (S17, Plugin Engineer); slice-plan (PO).
+
+## 2026-10-24 — S17-c, Q93–Q96
+- **S17-c (opposite signal with an open position):** not an All Win decision. Per the product vision, the instruction's action decides: `reverse` reverses, `close` only flattens, and a buy/sell that conflicts with the position is rejected and notified (Q1). The source chooses the action. The Pine function gets an input so the user picks what the opposite signal sends: reverse / close / do not send. Contract unchanged (ADR-0003).
+- **Q93 (a):** a position carried across the trading-day boundary counts its whole unrealized P&L in the day being measured.
+- **Q94 (a):** Topstep V1 presets cover the Trading Combine only; Express Funded (XFA) and Live Funded (LFA) are registered by hand.
+- **Q95 yes:** "clear out of sync" requires the step-up code (added to the Q35 set).
+- **Q96 yes:** "restart today's count" (Q92 re-anchor) requires the step-up code (added to the Q35 set).
+- **Repeated in this message (unchanged):** Q91 (a), Q92 (c), S17-a, S17-b, S17-d, take/stop alerts recorded only.
+- **Canonical docs:** integrations/tradingview guide + Pine (S17-c input, Plugin Engineer); ADR-0004 / protocol 1.4 (Q93, Architect); presets (Q94, PO); auth policy step-up set + HTTP 5.3.0/5.4.0 (Q95/Q96, Architect/Compasso).
+
+## 2026-10-24 — NT8 tests are manual by the user over RDP; Q97; blocked page titles
+- **Windows test VPS (decision):** testing inside NinjaTrader 8 is done manually by the user over RDP. The VPS setup stops at its current state: Tailscale joined, tailnet policy (default deny, tags tag:allwin-dev / tag:allwin-nt8), Tailnet Lock (the Mac is the signer; VPS and dev server signed) and RDP restricted to the tailnet stay as they are. NOT done: sshd is not started, Install-AllWinTestHost.ps1 is not run, Lock-Firewall.ps1 is set aside (RDP is already tailnet-only), and agents get no access to the VPS.
+- **Per test round, the team delivers:** (1) a package ready to import in NinjaTrader (preferably a NinjaScript Add-On import file for Tools → Import → NinjaScript Add-On), with the version in the file name; (2) a short numbered test script (step → expected result) written by QA [Plugins], grouping as many checks as possible per round, always on Sim101 / Playback; (3) which logs are needed (NT8 folder) and how the user returns them (e.g. through the RDP shared folder).
+- **Consequence:** S2 and the first end-to-end test (M1) are re-planned around manual rounds; the Maestro reports the schedule impact. Rejected: agents operating NT8 over SSH (the previous Phase 2 plan, steps 8–12 of infra/windows-test-host/README.md).
+- **Q97 (a):** Apex V1 presets cover the evaluations only; Performance Accounts (PA, tiered max position and DLL) are registered by hand.
+- **Page titles of firm pages that block automated access (Apex, Take Profit Trader):** left blank, with a note and the link. Nothing is derived from the URL.
+- **Canonical docs:** slice-plan S2/M1 (PO); NT8 spike plan / ADR-0005 test approach (Architect); infra/windows-test-host README (DevOps, Phase 2 parked); presets release format, page_title/note (Compasso, presets 1.1); presets (PO).
+
+## 2026-10-24 — Q98, exchange channel account, tailnet rule removed
+- **Q98 (b):** when clearing out of sync with an open position, any working stop that covers the position counts as protection, including a manual one placed in NinjaTrader (shown as "external"). Only a position with no stop keeps the account blocked for automated entries. Rejected: (a) only an All Win stop; (c) no block, alert only.
+- **Exchange channel:** the user reaches this host over SSH as dev2 with the Mac's key (dev1 and dev3 also have it). Packages and logs travel by scp over that existing SSH (Forja's .nt8-exchange proposal); no new port.
+- **Tailnet policy:** the rule tag:allwin-dev → tag:allwin-nt8:22 is removed (no agent access to the VPS; least privilege). The user applies the new policy in the console; infra/tailscale/policy.hujson follows (DevOps).
+- **Canonical docs:** HTTP 5.3.1 (Q98, Compasso); infra/tailscale/policy.hujson and infra/nt8-exchange (Forja).
+
+## 2026-10-24 — Plugin first; M1 later with option B; no agent access to the VPS
+- **Decision:** agents never access the VPS. The team focuses on finishing the NinjaTrader 8 plugin; the user tests manually over RDP. Each round delivers a NinjaScript import .zip (version in the name) and a numbered step-by-step test script (QA [Plugins]).
+- **M1 / port 8443:** deferred. Option **(B)** for now: no port is opened on the dev server; the end-to-end M1 waits for a staging host (decided later). Rejected for now: (A) gateway port 8443 on the tailnet interface.
+- **Consequences:** S2 rounds R0–R2 run against AllWin.FakeCore started by the user on the VPS (loopback only). The return path for logs is Forja's .nt8-exchange over the user's existing dev2 SSH (scp). The package hash is sent by the Maestro in the round message.
+
+## 2026-10-24 — Windows access is the user's; minimal working plugin first
+- **Windows access:** how the user connects to the Windows VPS is the user's decision; the team does not depend on it and drops it from the pending items. The plugin → Core path is decided together with the staging host, at M1.
+- **Priority:** as soon as possible, a minimal version WORKING inside NT8: a fake-Core command opens a market entry on Sim101 with stop/target (OCO) at the profile distances and reports the fill and the bracket. Finish and the other functions come in the following rounds.
