@@ -227,6 +227,18 @@ function AvgPnl({ net, gross, className }: { net: string | undefined; gross: str
   );
 }
 
+/** The net total with the gross beside it (S22 §3.3). The gross is the Core's `total_gross_pnl`; nothing is added up here. */
+function TotalPnl({ net, gross, className }: { net: string; gross: string; className?: string }) {
+  const t = useTranslations("performance.figures");
+  const { locale } = useDisplay();
+  return (
+    <>
+      <PnlText value={net} className={className} />
+      <span className="block text-xs text-muted-foreground">{t("grossBeside", { value: formatSignedMoney(gross, locale) })}</span>
+    </>
+  );
+}
+
 /** The seven figures. `—`, never 0, when the Core sends no value. */
 function Figures({ totals }: { totals: PerformanceFigures }) {
   const t = useTranslations("performance.figures");
@@ -324,7 +336,9 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
           <CardContent className="grid gap-2 pt-4 text-sm">
             <div className="flex items-start justify-between gap-3">
               <p className="font-medium">{name}</p>
-              <PnlText value={figures.total_pnl} className="font-semibold" />
+              <div className="text-right">
+                <TotalPnl net={figures.total_pnl} gross={figures.total_gross_pnl} className="font-semibold" />
+              </div>
             </div>
             {ratio ? <Bar ratio={ratio} negative={figures.total_pnl.startsWith("-")} /> : null}
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -391,7 +405,7 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
               </Link>
             </TableCell>
             <TableCell>
-              <PnlText value={group.figures.total_pnl} />
+              <TotalPnl net={group.figures.total_pnl} gross={group.figures.total_gross_pnl} />
               <Bar ratio={group.bar_ratio} negative={group.figures.total_pnl.startsWith("-")} />
             </TableCell>
             <TableCell>
@@ -409,7 +423,7 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
           <TableHead scope="row">{t("table.total")}</TableHead>
           <TableCell>{formatCount(String(data.totals.trade_count), locale)}</TableCell>
           <TableCell>
-            <PnlText value={data.totals.total_pnl} />
+            <TotalPnl net={data.totals.total_pnl} gross={data.totals.total_gross_pnl} />
           </TableCell>
           <TableCell>
             <AvgPnl net={data.totals.avg_pnl} gross={data.totals.avg_gross_pnl} />

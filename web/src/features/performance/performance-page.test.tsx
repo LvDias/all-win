@@ -199,11 +199,23 @@ describe("PerformancePage", () => {
     expect(gross[0]).toHaveTextContent(/35[.,]00/);
   });
 
+  it("shows the gross total beside the net total in every group and in the Total row, from the Core", async () => {
+    serve(performance());
+    renderApp(<PerformancePage />);
+    await screen.findAllByText("P&L médio por trade (líquido)");
+    const gross = screen.getAllByText(/^bruto /);
+    // average and total gross for the totals, and for each group, in the cards
+    expect(gross.length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText(/^bruto .*350[.,]00/).length).toBeGreaterThanOrEqual(1);
+  });
+
   it("shows no gross average when the Core sends none, and never computes one", async () => {
     serve(performance({ totals: figures({ avg_gross_pnl: undefined }), groups: [] }));
     renderApp(<PerformancePage />);
-    await screen.findAllByText("P&L médio por trade (líquido)");
-    expect(screen.queryByText(/^bruto /)).not.toBeInTheDocument();
+    const label = (await screen.findAllByText("P&L médio por trade (líquido)"))[0];
+    const figure = label?.closest("div");
+    expect(figure).not.toBeNull();
+    expect(within(figure as HTMLElement).queryByText(/^bruto /)).not.toBeInTheDocument();
   });
 
   it("first use is told apart from a filter that matches nothing", async () => {
