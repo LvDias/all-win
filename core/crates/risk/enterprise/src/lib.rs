@@ -4,6 +4,7 @@
 //! progress. Every figure is net and exact (`Decimal`); nothing here names a platform.
 
 pub mod change;
+pub mod derivation;
 pub mod drawdown;
 pub mod evaluation;
 pub mod meter;
@@ -12,6 +13,7 @@ pub mod trading_day;
 pub mod values;
 
 pub use change::{Effect, Pending, RuleChange, classify};
+pub use derivation::{Derivation, LimitKind, RuleInputs, Scheduled, derive};
 pub use drawdown::DrawdownTracker;
 pub use evaluation::{EvaluationProgress, EvaluationState};
 pub use meter::{Meter, MeterState, consistency_share, live_net};
