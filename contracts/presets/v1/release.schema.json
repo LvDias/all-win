@@ -1,0 +1,1928 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allwin.app/contracts/presets/v1/release.schema.json",
+  "title": "All Win prop firm preset release v1",
+  "description": "One machine-readable release of one firm's presets (V1-S16; research format docs/product/presets/preset-research-format.md §5). The publisher writes it from a PO-reviewed research file; the Core validates it against this schema and its own consistency rules before it imports it as the firm's next release. Files carry stable keys, never database ids. Money is a string, never a number. Owner: Software Architect (Compasso); Esquadro approves.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "firm",
+    "release",
+    "platforms",
+    "stances",
+    "plans"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Major 1; a newer minor may add optional fields only. 1.1 adds drawdown trailing_lock (Q90); the Core accepts 1.0 and 1.1."
+    },
+    "firm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slug",
+        "name",
+        "domains"
+      ],
+      "properties": {
+        "slug": {
+          "$ref": "#/$defs/key"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9-]+\\.)+[a-z]{2,}$",
+            "maxLength": 253
+          },
+          "description": "Official domains; every quote and source URL must be on one of them (checked by the Core)."
+        },
+        "manual_only": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reason"
+          ],
+          "description": "S16 AC-7: no V1 output reaches the firm's platforms; risk tracking only.",
+          "properties": {
+            "reason": {
+              "$ref": "#/$defs/quote"
+            }
+          }
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version_number",
+        "verified_on",
+        "research_file",
+        "changes"
+      ],
+      "properties": {
+        "version_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Exactly the previous release + 1 (1 for a new firm). The Core refuses a gap or a repeat."
+        },
+        "verified_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "research_file": {
+          "type": "string",
+          "pattern": "^docs/product/presets/research/[a-z0-9-]+\\.md$",
+          "description": "The evidence file this release was built from."
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/change"
+          },
+          "description": "Empty for version 1. The Core checks it against the previous release; a mismatch rejects the import."
+        }
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "label"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/platform"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "manual_only": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "reason"
+            ],
+            "description": "S-R3-2 / S-R3-4: this firm platform cannot be reached by any V1 output, so accounts on it are manual only (HTTP `FirmDetail.platforms[].manual_only`). `reason` is the firm's quote, or the publisher's research text when the firm states nothing.",
+            "properties": {
+              "reason": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/quote"
+                  },
+                  {
+                    "$ref": "#/$defs/localized"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "stances": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "automation",
+        "copy",
+        "vps",
+        "personal_device"
+      ],
+      "properties": {
+        "automation": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/rule_text"
+          },
+          "description": "One text without `firm_platform`, or one per firm platform."
+        },
+        "copy": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/rule_text"
+          }
+        },
+        "vps": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/stance_info"
+            },
+            {
+              "properties": {
+                "value": {
+                  "enum": [
+                    "allowed",
+                    "forbidden",
+                    "conditional",
+                    "unknown",
+                    "not_confirmed"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "personal_device": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/stance_info"
+            },
+            {
+              "properties": {
+                "value": {
+                  "enum": [
+                    "required",
+                    "not_required",
+                    "unknown",
+                    "not_confirmed"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "plans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "name",
+          "phases"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "phases": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "phase",
+                "sizes"
+              ],
+              "properties": {
+                "phase": {
+                  "enum": [
+                    "evaluation",
+                    "funded",
+                    "live"
+                  ]
+                },
+                "sizes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/size"
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "phase": {
+                        "const": "live"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "sizes": {
+                        "items": {
+                          "properties": {
+                            "rule_sets": {
+                              "items": {
+                                "not": {
+                                  "required": [
+                                    "stored_only"
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "excluded_plans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "reason"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "reason": {
+            "$ref": "#/$defs/localized"
+          }
+        }
+      },
+      "description": "Plans not offered as presets (S16 AC-9)."
+    }
+  },
+  "$defs": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "money": {
+      "type": "string",
+      "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+      "description": "Non-negative money as a decimal string, exactly as published (no rounding, X-3)."
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "platform": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$",
+      "description": "Firm-side platform code (HTTP `FirmPlatform`), e.g. `rithmic`, `tradovate`. Not the execution platform."
+    },
+    "localized": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pt-BR",
+        "en"
+      ],
+      "description": "Publisher text in both UI languages (never firm text).",
+      "properties": {
+        "pt-BR": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "en": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "quote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "language",
+        "url",
+        "accessed_at"
+      ],
+      "description": "A verbatim quote of the firm's official text in the firm's language (never translated). Plain text; clients render it as text, never HTML or Markdown. page_title is optional from 1.1: a page that blocks automated access (e.g. Apex, TPT) has no title, but carries title_note, url and accessed_at.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"
+        },
+        "page_title": {
+          "type": "string",
+          "maxLength": 300,
+          "minLength": 1
+        },
+        "section": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "pattern": "^https://"
+        },
+        "accessed_at": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "title_note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "1.1 (user decision 2026-10-24; Torno): only when page_title is absent, because the site blocks automated access (e.g. Apex, TPT). A short plain-text note from the publisher, in English, e.g. 'title not retrieved: site blocks automated access, 2026-10-24'. The url is the link. The title is never derived. Required on a quote without page_title."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "page_title"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "title_note"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "title_note"
+            ]
+          }
+        }
+      ]
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "searched_on",
+        "sources"
+      ],
+      "description": "Where the publisher looked and found no rule (with `unknown`).",
+      "properties": {
+        "searched_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "accessed_at"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "pattern": "^https://"
+        },
+        "accessed_at": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "page_title": {
+          "type": "string",
+          "maxLength": 300,
+          "minLength": 1
+        },
+        "quote": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Short verbatim sentence for a dynamic page (research format §2)."
+        },
+        "title_note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "1.1 (user decision 2026-10-24; Torno): only when page_title is absent, because the site blocks automated access (e.g. Apex, TPT). A short plain-text note from the publisher, in English, e.g. 'title not retrieved: site blocks automated access, 2026-10-24'. The url is the link. The title is never derived. Optional on a source without page_title."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "page_title"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "title_note"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "provenance_status": {
+      "enum": [
+        "verified",
+        "not_confirmed"
+      ],
+      "description": "`not_confirmed`: the firm's official pages disagree; ≥ 2 `published_values`, no `value`, never prefilled (S16 AC-5/AC-6)."
+    },
+    "rule_text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version",
+        "firm_stance",
+        "quotes"
+      ],
+      "description": "One opt-in rule text (automation or copy) for the firm, or for one firm platform when the stance differs by platform. `version` is the publisher's number for this (kind, platform) text: it increases on every stance or text change and stays the same otherwise. The Core assigns the rule version id (HTTP `RuleVersion.id`) and rejects a release whose `version` goes back or changes the text or stance without increasing.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "automation",
+            "copy"
+          ]
+        },
+        "firm_platform": {
+          "$ref": "#/$defs/platform"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "firm_stance": {
+          "enum": [
+            "allowed",
+            "forbidden",
+            "conditional",
+            "unknown",
+            "not_confirmed"
+          ]
+        },
+        "quotes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/quote"
+          },
+          "maxItems": 20
+        },
+        "research": {
+          "$ref": "#/$defs/research"
+        },
+        "change": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cause"
+          ],
+          "description": "The transition INTO this `version` (Q26, Q42), required when `version` > 1. The Core reads it only when it imports this version for the first time (the stored version + 1). When `version` equals the stored one, the text is unchanged and `change` is ignored, so a stale cause never suspends accounts again.",
+          "properties": {
+            "cause": {
+              "enum": [
+                "stance_changed",
+                "text_changed",
+                "not_material"
+              ],
+              "description": "`stance_changed` and `text_changed` move `chosen` accounts to `pending_review`; `not_material` (typo or format fix) never suspends."
+            },
+            "reason": {
+              "$ref": "#/$defs/localized"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "cause": {
+                    "const": "text_changed"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "firm_stance": {
+                "const": "unknown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "quotes": {
+                "maxItems": 0
+              }
+            },
+            "required": [
+              "research"
+            ]
+          },
+          "else": {
+            "properties": {
+              "quotes": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "required": [
+                "research"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "firm_stance": {
+                "const": "not_confirmed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "quotes": {
+                "minItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "version": {
+                "minimum": 2
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "change"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "change"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "stance_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "quotes"
+      ],
+      "description": "VPS/server and personal-device stances (S16 AC-8): verbatim quotes, never translated. `unknown` → `research` and no quotes; `not_confirmed` → at least 2 conflicting quotes (S16 AC-5); any other value → at least 1 quote and no `research`.",
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/quote"
+          }
+        },
+        "research": {
+          "$ref": "#/$defs/research"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "value": {
+                "const": "unknown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "quotes": {
+                "maxItems": 0
+              }
+            },
+            "required": [
+              "research"
+            ]
+          },
+          "else": {
+            "properties": {
+              "quotes": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "required": [
+                "research"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "value": {
+                "const": "not_confirmed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "quotes": {
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "max_position_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contracts"
+      ],
+      "properties": {
+        "contracts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "MNQ (micro) contracts."
+        },
+        "published_text": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "drawdown_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "amount"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "trailing_intraday",
+            "trailing_eod",
+            "static",
+            "other"
+          ]
+        },
+        "amount": {
+          "$ref": "#/$defs/money"
+        },
+        "stops_trailing_at": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "trailing_lock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "description": "1.1 (Q90 a; HTTP 5.4.0 DrawdownValue.trailing_lock). Where a trailing drawdown stops trailing: floor_reaches_start locks the floor at size_amount + offset; never = it never stops. The publisher fills it from the research (Torno): 'stops at the starting balance' → {mode: floor_reaches_start}; 'starting balance + $100' → offset '100.00'; 'persists until the end' → {mode: never}. Ambiguous or conflicting text → the whole drawdown is not_confirmed with published_values, each with its own trailing_lock; silent text → absent (the Core's interim: keeps trailing + warning). stops_trailing_at stays the published text. Trailing types only.",
+          "properties": {
+            "mode": {
+              "enum": [
+                "floor_reaches_start",
+                "never"
+              ]
+            },
+            "offset": {
+              "$ref": "#/$defs/money"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "never"
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "offset"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "other"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "description"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "static",
+                  "other"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "trailing_lock"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "daily_loss_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "hard",
+            "soft_pause",
+            "none"
+          ]
+        },
+        "amount": {
+          "$ref": "#/$defs/money"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "amount"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "amount"
+            ]
+          }
+        }
+      ]
+    },
+    "amount_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amount"
+      ],
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/money"
+        }
+      }
+    },
+    "trading_day_reset_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_time",
+        "time_zone"
+      ],
+      "properties": {
+        "local_time": {
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        },
+        "time_zone": {
+          "type": "string",
+          "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+          "maxLength": 64,
+          "description": "IANA name (e.g. America/New_York), resolved by the publisher from the published zone."
+        },
+        "published_text": {
+          "type": "string",
+          "maxLength": 100
+        }
+      }
+    },
+    "consistency_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "threshold_pct": {
+          "type": "string",
+          "pattern": "^[0-9]{1,3}(\\.[0-9]{1,2})?$"
+        }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_position_qty",
+        "drawdown",
+        "daily_loss_limit",
+        "trading_day_reset"
+      ],
+      "description": "Same fields and provenance rules as HTTP `PresetRules`. A field the firm does not have is absent (daily profit target, consistency, evaluation target outside an evaluation phase). A daily loss limit of `none` is a verified value, not an absent field.",
+      "properties": {
+        "max_position_qty": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "Maximum position, MNQ contracts.",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/max_position_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/max_position_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "drawdown": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "Drawdown amount and type.",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/drawdown_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/drawdown_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "daily_loss_limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "Daily loss limit and kind.",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/daily_loss_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/daily_loss_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "daily_profit_target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "Daily profit target (S13 AC-5).",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/amount_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/amount_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "trading_day_reset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "Trading-day reset time.",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/trading_day_reset_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/trading_day_reset_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "consistency_rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "Consistency rule.",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/consistency_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/consistency_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "commission_per_contract_side": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "USD per contract and per side, as the firm publishes it (U20 a; prefills the account floor).",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/amount_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/amount_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "evaluation_profit_target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "description": "Evaluation phase only: net profit to reach since the evaluation start (Q46, S16 AC-10).",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/amount_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/amount_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "size_amount",
+        "rule_sets"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "size_label": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "As published, e.g. \"50K\"."
+        },
+        "size_amount": {
+          "type": "string",
+          "pattern": "^([1-9][0-9]{0,11}(\\.[0-9]{1,2})?|0\\.([1-9][0-9]?|0[1-9]))$",
+          "description": "Nominal size in USD (HTTP `SizeAmount`)."
+        },
+        "rule_sets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rules"
+            ],
+            "properties": {
+              "firm_platform": {
+                "$ref": "#/$defs/platform"
+              },
+              "rules": {
+                "$ref": "#/$defs/rules"
+              },
+              "stored_only": {
+                "$ref": "#/$defs/stored_only"
+              }
+            }
+          },
+          "description": "One entry without `firm_platform`, or one per firm platform (all of them with `firm_platform`) when the rules differ by platform; then the account must choose its platform."
+        }
+      }
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "HTTP `ReleaseChange`, with stable keys instead of ids (`preset` = plan/phase/size).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "stance_changed",
+            "stance_text_changed",
+            "rule_value_changed",
+            "preset_added",
+            "preset_removed"
+          ]
+        },
+        "stance": {
+          "enum": [
+            "automation",
+            "copy",
+            "vps",
+            "personal_device"
+          ]
+        },
+        "firm_platform": {
+          "$ref": "#/$defs/platform"
+        },
+        "from": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "to": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "material": {
+          "type": "boolean"
+        },
+        "reason": {
+          "$ref": "#/$defs/localized"
+        },
+        "field": {
+          "enum": [
+            "max_position_qty",
+            "drawdown",
+            "daily_loss_limit",
+            "daily_profit_target",
+            "trading_day_reset",
+            "consistency_rule",
+            "commission_per_contract_side",
+            "evaluation_profit_target"
+          ]
+        },
+        "preset": {
+          "$ref": "#/$defs/preset_key"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "stance_changed",
+                  "stance_text_changed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "stance"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "stance_changed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "to"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "stance_text_changed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "material"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "stance_text_changed"
+              },
+              "material": {
+                "const": true
+              }
+            },
+            "required": [
+              "material"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "preset_added",
+                  "preset_removed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "preset"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "rule_value_changed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "field",
+              "preset"
+            ]
+          }
+        }
+      ]
+    },
+    "preset_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan",
+        "phase",
+        "size"
+      ],
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/key"
+        },
+        "phase": {
+          "enum": [
+            "evaluation",
+            "funded",
+            "live"
+          ]
+        },
+        "size": {
+          "$ref": "#/$defs/key"
+        }
+      }
+    },
+    "days_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "days"
+      ],
+      "properties": {
+        "days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        }
+      }
+    },
+    "stored_only": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "S16 AC-10 (Q46): stored with the preset and NOT exposed by any HTTP operation in V1. The Core keeps it for later slices (minimum trading days, payout). Allowed in `evaluation` and `funded` phases only.",
+      "properties": {
+        "min_trading_days": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/provenance_status"
+            },
+            "value": {
+              "$ref": "#/$defs/days_value"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "published_values": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/days_value"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verified"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "value",
+                  "sources"
+                ],
+                "not": {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "published_values"
+                ],
+                "not": {
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "payout_rules": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/quote"
+          },
+          "description": "Verbatim payout or activation rules that change what the trader may do (research format §4)."
+        }
+      }
+    }
+  }
+}
