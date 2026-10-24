@@ -24,7 +24,7 @@ import { ArchivedSwitch } from "@/shared/components/archived-switch";
 import { MultiSelect } from "@/shared/ui/multi-select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
-import { tradesQueryKey, useTradeAccounts, useTradeSources, useTrades, useTradesSummary, type TradeSort } from "./api";
+import { tradesQueryKey, useHasAnyTrade, useTradeAccounts, useTradeSources, useTrades, useTradesSummary, type TradeSort } from "./api";
 import { TradeDetail } from "./trade-detail";
 import { DirectionLabel, Excursions, OriginLabel, PnlText, TimePrice, formatDuration } from "./trade-parts";
 import { useTradeFilters, type Period } from "./use-trade-filters";
@@ -54,6 +54,8 @@ export function TradesPage() {
   });
 
   const rows = trades.data?.pages.flatMap((page) => page.trades) ?? [];
+  const unfilteredEmpty = trades.isSuccess && rows.length === 0 && activeCount === 0;
+  const anyTrade = useHasAnyTrade(unfilteredEmpty);
   const showFresh = () => {
     setFresh(0);
     void queryClient.invalidateQueries({ queryKey: tradesQueryKey });
@@ -158,7 +160,17 @@ export function TradesPage() {
   } else if (trades.isError) {
     const failure = errorMessage(root, trades.error);
     body = <ErrorState title={t("loadError")} code={failure.code} onRetry={() => void trades.refetch()} />;
-  } else if (rows.length === 0 && activeCount === 0) {
+  } else if (unfilteredEmpty && anyTrade.isPending) {
+    body = <Skeleton className="h-40 w-full" aria-busy="true" />;
+  } else if (unfilteredEmpty && (anyTrade.data?.count ?? 0) > 0) {
+    body = (
+      <EmptyState icon={ListChecks} title={t("empty.archivedTitle")} description={t("empty.archivedBody")}>
+        <Button variant="outline" onClick={() => update({ archived: true })}>
+          {root("common.includeArchived")}
+        </Button>
+      </EmptyState>
+    );
+  } else if (unfilteredEmpty) {
     body = (
       <EmptyState icon={ListChecks} title={t("empty.title")} description={t("empty.body")}>
         <div className="flex flex-wrap justify-center gap-2">

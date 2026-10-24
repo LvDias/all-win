@@ -62,6 +62,15 @@ export function useTradesSummary(filters: TradeFilters) {
   });
 }
 
+/** Whether the user has any trade at all, archived accounts included, to tell "first use" from "everything is on archived accounts". Only asked when the unfiltered list is empty. */
+export function useHasAnyTrade(enabled: boolean) {
+  return useQuery({
+    queryKey: [...tradesQueryKey, "any"],
+    enabled,
+    queryFn: ({ signal }) => apiFetch<TradesSummary>("/api/v1/trades/summary?include_archived=true", { signal }),
+  });
+}
+
 export function useTrade(id: string | null) {
   return useQuery({
     queryKey: [...tradesQueryKey, "one", id],

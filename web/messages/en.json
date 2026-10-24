@@ -1210,7 +1210,9 @@
       "body": "Completed trades on your connected accounts appear here automatically. You can also add a trade manually.",
       "connections": "View connections",
       "filteredTitle": "No trades match these filters.",
-      "filteredBody": "Change or clear the filters to see more."
+      "filteredBody": "Change or clear the filters to see more.",
+      "archivedTitle": "Your trades are on archived accounts.",
+      "archivedBody": "Trades of archived accounts are hidden by default. Include them to see your history."
     },
     "detail": {
       "title": "Trade",

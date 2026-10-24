@@ -109,7 +109,7 @@ describe("TradesPage", () => {
   });
 
   it("shows the first-use empty state, and the filtered one only when a filter is active", async () => {
-    serve([]);
+    serve([], { count: 0 });
     const view = renderApp(<TradesPage />);
     expect(await screen.findByText("Nenhum trade ainda.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ver conexões" })).toBeInTheDocument();
@@ -160,6 +160,16 @@ describe("TradesPage", () => {
     expect(await screen.findByRole("switch", { name: "Incluir contas arquivadas" })).toBeChecked();
     await waitFor(() => expect(urls.length).toBeGreaterThanOrEqual(2));
     expect(urls.every((url) => url.includes("include_archived=true"))).toBe(true);
+  });
+
+  it("offers the archived accounts instead of the first-use state when every trade is on an archived account", async () => {
+    serve([]);
+    server.use(http.get("*/api/v1/trades/summary", ({ request }) => HttpResponse.json(summary({ count: request.url.includes("include_archived=true") ? 5 : 0 }))));
+    renderApp(<TradesPage />);
+    expect(await screen.findByText("Seus trades estão em contas arquivadas.")).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum trade ainda.")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Incluir contas arquivadas" }));
+    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived=1"));
   });
 
   it("sorts by the clicked column through the URL and exposes aria-sort", async () => {

@@ -1210,7 +1210,9 @@
       "body": "Trades concluídos nas suas contas conectadas aparecem aqui automaticamente. Você também pode registrar um trade manualmente.",
       "connections": "Ver conexões",
       "filteredTitle": "Nenhum trade com estes filtros.",
-      "filteredBody": "Mude ou limpe os filtros para ver mais."
+      "filteredBody": "Mude ou limpe os filtros para ver mais.",
+      "archivedTitle": "Seus trades estão em contas arquivadas.",
+      "archivedBody": "Trades de contas arquivadas ficam ocultos por padrão. Inclua-as para ver seu histórico."
     },
     "detail": {
       "title": "Trade",
