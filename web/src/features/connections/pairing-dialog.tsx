@@ -84,7 +84,10 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
 
   // `visible_accounts` of `connection.paired` is not used: it is empty by design (S3 pairing step 2). The count comes from the list.
   const row = connections.data?.find((item) => item.id === connection.id);
-  const searching = phase.kind === "paired" && !moving && row?.status !== "connected";
+  // Once the list has said `connected`, a later drop does not send the dialog back to "searching" (it shows what it has).
+  const [reached, setReached] = useState(false);
+  if (phase.kind === "paired" && !reached && row?.status === "connected") setReached(true);
+  const searching = phase.kind === "paired" && !reached && row?.status !== "connected";
   const pairedAccounts = row?.visible_accounts ?? [];
 
   const announce = expired ? t("connections.pairing.expired") : phase.kind === "waiting" && remaining > 0 && remaining <= 60 ? t("connections.pairing.oneMinute") : "";
@@ -96,7 +99,7 @@ export function PairingDialog({ connection, pairing: initial, moving, onClose }:
           <DialogTitle ref={heading} tabIndex={-1}>
             {phase.kind === "paired" ? t(searching ? "connections.pairing.pairedName" : "connections.pairing.connectedName", { name: connection.name }) : moving ? t("connections.pairing.moveTitle") : t("connections.pairing.title", { name: connection.name })}
           </DialogTitle>
-          <DialogDescription>{phase.kind === "paired" ? t("connections.pairing.pairedDescription") : t("connections.pairing.share")}</DialogDescription>
+          <DialogDescription>{phase.kind === "paired" ? t(searching ? "connections.pairing.pairedSearchingDescription" : "connections.pairing.pairedDescription") : t("connections.pairing.share")}</DialogDescription>
         </DialogHeader>
 
         {phase.kind === "paired" ? (

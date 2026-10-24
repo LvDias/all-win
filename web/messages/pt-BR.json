@@ -861,6 +861,7 @@
       "superseded": "Um código mais novo foi gerado para esta conexão. Este não vale mais.",
       "locked": "O pareamento está temporariamente bloqueado por excesso de tentativas erradas. Aguarde alguns minutos e gere um novo código.",
       "pairedDescription": "O plugin já está conectado.",
+      "pairedSearchingDescription": "O plugin está pareado. As contas aparecem quando ele conectar.",
       "moved": "“{name}” agora está em outra máquina.",
       "pairedName": "“{name}” pareada",
       "connectedName": "“{name}” conectada",

@@ -120,6 +120,8 @@ describe("ConnectionsPage", () => {
     expect(status).not.toBeNull();
     expect(within(dialog).getByRole("heading", { name: "“VPS Chicago” pareada" })).toBeInTheDocument();
     expect(within(dialog).queryByRole("link", { name: "Vincular contas" })).not.toBeInTheDocument();
+    expect(within(dialog).getByText("O plugin está pareado. As contas aparecem quando ele conectar.")).toBeInTheDocument();
+    expect(within(dialog).queryByText("O plugin já está conectado.")).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/Nenhuma conta encontrada/)).not.toBeInTheDocument();
 
     list([connection()]);
@@ -128,7 +130,15 @@ describe("ConnectionsPage", () => {
     expect(status).toBeInTheDocument();
     expect(within(dialog).getByRole("heading", { name: "“VPS Chicago” conectada" })).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: "Vincular contas" })).toHaveAttribute("href", "/pt-BR/accounts");
+    expect(within(dialog).getByText("O plugin já está conectado.")).toBeInTheDocument();
     expect(within(dialog).queryByText("Buscando contas…")).not.toBeInTheDocument();
+
+    // A drop after `connected` keeps what the dialog already shows; it never goes back to "searching".
+    list([connection({ status: "disconnected" })]);
+    act(() => events.emit("connection.status_changed", { type: "connection.status_changed", at: "2026-10-23T12:00:09Z", connection_id: id, status: "disconnected" }));
+    await waitFor(() => expect(screen.getAllByText(/Playback101/).length).toBeGreaterThan(0));
+    expect(within(dialog).queryByText("Buscando contas…")).not.toBeInTheDocument();
+    expect(status).toHaveTextContent("2 contas encontradas");
   });
 
   it("ignores events of other connections", async () => {

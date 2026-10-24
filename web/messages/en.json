@@ -861,6 +861,7 @@
       "superseded": "A newer code was generated for this connection. This one is no longer valid.",
       "locked": "Pairing is temporarily locked after too many wrong attempts. Wait a few minutes and generate a new code.",
       "pairedDescription": "The plugin is now connected.",
+      "pairedSearchingDescription": "The plugin is paired. The accounts appear once it connects.",
       "moved": "“{name}” is now on another machine.",
       "pairedName": "“{name}” paired",
       "connectedName": "“{name}” connected",
