@@ -3,7 +3,7 @@
 > **Owner:** Product Owner · **Started:** 2026-10-23 · **Status:** scope questions S-R3-1 to S-R3-5 DECIDED (a) by the user on 2026-10-24 [Decision 2026-10-24]; the ASK rows in section 2 stay open · **Sources:** [research/](research/) R3 files.
 > Codes as in [r1-conflicts-for-user.md](r1-conflicts-for-user.md): **NC** not confirmed (user picks per account) · **ASK** user asks the firm · **PLAN** plan-specific value · **SKIP** out of V1 presets · **INFO** information only.
 > Firms (V1-R3): Elite Trader Funding, Earn2Trade, Funded Futures Family, Phoenix Trader Funding, OneUp Trader, BluSky, Leeloo Trading.
-> Progress: Elite, FFF and Phoenix filled from Lupa's consolidation (2026-10-23); other R3 firms only as the pointer in row 20.
+> Progress: Elite, FFF and Phoenix filled from Lupa's consolidation (2026-10-23); BluSky, Earn2Trade, OneUp and Leeloo rechecked against their research files (2026-10-24, rows 20–50). Leeloo ships only what is published (PO night decision 2026-10-24, **PROVISIONAL — confirm with the user**; reversible with a later release).
 
 ## 1. Scope questions (decide first)
 
@@ -57,7 +57,37 @@ Same table as R2 section 2 (firm, item, finding, recommendation code). Each firm
 | 17 | Phoenix | Bot ban on live | Ambiguous | **NC**; stance `conditional`, text shown (S-R3-2) |
 | 18 | Phoenix | Trading-day reset and time zone; personal device | Not published | **NC + ASK** (reset); **INFO** (device) |
 | 19 | Phoenix | Live drawdown amounts and starting size | Not published | **NC + ASK** (required fields) |
-| 20 | BluSky, Earn2Trade, OneUp, Leeloo | Remaining gaps (consolidation §2) | Copied here when each research file is reviewed | default **NC**; automation `unknown` → required choice with the generic warning (S5 §5.1) |
+| 20 | BluSky | Copy stance | Copier allowed (help "Trade Copier Allowed: Yes") vs conduct policy forbids "Account Mirroring" | **NC**; verbatim texts shown (Q25) |
+| 21 | BluSky | NinjaTrader on Rithmic: phase scope | "Evaluation, BluLive and Sim Funded only" vs "Evaluation Only" | **NC** (platform availability per phase); Tradovate route unaffected |
+| 22 | BluSky | Propel 150K/200K consistency | 30% vs 34% | **NC** (warning-only, Q4) |
+| 23 | BluSky | Propel 300K evaluation daily loss | "Capped at $2,500" vs "None" | **NC** (required) |
+| 24 | BluSky | Orbit 200K evaluation contracts; Orbit Buffer phase | 2 mini/20 micro vs 3/30; Buffer phase listed on one page only | **NC** (max position is required); Buffer phase **NC** (existence) |
+| 25 | BluSky | Sim Funded contract limits; starting balance 150K/300K; minimum balance | Three sources disagree; $2,000/$3,500 vs $1,500/$3,000; $100 above/below vs older table | **NC**; Launch/Propel max position stays empty |
+| 26 | BluSky | Consistency method wording; Orbit Sim Funded start | Largest day vs sum of profitable days vs target increase; $50,000 start with lock vs $0 start | **NC** |
+| 27 | BluSky | Trading-day reset | Only "6PM"/"6PM EST"; no table, no holiday rule | **NC + ASK** (reset) |
+| 28 | BluSky | Daily loss kind (Instant/Direct); Sim Funded daily loss; trailing lock point | Hard vs soft not stated; none stated (Risk Team may impose); lock unclear | **NC** (kind `unknown`, not `none`; format rev. 3) |
+| 29 | BluSky | Commission Tradovate/NinjaTrader, funded, Buffer, Tickblaze, BlackArrow | No basis, or "set by brokerage" | empty + warning (S16 AC-12) |
+| 30 | BluSky | Automation / VPS / device / copying with other firms | Not published; only "automated software" clause in the conduct policy | automation `unknown`: required choice, generic warning plus the verbatim clause (S5 §5.1); VPS/device **INFO** "not published" |
+| 31 | BluSky | Plan x platform availability; Live parameters; Project X | Dynamic or behind login; not published | **NC**; platform chosen on the account (S-R3-4 a) |
+| 32 | Earn2Trade | Commission | MNQ not published (range text only); NQ per platform; funded none | empty + warning |
+| 33 | Earn2Trade | Funded daily loss behaviour (hard vs soft) | Not mapped on the page | **NC** (kind `unknown`) |
+| 34 | Earn2Trade | Fixed drawdown 200K (via TCP25) and 400K | Published as a minimum balance, not an amount | **NC** (never derived) |
+| 35 | Earn2Trade | Automation stance | `conditional` is the researcher's reading of one clause ("software, artificial intelligence, or ultra-fast data entry ... unfair advantage") | required choice, nothing preselected; verbatim clause shown (S5 §5.1) |
+| 36 | Earn2Trade | NinjaTrader route | New subscriptions: NinjaTrader via Tradovate only; legacy NinjaTrader on Rithmic honored until 2026-06-30 (passed) | update S-R3-4: NT8 reachable via the Tradovate option; Rithmic route needs the user's own license (not routable by plan) |
+| 37 | Earn2Trade | VPS / device / copying with other firms | Not mentioned | **INFO** "not published" |
+| 38 | Earn2Trade | Partner-firm funded rules (Helios/Appius/Kronos) | Not covered by E2T pages | **INFO**; funded presets carry only what E2T publishes |
+| 39 | OneUp | Funded drawdown amount | From homepage card, not phase-specific | **NC** for the funded phase |
+| 40 | OneUp | Drawdown unrealized treatment | Not stated | **NC** (type as published, shown unconfirmed) |
+| 41 | OneUp | Profit targets | Homepage only | verified (single official source) |
+| 42 | OneUp | Balance resets "Unlimited" vs $50/$100; Express minimum days 3 vs 5 | Conflicting; no routing or risk effect | **INFO** (not used by the product) |
+| 43 | OneUp | Reset time | "5 PM CT" only as start of day; no daily limit reset event | **NC + ASK** (reset) |
+| 44 | OneUp | Automation / VPS / device / copying with other firms | Not published | automation `unknown` (required choice, generic warning); **INFO** |
+| 45 | OneUp | Funded scaling and commission (images) | Read visually | **PLAN**; re-check before release |
+| 46 | OneUp | Platform | Rithmic only; NinjaTrader 8.1 desktop reachable; Web/Mobile not | S-R3-4 (a) |
+| 47 | Leeloo | Scope of public data | KB behind login: drawdown, min days, instruments, Elite/Entry/Weekly/Ignite not read; PA size-specific drawdown, contracts, split not published | preset ships only what is published; every other required field **NC** (principle of Q94/Q97); programs behind login not covered |
+| 48 | Leeloo | Trading-day reset, drawdown lock, instruments (MNQ/NQ), commission | Not published | **NC + ASK** (reset, instruments); commission empty + warning |
+| 49 | Leeloo | Copying | Cross-user forbidden; same-person unknown; a public support news item on copier limits (research §7) | **NC**; re-read the news item before data entry |
+| 50 | Leeloo | Automation / VPS / device | Not published | automation `unknown`; **INFO** |
 
 ## 3. How the user answers
 

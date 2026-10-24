@@ -37,7 +37,7 @@
 | Account size | As published (e.g. "50K"); also the nominal amount in USD |
 | Drawdown amount | Exact USD as published |
 | Drawdown type | One of: `trailing_intraday`, `trailing_eod`, `static`, `other` (describe). Include when/if it stops trailing (e.g., locks at starting balance + X); record the lock as published (the level it reaches and any offset) so the preset can carry a structured trailing lock only where the firm's text states it |
-| Daily loss limit | Exact USD, or `none` **only if the firm states there is none**; also whether it is a hard breach or a soft "pause for the day". When the firm does not say, use `kind: unknown` (never `none`, which would invent a rule; D8, [Decision 2026-10-24]) with an entry in the gaps list |
+| Daily loss limit | Exact USD, or `none` **only if the firm states there is none**; also whether it is a hard breach or a soft "pause for the day". When the firm does not say, use `kind: unknown` (never `none`, which would invent a rule; D8, [PO format rule, 2026-10-24]). In the preset seed an `unknown` daily loss is a **not confirmed** field (listed in `not_confirmed_fields`), never a `DailyLossValue` kind: the contract has only `hard | soft_pause | none` with an entry in the gaps list |
 | Profit target | Exact USD (evaluation phases); `none` where not applicable |
 | Consistency rule | Exact wording and threshold (e.g., "no day > 30% of total profit"), and the phase it applies to |
 | Max position size | Maximum contracts in **minis and micros** as published (state the mini:micro ratio if given); scaling rules if size depends on balance |
