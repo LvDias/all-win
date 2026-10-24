@@ -3,4 +3,4 @@
  * Accounts arrive with S5, presets with S16.
  */
 export const accountsPath: string | null = null;
-export const presetsPath: string | null = null;
+export const presetsPath: string | null = "/presets";

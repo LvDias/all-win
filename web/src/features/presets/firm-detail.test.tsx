@@ -21,7 +21,7 @@ function serve(detail: typeof apexDetail = apexDetail) {
         firm_id: ids.apex,
         releases: [
           { version_number: 2, published_at: "2026-09-01T00:00:00Z", verified_on: "2026-08-30", changes: [], vps: { value: "allowed", quotes: [] }, personal_device: { value: "unknown", quotes: [] }, rule_versions: [] },
-          { version_number: 3, published_at: "2026-10-20T00:00:00Z", verified_on: "2026-10-18", changes: [{ kind: "stance_text_changed", stance: "automation", material: true, reason: { "pt-BR": "Nova exigência.", en: "New requirement." } }], vps: { value: "allowed", quotes: [] }, personal_device: { value: "unknown", quotes: [] }, rule_versions: [] },
+          { version_number: 3, published_at: "2026-10-20T00:00:00Z", verified_on: "2026-10-18", changes: [{ kind: "stance_text_changed", stance: "automation", material: true, reason: { "pt-BR": "Nova exigência.", en: "New requirement." } }, { kind: "stance_changed", stance: "automation", from: "allowed", to: "not_confirmed" }, { kind: "stance_changed", stance: "vps", from: "forbidden", to: "future_value" }], vps: { value: "allowed", quotes: [] }, personal_device: { value: "unknown", quotes: [] }, rule_versions: [] },
         ],
       }),
     ),
@@ -84,6 +84,12 @@ describe("FirmDetailPage", () => {
     const newest = titles[0]?.closest("li");
     expect(newest).toHaveTextContent("Mudança material");
     expect(newest).toHaveTextContent("Nova exigência.");
+    // The contract sends stance codes; the sentence uses the badge words for that subject (feminine for automation, masculine for VPS).
+    expect(newest).toHaveTextContent("A posição sobre automação mudou: Permitida → Não confirmada");
+    expect(newest).not.toHaveTextContent("allowed");
+    expect(newest).not.toHaveTextContent("not_confirmed");
+    // An unknown code is shown as received rather than hidden.
+    expect(newest).toHaveTextContent("Proibido → future_value");
   });
 
   it("explains a manual-only firm with the preset's own text", async () => {

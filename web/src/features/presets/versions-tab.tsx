@@ -12,14 +12,22 @@ import { formatCalendarDate } from "./lib/dates";
 
 type Change = FirmRelease["changes"][number];
 
+const labelGroup = { automation: "feminine", copy: "feminine", vps: "masculine", personal_device: "device" } as const;
+
 function ChangeText({ change }: { change: Change }) {
   const t = useTranslations("presets.versions");
+  const tb = useTranslations("stanceBadge");
+  // The contract's from/to are stance codes: show the same words as the badges, and the raw text only for a code we do not know.
+  const label = (value: string | undefined) => {
+    const key = change.stance && value ? `${labelGroup[change.stance]}.${value}` : "";
+    return value === undefined ? "" : key !== "" && tb.has(key) ? tb(key) : value;
+  };
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
   const stance = change.stance ? t(`stance.${change.stance}`) : "";
   switch (change.kind) {
     case "stance_changed":
-      return <>{t("changes.stanceChanged", { stance, from: change.from ?? "", to: change.to ?? "" })}</>;
+      return <>{t("changes.stanceChanged", { stance, from: label(change.from), to: label(change.to) })}</>;
     case "stance_text_changed":
       return <>{t("changes.stanceTextChanged", { stance, reason: change.reason?.[locale === "en" ? "en" : "pt-BR"] ?? "" })}</>;
     case "rule_value_changed":
