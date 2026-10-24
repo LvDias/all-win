@@ -1,6 +1,6 @@
 # allwin-heavy — heavy jobs on the shared dev host
 
-> User directive (2026-10-24): the host is saturated. At most **4** heavy jobs (3 normally) run at once, host-wide, and every one of them
+> User directive (2026-10-24): the host is saturated. At most **3** heavy jobs run at once, host-wide, and every one of them
 > goes through this wrapper.
 
 The dev host is shared by every agent account (`dev2`, `dev3`, ...). Cold builds and full suites saturated it.
@@ -18,7 +18,7 @@ infra/scripts/allwin-heavy pnpm test
 
 ## What it does
 
-1. **Semaphore:** 4 slots (`ALLWIN_HEAVY_SLOTS`; temporary, until Monday 2026-10-26 by user decision because the load is ~8, then back to 3) (`flock` on `slot.1` ... `slot.4`) in `/srv/www/allwin.worktrees/.heavy-locks`
+1. **Semaphore:** 4 slots (`ALLWIN_HEAVY_SLOTS`; 3 (a temporary 4-slot setting was withdrawn on 2026-10-24 because the load stayed above ~12)) (`flock` on `slot.1` ... `slot.4`) in `/srv/www/allwin.worktrees/.heavy-locks`
    (group `devs`, setgid, mode 2770, files 0660), shared by all accounts. It waits (polling every 5 s, up to
    30 min, then exit 75) when both are taken. The slot is held until the command ends, even if the wrapper is killed.
 2. **systemd scope** (`systemd-run --user --scope`, no root): `CPUQuota=200%`, `CPUWeight=20`,
@@ -29,7 +29,7 @@ infra/scripts/allwin-heavy pnpm test
    `CARGO_TARGET_DIR=$HOME/.cache/allwin/cargo-target/wt-<worktree>-<hash>` (one per worktree), `PLAYWRIGHT_PORT` = a free port in 3200-3899 chosen per
    worktree, and `PLAYWRIGHT_BASE_URL=http://localhost:$PLAYWRIGHT_PORT` (see "Playwright ports").
 4. **Shared toolchain and compile cache** (see below): `RUSTUP_HOME`/`CARGO_HOME` under `/opt/rust` and `RUSTC_WRAPPER=sccache`.
-5. **dotnet:** `MSBUILDDISABLENODEREUSE=1` and no MSBuild server, so nothing stays resident.
+5. **dotnet:** `MSBUILDDISABLENODEREUSE=1`, `UseSharedCompilation=false` (no resident Roslyn `VBCSCompiler`) and no MSBuild server, so nothing stays resident.
 6. **`--fresh-target`** (or `ALLWIN_HEAVY_FRESH_TARGET=1`): see "QA verdict runs" below.
 
 Do not leave background processes behind (a dev server, a container client): they inherit the slot and hold it

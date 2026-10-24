@@ -7,6 +7,8 @@
   - (r5, 2026-10-24; gateway and S11/S13 reviews) §4 intake failure, deferred inbound types, error frames about commands, retransmission after expiry; §5 delivery-time sync check, late exits, flatten outcome reports, catch-up of missed executions (Q80); §6 supersede, unobservable snapshots, the sync-reason canon (§6.2), the reconnect evaluation window (§6.3), clearing (§6.4), binding changes during a session; §7.1 the 1.4 drawdown frame anchored at the trading-day start (Q90, Q92); §9 protocol 1.4.
   - (r6, 2026-10-24; r5 review notes and Q93/Q98) §3 who builds `limits` and the latest-wins rule; §4 dead-letter erasure and retention, unreadable account, quarantine rules, deferred consumers under RLS; §6.2 `sync.command_unknown` triggers; §6.3 first-seen check on the durable receipt; §6.4 strict "covers" and protection of accepted positions (Q98 b); §7.1 Q93 decided, exact re-anchor watermark rule.
   - (r6.1, 2026-10-24; user decisions Q100 a, Q101 yes) §6.4 reasons held at a clear, automatic return to `in_sync`, coverage from the remaining quantity and the order state; §7 a reactive flatten while blocked is reported as `flattened`.
+  - (r6.2, 2026-10-24; review notes on r6.1) §3 the test-build exception for missing limits (ADR-0006 rule 8); §6.4 which order states count as working, and where the remaining quantity comes from.
+  - (r6.3, 2026-10-24) §2 the V1 single-instance limit of the adapter endpoint (Bigorna); §6.2 the table order is the severity order.
 
   Acceptance deltas, recorded in `contracts/adapter-protocol/CHANGELOG.md`: §6.1 bracket integrity on local-OCO connections (NT8 profile F5); money type with 4 decimals (ALIGN-1); token formats (ALIGN-3); pairing limits and HMAC storage (ALIGN-4); Q18 unpairing; Q-N1 dollar rounding; `fill.operation` and `account_reset` (NT8 profile §6)
 - **Owner:** Software Architect
@@ -42,6 +44,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
   - The Core stores only `key_id` and a SHA-256 hash of the secret (high entropy, so no pepper is needed).
   - The token is **masked in every log**: only `key_id` is printed, same rule as ADR-0001 §5.
 - **One active session per connection** (per NinjaTrader instance). A new authenticated session for the same connection closes the old one with code `4004 superseded`.
+- **V1 limit: one Core instance serves `/adapter/v1` (r6.3, Bigorna).** The session state is per process: the session registry, supersede (4004), the flat-disconnect marker, a pending disconnect, the `limits` latest-wins state (§3) and the per-IP failure budget. Delivery is immediate inside that instance (an in-process wake-up), with the PostgreSQL poll tick (at most 250 ms) as the fallback. Running a second instance behind the same endpoint would break supersede and these rules, so V1 does not. Scaling out needs sticky routing by `connection_id` at the proxy plus a session lease in PostgreSQL; that is a future ADR.
 - **WebSocket close codes:**
 
 | Code | Meaning | Adapter behavior |
@@ -86,7 +89,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
 
 1. The adapter sends `hello` first. The Core answers `welcome`, or `error` followed by a close (4001–4003).
 2. After `welcome`, the Core sends `limits` for all mapped accounts. `welcome` itself carries no limits.
-   - **Who builds them (r6):** the gateway, from the risk module's current-limits query port (a consumer-side port in the gateway; the adapter is wired in `app` over the risk read model). The gateway computes nothing. An account with no derived limits yet gets no `limits` frame; routing keeps its entries skipped (`routing.limits_pending`, ADR-0003 §4.1).
+   - **Who builds them (r6):** the gateway, from the risk module's current-limits query port (a consumer-side port in the gateway; the adapter is wired in `app` over the risk read model). The gateway computes nothing. An account with no derived limits yet gets no `limits` frame; routing keeps its entries skipped (`routing.limits_pending`, ADR-0003 §4.1), except in the end-to-end test build of ADR-0006 rule 8, where gate 8 passes for simulation accounts only.
    - **During the session** the gateway sends a new `limits` when it consumes `risk.limits_derived` (ADR-0006).
    - **Latest-wins (r6):** `limits` is reliable but superseding. The gateway sends a version only if it is higher than the last one sent in that session. An unacked `limits` frame in the outbox is dropped only when every account in it has a newer version; otherwise the Core rebuilds it with the items that are still the newest (protocol 1.4.1). At every handshake the frame is rebuilt from the current limits for the negotiated version. A frame built for 1.4 (with drawdown, §7.1) is therefore never retransmitted to a session below 1.4. This is an exception to the byte-identical retransmission rule (§4), allowed because the adapter applies only a version higher than the one it holds (§7).
 3. The adapter must send a `position_snapshot` (`trigger: reconnect`) **before** the Core sends any new `command` in that session (§6). Adapter order on every (re)connect: `hello` → `welcome` → apply `limits` → retransmit its outbox in original order → `position_snapshot` → process commands. A command received before the adapter's snapshot is sent is queued, never rejected, and processed afterwards with the expiry re-check of §5; it is logged as a Core protocol violation.
@@ -274,7 +277,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 
 ### 6.2 Sync reason codes (r5)
 
-The canon has **21** codes. The protocol field is an open pattern; the HTTP contract uses a closed enum and receivers tolerate unknown codes. A new code is a minor version on both sides. Detail fields (adapter reason code, snapshot trigger, instrument and contract month from the wire) carry the specifics, never the code.
+The canon has **21** codes. **The table order is the severity order** (most severe first, r6.3), the same order as the HTTP `SyncReasonCode` enum; "most severe first" anywhere in this ADR or the contracts means this order. The protocol field is an open pattern; the HTTP contract uses a closed enum and receivers tolerate unknown codes. A new code is a minor version on both sides. Detail fields (adapter reason code, snapshot trigger, instrument and contract month from the wire) carry the specifics, never the code.
 
 | Trigger (§6, §6.1, §5) | Code |
 |---|---|
@@ -282,7 +285,6 @@ The canon has **21** codes. The protocol field is an open pattern; the HTTP cont
 | Both legs of a bracket filled (Q27) | `sync.bracket_double_fill` |
 | Open position with missing or `unknown` protection | `sync.bracket_incomplete` |
 | Local-OCO account with working protection while unobservable | `sync.bracket_integrity_unknown` |
-| Position flat, one leg filled, the other working (orphan cancelled) | `sync.bracket_orphan_leg` |
 | A report with status `unknown`; a frame moved to the intake dead-letter (§4); a quarantined report carrying an All Win `command_id` (§4, r6) | `sync.command_unknown` |
 | `command.position_changed` (U13); also a `nothing_to_reduce` that contradicts a non-flat expected position | `sync.position_changed` |
 | Reconnect or periodic snapshot differs (the trigger is a detail) | `sync.snapshot_mismatch` |
@@ -299,6 +301,7 @@ The canon has **21** codes. The protocol field is an open pattern; the HTTP cont
 | User disconnect in the plugin (4100) in that state | `sync.disconnected_by_user` |
 | User unpairs the connection (Q18) | `sync.connection_unpaired` |
 | Bound account not reported after a re-pair | `sync.account_not_found_after_repair` |
+| Position flat, one leg filled, the other working (orphan cancelled; informational, so last) | `sync.bracket_orphan_leg` |
 
 Not sync reasons, audited and alerted on their own:
 - `execution.unbound_activity`: a fill or non-flat snapshot on a venue account with no binding (ADR-0008); one entry per position change of (connection, platform account, instrument), not per fill.
@@ -320,7 +323,7 @@ Not sync reasons, audited and alerted on their own:
 - **After a clear,** only new triggers flag it again: a new difference against that baseline (`sync.snapshot_mismatch`) or a new event. A condition the user accepted at the clear and that stays the same does not flag again.
 - **Not observable** is a live condition only: no session, a snapshot with `connected: false`, or the §6.3 window still open. While it holds, clear is refused (Q83 a). An active reason, `sync.bracket_integrity_unknown` included, never blocks the clear by itself once observation has resumed and the reconnect evaluation is done. **With an open position:** allowed with a confirmation (Q84 a).
 - **Protection of open positions at the clear (r6; Q98 b, user decision 2026-10-24; Vigia L4):** any working stop that covers a position counts as protection, a manual one placed in the platform included (shown as external). A clear therefore never silently accepts an unprotected position as the new baseline, whatever reasons were active (`sync.bracket_integrity_unknown` included):
-  - **"Covers" is strict (Vigia L1 on Q98):** working stop or stop-limit orders on the opposite side, on the same account and contract, whose total working quantity is at least |position|. The working quantity is the **remaining** (unfilled) quantity of each order (r6.1, Pêndulo n2). Nothing else counts: no target or limit order, no order in an `unknown` state or with no reported state, no order on another contract month. The adapter always reports the order state in snapshots (Pêndulo n1). Coverage is `full` (|position| covered), `partial` (some) or `none`; with any protective order in an `unknown` or unreported state it is `unknown`.
+  - **"Covers" is strict (Vigia L1 on Q98):** working stop or stop-limit orders on the opposite side, on the same account and contract, whose total working quantity is at least |position|. The working quantity is the **remaining** (unfilled) quantity of each order (r6.1, Pêndulo n2): in a snapshot, `working_orders[].quantity` is the remaining quantity (platform quantity minus filled); in an order's `execution_report` the quantity is the order's total, and the Core derives the remaining one from the fills it applied for that order (r6.2). Only the states `accepted`, `working` and `trigger_pending` count as working (r6.2). Nothing else counts: no target or limit order, no order in an `unknown` state or with no reported state, no order on another contract month. The adapter always reports the order state in snapshots (Pêndulo n1). Coverage is `full` (|position| covered), `partial` (some) or `none`; with any protective order in an `unknown` or unreported state it is `unknown`.
   - **Only `full` is protected (Q100 a, user decision 2026-10-24):** `partial`, `none` and `unknown` are not. Each such position keeps `sync.bracket_incomplete`, or gets it if absent, one per instrument, and each reason the clear keeps carries **`held_at_clear`** (the time of the clear). Every other reason is cleared. The account stays `out_of_sync` with the held reasons only, and its entries stay blocked; exits pass.
   - **Re-evaluated after the clear:** the Core checks the coverage of each position listed at the clear on every evaluated snapshot (periodic, change or reconnect) and every order report, until that position is flat. Positions opened by All Win later follow the normal bracket rules (§5, §6.1), so the check does not race their own protective orders.
   - **Automatic return (Q101, user decision 2026-10-24):** a held reason resolves when its position is `full` or flat. When the last active reason was a held one and it resolves, the account returns to `in_sync` by itself, audited as `sync.restored` with that reason: the user already confirmed this account at the clear, and the remaining condition is objective and observed by the Core. This is the only automatic return to `in_sync`.
@@ -465,4 +468,5 @@ Not sync reasons, audited and alerted on their own:
 - **Negative:**
   - The adapter needs a durable local store and careful restart logic, which is the biggest plugin risk and the reason the spike covers it.
   - The protocol is chattier than fire-and-forget, which is acceptable at this scale.
+  - V1 serves the adapter endpoint from a single Core instance (§2); horizontal scaling needs a later ADR.
 - **Reversibility:** the transport can change in a new major without touching the Core domain, because the `gateway` maps protocol messages to venue-neutral commands and reports.

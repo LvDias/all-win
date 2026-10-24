@@ -1211,7 +1211,7 @@
                 "items": {
                   "$ref": "#/$defs/code"
                 },
-                "description": "maxItems 32 from 1.4 (21 sync.* codes, ADR-0004 r5); envelopes below 1.4 keep maxItems 20 (schema-enforced); the Core sends them at most 20, most severe first (r5 §9)."
+                "description": "maxItems 32 from 1.4 (21 sync.* codes, ADR-0004 r5); envelopes below 1.4 keep maxItems 20 (schema-enforced); the Core sends them at most 20, most severe first (r5 §9): the 20 most severe codes in the canonical order of ADR-0004 §6 (HTTP SyncReasonCode), so with all 21 codes active only the least severe one is left out. The account stays out_of_sync either way (1.4.3; Sonda L-S2-1)."
               },
               "display_name": {
                 "description": "1.3+. The All Win account name (G3). A rename takes effect at the next welcome.",
@@ -1267,7 +1267,7 @@
           ]
         },
         "sync_reasons": {
-          "description": "Complete current list (empty when in sync); replaces the previous list. maxItems 32 from 1.4 (21 sync.* codes, ADR-0004 r5); envelopes below 1.4 keep maxItems 20 (schema-enforced); the Core sends them at most 20, most severe first (r5 §9).",
+          "description": "Complete current list (empty when in sync); replaces the previous list. maxItems 32 from 1.4 (21 sync.* codes, ADR-0004 r5); envelopes below 1.4 keep maxItems 20 (schema-enforced); the Core sends them at most 20, most severe first (r5 §9): the 20 most severe codes in the canonical order of ADR-0004 §6 (HTTP SyncReasonCode), so with all 21 codes active only the least severe one is left out. The account stays out_of_sync either way (1.4.3; Sonda L-S2-1).",
           "type": "array",
           "uniqueItems": true,
           "maxItems": 32,
@@ -1820,6 +1820,7 @@
                 "minimum": 1
               },
               "daily_loss_limit": {
+                "description": "Sent for a daily loss of kind hard AND soft_pause (HTTP DailyLossValue.kind); absent for none or unset. The plugin enforces both the same way: on reaching it, flatten, cancel working orders and block until the trading-day reset (S15 AC-2). The kind changes what the firm does to the account (a hard breach fails it, a soft pause only stops the day), not what All Win does, so the protocol does not carry it (1.4.3; Malha, Compasso).",
                 "$ref": "#/$defs/non_negative_money"
               },
               "daily_profit_target": {

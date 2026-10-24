@@ -5,7 +5,9 @@
 #   allwin-heavy --fresh-target cargo test --workspace   (QA verdict run: private target per SHA, removed after)
 set -euo pipefail
 
-SLOTS="${ALLWIN_HEAVY_SLOTS:-4}"   # 4 until Monday 2026-10-26 (user decision, load ~8); back to 3 afterwards
+# 3 slots (the temporary 4-slot setting was withdrawn on 2026-10-24: load 36/27/19, above the ~12 the user set as the condition).
+DEFAULT_SLOTS=3   # the 4-slot trial ended: the load stayed above the user's ~12 condition (2026-10-24)
+SLOTS="${ALLWIN_HEAVY_SLOTS:-$DEFAULT_SLOTS}"
 LOCK_DIR="${ALLWIN_HEAVY_LOCK_DIR:-/srv/www/allwin.worktrees/.heavy-locks}"
 CPU_QUOTA="${ALLWIN_HEAVY_CPU_QUOTA:-200%}"
 WAIT_MAX="${ALLWIN_HEAVY_WAIT_S:-1800}"   # seconds to wait for a slot
@@ -136,7 +138,7 @@ if [ "$SLOT_TARGET" = 1 ]; then
 fi
 
 # dotnet: no resident MSBuild nodes or build servers holding memory (and the slot) after the command.
-export MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_CLI_USE_MSBUILD_SERVER=0
+export UseSharedCompilation=false MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_CLI_USE_MSBUILD_SERVER=0
 export RUST_TEST_THREADS="${RUST_TEST_THREADS:-2}"
 
 # --scope runs in the foreground (cwd, env, tty and exit code pass through) and keeps the slot fd.
