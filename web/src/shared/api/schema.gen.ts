@@ -30,7 +30,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/login": {
+    "/api/v1/auth/login/challenges": {
         parameters: {
             query?: never;
             header?: never;
@@ -40,19 +40,21 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Sign in with e-mail and password
-         * @description Same response and timing for unknown e-mail, wrong password and closed user (S3 AC-5).
-         *     On success sets `__Host-aw_session`. When TOTP is enabled the session is in `pending_2fa`
-         *     state (5 minutes) and grants nothing but the verify endpoints.
+         * Request a sign-in code on a channel (always 202; auth policy §3)
+         * @description Always answers 202 with a fresh sealed `challenge_id`, whether or not the e-mail is registered,
+         *     active, or has the chosen channel; nothing is sent in those cases. Response and timing are identical:
+         *     delivery runs after the response (auth policy §2.3). Send limits are keyed by the identifier HMAC and
+         *     device class and behave the same for unknown identifiers (§4); over a limit → 429 with `Retry-After`.
+         *     The login screen always shows the same text and never reports a delivery failure.
          */
-        post: operations["login"];
+        post: operations["requestLoginCode"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/login/totp": {
+    "/api/v1/auth/login/verify": {
         parameters: {
             query?: never;
             header?: never;
@@ -61,15 +63,21 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete sign-in with a TOTP code */
-        post: operations["verifyLoginTotp"];
+        /**
+         * Sign in with the code of a login challenge
+         * @description On success starts a session (`__Host-aw_session`) and, when the browser has no valid device cookie of
+         *     this user, issues `__Host-aw_device` and sends the new-device e-mail notice (auth policy §5.2–§5.3).
+         *     Every failure (wrong, expired, used, invalidated after 5 wrong attempts, unknown or forged challenge)
+         *     is the single 401 `auth.code_invalid`.
+         */
+        post: operations["verifyLoginCode"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/login/recovery-code": {
+    "/api/v1/auth/challenges/resend": {
         parameters: {
             query?: never;
             header?: never;
@@ -78,8 +86,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete sign-in with a single-use recovery code (Q22) */
-        post: operations["verifyLoginRecoveryCode"];
+        /**
+         * Send a new code for an open challenge (60-s cooldown; auth policy §2.2)
+         * @description Replaces the challenge's code; wrong attempts already made still count. A closed (expired, used,
+         *     invalidated after 5 wrong attempts), unknown or forged challenge gets the same 202 and nothing is sent.
+         *     **The response and the limits depend only on the sealed token and the counters, never on the code row**
+         *     (auth policy §3): every resend of a valid token counts in the identifier and IP limits and starts the
+         *     60-s cooldown, and the body is always `expires_at` = now + 10 min and `resend_after_s` = 60, whether
+         *     or not a code was sent. Within the cooldown → 429 with `Retry-After`, identically for registered and
+         *     unknown identifiers. A forged token counts only in the IP limits.
+         *     A `step_up` or `channel_change` challenge is resent only for the session that created it.
+         */
+        post: operations["resendCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/challenges/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delivery state of a sign-up, step-up or channel-change code (never for login)
+         * @description Lets the client offer another channel when a delivery failed (auth policy §2.3, S3b AC-5).
+         *     - `login` challenges, closed, unknown or forged challenges, and challenges of another session always
+         *       answer `not_reported`.
+         *     - A send suppressed because the new value belongs to another account answers `sent`, exactly like a
+         *       real send (§3).
+         */
+        post: operations["getChallengeDelivery"];
         delete?: never;
         options?: never;
         head?: never;
@@ -97,9 +139,32 @@ export interface paths {
         put?: never;
         /**
          * End the current session (server-side)
-         * @description Idempotent. Accepts a full or pending session, or none; answers 204 to every same-origin request.
+         * @description Idempotent. Accepts a session or none; answers 204 to every same-origin request. The device cookie is kept.
          */
         post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout-everywhere": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sair de todos os dispositivos — end every session and revoke every device (no step-up)
+         * @description Ends every session of the user, including the current one (`session.ended` reason
+         *     `signed_out_everywhere`), and revokes all devices; the next sign-in from any browser is a new device.
+         *     Source tokens and pairings are not touched; the client then shows them with their revoke/unpair
+         *     actions (auth policy §5.3). Audited.
+         */
+        post: operations["signOutEverywhere"];
         delete?: never;
         options?: never;
         head?: never;
@@ -115,8 +180,27 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Re-authenticate before a sensitive action (15-minute rule) */
-        post: operations["stepUp"];
+        /**
+         * Request a step-up code for one sensitive action (auth policy §6)
+         * @description Sends a `step_up` code bound to this session, the `action` and the `target_id`. The action request then
+         *     carries `step_up: { challenge_id, code }` in its body (schema `StepUpProof`); the code authorizes that
+         *     one action only (Q30 a: every action asks a new code).
+         *     - `target_id` is **required** for `source_rotate`, `pairing_code_new`, `connection_unpair`,
+         *       `account_opt_in_accept`, `route_enable`, `account_binding_change`, `account_sync_clear` and
+         *       `trading_day_restart`, and **forbidden** for the other
+         *       actions; a violation → 400
+         *       `common.invalid_request` with pointer `/target_id`.
+         *     - `admin_recovery` is never accepted here: 400 `common.invalid_request` with pointer `/action`. It exists
+         *       only for the operator command and its audit (5.4.0).
+         *     - A target that does not exist or belongs to another user → 404 `common.not_found`; no code is sent and
+         *       nothing is counted against the user's send limit.
+         *     - `admin_invitation_create` from a non-admin → 403 `auth.forbidden`, no code sent (same precedence as
+         *       admin operations).
+         *     - 422 `auth.channel_unavailable`: the user has no confirmed value for `channel`.
+         *     - 422 `auth.step_up_channel_not_allowed`: the policy requires another channel for this action on this
+         *       device (auth policy §6.2 M3, if adopted; the client then offers e-mail).
+         */
+        post: operations["requestStepUp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -133,7 +217,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Read an invitation before accepting it
+         * Read an invitation before signing up
          * @description The token travels in the request body, never in a URL path or query. Invitation links use a
          *     URL fragment (`/{locale}/invite#t=<token>`), which browsers never send to servers, so the token
          *     cannot reach Caddy, Next.js or Core logs.
@@ -145,41 +229,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/invitations/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create the account from an invitation and sign in (S3 AC-1) */
-        post: operations["acceptInvitation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/password-reset/request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Request a reset link by e-mail (always 202, Q20) */
-        post: operations["requestPasswordReset"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/password-reset/confirm": {
+    "/api/v1/auth/signup/challenges": {
         parameters: {
             query?: never;
             header?: never;
@@ -189,10 +239,35 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Set a new password with a reset token; ends ALL sessions
-         * @description Reset links use a URL fragment (`/{locale}/reset-password#t=<token>`); the token goes in the body.
+         * Send the sign-up code to the invited e-mail (S3 AC-1/AC-2)
+         * @description Nothing is created yet: the account exists only when the code is confirmed (`completeSignup`). An
+         *     abandoned sign-up leaves the invitation usable until it expires. Sign-up is e-mail only (Q31 a,
+         *     pending); WhatsApp is added later as a channel change.
          */
-        post: operations["confirmPasswordReset"];
+        post: operations["startSignup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/signup/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the sign-up code; create the account and sign in
+         * @description Creates the user (e-mail confirmed), consumes the invitation, and starts the first session with its
+         *     device cookie. The sign-up session sends no new-device notice (S3 AC-9). An invitation that closed
+         *     after `startSignup` (expired, revoked, already used, including a concurrent confirmation) invalidates
+         *     its code, so every failure here is 401 `auth.code_invalid`.
+         */
+        post: operations["completeSignup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -232,58 +307,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/me/totp/setup": {
+    "/api/v1/me/devices": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["listDevices"];
         put?: never;
-        /** Start TOTP enrolment (step-up) */
-        post: operations["startTotpSetup"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/me/totp/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Confirm enrolment with a code; returns recovery codes once; ends other sessions */
-        post: operations["confirmTotpSetup"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/me/totp/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Disable TOTP (password + current code, Q22); ends other sessions */
-        post: operations["disableTotp"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/me/recovery-codes/regenerate": {
+    "/api/v1/me/devices/{device_id}/forget": {
         parameters: {
             query?: never;
             header?: never;
@@ -293,17 +333,18 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Replace the recovery code batch (password + current code)
-         * @description In V1 scope per the design default; PO confirms (spec §4).
+         * Forget a device — revokes it and ends its sessions (no step-up)
+         * @description Ends the sessions bound to that device (`session.ended` reason `device_revoked`). Its cookie then counts
+         *     as none: the next sign-in from that browser is a new device (auth policy §5.2). Idempotent. Audited.
          */
-        post: operations["regenerateRecoveryCodes"];
+        post: operations["forgetDevice"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/me/password": {
+    "/api/v1/me/channel-changes": {
         parameters: {
             query?: never;
             header?: never;
@@ -313,10 +354,63 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Change password (step-up); ends other sessions
-         * @description In V1 scope per the design default; PO confirms (spec §4).
+         * Start changing the e-mail or adding/changing WhatsApp (codes to the current and the new value; S3 AC-11)
+         * @description Sends one code to the **current** value of that channel (for a first WhatsApp: to the e-mail) and one
+         *     to the **new** value, under one flow (auth policy §7). After S3b, when the user has another confirmed
+         *     channel, a third code goes to it ([Proposed] §7). The change applies only when every code is confirmed
+         *     within 10 minutes; until then the current value stays in force.
+         *     - If the new value belongs to another account nothing reveals it: its code is not sent, its delivery
+         *       reads `sent`, and its verification fails with `auth.code_invalid` (§3).
+         *     - 409 `me.channel_change_too_soon`: a change completed less than 24 h ago.
+         *     - 409 `me.channel_change_pending`: another change is open or on hold.
+         *     - 422 `me.channel_unchanged`: the new value equals the current one.
+         *     - 422 `auth.channel_unavailable`: WhatsApp is not offered yet (S3b).
          */
-        post: operations["changePassword"];
+        post: operations["startChannelChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/channel-changes/{change_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm one code of a channel change
+         * @description When the last code is confirmed the change either completes (`completed`: the value is replaced, other
+         *     sessions end with reason `channel_changed`, the current session is rotated, notices go to the old value
+         *     and the other channel) or goes `on_hold` until `hold_until` (auth policy §9 hold, and §7 M2 if adopted),
+         *     cancellable with `cancelChannelChange`.
+         */
+        post: operations["verifyChannelChangeCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/channel-changes/{change_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancelar troca — cancel an open or on-hold channel change from any session of the user
+         * @description Explicit action; signing in does not cancel. Audited, with notices to every channel. A new change
+         *     requested after a cancellation raises an admin alert (auth policy §9). Idempotent on a cancelled change.
+         */
+        post: operations["cancelChannelChange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -332,7 +426,7 @@ export interface paths {
         };
         get: operations["listInvitations"];
         put?: never;
-        /** Issue an invitation bound to one e-mail (Q19); link returned once */
+        /** Issue an invitation bound to one e-mail (Q19; step-up); link returned once */
         post: operations["createInvitation"];
         delete?: never;
         options?: never;
@@ -366,48 +460,6 @@ export interface paths {
         get: operations["listUsers"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/password-reset-link": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate a reset link when e-mail is unavailable (Q20 fallback; step-up)
-         * @description Written to the affected user's visible audit log ("reset link generated by an administrator",
-         *     with the admin's id and the time; never the link) and to the admin trail.
-         */
-        post: operations["adminCreateResetLink"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/totp-reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Remove a user's TOTP after an identity check (Q22; step-up); ends that user's sessions
-         * @description Ends every session of the affected user (`session.ended` reason `admin_totp_reset`). Written to the
-         *     affected user's visible audit log with the admin's id and the time, and to the admin trail.
-         */
-        post: operations["adminResetTotp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -596,6 +648,314 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's accounts (archived accounts excluded)
+         * @description One call for the whole list screen (no pagination in V1; a user has tens of accounts). Sorted by
+         *     `display_name` (case-insensitive). Filtering is client-side. Only the caller's accounts.
+         */
+        get: operations["listAccounts"];
+        put?: never;
+        /**
+         * Register a prop or real account, with its first opt-in choices, in one save
+         * @description Idempotent by the `Idempotency-Key` header (a UUID the client generates once per form
+         *     submission). A key is never released: a retry with the same key and the same body (`step_up`
+         *     ignored) within 24 h returns 200 with the account created by the first request, as it is now
+         *     (with `archived_at` if it was archived since), and changes nothing; the same key with a different
+         *     body, or after 24 h, gets 409 `accounts.idempotency_key_reused`. A key never creates a second
+         *     account. Only a successful create consumes a key, so the retry after a step-up reuses it.
+         *     Account ids are generated by the Core.
+         *     An account whose size is not a standard size (any real account size; a prop size outside the
+         *     standard list, Q73 b) copies the default profile of the nearest standard size (S6). The nearest
+         *     size only picks the stop/target profile: balance, limits and every risk figure always use the
+         *     account's own `size_amount` (Q73). When the size is
+         *     exactly between two standard sizes the user picks one: `profile_size` is then required (422
+         *     `accounts.profile_size_required`) and must be one of the candidates of `getNearestProfileSize`
+         *     (422 `accounts.profile_size_invalid`). Q60: if the user later decides "smaller" or
+         *     "larger", the candidates list just has one entry and nothing else changes.
+         *     Prop accounts take either a preset version (`preset_version_id`, S16) or the manual fields
+         *     (`firm_name`, `plan_name`, `phase`, `size_amount`; before S16 and for plans without a preset).
+         *     `opt_ins` must hold every kind whose choice is required (`OptInChoices`); before S16 the
+         *     automation stance of a prop account is `unknown`, so its choice is required against the generic
+         *     rule version (Q40). Real accounts never take `opt_ins`.
+         *     Step-up: when any `opt_ins.*.choice` is `accepted` the body must carry `step_up` for action
+         *     `account_create_opt_in_accept` (no target; StepUpProof). Check order after authentication,
+         *     Origin and schema: idempotent replay → step-up → 409 → 422. Nothing is saved on any error. Audited as `accounts.created` and, per kind chosen,
+         *     `accounts.opt_in_chosen`, in the same transaction.
+         */
+        post: operations["createAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One account (detail screen) */
+        get: operations["getAccount"];
+        /**
+         * Edit an account (full replacement of the editable fields; optimistic concurrency by `row_version`)
+         * @description The body is the whole editable state (the edit form sends every field): an absent `binding`
+         *     unbinds, an absent `multiplier` resets it to 1; `kind` cannot change. Changing the
+         *     preset version, the firm platform or the manual prop fields may select a different rule version.
+         *     `opt_ins.automation` is then required when this request changes the automation rule version and
+         *     the new one needs a choice (422 `accounts.opt_in_required`, D16). Nothing else is required by an
+         *     edit: a kind already `pending_review`, or whose rule version this request does not change, is
+         *     resolved with `setAccountOptIn`; `copy` is never required here (it is not on the account form;
+         *     a follower whose copy rule version changes goes to `pending_review`). Selecting another preset re-fills the rule values
+         *     from it (the UI confirms first). Applying a newer version of the same preset (S16 AC-3) is
+         *     `applyPresetVersion`, not this operation (422 `presets.use_apply_version`).
+         *     Changing or removing the binding while the account has an open position is refused with 409
+         *     `accounts.binding_open_position` (Q38). Lowering `max_position_qty` below an open
+         *     position is allowed; open positions are not changed.
+         *     Step-up: when an `opt_ins.*.choice` is `accepted` and changes the stored state, the body must
+         *     carry `step_up` for action `account_opt_in_accept` with target = this account. Changing or
+         *     removing the binding of an account that receives automation (automation `chosen` + `accepted`, or
+         *     an enabled route from an automated source) needs `step_up` for action `account_binding_change`
+         *     (target = this account; QA Security L1; Q35 decided 2026-10-23: setting
+         *     `step_up.q35_persistence_actions` on, server configuration only, missing/invalid = on). One proof covers the request; when both apply, `account_opt_in_accept` is used. Check order after
+         *     authentication, Origin and schema: 404 → step-up → 409 → 422. Audited as
+         *     `accounts.updated` (changed fields with old and new values) and `accounts.opt_in_chosen`.
+         */
+        put: operations["updateAccount"];
+        post?: never;
+        /**
+         * Delete (archive) an account
+         * @description Refused with 409 `accounts.delete_open_position` while the account has an open position (S5 AC-6;
+         *     last known state when the connection is down). Otherwise the account is archived: it leaves every
+         *     list, receives no instruction, and its name becomes free again. Q39: its routes and
+         *     master/follower relations are removed in the same transaction (listed beforehand by
+         *     `getAccountArchiveImpact`), its binding is released, and the audit and history keep the id and a
+         *     name snapshot. Audited as `accounts.archived` with what was removed. An archived or unknown id
+         *     gets 404.
+         */
+        delete: operations["archiveAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/archive-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What deleting the account would remove (for the confirmation dialog)
+         * @description Read-only. The confirmation lists these items; `archiveAccount` removes whatever exists when it
+         *     runs (each item is audited), so a route added in between is removed too.
+         */
+        get: operations["getAccountArchiveImpact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pause, resume, disable or enable an account (S5 AC-4)
+         * @description Sets the target state. Allowed transitions: `active` → `paused` (pause); `paused` → `active`
+         *     (resume); `active` or `paused` → `disabled` (disable); `disabled` → `active` (enable). Any other
+         *     transition gets 409 `accounts.lifecycle_transition_invalid`. Setting the current state is a
+         *     no-op (200, not audited). A paused or disabled account receives no instruction at all, exits
+         *     included (S7 AC-8); open positions and orders are not touched. Audited as
+         *     `accounts.lifecycle_changed` (previous and new state, whether a position was open).
+         */
+        put: operations["setAccountLifecycle"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/evaluation/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart the evaluation count of a prop account (S13b; Q69 a)
+         * @description Sets `evaluation_start` and optionally `evaluation_earned_before`. The audit names the effect
+         *     (S13b AC-4, Q-S13b-3; PO):
+         *     - **a changed start is a restart.** The progress toward `evaluation_profit_target` restarts from
+         *       the new start. Audited as `accounts.evaluation_restarted` (old and new start and earned-before).
+         *     - **the same start is a correction** of the earned amount (the UI's "Salvar"). The count does not
+         *       restart and nothing is lost: risk re-derives progress, high water and the drawdown floor from
+         *       `evaluation_start` + `evaluation_earned_before` + the trading-day aggregates since the start
+         *       (Esquadro; equity is derived from size + realized since `evaluation_start`). Those aggregates
+         *       are never purged while they are on or after `evaluation_start`. Audited as
+         *       `accounts.evaluation_corrected` (old and new earned-before), never as a restart.
+         *     - **the same start and the same earned-before** change nothing: 200, not audited, `limits_version`
+         *       unchanged.
+         *     Either change bumps the account's limits version (the baseline is a rule input, ADR-0006 §3.1).
+         *     Omitting `evaluation_earned_before`:
+         *     - with the same start, it keeps the stored value, so the request changes nothing;
+         *     - with a new start, the account has no earned-before amount: the count starts from 0, not from
+         *       the old value.
+         *     To correct the amount to zero, send `"0"` (Crivo L2). A Sim / Playback reset is a discontinuity (S11 AC-6) and never
+         *     restarts the count by itself. `row_version` as in `updateAccount`. An account without an
+         *     evaluation target gets 422 `accounts.evaluation_not_applicable`.
+         */
+        post: operations["restartEvaluation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/commission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set or remove the account's commission floor alone (S13 AC-11; 5.4.0)
+         * @description A narrow write for the Risk tab, so the web never rebuilds the whole `updateAccount` body to
+         *     change one field (where an absent `binding` unbinds and an absent `multiplier` resets it).
+         *     `commission_per_contract_side` is USD per contract and side, ≥ 0, or `null` to remove the floor.
+         *     It has the same effect and rules as the field in `updateAccount`: a higher floor applies at once,
+         *     a lower one or a removal from the next trading day (`AccountRisk.pending_commission_change`;
+         *     ADR-0006 §3.7). Any change bumps the account's limits version and `row_version`; `putAccountRiskRules`
+         *     bumps only the limits version, so call it first when saving both. A stale `row_version` gets 409
+         *     `common.version_conflict` even when the value is unchanged; the version is checked first (Crivo n1).
+         *     The same value
+         *     is a no-op: 200, not audited. Otherwise audited as `accounts.updated` (field
+         *     `commission_per_contract_side`, old and new). No step-up.
+         */
+        put: operations["setAccountCommission"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/sync/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear the out-of-sync flag after the user resolved it (S11 AC-3)
+         * @description The user confirms they checked the position and orders on the platform. The account returns to
+         *     `in_sync` and receives new entries again (Q14, S11 AC-4). Nothing is sent to the platform: no
+         *     resync, no reopen, no cancel (ADR-0004 §6).
+         *     `expected_version` is the `sync.version` the user saw. If a reason was added or removed since,
+         *     409 `accounts.sync_state_changed` and nothing changes, so a reason the user has not seen is never
+         *     cleared. A double submit is answered by the `Idempotency-Key` replay (below). An account already in
+         *     sync gets 409 `accounts.not_out_of_sync`.
+         *     The clear empties `reasons` and `resolved_reasons` and bumps `version`. The expected state's new
+         *     base is the account's last evaluated snapshot: position and All Win orders as reported (ADR-0004
+         *     r5). After a clear only the normal triggers flag again: a new difference against that base
+         *     (`sync.snapshot_mismatch`), or a new event with its own code. A condition the user accepted and
+         *     that stays the same does not flag again.
+         *     Allowed with an open position (Q84 a, user 2026-10-24): the user may keep it, and the UI asks
+         *     for confirmation. Refused while the account is not observable (Q83 a): the session is down, a
+         *     snapshot reports the broker connection lost, or the reconnect check has not finished
+         *     (`observable: false`, the live condition). An active `sync.bracket_integrity_unknown` alone does
+         *     not block the clear once observation resumed; otherwise that account could never be cleared
+         *     (Crivo R1 on r5). The
+         *     answer is 409 `accounts.sync_not_observable`, and the user waits until the plugin has reported.
+         *     An UNBOUND account is never observable (`sync.connection_unpaired`,
+         *     `sync.account_not_found_after_repair`), so it cannot be cleared until it is bound again and its
+         *     reconnect snapshot is evaluated. It receives nothing anyway (gate `platform_unbound`). The web
+         *     says "vincule a conta (ou re-pareie) para verificar e liberar", not just "unavailable". A rebind
+         *     or re-pair keeps the account out of sync with the same reasons. Its first session goes through
+         *     `connection_checking`. When the reconnect snapshot is evaluated, `observable` becomes true and the
+         *     user may clear, with that snapshot as the base. A difference found by that evaluation adds
+         *     `sync.snapshot_mismatch`. Archiving the account (ADR-0008) is the other way out. This is
+         *     intended (Esquadro, Crivo Q1).
+         *     Step-up (user decision Q95, 2026-10-24; in the Q35 set, setting `step_up.q35_persistence_actions`
+         *     on): the body must carry `step_up` for action `account_sync_clear`, target = this account. Missing →
+         *     403 `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). Check order after
+         *     authentication, Origin and schema (Crivo R1):
+         *     1. 404;
+         *     2. the REPLAY by `Idempotency-Key` (6.0.0; Esquadro; replaces the 5.3.0 replay by `expected_version`,
+         *        Crivo c1):
+         *        - the same key and the same body as a completed clear return the recorded 200, WITHOUT checking
+         *          or consuming a step-up code;
+         *        - the body is compared without `step_up`, so a retry with a new code still matches;
+         *        - the same key with a different body gets 409 `common.idempotency_key_reused`;
+         *        - the store is keyed by (user_id, operation, account_id, key), never by the key alone (Vigia L1);
+         *        - a key is kept 24 h after the clear it recorded, as in `createAccount` (6.1.0, Crivo q2). After
+         *          that it is unknown and the request runs as new: step-up, then 409 (`expected_version` is
+         *          stale or the account is `not_out_of_sync`), so an expired key never repeats a clear;
+         *        - without a known key, the step-up applies as normal;
+         *     3. step-up;
+         *     4. 409.
+         *     **Live protection (Vigia L2; Q98 b, user):** the confirmation lists each open position from the last
+         *     evaluated snapshot with its live stop protection (`AccountSync.positions`). ANY working stop that
+         *     covers the position counts, a manual one in the platform included (shown as `external`).
+         *     **"Covers" (6.1.0, Vigia L1; ADR-0004 §6.4):** working stop and stop-limit orders on the OPPOSITE
+         *     side of the position, in the same account and the same contract (symbol + contract month), whose
+         *     total working quantity is ≥ |position|. A stop on the same side, a limit or market order, or an
+         *     order on another contract never counts.
+         *     **What the clear keeps (6.1.0; Q98 b, Q100 a; ADR-0004 §6.4 r6.1; fail closed):** every position whose protection is
+         *     not `full` (`partial`, `none` or `unknown`) keeps its `sync.bracket_incomplete`, or raises it if
+         *     absent, one per instrument. Each kept reason carries `held_at_clear`. All other reasons are
+         *     cleared. The account stays `out_of_sync` with those reasons only, entries stay refused
+         *     (`routing.out_of_sync`; exits pass), and the 200 response shows it. The web shows such an account
+         *     as "blocked for new entries: position without full stop protection", not as a new alert, and says
+         *     that the block ends by itself once a stop covers the position or it is closed (Vigia I2).
+         *     **Re-evaluation and release (6.1.0, Vigia L1; Q101; ADR-0004 §6.4 r6.1):** after the clear, the Core re-evaluates the
+         *     protection of every position listed at the clear on each evaluated snapshot and each order report,
+         *     until that position is flat:
+         *     - a held reason is resolved when its position is `full` or flat. When every active reason is a
+         *       held one and the last is resolved, the account returns to `in_sync` by itself (the user already
+         *       confirmed at the clear), audited as `sync.restored` with that reason (Q101 yes, user
+         *       2026-10-24);
+         *     - a reason added after the clear has no `held_at_clear`, so it is sticky as usual and needs a new
+         *       clear;
+         *     - a position covered at the clear (`full`) that later loses that cover (the user cancels the
+         *       external stop, or it fills while the position stays open) raises `sync.bracket_incomplete` again,
+         *       without `held_at_clear`. The account goes back to `out_of_sync` and entries are blocked again
+         *       at once; it needs a new clear (Q101 user addition; Q14).
+         *     The plugin has no clear (Q-P3).
+         *     Audited as `sync.cleared` (actor user; the reasons that were active and resolved).
+         */
+        post: operations["clearAccountSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/opt-ins/{kind}": {
         parameters: {
             query?: never;
@@ -610,21 +970,1019 @@ export interface paths {
          *     followers of master replication), Q25 (the choice is required when the firm's stance for that kind
          *     is forbidden, conditional, unknown or not confirmed), Q26 (a new preset version that changes the
          *     stance moves the state to `pending_review` and suspends that kind until the user chooses again).
-         *     **Provisional (Architect, 2026-10-23, awaiting user confirmation):** a material change of the
-         *     official rule text, with the same stance, also triggers `pending_review`, because the audit stores
-         *     the exact text the user saw. Typo/formatting-only edits of a quote do not.
+         *     **Q42 (a):** a change of the official rule text that the publisher of
+         *     the preset version flags as material also triggers `pending_review`; unflagged edits never do.
          *     - `automation` covers automated sources (TradingView webhook, future signal engine).
          *     - `copy` covers receiving master-account replication as a follower.
-         *     The first choice is made **atomically with account creation**: the S5 create/update requests carry
-         *     an `opt_ins` property of schema `OptInChoices` (pointer `/opt_ins/automation`, `/opt_ins/copy`);
-         *     a missing required choice is rejected with 422 `accounts.opt_in_required` and nothing is saved
-         *     (docs/architecture/contracts/s5-design-deltas.md). The `copy` choice is made atomically with adding
-         *     the account as a follower (S7/S19). This operation is for later changes and for resolving
-         *     `pending_review`. `rule_version_id` must be the preset rule version whose text the user saw; if it
-         *     is stale the Core answers 409 `accounts.rule_version_changed` and saves nothing. Every change is
-         *     audited (date, user, kind, choice, rule version, previous value).
+         *     The first choice is made **atomically with account creation** (`opt_ins` of `createAccount` /
+         *     `updateAccount`, schema `OptInChoices`). The `copy` choice is made atomically with adding the
+         *     account as a follower (S7/S19); for an account that is not a follower `copy` is `not_required`
+         *     and this operation answers 422 `accounts.opt_in_not_applicable`. This operation is for later
+         *     changes and for resolving `pending_review`. `rule_version_id` must be the rule version whose text
+         *     the user saw; if it is stale the Core answers 409 `accounts.rule_version_changed` and saves
+         *     nothing. Every change is audited (date, user, kind, choice, rule version, previous value).
+         *     Idempotent: the same choice for the same rule version as the stored `chosen` state is a no-op
+         *     (200, not audited, no step-up), so a retry after success never fails on a consumed code.
          */
         put: operations["setAccountOptIn"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/opt-in-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rule versions in force for a prop selection, before or after the account exists
+         * @description The account form calls it on every selection change (firm, plan, phase, size, firm platform),
+         *     because the rule version depends on the selection and there is no account id yet (spec §5.2).
+         *     With `preset_version_id` → the rules of that preset version (and `firm_platform` when the preset
+         *     has platform-specific rules). Without it → the **generic** rule versions used by prop accounts
+         *     without a preset (stance `unknown`, no quotes; Q40); `firm_platform` without `preset_version_id`
+         *     is an invalid combination: 400 `common.invalid_request`, pointer `/query/firm_platform` (as in
+         *     `createAccount`). Global catalog data, the same
+         *     for every user; any signed-in user may read it.
+         */
+        get: operations["getOptInRules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rule-versions/{rule_version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One opt-in rule version (current text, or a previous one for comparison)
+         * @description Used for `OptInState.current_rule_version_id`, for the previous version shown in the review
+         *     dialog (`RuleVersion.change.previous_rule_version_id`) and for the version a past choice was
+         *     made against. Rule versions are immutable once published.
+         */
+        get: operations["getRuleVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's routes, with the effective status computed by the Core
+         * @description Filter by `source_id` (routing page) or `account_id` (account `Rotas` tab); without filters, all
+         *     routes. Routes of revoked sources are included (read-only, Q-S7-3); routes of archived accounts
+         *     no longer exist (S5 `archiveAccount`). Account facts (name, firm, multiplier, max position,
+         *     opt-ins) come from `listAccounts`; the client joins by `account_id` (two calls, no N+1). After
+         *     `account.changed`, `connection.status_changed` or `route.changed` the client refetches.
+         *     An unknown or foreign `source_id` / `account_id` filter returns an empty list.
+         */
+        get: operations["listRoutes"];
+        put?: never;
+        /**
+         * Route a source to an account with the selected signal types
+         * @description Duplicate-protected by its natural key: one route per (source, account). A second create for the same
+         *     pair gets 409 `routing.route_exists` (the client refetches and switches to edit). The account must
+         *     be routable for that source (`listRouteCandidates`); a race is answered with the same code the
+         *     picker showed. Audited as `routing.subscription_changed` (`created`).
+         *     Copy routes of a follower (S19, V1.1) are not created here.
+         *     Step-up (Q35 decided 2026-10-23, S3 AC-10; setting `step_up.q35_persistence_actions` on, server
+         *     configuration only, missing/invalid = on): when the route is enabled by this request
+         *     (`is_enabled` true), whatever the source and the account's opt-in, the body must carry `step_up`
+         *     for action `route_enable` (target = the account). The code is fresh, with no reuse window. Missing
+         *     → 403 `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). (5.2.0: the
+         *     earlier QA Security M1 narrowing, automated sources only and not after an opt-in accepted with a
+         *     code, is removed; the user confirmed in Q87 (a), 2026-10-24, that every switch-on asks.)
+         */
+        post: operations["createRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/{route_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a route's signal types or switch it on/off (optimistic concurrency)
+         * @description Full replacement of `signal_types` and `is_enabled`. Switching off is always accepted. Switching
+         *     on while the account is not eligible for the source is refused with 422 and the blocking reason
+         *     code (same codes as `createRoute`, pointer `/is_enabled`; Q67 b, decided). When an account becomes
+         *     ineligible (automation `declined` / `pending_review`, or unbound), the Core switches its routes
+         *     from that source off and audits `routing.subscription_changed` (`disabled`, cause
+         *     `account_ineligible`); when it becomes eligible again the route stays off (`route_disabled`) until
+         *     the user switches it on. Routes of a revoked source are read-only. Check order after
+         *     authentication, Origin and schema: 404 → 409 `routing.source_revoked` → 409
+         *     `common.version_conflict` → 422. Audited as `routing.subscription_changed` (`updated`, `enabled`
+         *     or `disabled`, with previous and new values).
+         *     Step-up (Q35 decided 2026-10-23, S3 AC-10; setting `step_up.q35_persistence_actions` on, server
+         *     configuration only, missing/invalid = on): when the route goes from off to on by this request,
+         *     whatever the source and the account's opt-in, the body must carry `step_up` for action
+         *     `route_enable` (target = the account). The code is fresh, with no reuse window. Missing → 403
+         *     `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). Other edits, and
+         *     switching off, need none. (5.2.0: the M1 narrowing is removed; see `createRoute`.)
+         */
+        put: operations["updateRoute"];
+        post?: never;
+        /**
+         * Remove a route
+         * @description Open positions and orders are not changed. Routes of a revoked source cannot be removed (409
+         *     `routing.source_revoked`, Q-S7-3). Audited as `routing.subscription_changed` (`removed`).
+         */
+        delete: operations["deleteRoute"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/route-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Accounts the user can route a source to, the unavailable ones with reasons, and manual-only accounts
+         * @description For the account picker of the route dialog. Accounts that already have a route for the source
+         *     are not listed. Manual-only accounts (S16 AC-7) are never in `candidates`; they are listed in
+         *     `manual_only` with the preset's reason, for the "Can't find an account?" explanation (S7 AC-7b).
+         *     Before S16 `manual_only` is always empty. An unknown or foreign `source_id` gets 404.
+         */
+        get: operations["listRouteCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instruments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Enabled instruments with their exact tick data (global catalog)
+         * @description Only MNQ in V1. Values are decimal strings; the UI never hard-codes them and does no arithmetic with them.
+         */
+        get: operations["listInstruments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/default-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's default profile for every standard size, for one instrument
+         * @description Always one entry per standard size (25k … 300k, `catalog.standard_account_size`), in size order;
+         *     a size the user has not defined has no `profile` (UI `Não definido`; no invented values, Q-S6-2).
+         */
+        get: operations["listDefaultProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/default-profiles/{instrument_id}/{size_amount}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Define or replace the default profile of one standard size (upsert)
+         * @description Idempotent: the same body twice leaves one profile and one audit entry (an unchanged profile is
+         *     not audited). Affects only accounts created afterwards; existing accounts keep their own copy
+         *     (Q-S6-3). A size that is not a standard size gets 404. Audited as `profiles.default_changed`.
+         */
+        put: operations["putDefaultProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The account's own profiles, one entry per enabled instrument */
+        get: operations["listAccountProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/profiles/{instrument_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Customize the account's own profile (the default is not changed)
+         * @description Applies to the next entries only; open positions and working orders are not changed (Q-S6-5).
+         *     `row_version` is required when the account already has a profile for the instrument (stale or
+         *     missing → 409 `common.version_conflict`) and must be absent when it has none (an account created
+         *     while its size had no default, Q43; a `row_version` sent then also gets 409). The same values as
+         *     stored are a no-op (200, not audited, `row_version` unchanged). Audited as `profiles.account_changed` (`edited`).
+         */
+        put: operations["putAccountProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/profiles/{instrument_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the account's profile with the current default of its size (Q-S6-4)
+         * @description Copies the current default of the size the profile was copied from (`copied_from_size`, which
+         *     keeps the user's Q60 tie choice). For a profile without one (`set_by_user`) the Core uses the
+         *     account's size, or the nearest standard size when the size is not a standard one (real, or prop
+         *     outside the standard list, Q73 b); on an exact tie (Q60,
+         *     decided) the body must name `profile_size` (one of `getNearestProfileSize`'s candidates),
+         *     else 422 `profiles.profile_size_required` / `profiles.profile_size_invalid`. An account with no
+         *     profile gets its first copy this way (origin `size_default` / `nearest_size_default`). Optional
+         *     `row_version` (stale → 409 `common.version_conflict`). No-op when the profile already equals that
+         *     default and is not customized (200, not audited). Applies to the next
+         *     entries only. Audited as `profiles.account_changed` (`restored`).
+         */
+        post: operations["restoreAccountProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile-sizes/nearest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The standard size(s) whose default profile an account of this non-standard size starts from
+         * @description Distance = absolute difference between the account size and each standard size; below the
+         *     smallest standard size the smallest is used, above the largest the largest (PO, Q60). An exact
+         *     tie returns both sizes and the user chooses (`createAccount.profile_size`); Q60 (option c): the
+         *     Core does not choose. If the user later decides "always the smaller" or "always the larger",
+         *     `candidates` simply has one entry. Each candidate says whether the user has a default for it.
+         */
+        get: operations["getNearestProfileSize"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stateless conversion of a stop/target pair to whole ticks, points and dollars (Core arithmetic)
+         * @description Used by `DistanceFields` while the user types (debounced). Stores nothing, audits nothing. Uses
+         *     the same conversion as execution (ADR-0004 §5): points and dollars become whole ticks with the
+         *     instrument's exact tick size and tick value; a value that is not a whole number of ticks is
+         *     **rounded toward the entry** (down to the tighter distance), reported with `rounded: true`. A
+         *     distance below one tick gets 422 `profiles.distance_below_one_tick`.
+         */
+        get: operations["previewProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's activity entries, newest first, filtered, with a cursor
+         * @description Filters combine with AND; the values inside one array filter combine with OR. Array filters
+         *     repeat the parameter (`account_id=a&account_id=b`). `from` defaults to the retention horizon and
+         *     `to` to now; both are instants (X-8); the UI sends `from` for its period chips (default 24 h), so a
+         *     search or a deep link without `from` covers the whole retained history. `from` after `to` gets 400
+         *     `common.invalid_request` (pointer `/query/from`). `q` is an exact instruction id or `message_id`:
+         *     a UUID-shaped `q` is tried as both; it returns the entries of that instruction, including its
+         *     duplicates (no free-text search). An ingress rejection creates no instruction, so `q` never finds
+         *     `ingress.rejected` entries. An unknown or foreign id in a filter simply matches nothing.
+         *     Paging: the first page resolves `from` / `to` (so `to` = the time of the first request) and the
+         *     filters into `next_cursor`, an opaque token authenticated by the Core (MAC). Later pages send
+         *     `cursor` (and optionally `limit`); filter parameters sent with a cursor must equal the captured
+         *     ones. A tampered, foreign or mismatching cursor gets 400 (pointer `/query/cursor`). Paging is
+         *     eventually consistent: an entry recorded late with an older `occurred_at` may be missed once
+         *     paged past; the "n new entries" banner covers newer ones. Order: newest first by
+         *     (`occurred_at`, event sequence, `id`); `id` breaks ties for old rows without a sequence. The
+         *     cursor carries all three.
+         */
+        get: operations["listActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/filter-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Values for the activity filters, including archived accounts and revoked sources */
+        get: operations["getActivityFilterOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One activity entry (detail panel) */
+        get: operations["getActivityEntry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instructions/{instruction_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One instruction from receipt to every account's result (S10 AC-2), in one call
+         * @description `intake` holds the receipt steps, including every `ingress.duplicate_ignored` of the same
+         *     `message_id` (Q-S10-6). `accounts` holds one block per account the instruction was routed to or
+         *     skipped for, sorted by account name, each with its steps in causal order (the event
+         *     sequence the Core assigns when it records the event, `audit_entry.event_seq`: a later step always
+         *     has a higher sequence) and its final outcome. Unknown, foreign and purged-by-retention ids all get the
+         *     same 404 `common.not_found`. While `status` is `in_progress` new steps arrive as
+         *     `audit.entry_recorded` events; the client refetches.
+         */
+        get: operations["getInstructionTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/firms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The prop firm catalog (firms with at least one selectable preset)
+         * @description Global reference data, the same for every signed-in user. A firm with no verified data is not
+         *     listed (S16 AC-5). Sorted by name. No pagination (tens of firms).
+         */
+        get: operations["listFirms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/firms/{firm_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One firm in its current release — stances with quotes, plans tree, excluded plans */
+        get: operations["getFirm"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/firms/{firm_id}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Version history of a firm's presets, newest first
+         * @description One release per publication of the firm's research (all of its presets get a new version together).
+         *     Releases are immutable; each keeps its stance rule versions, so what an account was shown can always
+         *     be read (`getRuleVersion`).
+         */
+        get: operations["listFirmReleases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/preset-versions/{preset_version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One preset version with every rule value and its provenance (the rules preview of the account form)
+         * @description The account form's "rules of this preset" card for a full selection (firm → plan → phase → size; the
+         *     plans tree of `getFirm` gives the current `preset_version_id` per size). Rule values per firm
+         *     platform when the preset has platform-specific rules. Opt-in stances: `getOptInRules` with this id.
+         *     Old versions stay readable.
+         */
+        get: operations["getPresetVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The account's preset version, each rule value with its origin, and a newer version if any */
+        get: operations["getAccountPreset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/preset-diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What applying a newer version of the account's preset would change (comparison dialog)
+         * @description Only fields that differ between the account, its current preset version and the target version.
+         *     `requires_choice` marks rows the apply request must answer (an edited field, or a field that is
+         *     not confirmed in the target). The target must be a newer version of the same preset (422
+         *     `presets.version_not_newer`).
+         */
+        get: operations["getAccountPresetDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/preset-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a newer version of the account's preset, with a choice for every field that needs one (S16 AC-3)
+         * @description One save, audited as `presets.version_applied` (old and new version, every changed field). Never
+         *     touches open positions or working orders. For every `requires_choice` row of the diff the body has
+         *     either `choices.<field>` (`keep_mine` / `use_preset`, for edited fields; nothing preselected,
+         *     Q-S16-4) or `rule_values.<field>` (the user's value, for not-confirmed fields), else 422
+         *     `presets.choice_required` (pointer `/choices/<field>`). A required not-confirmed field left
+         *     unresolved gets 422 `presets.required_field_unresolved` (pointer `/rule_values/<field>`; the
+         *     maximum position is always resolved, because `max_position_qty` is required). When the
+         *     target changes the opt-in rule version, `opt_ins` must carry the new choices (S5 D16); step-up when
+         *     an `accepted` choice changes the stored state (action `account_opt_in_accept`, target = account).
+         *     Choices made in `opt_ins` are audited as `accounts.opt_in_chosen` as well. A not-confirmed
+         *     maximum position is resolved by the top-level `max_position_qty` (any value up to the highest
+         *     published value; the Core records whether it equals a published one).
+         *     **`cap_conflict` row (5.4.0, Mosaico):** the top-level `max_position_qty`, at or below the new cap,
+         *     IS the answer, also when the row is `edited` / `requires_choice`. `choices.max_position_qty` must be
+         *     absent for that row (400, pointer `/choices/max_position_qty`), because `keep_mine` would break the
+         *     cap. The value counts as `edited` unless it equals the new preset value.
+         *     Check order after authentication, Origin and schema: 404 → step-up → 409 → 422.
+         */
+        post: operations["applyPresetVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/preset-values/{field}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace an edited rule value of the account with the value of its preset version (S16-04)
+         * @description Audited as an account edit (`presets.value_restored`, old and new value). The preset is never
+         *     modified. A field whose preset value is not confirmed cannot be restored (422
+         *     `presets.value_not_confirmed`); a field that is not edited is a no-op (200, not audited).
+         *     `max_position_qty` (the account's top-level field) can be restored like the others (5.4.0,
+         *     Mosaico). It takes the preset's contracts, bumps `row_version` and the limits version, and never
+         *     touches open positions or orders; a value below an open position is allowed, as in
+         *     `updateAccount`.
+         */
+        post: operations["restorePresetValue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/risk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The account's current risk state for today's trading day (used vs limit per rule)
+         * @description Every figure, percent and state is computed by the Core from execution results and plugin-reported
+         *     P&L (S13 AC-2); manual trades (S21, origin `manual`) do not enter daily loss, drawdown, profit
+         *     target, consistency or blocks, and never unblock an account (PO rule: S13 AC-2 + S21 AC-3, PO clarification, slice-plan rev. 7); the UI renders it and does no arithmetic (X-3). `stale` is true when the data is
+         *     not fresh (connection down or no recent report): the UI then never shows the values as current.
+         *     Refetch after `risk.state_changed`.
+         */
+        get: operations["getAccountRisk"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/risk/day-restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart today's count of an account whose trading day is unknown (Q92 c; S13/S15)
+         * @description The user's explicit "recomeçar a contagem de hoje" (Q92 c, 2026-10-24). It is never automatic.
+         *     Allowed only while `AccountRisk.day_state` is `unknown`; otherwise 409 `risk.day_not_unknown`.
+         *     The dialog warns that losses All Win did not see may be left out of today's count, and the body
+         *     must carry `acknowledge_unseen_losses: true`. The Core then sends the account a `day_reanchor`
+         *     in `limits` (protocol 1.4: today's net realized P&L from the fills it received, with the
+         *     last-fill watermark). The plugin applies it, and entries resume; exits were never blocked. The
+         *     response is 202: the day is known only when the plugin confirms (`day_state` back to `known`,
+         *     through `account.changed`). A repeat with the same `Idempotency-Key` returns the recorded 202. A
+         *     NEW request (a new key or none, with a valid step-up) while one is pending returns 202 with the
+         *     pending request and sends nothing new (Crivo L2). Audited as `risk.day_restarted` (actor user).
+         *     Step-up (user decision Q96, 2026-10-24; in the Q35 set, setting on): the body carries `step_up`
+         *     for action `trading_day_restart`, target = this account. Missing → 403 `auth.step_up_required`;
+         *     wrong → 403 `auth.code_invalid` (`StepUpFailed`).
+         *     Check order after authentication and Origin (Esquadro):
+         *     1. 404;
+         *     2. the REPLAY by `Idempotency-Key`: the same key and the same body as a completed request return
+         *        the recorded 202 without checking or consuming a code. The body is compared WITHOUT `step_up`,
+         *        so a retry carrying a new code still gets the recorded 202 (Esmeril L1). The same key with a
+         *        different body (other than `step_up`) gets 409 `common.idempotency_key_reused`. The replay store is
+         *        keyed by (user_id, operation, account_id, key), never by the key alone, so another user's or
+         *        another account's request never matches (Vigia L1). A key is kept 24 h after the request it
+         *        recorded, as in `createAccount` (6.1.0, Crivo q2); after that it is unknown and the request runs
+         *        as new (step-up, then 409 `risk.day_not_unknown` once the day is known, or the pending request);
+         *     3. step-up;
+         *     4. 409.
+         *     Without a known key the step-up applies as normal. On a session below 1.4: 409
+         *     `risk.adapter_protocol_outdated`.
+         */
+        post: operations["restartTradingDayCount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk-summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The worst risk state of each of the caller's accounts (account list column) */
+        get: operations["listRiskSummaries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/risk-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The account's risk rules for the edit form, with provenance for prop accounts with a preset */
+        get: operations["getAccountRiskRules"];
+        /**
+         * Set the account's risk rules (full replacement; optimistic concurrency by the limits `version`)
+         * @description An absent optional rule means "not set" (no warning, no refusal for it). Q48:
+         *     a stricter value applies at once, a looser one from the next trading day (`AccountRisk.pending_changes`).
+         *     A change of the reset time, and a change of drawdown type, always apply from the next trading
+         *     day (`pending_reset_change`, `pending_changes[].change: drawdown_type_changed`).
+         *     Looser means a higher limit or target, and also: removing a rule (absent = no limit), changing
+         *     `profit_target_on_reach` from `flatten_and_block` to `notify`, and changing `daily_loss_limit.kind`
+         *     from `hard` to `soft_pause` or `none` (QA Security L1); each is audited and listed in
+         *     `pending_changes` until it applies. The latest save of a rule wins over an earlier pending value
+         *     (ADR-0006 §3.7). Any write of the account's limits (this operation, `applyPresetVersion`,
+         *     `restorePresetValue`, a preset re-selection in `updateAccount`) bumps the version, so a form
+         *     opened before it gets 409 `common.version_conflict`. This operation bumps ONLY the limits
+         *     `version`, never `Account.row_version` (5.4.0, Grosa): the account form's concurrency is separate.
+         *     A screen that saves the rules and the commission floor together calls this operation first, then
+         *     `setAccountCommission` with the `row_version` it holds. The commission write bumps both versions,
+         *     so the reverse order gets 409 here.
+         *     When the new rules would already be reached today, the body must carry `acknowledge_reached: true`
+         *     (the dialog of the edit form; `previewAccountRiskRules` tells beforehand), else 409
+         *     `risk.reached_not_acknowledged` and nothing is saved. The rule values belong to the account
+         *     (`accounts` module): each save bumps the account's limits version and emits
+         *     `account.limits_changed`; the risk module derives the limits from it (ADR-0006) and only then
+         *     sends `limits` to the plugin. Until the derivation is done, `getAccountRisk.limits_pending` is
+         *     true and new entries are skipped with `routing.limits_pending` (exits continue). Audited as
+         *     `risk.rules_changed`. No step-up in V1 (Q35).
+         */
+        put: operations["putAccountRiskRules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/risk-rules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * When each changed rule would take effect and whether it would already be reached (validate only)
+         * @description Stores nothing and audits nothing. Same validation as `putAccountRiskRules` (same 422 codes).
+         */
+        post: operations["previewAccountRiskRules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's notifications, critical unread first, then newest first, with a cursor
+         * @description One set of notifications per user, shared by the Web and the plugin (Q-S18-4): the same
+         *     `notification_id` and `revision` on both channels. Order: unread `critical` items first, then by
+         *     `updated_at` (last occurrence), newest first, ties by `notification_id`. `next_cursor` is opaque,
+         *     authenticated by the Core (MAC) and bound to the filters (a tampered or mismatching cursor gets
+         *     400, pointer `/query/cursor`). Retention equals the audit's (24 months; Q-S18-6). Every response
+         *     carries the current unread count, so the bell never counts.
+         */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unread count and worst unread severity (bell and shell)
+         * @description The same pair the adapter protocol 1.3 snapshot carries; authoritative (the client never counts).
+         */
+        get: operations["getUnreadCount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark one notification read (idempotent)
+         * @description Sets `read_at` and bumps `revision` (so the plugin's upsert sees it); already read → 200 with the
+         *     item unchanged. Reading never changes or hides the state it reports (a block, a risk level, an out-
+         *     of-sync flag stays visible in banners and badges). A later occurrence of a grouped item makes it
+         *     unread again only when its registry code has `reopen_on_occurrence: true` (Q68 b: the
+         *     `danger` routing codes; Q99 yes, user 2026-10-24: also `sync.flagged`, whose every occurrence is
+         *     a NEW reason); otherwise only `count` and `updated_at` change. Emits `notification.read`.
+         */
+        post: operations["markNotificationRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark several notifications read — a list of ids, or everything up to an instant (idempotent)
+         * @description Either `notification_ids` (≤ 200; unknown or foreign ids are ignored, never reported) or `up_to`
+         *     (every unread item, optionally limited by `category` / `account_id`, whose `updated_at` is at or
+         *     before `up_to`, so an item that arrives while the user clicks "mark all" stays unread). Returns the
+         *     new unread count. Emits one `notification.read`.
+         */
+        post: operations["markNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's completed trades, filtered and sorted, with a cursor
+         * @description Filters combine with AND, values in one array with OR (repeat the parameter). `from` / `to` filter
+         *     on the **exit time** (Q53); both are instants and optional (absent = unbounded);
+         *     `from` after `to` gets 400 (pointer `/query/from`). `origin` selects routed / master / manual /
+         *     platform trades; `source_id` selects routed trades of those sources. Trades of archived accounts
+         *     are kept for the life of the user account (S10 AC-3; Q79 a). From 5.4.0 they are HIDDEN unless
+         *     `include_archived=true` (the "Arquivadas" filter); when shown, they carry `account_deleted`. The
+         *     filter is applied by the Core, so paging, `getTradesSummary` and S22 totals always match the list.
+         *     `next_cursor` is opaque, authenticated by the Core (MAC) and bound to the filters and the sort
+         *     (tamper or mismatch → 400, pointer `/query/cursor`). Ties are broken by `trade_id`.
+         *     `getTradesSummary` with the same filters gives the count and total P&L of the whole set.
+         */
+        get: operations["listTrades"];
+        put?: never;
+        /**
+         * Record a trade the platform did not capture (origin `manual`, S21 AC-3)
+         * @description Idempotent by `Idempotency-Key` (same rules as `createAccount`: same key and body within 24 h →
+         *     200 with the trade created first; different body or after 24 h → 409
+         *     `trades.idempotency_key_reused`; never a second trade). Duration, gross P&L, commission and net
+         *     P&L are computed by the Core (net is the main value; the commission is the typed one, else the
+         *     account floor); MAE / MFE are optional (Q55). The
+         *     account may be active, paused or disabled, not archived. Audited as `trades.manual_created`.
+         */
+        post: operations["createManualTrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trades/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Count and total P&L of the whole filtered set (the same figures S22 uses) */
+        get: operations["getTradesSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trades/{trade_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One trade (detail panel) */
+        get: operations["getTrade"];
+        /**
+         * Correct a manual trade (Q56); captured trades are never editable
+         * @description Full replacement of the manual fields, with `row_version` (stale → 409 `common.version_conflict`).
+         *     A captured trade (`origin` ≠ `manual`) gets 409 `trades.not_editable`. Audited as
+         *     `trades.manual_changed` with previous and new values. Check order after authentication, Origin and
+         *     schema: 404 → 409 → 422.
+         */
+        put: operations["updateManualTrade"];
+        post?: never;
+        /**
+         * Delete a manual trade (Q56)
+         * @description The trade leaves the list and the metrics; the audit entry `trades.manual_deleted` keeps its
+         *     values. `row_version` is required (stale → 409 `common.version_conflict`); a captured trade gets
+         *     409 `trades.not_editable`.
+         */
+        delete: operations["deleteManualTrade"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Duration, commission and net / gross P&L of a manual trade before saving (stateless, Core arithmetic)
+         * @description Stores nothing, audits nothing. Same validation and same 422 codes as `createManualTrade`.
+         *     Without `commission`, it returns the commission the Core would compute (Q71: floor × quantity × 2,
+         *     `configured`; no floor → 0, `none`), so the form shows the value and the user can override it.
+         *     With `commission`, it returns that value (`manual`).
+         */
+        get: operations["previewManualTrade"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Totals and per-trade averages for a period and a set of accounts, split by source and signal type
+         * @description The trade set is exactly `listTrades` with the same `from` / `to` (exit time, Q53) and
+         *     `account_id` filters, restricted to trades recorded at or before `as_of` (S22 AC-2). `as_of` is
+         *     the instant of this computation; pass it as `recorded_before` to `listTrades` /
+         *     `getTradesSummary` to show the same set (a manual edit or delete after `as_of` is the only way
+         *     the two can differ, and it raises `trade.captured` / the audit). Every figure is computed by the
+         *     Core with exact decimals (X-3); the browser does no arithmetic, bar lengths included.
+         *     Rounding: half away from zero (a negative average −12.345 → −12.35, symmetric with positives):
+         *     money averages to 2 decimals; `win_rate` to one decimal (Q-S22-2); `avg_duration_seconds` to whole
+         *     seconds; `bar_ratio` to 4 decimals. Averages are
+         *     absent (UI `—`) when no trade enters them. Totals exist only for P&L and the number of trades;
+         *     time, MAE and MFE are averages only (Q-S22-3).
+         *     Isolation (X-2): an unknown or another user's `account_id` simply matches nothing, as in
+         *     `listTrades` / `listActivity` (empty totals and groups; never a different status such as 404), so
+         *     the response never reveals whether an account exists. Required test: two users, each filtering by
+         *     the other's account id, get `trade_count` 0 and no groups (QA Security, 3.4.0 info).
+         */
+        get: operations["getPerformance"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -642,15 +2000,18 @@ export interface components {
         Locale: "pt-BR" | "en";
         /** @description IANA time zone name, validated by the Core against its tz database. */
         TimeZone: string;
+        /**
+         * @description A user-chosen name (sources, connections, and every other field that uses this schema).
+         *     The Core trims leading and trailing white space before validating and storing, and checks the
+         *     1–60 length on the TRIMMED value. The schema's `minLength` / `maxLength` are the client-side
+         *     form: clients send trimmed names (Crivo R2, the approved S3 implementation). A name that is blank after trimming,
+         *     contains a control character (Unicode Cc) or contains a token-shaped part (`aw[kd]_…`, a source
+         *     or device token, ADR-0003 §7) is refused with 400 `common.invalid_request` and the field's
+         *     pointer (e.g. `/name`). Nothing is stored (5.2.0, Crivo L1, Esquadro).
+         */
         DisplayName: string;
-        /** @description 12–128 characters after NFKC normalization; breached/common list rejected (auth policy §2). Length limits are enforced by the Core after normalization. */
-        NewPassword: string;
         TokenBody: {
             token: string;
-        };
-        PasswordAndCode: {
-            password: string;
-            code: string;
         };
         ErrorCode: string;
         Error: {
@@ -684,15 +2045,114 @@ export interface components {
             is_platform_admin: boolean;
         };
         LoginResult: {
-            /** @enum {string} */
-            state: "authenticated" | "pending_2fa";
-            user?: components["schemas"]["Me"];
-            pending_expires_at?: components["schemas"]["Timestamp"];
-            recovery_codes_remaining?: number;
-        } & unknown;
+            user: components["schemas"]["Me"];
+            /** @description True when this sign-in registered a new device (the notice e-mail was sent; never on sign-up). */
+            new_device: boolean;
+        };
+        /**
+         * @description `whatsapp` is accepted by the schema from 2.0.0 and becomes usable with S3b (U17).
+         * @enum {string}
+         */
+        CodeChannel: "email" | "whatsapp";
+        /** @description Sealed challenge token (auth policy §3); opaque to clients. Never logged. */
+        ChallengeId: string;
+        /**
+         * @description The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,
+         *     uppercase, O→0, I/L→1, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or
+         *     malformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400
+         *     `common.invalid_request`, which counts no attempt and reveals nothing. Never logged.
+         */
+        OneTimeCode: string;
+        ChallengeIssued: {
+            challenge_id: components["schemas"]["ChallengeId"];
+            expires_at: components["schemas"]["Timestamp"];
+            /** @description Seconds until `resendCode` is accepted (60 after a send). */
+            resend_after_s: number;
+        };
+        /**
+         * @description Actions that need a step-up code (auth policy §6.2). The user's three actions are
+         *     `account_opt_in_accept` / `account_create_opt_in_accept`, `connection_unpair`, and the channel change
+         *     (its own flow). **Included pending Q35:** `source_create`, `source_rotate`, `connection_create`,
+         *     `pairing_code_new`, `admin_invitation_create` (the policy's security musts), `route_enable`,
+         *     `account_binding_change` (QA Security M1/L1 on 2.4.0, same setting `step_up.q35_persistence_actions`,
+         *     default on, conditional). The enum is a superset so it never has to change: whether those
+         *     operations **require** the proof is a Core setting (`step_up.q35_persistence_actions`, default on),
+         *     shown as `x-step-up: conditional`. The setting is server configuration only (never an admin/UI/DB
+         *     toggle); missing or invalid means on (fail-closed). If the user rejects them, the setting goes off and
+         *     the values stay valid but unused. Enforcement-off / max-position values are added when Q35 decides.
+         *     - `source_create`, `source_rotate` (target = source), `connection_create`, `pairing_code_new` (target = connection),
+         *       `connection_unpair` (target = connection), `account_opt_in_accept` (target = account; automation or copy,
+         *       setAccountOptIn, applyPresetVersion and the S5/S7 update operations), `account_create_opt_in_accept` (no
+         *       target; S5 create with an accepted opt-in), `admin_invitation_create`.
+         *     - `route_enable` (target = account; createRoute/updateRoute switching any route on, Q35 / S3 AC-10).
+         *     - `account_binding_change` (target = account; updateAccount changing the platform binding of an account that
+         *       receives automation: opt-in accepted or an active automated route).
+         *     - `account_sync_clear` (target = account; `clearAccountSync`; user decision Q95, 2026-10-24; in the Q35 set).
+         *     - `trading_day_restart` (target = account; `restartTradingDayCount`, HTTP 5.4.0; user decision Q96; in the Q35
+         *       set).
+         *     - `admin_recovery` (5.4.0, S3 AC-12; Esquadro): the platform admin's own step-up for the operator command
+         *       (never HTTP), a new one for each of these steps:
+         *       - `admin recovery start`: target = the target user's id (the change does not exist yet);
+         *       - `confirm` and `cancel`: target = the channel change id.
+         *       Audited as `security.step_up_succeeded` / `_failed` in the admin's trail. `requestStepUp` refuses
+         *       `admin_recovery` with 400 `common.invalid_request` and pointer `/action` (operator command only).
+         * @enum {string}
+         */
+        StepUpAction: "source_create" | "source_rotate" | "connection_create" | "pairing_code_new" | "connection_unpair" | "account_opt_in_accept" | "account_create_opt_in_accept" | "admin_invitation_create" | "route_enable" | "account_binding_change" | "account_sync_clear" | "trading_day_restart" | "admin_recovery";
+        /** @description Step-up proof carried in the body of a step-up operation; consumed in the action's transaction. */
+        StepUpProof: {
+            challenge_id: components["schemas"]["ChallengeId"];
+            code: components["schemas"]["OneTimeCode"];
+        };
+        /** @description Body of a step-up operation that has no other input. */
+        StepUpBody: {
+            step_up?: components["schemas"]["StepUpProof"];
+        };
+        Device: {
+            id: components["schemas"]["Uuid"];
+            /** @description Coarse browser and OS family from the User-Agent, e.g. "Chrome on Windows". */
+            label: string;
+            first_seen_at: components["schemas"]["Timestamp"];
+            last_seen_at: components["schemas"]["Timestamp"];
+            /** @description True for the device of this request. */
+            current: boolean;
+        };
+        ChannelChange: {
+            id: components["schemas"]["Uuid"];
+            /**
+             * @description 5.4.0 (S3 AC-12). `user_change` is the user's own flow; every change before 5.4.0 is one.
+             *     `admin_recovery` is a recovery started and confirmed by a platform admin with the operator
+             *     command `allwin-core admin recovery start|confirm|status|cancel` (never HTTP; Esquadro). The
+             *     user's session sees it with `codes` empty, because only the admin confirms. The user can still
+             *     cancel it with `cancelChannelChange` during the hold.
+             * @enum {string}
+             */
+            kind: "user_change" | "admin_recovery";
+            channel: components["schemas"]["CodeChannel"];
+            /**
+             * @description `on_hold` = every code confirmed, the change waits until `hold_until` (auth policy §9 hold; §7 M2 if adopted) and can be cancelled.
+             * @enum {string}
+             */
+            status: "awaiting_codes" | "on_hold" | "completed" | "cancelled" | "expired";
+            masked_new_value: string;
+            /** @description One entry per code of the flow. */
+            codes: {
+                /** @enum {string} */
+                role: "current_value" | "new_value" | "other_channel";
+                challenge_id: components["schemas"]["ChallengeId"];
+                confirmed: boolean;
+            }[];
+            expires_at: components["schemas"]["Timestamp"];
+            hold_until?: components["schemas"]["Timestamp"];
+        } & (unknown & unknown);
         SecurityState: {
-            totp_enabled: boolean;
-            recovery_codes_remaining: number;
+            /** Format: email */
+            email: string;
+            /** @description Confirmed WhatsApp number (E.164), absent until added (S3b). */
+            whatsapp?: string;
+            /** @description When a new channel change is accepted (24 h after the last one; auth policy §7). In the past when allowed now. */
+            channel_change_allowed_at: components["schemas"]["Timestamp"];
+            pending_channel_change?: components["schemas"]["ChannelChange"];
             session: {
                 persistent: boolean;
                 /** @description 43200 (12 h) or 604800 (7 d) — Q21. */
@@ -701,11 +2161,7 @@ export interface components {
                 absolute_timeout_s: number;
                 idle_expires_at: components["schemas"]["Timestamp"];
                 absolute_expires_at: components["schemas"]["Timestamp"];
-                step_up_valid_until: components["schemas"]["Timestamp"];
             };
-        };
-        RecoveryCodes: {
-            recovery_codes: string[];
         };
         Invitation: {
             id: components["schemas"]["Uuid"];
@@ -724,7 +2180,7 @@ export interface components {
             email: string;
             /** @enum {string} */
             status: "active" | "closed";
-            totp_enabled: boolean;
+            whatsapp_verified: boolean;
             is_platform_admin?: boolean;
             created_at: components["schemas"]["Timestamp"];
             last_sign_in_at?: components["schemas"]["Timestamp"];
@@ -792,68 +2248,25 @@ export interface components {
             open_position_accounts?: string[];
             created_at: components["schemas"]["Timestamp"];
             unpaired_at?: components["schemas"]["Timestamp"];
-        };
-        /** @enum {string} */
-        OptInKind: "automation" | "copy";
-        /**
-         * @description Stance of the account's preset version for the opt-in kind. A missing stance in the preset is `unknown`.
-         * @enum {string}
-         */
-        FirmStance: "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed";
-        OptInChoiceRequest: {
-            /** @enum {string} */
-            choice: "accepted" | "declined";
-            /** @description Preset rule version whose text was displayed. */
-            rule_version_id: components["schemas"]["Uuid"];
-        };
-        /**
-         * @description Embedded as the `opt_ins` property of the S5 account create/update request bodies (atomic
-         *     create-with-choice; the rest of those operations is defined in the S5 contract). Must contain every
-         *     kind whose choice is required for the account's preset version and is not already `chosen` for that
-         *     version; otherwise 422 `accounts.opt_in_required` with `pointer` `/opt_ins/automation` or
-         *     `/opt_ins/copy`, and nothing is saved. A stale `rule_version_id` gives 409
-         *     `accounts.rule_version_changed`. The S5 create/update operations are `x-step-up: conditional`,
-         *     `x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state`; the step-up happens
-         *     before the single save, so cancelling it saves nothing. A kind that is `not_required` is ignored.
-         */
-        OptInChoices: {
-            automation?: components["schemas"]["OptInChoiceRequest"];
-            copy?: components["schemas"]["OptInChoiceRequest"];
-        };
-        OptInState: {
-            kind: components["schemas"]["OptInKind"];
-            firm_stance: components["schemas"]["FirmStance"];
             /**
-             * @description not_required = real account or the stance is `allowed`; chosen = an explicit choice exists for
-             *     the current rule version; pending_review = the stance (or, provisionally, its official text)
-             *     changed after the choice, or a requirement appeared for an account that had none (Q26).
-             *     Routing treats `pending_review` and `declined` as not accepted (`routing.automation_not_accepted`
-             *     / `routing.copy_not_accepted`). There is no "saved without a choice" state: first choices are
-             *     atomic with creation.
+             * @description Why the connection is not connected (1.3 close 4100 = user). Present when status is disconnected, outdated or unpaired.
              * @enum {string}
              */
-            state: "not_required" | "chosen" | "pending_review";
-            /**
-             * @description With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in
-             *     force), present only if one was ever made, so the review dialog can show it; it is never
-             *     preselected. Absent with `not_required`.
-             * @enum {string}
-             */
-            choice?: "accepted" | "declined";
-            chosen_at?: components["schemas"]["Timestamp"];
-            /** @description Rule version the `choice` was made against. */
-            rule_version_id?: components["schemas"]["Uuid"];
-            /** @description The preset rule version currently in force for this account. */
-            current_rule_version_id?: components["schemas"]["Uuid"];
-        } & (unknown & unknown & unknown);
+            disconnect_reason?: "user" | "network" | "outdated" | "unpaired";
+        };
         /** @description SSE payloads (field `data`). `type` equals the SSE `event` name; `at` is when the event happened (server clock). */
-        Event: {
+        Event: components["schemas"]["AccountChangedEvent"] | components["schemas"]["AccountArchivedEvent"] | components["schemas"]["RouteChangedEvent"] | components["schemas"]["AuditEntryRecordedEvent"] | components["schemas"]["PresetVersionAvailableEvent"] | components["schemas"]["RiskStateChangedEvent"] | components["schemas"]["NotificationCreatedEvent"] | components["schemas"]["NotificationUpdatedEvent"] | components["schemas"]["NotificationReadEvent"] | components["schemas"]["TradeCapturedEvent"] | {
             /** @constant */
             type: "connection.status_changed";
             at: components["schemas"]["Timestamp"];
             connection_id: components["schemas"]["Uuid"];
             /** @enum {string} */
             status: "awaiting_pairing" | "connected" | "disconnected" | "outdated" | "unpaired";
+            /**
+             * @description Why the connection is not connected (1.3 close 4100 = user). Present when status is disconnected, outdated or unpaired.
+             * @enum {string}
+             */
+            disconnect_reason?: "user" | "network" | "outdated" | "unpaired";
         } | {
             /** @constant */
             type: "connection.paired";
@@ -867,13 +2280,2836 @@ export interface components {
             at: components["schemas"]["Timestamp"];
             connection_id: components["schemas"]["Uuid"];
             /** @enum {string} */
-            reason: "superseded" | "pairing_locked";
+            reason: "superseded";
         } | {
             /** @constant */
             type: "session.ended";
             at: components["schemas"]["Timestamp"];
             /** @enum {string} */
-            reason: "logout" | "expired" | "password_reset" | "password_changed" | "totp_changed" | "admin_totp_reset";
+            reason: "logout" | "expired" | "signed_out_everywhere" | "device_revoked" | "channel_changed";
+        };
+        /** @description Trimmed by the Core (NFC); must not be blank. Unique per user among live accounts, case-insensitive. */
+        AccountName: string;
+        /** @enum {string} */
+        AccountKind: "prop" | "real";
+        /** @enum {string} */
+        LifecycleState: "active" | "paused" | "disabled";
+        /** @description Account size in `currency` (decimal string, at most 2 decimals, > 0). Zero fails the pattern: 400 `common.invalid_request`. */
+        SizeAmount: string;
+        /**
+         * @description Stop/target mode of an account (S8 AC-5; Q-S8-3):
+         *     - `individual`: each entry has its own stop and target from its own fill price, and partial exits
+         *       reduce the oldest entries first (FIFO, P2);
+         *     - `shared`: the position has one stop and one target, recalculated from the average price after
+         *       each fill with the account profile distances.
+         *     The same values as `DetailsBracketCalculated.mode`. It only matters where All Win places stop and
+         *     target.
+         * @enum {string}
+         */
+        BracketMode: "individual" | "shared";
+        /** @description Maximum position in contracts, one number per account in V1 (Q-A1). Mandatory (S5 AC-3). */
+        MaxPositionQty: number;
+        /** @description Whole number ≥ 1 (S5 AC-5); a fraction or zero gets 400 `common.invalid_request` with the pointer. */
+        Multiplier: number;
+        /** @description Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform. */
+        FirmPlatform: string;
+        /** @description Free text (trimmed by the Core) for prop accounts without a preset. */
+        ManualText: string;
+        /** @description A platform account reported by one of the caller's connections (`Connection.visible_accounts`). */
+        PlatformAccountRef: {
+            connection_id: components["schemas"]["Uuid"];
+            platform_account: string;
+        };
+        /** @description The bound platform account, as last reported by the plugin. `oco_location` `unknown` is treated as `local` (S9 AC-4). */
+        AccountBinding: {
+            connection_id: components["schemas"]["Uuid"];
+            connection_name: components["schemas"]["DisplayName"];
+            /** @enum {string} */
+            connection_status: "awaiting_pairing" | "connected" | "disconnected" | "outdated" | "unpaired";
+            platform_account: string;
+            /** @enum {string} */
+            kind: "simulation" | "playback" | "live" | "unknown";
+            /** @enum {string} */
+            oco_location: "local" | "server" | "unknown";
+            bound_at?: components["schemas"]["Timestamp"];
+            /**
+             * @description 5.4.0 (Esquadro X2, S2 gateway). The value is `pending_handshake` when the binding was made or
+             *     changed after that connection's last handshake (`welcome`). It takes effect only at the next
+             *     handshake: commands for the account stay pending meanwhile, entries expire by TTL and exits
+             *     wait. With the connection `connected`, the Web shows "Vale quando o plugin reconectar." The value
+             *     is `active` once a handshake has included the binding. An unbind needs no field: routing stops
+             *     creating commands at once (gate `platform_unbound`), and the adapter ignores the account until
+             *     its next `welcome`.
+             * @enum {string}
+             */
+            activation: "active" | "pending_handshake";
+        };
+        AccountOptIns: {
+            automation: components["schemas"]["OptInState"];
+            copy: components["schemas"]["OptInState"];
+        };
+        Account: {
+            id: components["schemas"]["Uuid"];
+            kind: components["schemas"]["AccountKind"];
+            display_name: components["schemas"]["AccountName"];
+            /** @description Prop only. From the preset when `preset_version_id` is set, else the manual text. */
+            firm_name?: string;
+            /** @description Prop only (as `firm_name`). */
+            plan_name?: string;
+            /** @description Prop only: the preset phase code (`evaluation`, `funded`, `live`) or the manual text. */
+            phase?: string;
+            /** @description Prop with a preset only — a newer version of the account's preset exists (list link "Preset novo"; details in `getAccountPreset`). */
+            preset_update_available?: boolean;
+            /** @description Prop with a preset only (S16 catalog). */
+            firm_id?: components["schemas"]["Uuid"];
+            /** @description Prop with a preset only. The version applied to this account; a newer one is applied only by the user (S16 AC-3). */
+            preset_version_id?: components["schemas"]["Uuid"];
+            firm_platform?: components["schemas"]["FirmPlatform"];
+            size_amount: components["schemas"]["SizeAmount"];
+            /** @description ISO 4217; 'USD' in V1. */
+            currency: string;
+            multiplier: components["schemas"]["Multiplier"];
+            max_position_qty: components["schemas"]["MaxPositionQty"];
+            bracket_mode: components["schemas"]["BracketMode"];
+            lifecycle_state: components["schemas"]["LifecycleState"];
+            /** @description Absent when the account is not bound; an unbound account is never routed (Q37). */
+            binding?: components["schemas"]["AccountBinding"];
+            opt_ins: components["schemas"]["AccountOptIns"];
+            /** @description The account's commission floor per contract and side (absent = none). */
+            commission_per_contract_side?: components["schemas"]["MoneyAmount"];
+            /**
+             * Format: date
+             * @description Prop accounts in an evaluation phase (S13b).
+             */
+            evaluation_start?: string;
+            evaluation_earned_before?: components["schemas"]["MoneyAmount"];
+            /** @description Last known from the platform (gateway); false when unbound. Used for the lifecycle and delete messages. */
+            has_open_position: boolean;
+            sync: components["schemas"]["AccountSync"];
+            row_version: number;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+            /** @description Only in the idempotent replay of a create whose account was archived since; every other read of an archived account is 404. */
+            archived_at?: components["schemas"]["Timestamp"];
+        } & unknown;
+        /**
+         * @description S11 (ADR-0004 §6, Q14). The Core's view of the account's synchronization. `out_of_sync` is sticky
+         *     until the user clears it (`clearAccountSync`); while out of sync, entries are refused
+         *     (`routing.out_of_sync`) and exits still pass (P1, Q75). `in_sync` ⇔ `reasons` and
+         *     `resolved_reasons` empty. `out_of_sync` always has at least one reason, active or resolved. An
+         *     account can be `out_of_sync` with every reason resolved: the Core removed the cause, and the user
+         *     still has to clear (ADR-0004 §6.1).
+         *     **Overflow (Crivo R2):** the Core keeps every reason. The response lists at most 32 of each kind,
+         *     the most severe first and, within a code, the newest first, and `reasons_total` /
+         *     `resolved_total` give the full counts. The clear's `expected_version` covers all of them, the
+         *     hidden ones included. A reason added after the user's view bumps `version`, so it is never cleared
+         *     unseen. An unprotected-exposure reason (`flatten_failed_unprotected`, `bracket_double_fill`,
+         *     `bracket_incomplete`) is never left out of the 32. Changes reach the client as
+         *     `account.changed`. Not part of `row_version`: the Core changes it, the user never edits it.
+         */
+        AccountSync: {
+            /** @enum {string} */
+            state: "in_sync" | "out_of_sync";
+            /** @description Bumps on every change of `state`, `reasons` or `resolved_reasons`; `clearAccountSync.expected_version`. */
+            version: number;
+            /** @description When the account last became `out_of_sync`. Present only when out of sync. */
+            flagged_at?: components["schemas"]["Timestamp"];
+            /** @description The LIVE condition only (Crivo R1 on r5): false while the Core cannot observe the account right now: the adapter session is down, a snapshot reports the broker connection lost (`connected: false`), or the reconnect check has not finished. The mere presence of a reason such as `sync.bracket_integrity_unknown` never makes it false: once observation resumes, that reason stays active but no longer blocks a clear (from `welcome` until the Core has evaluated the reconnect snapshot and the replayed reports, ADR-0004 §4 step 3 / §6.1 r5; S11 AC-5 iv, "Integridade do bracket desconhecida"). False for an unbound account. A clear is refused while it is false (Q83 a). */
+            observable: boolean;
+            /** @description Active reasons, most severe first (`SyncReasonCode` order). At most one active reason per code and instrument (symbol + contract month) or command (the Core's dedupe key), so two rejected commands are two reasons. */
+            reasons: components["schemas"]["SyncReason"][];
+            /** @description All active reasons; greater than the length of `reasons` only on overflow. */
+            reasons_total: number;
+            /** @description Open positions from the last evaluated snapshot, with their live All Win protection, for the clear confirmation (Vigia L2). Empty when flat; absent when the account was never observed. */
+            positions?: ({
+                instrument_symbol: string;
+                contract_month: string;
+                /** @description Signed contracts. */
+                position: number;
+                /**
+                 * @description Live stop protection of the position, from ANY working stop that covers it, All Win or manual (Q98 b, user 2026-10-24), counting only stop and stop-limit orders on the opposite side, same account and same contract (6.1.0, Vigia L1; see `clearAccountSync`): `full` = their total working quantity is ≥ |position|; `partial` = at least one, with less than |position|; `none` = none; `unknown` = an order of this account and contract is in an unknown state, so the Core cannot tell. Only `full` lets a clear release the position.
+                 * @enum {string}
+                 */
+                protection: "full" | "partial" | "none" | "unknown";
+                /**
+                 * @description Only with `full` / `partial` (6.1.0, Crivo q1; absent otherwise): who placed the covering stops. `external` = placed outside All Win (e.g. a manual NT8 stop), shown as such; `mixed` = both.
+                 * @enum {string}
+                 */
+                protection_source?: "all_win" | "external" | "mixed";
+                as_of?: components["schemas"]["Timestamp"];
+            } & unknown)[];
+            /** @description All resolved reasons; greater than the length of `resolved_reasons` only on overflow. */
+            resolved_total?: number;
+            /** @description Reasons the Core removed while the account stays out of sync (shown as history in the alert). Only the Core resolves a reason. They survive a new flag and are emptied only by the user's clear. */
+            resolved_reasons?: components["schemas"]["SyncReason"][];
+        } & unknown;
+        /**
+         * @description Stable reason codes (ADR-0004 §6/§6.1; the same codes as the adapter protocol `sync_reasons`).
+         *     The enum order is the display order, most severe first. Unprotected or unexpected exposure comes
+         *     first, then unknown state, then a lost or failed command, then a discontinuity or disconnect, and
+         *     last the informational orphan-leg cancel. Clients render an unknown code with a generic text
+         *     (same rule as the notification registry).
+         *     Canon: ADR-0004 §6 "sync reason" column (r5); 21 codes (Esmeril nit: `reason-codes.md` does not list them). A new
+         *     code is a minor version here and in the protocol. `flatten_failed_unprotected` (5.3.0, U19,
+         *     Esmeril M1; the 21st code, confirmed by Esquadro; producer: the gateway, from the flatten's rejected/unknown report and the protection legs it cancelled) is a flatten of ANY origin that failed after
+         *     cancelling protection while the position stays open with all or part of its protection lost.
+         *     The origins are close or reverse (including Q75), the Q27 orphan-leg flatten, and local
+         *     enforcement (S15). It is the only sync reason besides `bracket_double_fill` that is critical. A
+         *     failed flatten with the protection intact is `command_rejected` (danger). The codes added in r5:
+         *     - `command_unknown`: a command whose status ended `unknown`;
+         *     - `command_rejected`: a command rejected, including a flatten or cancel whose cancel failed
+         *       (`order.cancel_failed`); the adapter's code is in `adapter_reason_code`. A
+         *       `command.position_changed` gives the more specific `position_changed`, and so does a
+         *       `command.nothing_to_reduce` against an expected position that is not flat (the position changed
+         *       under the reduce: the same fact as the U13 guard);
+         *     - `command_expired`: expired at the adapter or in the Core (`expired_by`);
+         *     - `command_partially_filled`: partially filled without completion before the order's end of life;
+         *     - `snapshot_mismatch`: a reconnect or periodic snapshot differs (`snapshot_trigger`);
+         *     - `external_activity`: master-replication destinations only; TradingView-only destinations are
+         *       audited only (T3);
+         *     - `fill_corrected`: an amend or remove after which the expected state differs, including an amend
+         *       or remove of an add the Core does not know;
+         *     - `connection_unpaired` (Q18);
+         *     - `ambiguous_reference` (`order.ambiguous_reference`);
+         *     - `cancel_failed`: a cancel the adapter started by itself (orphan-order protection), with no
+         *       command; a failed cancel inside a command is `command_rejected`;
+         *     - `disconnected_in_trade`: a disconnect with a position or a command in flight.
+         * @enum {string}
+         */
+        SyncReasonCode: "sync.flatten_failed_unprotected" | "sync.bracket_double_fill" | "sync.bracket_incomplete" | "sync.bracket_integrity_unknown" | "sync.command_unknown" | "sync.position_changed" | "sync.snapshot_mismatch" | "sync.command_partially_filled" | "sync.command_rejected" | "sync.command_expired" | "sync.command_undelivered" | "sync.cancel_failed" | "sync.ambiguous_reference" | "sync.external_activity" | "sync.fill_corrected" | "sync.simulation_reset" | "sync.disconnected_in_trade" | "sync.disconnected_by_user" | "sync.connection_unpaired" | "sync.account_not_found_after_repair" | "sync.bracket_orphan_leg";
+        /** @description One reason, with the facts the Core holds. The platform's native text is never included (it may contain account data). */
+        SyncReason: {
+            code: components["schemas"]["SyncReasonCode"];
+            detected_at: components["schemas"]["Timestamp"];
+            /** @description Only in `resolved_reasons`. */
+            resolved_at?: components["schemas"]["Timestamp"];
+            /** @description Only on `sync.bracket_incomplete` (6.1.0): the time of the user's clear that kept this reason because its position was not fully covered (`clearAccountSync`). The account is then blocked for new entries only by protection, and returns to `in_sync` by itself once every held reason is resolved (Q101). */
+            held_at_clear?: components["schemas"]["Timestamp"];
+            /** @description The instrument as the gateway knows it from the wire (protocol `symbol`), e.g. `MNQ` (5.3.0, Bigorna). Present whenever the reason concerns one instrument. The gateway has no catalog id, so `instrument_id` is present only when the Core resolved it. */
+            instrument_symbol?: string;
+            /** @description With `instrument_symbol`: the protocol `contract_month` (YYYY-MM). */
+            contract_month?: string;
+            instrument_id?: components["schemas"]["Uuid"];
+            /** @description The instruction behind the missed, rejected, expired or partial command. */
+            instruction_id?: components["schemas"]["Uuid"];
+            command_id?: components["schemas"]["Uuid"];
+            /** @description Signed contracts the Core expected (snapshot mismatch, disconnect: the last known). */
+            expected_position?: number;
+            /** @description Signed contracts the platform reported. */
+            reported_position?: number;
+            /** @description With `command_partially_filled`: the ordered quantity. */
+            quantity?: number;
+            /** @description With `command_partially_filled`: the filled quantity. */
+            filled_qty?: number;
+            /** @description With `command_rejected` / `command_expired` / `cancel_failed`: the adapter's stable reason code (protocol `reason-codes.md`, e.g. `order.cancel_failed`). Rendered as a code, never as platform text. */
+            adapter_reason_code?: string;
+            /**
+             * @description With `snapshot_mismatch`.
+             * @enum {string}
+             */
+            snapshot_trigger?: "reconnect" | "periodic";
+            /**
+             * @description With `command_expired`.
+             * @enum {string}
+             */
+            expired_by?: "core" | "adapter";
+            core_action?: components["schemas"]["SyncCoreAction"];
+        };
+        /** @description What All Win did automatically for this reason, exactly as done (S11 AC-5 i, iii; vision §8). Absent when it did nothing. */
+        SyncCoreAction: {
+            /** @enum {string} */
+            kind: "orphan_orders_cancelled" | "orphan_position_flattened";
+            /** @description With `orphan_orders_cancelled`. */
+            cancelled_orders?: {
+                /** @enum {string} */
+                child_role: "stop" | "target";
+                price?: components["schemas"]["Price"];
+                quantity?: number;
+            }[];
+            /** @description With `orphan_position_flattened`. */
+            flattened_qty?: number;
+            /**
+             * @description With `orphan_position_flattened`.
+             * @enum {string}
+             */
+            flattened_side?: "long" | "short";
+            fill_price?: components["schemas"]["Price"];
+        } & unknown;
+        AccountList: {
+            accounts: components["schemas"]["Account"][];
+        };
+        /**
+         * @description `kind: real` → `size_amount` required; no prop fields; no `opt_ins`.
+         *     `kind: prop` → either `preset_version_id` (+ `firm_platform` when the preset requires it; firm,
+         *     plan, phase and size then come from the preset and must be absent) or all of `firm_name`,
+         *     `plan_name`, `phase`, `size_amount` (manual).
+         */
+        AccountCreateRequest: {
+            kind: components["schemas"]["AccountKind"];
+            display_name: components["schemas"]["AccountName"];
+            preset_version_id?: components["schemas"]["Uuid"];
+            firm_platform?: components["schemas"]["FirmPlatform"];
+            firm_name?: components["schemas"]["ManualText"];
+            plan_name?: components["schemas"]["ManualText"];
+            phase?: components["schemas"]["ManualText"];
+            size_amount?: components["schemas"]["SizeAmount"];
+            /** @description Defaults to 1. */
+            multiplier?: components["schemas"]["Multiplier"];
+            max_position_qty: components["schemas"]["MaxPositionQty"];
+            /** @description Defaults to `individual` (S8). */
+            bracket_mode?: components["schemas"]["BracketMode"];
+            /**
+             * @description USD per contract and side, ≥ 0 (U20 a): the floor of each fill's commission (effective = max(platform,
+             *     this × quantity)). The UI prefills it from the preset (`commission_per_contract_side` rule);
+             *     absent = no floor. Any change bumps the account's limits version (net P&L feeds risk). A higher floor applies at once; a lower one (or removing it) applies from the next trading day and is shown in `AccountRisk.pending_commission_change` (ADR-0006 §3.7).
+             */
+            commission_per_contract_side?: components["schemas"]["MoneyAmount"];
+            /**
+             * Format: date
+             * @description Accounts with an evaluation target only (Q46, S13b; Q69 a) — the day the evaluation count starts; default the registration date in the user's time zone. Invariant — an account with an evaluation target always has an `evaluation_start`; when an existing account gains a target (selection or preset change, `applyPresetVersion`, a rule edit), the Core sets a missing start to the same default in that transaction; that is a rule-input change, so it bumps `account.limits_version` and emits `account.limits_changed` (ADR-0006 §3.1). Sent for an account without an evaluation target → 422 `accounts.evaluation_not_applicable`. Later changes only through `restartEvaluation`.
+             */
+            evaluation_start?: string;
+            /** @description Net profit already made in this evaluation before `evaluation_start` (optional; counts toward the target). Accounts with an evaluation target only (else 422 `accounts.evaluation_not_applicable`). */
+            evaluation_earned_before?: components["schemas"]["MoneyAmount"];
+            binding?: components["schemas"]["PlatformAccountRef"];
+            /** @description Prop with a preset only. The account's own rule values where they differ from the preset or resolve a not-confirmed field (S16 AC-2, AC-6). */
+            rule_values?: components["schemas"]["PresetRuleValues"];
+            /** @description The standard size whose default profile is copied, when the account's size (real, or prop outside the standard list, Q73 b) is a tie (`getNearestProfileSize` returns two candidates). Ignored otherwise. */
+            profile_size?: components["schemas"]["SizeAmount"];
+            opt_ins?: components["schemas"]["OptInChoices"];
+            /** @description Required when an `opt_ins` choice is `accepted` (action `account_create_opt_in_accept`, no target). */
+            step_up?: components["schemas"]["StepUpProof"];
+        } & (unknown & unknown & unknown);
+        /**
+         * @description Full replacement of the editable fields (`kind` is fixed at creation). The same prop/real rules as
+         *     `AccountCreateRequest`, keyed on the stored `kind`: real → `size_amount`, no prop fields, no
+         *     `opt_ins`; prop → `preset_version_id` (+ `firm_platform`) or the four manual fields. A body that
+         *     does not fit the stored kind gets 400 `common.invalid_request` with the pointer of the first
+         *     offending field. Switching a prop account from a preset to manual fields (or back) is allowed.
+         */
+        AccountUpdateRequest: {
+            row_version: number;
+            display_name: components["schemas"]["AccountName"];
+            preset_version_id?: components["schemas"]["Uuid"];
+            firm_platform?: components["schemas"]["FirmPlatform"];
+            firm_name?: components["schemas"]["ManualText"];
+            plan_name?: components["schemas"]["ManualText"];
+            phase?: components["schemas"]["ManualText"];
+            size_amount?: components["schemas"]["SizeAmount"];
+            /** @description Absent means 1. */
+            multiplier?: components["schemas"]["Multiplier"];
+            max_position_qty: components["schemas"]["MaxPositionQty"];
+            /**
+             * @description S8. An exception to the full replacement, like `commission_per_contract_side`: absent means
+             *     unchanged, so a form that does not show the mode never resets it. A change is audited as
+             *     `accounts.updated` (field `bracket_mode`, old and new values). With an open position or working
+             *     All Win orders it gets 409 `accounts.bracket_mode_open_position` (Q86 b).
+             */
+            bracket_mode?: components["schemas"]["BracketMode"];
+            /**
+             * @description USD per contract and side, ≥ 0 (U20 a): the floor of each fill's commission. Exception to the
+             *     full replacement (QA Security): **absent = unchanged**, so a client that forgets the field never
+             *     removes the floor; `null` removes it explicitly. A higher floor applies at once; a lower one, or
+             *     `null`, applies from the next trading day (`AccountRisk.pending_commission_change`; ADR-0006
+             *     §3.7) and is audited (`accounts.updated`). Any change bumps the account's limits version.
+             */
+            commission_per_contract_side?: components["schemas"]["MoneyAmount"] | null;
+            /** @description The platform account to bind; absent means unbound. */
+            binding?: components["schemas"]["PlatformAccountRef"];
+            /**
+             * @description Only when the preset selection changes (another `preset_version_id` or `firm_platform`): the
+             *     account's own values for the new preset (edited or resolving not-confirmed fields; absent fields
+             *     take the new preset's value). With an unchanged selection it must be absent (422
+             *     `accounts.rule_values_without_selection_change`) and the stored rule values are kept; they are
+             *     edited with `putAccountRiskRules` (S13) and restored with `restorePresetValue`.
+             */
+            rule_values?: components["schemas"]["PresetRuleValues"];
+            opt_ins?: components["schemas"]["OptInChoices"];
+            /** @description Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`), or when the binding of an account that receives automation changes (action `account_binding_change`); target = this account. */
+            step_up?: components["schemas"]["StepUpProof"];
+        } & (unknown & unknown);
+        LifecycleRequest: {
+            state: components["schemas"]["LifecycleState"];
+            row_version: number;
+        };
+        ArchiveImpact: {
+            /** @description When true `archiveAccount` is refused (the dialog shows the explanation instead of a confirmation). */
+            has_open_position: boolean;
+            /** @description Routing subscriptions of this account (S7) that archiving removes. */
+            routes: {
+                source_id: components["schemas"]["Uuid"];
+                source_name: components["schemas"]["DisplayName"];
+            }[];
+            /** @description Master/follower relations (S19, V1.1; always empty before it) that archiving removes. */
+            follower_links: {
+                account_id: components["schemas"]["Uuid"];
+                display_name: components["schemas"]["AccountName"];
+                /**
+                 * @description The role of the OTHER account in the relation.
+                 * @enum {string}
+                 */
+                role: "master" | "follower";
+            }[];
+        };
+        /** @enum {string} */
+        OptInKind: "automation" | "copy";
+        /**
+         * @description Stance of the rule version for the opt-in kind. A missing stance in the preset, and every prop account without a preset (generic rule, Q40), is `unknown`.
+         * @enum {string}
+         */
+        FirmStance: "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed";
+        OptInChoiceRequest: {
+            /** @enum {string} */
+            choice: "accepted" | "declined";
+            /** @description Rule version whose text was displayed (`RuleVersion.id`). */
+            rule_version_id: components["schemas"]["Uuid"];
+        };
+        /**
+         * @description The `opt_ins` property of `createAccount` / `updateAccount` / `applyPresetVersion` (atomic with the
+         *     save). Required kinds: on create, `automation` when its rule version needs a choice; on update and
+         *     apply, only `automation`, and only when that request changes the automation rule version and the
+         *     new version needs a choice. Otherwise 422 `accounts.opt_in_required` with `pointer`
+         *     `/opt_ins/automation`, and nothing is saved. `copy` is never required by these operations (it is
+         *     chosen in the follower flow, S7/S19); it may be sent when the UI shows it. A stale `rule_version_id` gives 409
+         *     `accounts.rule_version_changed`. The step-up (when a choice is `accepted` and changes the stored
+         *     state) happens before the single save, so cancelling it saves nothing.
+         */
+        OptInChoices: {
+            automation?: components["schemas"]["OptInChoiceRequest"];
+            copy?: components["schemas"]["OptInChoiceRequest"];
+        };
+        OptInState: {
+            kind: components["schemas"]["OptInKind"];
+            /** @description Absent only for real accounts. */
+            firm_stance?: components["schemas"]["FirmStance"];
+            /**
+             * @description not_required = no choice is asked now: real account, the stance is `allowed`, or (`copy`) the
+             *     account is not a follower (Q-S5-8; no card in the UI); chosen = an explicit choice exists for
+             *     the current rule version; pending_review = see `pending_reason`; that kind is suspended until
+             *     the user chooses again (Q26). Routing treats `pending_review` and `declined` as not accepted
+             *     (`routing.automation_not_accepted` / `routing.copy_not_accepted`). There is no "saved without
+             *     a choice" state: first choices are atomic with creation.
+             * @enum {string}
+             */
+            state: "not_required" | "chosen" | "pending_review";
+            /**
+             * @description With `pending_review` only. `stance_changed` (Q26); `text_changed` = the new rule version is
+             *     flagged as a material text change (Q42; `RuleVersion.change` has the reason
+             *     text); `preset_attached` = reserved for Q41: only a data migration that attaches a
+             *     preset to an account without a user request would produce it. No operation of this contract
+             *     does (a user who selects a preset sends the new choice inline, D16).
+             * @enum {string}
+             */
+            pending_reason?: "stance_changed" | "text_changed" | "preset_attached";
+            /**
+             * @description With `chosen`: the choice in force. With `pending_review`: the **previous** choice (no longer in
+             *     force), present only if one was ever made, so the review dialog can show it; it is never
+             *     preselected. Absent with `not_required`.
+             * @enum {string}
+             */
+            choice?: "accepted" | "declined";
+            chosen_at?: components["schemas"]["Timestamp"];
+            /** @description Rule version the `choice` was made against. */
+            rule_version_id?: components["schemas"]["Uuid"];
+            /** @description The rule version in force for this account and kind (fetch its text with `getRuleVersion`). Absent only for real accounts. */
+            current_rule_version_id?: components["schemas"]["Uuid"];
+        } & (unknown & unknown & unknown);
+        /** @description Any change to an account the caller sees (fields, lifecycle, opt-in state, binding, open position). The client refetches the account (`getAccount`). */
+        AccountChangedEvent: {
+            /** @constant */
+            type: "account.changed";
+            at: components["schemas"]["Timestamp"];
+            account_id: components["schemas"]["Uuid"];
+        };
+        AccountArchivedEvent: {
+            /** @constant */
+            type: "account.archived";
+            at: components["schemas"]["Timestamp"];
+            account_id: components["schemas"]["Uuid"];
+        };
+        /** @enum {string} */
+        AuditCategory: "ingress" | "routing" | "execution" | "risk" | "connection" | "security" | "config";
+        /**
+         * @description Final taxonomy (Q-S10-2), set by the Core on every entry, never derived by the client:
+         *     - `received` — instruction accepted at ingress;
+         *     - `routed` — routing decision to send to an account (full quantity);
+         *     - `executed` — an order filled;
+         *     - `partial` — quantity capped at the maximum position; a `reverse` that runs only its close leg
+         *       because a gate skipped the open (Q74/Q75, the entry carries the gate code); or a partial fill;
+         *     - `skipped` — not sent by a configuration rule (duplicate, signal type not selected, opt-in not
+         *       accepted, account inactive, no stop/target profile, limits not yet derived, maximum already
+         *       reached, nothing to close, nothing to reduce, no active contract for the instrument);
+         *     - `refused` — not sent by a protective gate (out of sync, risk block, position conflict);
+         *     - `rejected` — refused by validation (ingress) or by the platform;
+         *     - `expired` — command TTL exceeded, not executed;
+         *     - `unknown` — the order's state could not be determined after a recovery (the account is
+         *       flagged out of sync);
+         *     - `info` — everything else (configuration, connection, security, order received/working/cancelled,
+         *       bracket calculation, command requested, command sent). No badge in the UI.
+         * @enum {string}
+         */
+        AuditOutcome: "received" | "routed" | "executed" | "partial" | "skipped" | "refused" | "rejected" | "expired" | "unknown" | "info";
+        /** @enum {string} */
+        AuditSignalType: "trigger" | "trade_plan" | "nq_trigger" | "master_account";
+        /**
+         * @description Stable code; clients translate it (ADR-0001 §9). The set is open: a code the client does not know
+         *     is shown with the fallback text and the technical data. `KnownAuditCode` lists the codes defined
+         *     by the contract so far (the i18n parity check uses it).
+         */
+        AuditCode: string;
+        /**
+         * @description Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
+         *     auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
+         *     `notifications.*` (S18).
+         *     S15 local enforcement (6.1.0; Rumo's S18 review; ADR-0004 `risk_event`; category risk, actor system).
+         *     The plugin acts and reports; the Core records what it reports, one entry per `risk_event`:
+         *     - `risk.blocked` (outcome `info`): the account was blocked until the trading-day reset (S15 AC-2,
+         *       AC-8), from `risk_event` `blocked` (`DetailsRiskEnforcement`, `trigger`);
+         *     - `risk.flatten` (outcome `executed`): the enforcement closed the position (`flattened`) or
+         *       cancelled the working orders (`orders_cancelled`), one entry per `risk_event` (S15 AC-2, AC-5);
+         *     - `risk.unblocked` (outcome `info`): the reset ended the block, with reason `trading_day_reset`
+         *       (S15 AC-9, Q62 a). There is no early unlock (AC-3), so it is the only reason;
+         *     - `risk.reactive_block_action` (outcome `executed`): while blocked, the plugin cancelled an order
+         *       the user placed by hand, from `risk_event` `blocked_order_cancelled` (S15 AC-6). One entry per
+         *       action; the notification groups them per account and trading day. A position that results from
+         *       such an order and is flattened while blocked is reported as `risk_event` `flattened` and recorded
+         *       as `risk.flatten` (ADR-0004 §7 r6.1, Esquadro).
+         *     Each carries the rule and the value that triggered the block (S15 AC-5, X-5). `risk_event`
+         *     `blocked` / `flattened` / `orders_cancelled` do not carry `metric` / `value` / `limit`, so the Core
+         *     takes them from the `limit_reached` of the same account and `limits_version`. With trigger
+         *     `enabled_over_limit` (S15 AC-8) the plugin may send no `limit_reached`; the Core then takes them
+         *     from its own risk state at that `limits_version`, at the instant of the event (Crivo n1, Esquadro).
+         *     `execution.exit_sent_late` (6.1.0, T1; category execution, actor system, outcome `info`; audit
+         *     only, no notification): an exit command sent after its `expiry_base` + the account's command TTL
+         *     (ADR-0004 §5 r5, "audited as late"). It is written with the same command's
+         *     `execution.command_sent`, so the late send can be filtered on its own; `late_ms` is always
+         *     present. Instructions lost in a disconnect need no code of their own: they are
+         *     `routing.expired` and the account gets `sync.flagged` (Rumo).
+         *     Category by code family (the `category` of each entry): `ingress.*` → ingress; `routing.*` →
+         *     routing, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →
+         *     execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →
+         *     connection (a plugin restart is a `connection.status_changed` with `previous_status`);
+         *     `security.*` → security; `sources.*`, `connections.*`, `accounts.*`, `profiles.*`, `presets.*`
+         *     and `trades.manual_*` → config; `trades.reconcile_mismatch` → execution; `sync.*` (S11, 5.3.0) →
+         *     connection, for every `sync.*` code, including reasons that are not about the connection (a
+         *     rejection, external activity, a fill correction). This is accepted for V1 (Esquadro): a new
+         *     category is also a protocol 1.3 notification field, so it is a protocol minor. It is revisited
+         *     in the next protocol minor that is opened for another reason.
+         *     `sync.*` (ADR-0004 §6, `DetailsSync`), each with its actor and outcome:
+         *     - `sync.flagged`: one per added reason (system, `info`);
+         *     - `sync.reason_resolved`: the Core removed a reason, and the account stays out of sync (system, `info`);
+         *     - `sync.cleared`: the user cleared the flag (user, `info`), with `cleared_reasons`;
+         *     - `execution.unbound_activity` (category execution; system, `info`; Esquadro): activity on a platform
+         *       account that is visible on a connection but bound to no All Win account. It is not a sync reason,
+         *       since there is no account to flag (`DetailsUnboundActivity`). Occurrence (Crivo R1): one entry per
+         *       (connection, platform account, instrument) when a snapshot first shows a position there, or the
+         *       position changes. Fills are not audited one by one; they show through the next snapshot's
+         *       position. The notification is grouped per connection and trading day;
+         *     - `execution.undelivered` (category execution; system, outcome `unknown`; Bigorna, ADR-0004 §4,
+         *       Esquadro C-a): a command not acked within the retransmission horizon. Its result is unknown: it
+         *       may have run on the platform, so the outcome is never `expired`. It is never retransmitted. The account also gets
+         *       `sync.command_undelivered`, which is notified through `sync.flagged`, so this entry is audit only
+         *       (`DetailsUndelivered`);
+         *     - `connection.account_kind_changed` (category connection; system, `info`; Bigorna, ADR-0005 N11): the
+         *       plugin reported another platform account kind for a bound account, e.g. `simulation` → `live`
+         *       (`DetailsAccountKindChanged`). It is audit only; the binding's `kind` shows the current value;
+         *     - `sync.restored`: a disconnect while flat with nothing in flight, whose reconnect snapshot matched,
+         *       so the account was not flagged and is back to normal (system, `info`; ADR-0004 §6 row 3). Also
+         *       (6.1.0) the automatic return to `in_sync` after a clear, when the last `sync.bracket_incomplete`
+         *       the clear held (`held_at_clear`) is resolved because its position is fully covered or flat;
+         *       `reason` is that reason (Q101).
+         *     The automatic orphan cancels and the orphan flatten stay execution entries (`execution.cancelled`
+         *     + `order.orphan_cancelled`, `execution.command_sent` kind `flatten`); `sync.flagged` carries the
+         *     summary in `reason.core_action`.
+         * @enum {string}
+         */
+        KnownAuditCode: "ingress.received" | "ingress.duplicate_ignored" | "ingress.duplicate_conflict" | "ingress.rejected" | "ingress.rate_limited" | "routing.routed" | "routing.quantity_capped" | "routing.max_position_reached" | "routing.signal_type_not_selected" | "routing.automation_not_accepted" | "routing.copy_not_accepted" | "routing.account_inactive" | "routing.platform_unbound" | "routing.no_bracket_profile" | "routing.limits_pending" | "routing.out_of_sync" | "routing.risk_blocked" | "routing.position_conflict" | "routing.nothing_to_close" | "routing.nothing_to_reduce" | "routing.no_correlated_order" | "routing.instrument_unavailable" | "routing.adapter_protocol_outdated" | "routing.position_unknown" | "routing.expired" | "execution.command_requested" | "execution.command_sent" | "execution.bracket_calculated" | "execution.order_received" | "execution.order_working" | "execution.partially_filled" | "execution.filled" | "execution.cancelled" | "execution.rejected" | "execution.expired" | "execution.state_unknown" | "execution.fill_corrected" | "connection.status_changed" | "sources.created" | "sources.renamed" | "sources.rotated" | "sources.revoked" | "connections.created" | "connections.renamed" | "connections.pairing_code_issued" | "connections.paired" | "connections.repaired" | "connections.unpaired" | "security.signed_in" | "security.sign_in_failed" | "security.code_rate_limited" | "security.code_delivery_failed" | "security.new_device_notice_sent" | "security.step_up_succeeded" | "security.step_up_failed" | "security.channel_change_requested" | "security.channel_change_on_hold" | "security.channel_change_completed" | "security.channel_change_cancelled" | "security.channel_change_not_completed" | "security.device_forgotten" | "security.signed_out_everywhere" | "security.invitation_issued" | "security.invitation_revoked" | "security.account_created" | "accounts.created" | "accounts.updated" | "accounts.archived" | "accounts.lifecycle_changed" | "accounts.opt_in_chosen" | "accounts.opt_in_suspended" | "accounts.opt_in_rule_updated" | "routing.subscription_changed" | "profiles.default_changed" | "profiles.account_changed" | "presets.version_applied" | "presets.value_restored" | "risk.rules_changed" | "risk.warning" | "risk.limit_reached" | "risk.target_reached" | "risk.consistency_warning" | "risk.evaluation_target_reached" | "risk.day_restarted" | "risk.blocked" | "risk.flatten" | "risk.unblocked" | "risk.reactive_block_action" | "accounts.evaluation_restarted" | "accounts.evaluation_corrected" | "trades.captured" | "trades.manual_created" | "trades.manual_changed" | "trades.manual_deleted" | "trades.reconcile_mismatch" | "execution.unbound_activity" | "execution.undelivered" | "execution.exit_sent_late" | "connection.account_kind_changed" | "sync.flagged" | "sync.reason_resolved" | "sync.cleared" | "sync.restored";
+        AuditEntry: {
+            id: components["schemas"]["Uuid"];
+            occurred_at: components["schemas"]["Timestamp"];
+            recorded_at: components["schemas"]["Timestamp"];
+            category: components["schemas"]["AuditCategory"];
+            code: components["schemas"]["AuditCode"];
+            outcome: components["schemas"]["AuditOutcome"];
+            /** @description With routing and execution entries of an exit action (`close`, reduce, protective modify/cancel), so the text can say "saída". */
+            is_exit?: boolean;
+            instruction_id?: components["schemas"]["Uuid"];
+            message_id?: string;
+            account_id?: components["schemas"]["Uuid"];
+            /** @description Snapshot at the time of the entry. */
+            account_name?: string;
+            /** @description True when the account has been archived since (UI `(excluída)`). */
+            account_deleted?: boolean;
+            source_id?: components["schemas"]["Uuid"];
+            source_name?: string;
+            /** @description The only part of a source token that may be shown. */
+            source_key_id?: string;
+            signal_type?: components["schemas"]["AuditSignalType"];
+            command_id?: components["schemas"]["Uuid"];
+            /**
+             * @description Who caused the entry. `platform_admin` is reserved for admin actions on the user's data (Q28 recovery); absent on old entries.
+             * @enum {string}
+             */
+            actor?: "user" | "system" | "platform_admin";
+            /**
+             * @description Typed per code: the schema is `AuditDetailsByCode[code]` (an empty object for codes without
+             *     one). Money, prices and distances are decimal strings. Never holds a secret, whatever
+             *     `safe_to_display` says: the Core redacts before writing (free-text fields such as pointers and
+             *     device labels are truncated and redacted) and storage refuses token-shaped strings.
+             */
+            details: Record<string, never>;
+            /** @description Presentation only — true when the raw `details` JSON may be shown in "technical data". The rendered fields of the catalog are always shown. It is not a secrecy flag (see `details`). */
+            safe_to_display: boolean;
+        } & (unknown & unknown);
+        ActivityPage: {
+            entries: components["schemas"]["AuditEntry"][];
+            /** @description Absent on the last page. */
+            next_cursor?: string;
+            /** @description Rolling retention of the activity record (24 in V1, configurable by the admin; Q13, Q45). */
+            retention_months: number;
+            /** @description The oldest instant still kept; a `from` before it gets the "only the last n months" line. */
+            horizon: components["schemas"]["Timestamp"];
+        };
+        ActivityFilterOptions: {
+            /** @description Every account that appears in the caller's activity, archived ones included. */
+            accounts: {
+                account_id: components["schemas"]["Uuid"];
+                account_name: string;
+                account_deleted: boolean;
+            }[];
+            /** @description Every source, revoked ones included. */
+            sources: {
+                source_id: components["schemas"]["Uuid"];
+                source_name: string;
+                revoked: boolean;
+            }[];
+            /** @description Signal types present in the caller's retained activity (`master_account` only once S19 produces it; Q-S10-7). */
+            signal_types: components["schemas"]["AuditSignalType"][];
+        };
+        InstructionSummary: {
+            instruction_id: components["schemas"]["Uuid"];
+            message_id: string;
+            source_id: components["schemas"]["Uuid"];
+            source_name: string;
+            source_key_id?: string;
+            signal_type: components["schemas"]["AuditSignalType"];
+            /** @enum {string} */
+            action: "buy" | "sell" | "close" | "reverse" | "modify" | "cancel";
+            instrument_symbol: string;
+            contract_month?: string;
+            /** @description Absent for `close` (ignored). */
+            quantity?: number;
+            sent_at: components["schemas"]["Timestamp"];
+            received_at: components["schemas"]["Timestamp"];
+        };
+        TimelineAccount: {
+            account_id: components["schemas"]["Uuid"];
+            account_name: string;
+            account_deleted: boolean;
+            /** @description The account's result so far (the last decisive step). */
+            outcome: components["schemas"]["AuditOutcome"];
+            /** @description False while commands for this account are still open; the UI announces the outcome once it becomes final. */
+            final: boolean;
+            /** @description How the quantity was decided (absent when the account was skipped before sizing). */
+            quantity?: components["schemas"]["DetailsSizing"];
+            steps: components["schemas"]["AuditEntry"][];
+        };
+        InstructionTimeline: {
+            instruction: components["schemas"]["InstructionSummary"];
+            /**
+             * @description `completed` when every account block is final.
+             * @enum {string}
+             */
+            status: "in_progress" | "completed";
+            intake: components["schemas"]["AuditEntry"][];
+            accounts: components["schemas"]["TimelineAccount"][];
+        };
+        /** @description A new entry was recorded for the caller. Carries the filter keys (so the "n new entries" banner counts only entries that match the active filters) and no details. */
+        AuditEntryRecordedEvent: {
+            /** @constant */
+            type: "audit.entry_recorded";
+            at: components["schemas"]["Timestamp"];
+            entry_id: components["schemas"]["Uuid"];
+            occurred_at: components["schemas"]["Timestamp"];
+            category: components["schemas"]["AuditCategory"];
+            code: components["schemas"]["AuditCode"];
+            outcome: components["schemas"]["AuditOutcome"];
+            source_id?: components["schemas"]["Uuid"];
+            signal_type?: components["schemas"]["AuditSignalType"];
+            account_id?: components["schemas"]["Uuid"];
+            instruction_id?: components["schemas"]["Uuid"];
+        };
+        /** @description Money as a decimal string (NUMERIC(18,4)). */
+        Money: string;
+        Price: string;
+        DetailsSizing: {
+            instruction_qty?: number;
+            multiplier: number;
+            /** @description instruction quantity × multiplier. */
+            requested_qty?: number;
+            max_position_qty: number;
+            /** @description Signed, the Core's expected position. */
+            position_before?: number;
+            /** @description After the cap. */
+            executed_qty?: number;
+            /** @description requested − executed. */
+            skipped_qty?: number;
+        };
+        DetailsIngressReceived: {
+            /** @enum {string} */
+            action: "buy" | "sell" | "close" | "reverse" | "modify" | "cancel";
+            instrument_symbol: string;
+            quantity?: number;
+            sent_at: components["schemas"]["Timestamp"];
+        };
+        DetailsIngressDuplicate: {
+            original_instruction_id: components["schemas"]["Uuid"];
+            /** @description 5.4.0 (Esquadro): true when the first instruction's content was already purged (Q13-b), so the repeat could not be compared. It is still a duplicate: 200, nothing executes. Absent otherwise. */
+            content_not_retained?: boolean;
+        };
+        /**
+         * @description `ingress.duplicate_conflict` (5.4.0, Esquadro): the same `message_id` arrived again and differs in
+         *     at least one COMPARED field. The answer is still 200 and nothing is executed; this entry makes it
+         *     visible (category ingress, actor system, outcome `info`, `safe_to_display` true). Expiry and
+         *     everything else keep coming from the FIRST receipt.
+         *     - Compared (closed list): `source`, `signal_type`, `action`, `position_effect`, `side`,
+         *       `instrument`, `quantity`, `order`, `changes`, `refs`. The receipt keeps the sha256 of the canonical
+         *       parsed JSON of these fields only (absent ≠ null, as in the schema), and only while the content
+         *       itself is kept.
+         *     - Not compared: `message_id` (the key), `sent_at` (changes on every re-send), `reference_price`
+         *       (changes on a re-send of the same bar), `details` (free text, never used by routing) and
+         *       `schema_version`.
+         *     - Same compared fields → `ingress.duplicate_ignored` (200, no warning).
+         *     - The notification's target is the original instruction (`target {kind: instruction, id:
+         *       original_instruction_id}`), which the producer knows (s18 §3; Esmeril L3).
+         *     - Emitted only while the first content exists. The purge job (Q13-b) deletes the instruction and,
+         *       in the same batch, sets the receipt's `body_sha256` to NULL and `content_purged_at`. A re-send of
+         *       the id after the purge is a plain `ingress.duplicate_ignored` with `content_not_retained: true`
+         *       (200, nothing executes), never this code (Esquadro, final).
+         *     A new instruction field joins the list only by an explicit contract change, here and in
+         *     `contracts/instruction/v1/README.md`. Never a body value: only the names of the compared fields that
+         *     differ.
+         */
+        DetailsIngressDuplicateConflict: {
+            source_name: string;
+            /** @description As received; the Core refuses token-shaped ids at ingress. */
+            message_id: string;
+            original_instruction_id: components["schemas"]["Uuid"];
+            first_received_at: components["schemas"]["Timestamp"];
+            second_received_at: components["schemas"]["Timestamp"];
+            differing_fields: ("source" | "signal_type" | "action" | "position_effect" | "side" | "instrument" | "quantity" | "order" | "changes" | "refs")[];
+        };
+        /** @description Never the body (Q13 §8). */
+        DetailsIngressRejected: {
+            error_code: components["schemas"]["ErrorCode"];
+            /** @description Truncated and redacted by the Core (it derives from client input). */
+            pointer: string;
+            body_size: number;
+        };
+        DetailsIngressRateLimited: {
+            retry_after_s: number;
+        };
+        /**
+         * @description `routing.adapter_protocol_outdated` (5.3.0, ADR-0004 r5 §7.1 / U13; outcome `skipped`, with
+         *     `protocol_version`): the account's session is too old for the action. It covers a `reduce` on a
+         *     session below 1.2 (no position guard), and every ENTRY of an account with a drawdown rule on a
+         *     session below 1.4. In the second case the Core sends that session no drawdown, so without the local
+         *     barrier it fails closed. Exits continue, and the user is told to update the plugin.
+         *     `routing.position_unknown` (5.3.0, U13 A; outcome `skipped`): a `reduce` while the Core holds no
+         *     All Win identity for the position, e.g. one opened externally on a TradingView-only destination.
+         *     It is never sent.
+         *     `routing.instrument_unavailable` (5.2.0, Esquadro): the instrument is in the catalog but has no active
+         *     contract at the decision instant. Outcome `skipped` (a configuration rule), with `instrument_symbol`.
+         *     It applies only at the decision; an instrument outside the catalog stays `ingress.unsupported_instrument`.
+         *     Every `routing.*` decision code. A routing decision is `routed` (sent in full), `capped` (sent with
+         *     less than requested: a capped quantity, or a reverse's close leg only; audited with outcome
+         *     `partial`), `skipped`, `refused` or `expired` (AuditOutcome). One routing decision entry per
+         *     (instruction, account). **Close and gate 6** (ADR-0003 §4.1 r4 final, Crivo C1; Esmeril M1):
+         *     - a `close` against a NON-flat expected position is always a flatten, with no gates 6–9;
+         *     - a `close` against a FLAT expected position waits for gate 6. Out of sync gives the Q75 flatten;
+         *       in sync gives `routing.nothing_to_close`. Without an answer from gate 6, the instruction stays
+         *       undecided and the consumer retries. As an exit it NEVER expires. It is never sent as a flatten
+         *       without knowing the sync state, which would cancel manual orders on an in-sync account (Q75-1
+         *       was accepted only for out-of-sync accounts).
+         *     **Two-step reverse** (ADR-0003 §4.1 r4; its close leg never waits for gates 6–9; a reverse against a FLAT expected position waits for gate 6, like the close):
+         *     with the expected position opposite, the close leg is committed at once. The same commit writes
+         *     `execution.command_requested` (kind `flatten`, step of the reverse's close leg, same
+         *     `instruction_id`, `is_exit` true, actor system, outcome `info`, `safe_to_display` true), so the
+         *     automatic flatten is visible immediately, even while the gateway or the connection is down. The
+         *     gateway's `execution.command_sent` follows on the real send. The opening is decided
+         *     in a second, idempotent step when the gates answer, or as `routing.expired` when the TTL runs out,
+         *     so it is bounded by the TTL. Only then is the single routing entry written, with the final outcome:
+         *     `routed`, or close-only `partial` with the gate code. There is no separate routing entry for the
+         *     close leg (5.2.0, Ferro / Lastro). Q74: for a `reverse`
+         *     the position check (ADR-0003 §4.2) runs before the entry gates. Q74 has four bars (`out_of_sync`,
+         *     `risk_blocked`, `limits_pending`, `no_bracket_profile`). Two more cases give the same close-only
+         *     outcome by rules that already existed, and they are not Q74 bars: no room, `max_position_reached`
+         *     (ADR-0003 §4.2, open `min(Q, M)` with derived M = 0); and the open leg expired at routing,
+         *     `routing.expired` (T1, below). On a barred account: position opposite → only the close leg runs, and the
+         *     entry carries the gate code, outcome `partial` (decision `capped`), `sizing.executed_qty` = 0
+         *     for the open, and `reverse_closed_qty`; flat → skipped with the gate code, no
+         *     `reverse_closed_qty`, except for `routing.out_of_sync` (Q75, 5.2.0): the flat position is not
+         *     trusted, so the close leg is sent as a flatten and the open is never created; decision `capped`,
+         *     the entry carries `routing.out_of_sync`, outcome `partial`, `executed_qty` = 0, `expected_flat`
+         *     true and no `reverse_closed_qty` (the closed quantity is unknown at the decision); already on the
+         *     reverse side → `routing.position_conflict` (rejected and notified, never a flatten, also when out
+         *     of sync). Q75 also applies to a `close`: on an out-of-sync account with a flat expected position it
+         *     is sent as a flatten (decision `routed`, `expected_flat` true), and `routing.nothing_to_close`
+         *     never applies to an out-of-sync account. A `reduce` is never turned into a flatten (Q76):
+         *     `routing.nothing_to_reduce`, also when out of sync. The same holds when the open leg of a reverse with an opposite
+         *     position expires at routing (gate `expired`, TTL; 5.1.0): the close leg runs (no expiry; audited as
+         *     late if it is), and the entry carries `routing.expired`, outcome `partial`, `executed_qty` = 0 for
+         *     the open and `reverse_closed_qty`; flat → outcome `expired`. Only at routing: when the routing decision itself sees the TTL exceeded (gate 10, e.g. a late webhook). An open leg that expires later, in the gateway queue while the connection is down, is not a routing decision: the decision stays `routed`, and ADR-0004 §5 applies ("Exception: the opening leg of a reverse", 5.1.1): an open leg found expired before it was sent is held until the flatten it depends on is terminal; it is then `expired`, audited as `execution.expired`, and it does NOT flag the account out of sync only when (1) it never left the Core, (2) the flatten succeeded with a proven flat position (`already_flat` with no later report for that account and contract, or for `filled` the latest report with `position_after` shows 0 and no later report exists), and (3) the account has no other sync reason; it then gets `routing.reverse_close_only` with `reason_code: routing.expired`. Any other case flags out of sync as before.
+         */
+        DetailsRoutingDecision: {
+            sizing?: components["schemas"]["DetailsSizing"];
+            /** @enum {string} */
+            lifecycle_state?: "paused" | "disabled";
+            /** @enum {string} */
+            opt_in_state?: "declined" | "pending_review";
+            rule_version_id?: components["schemas"]["Uuid"];
+            sync_reasons?: string[];
+            /** @enum {string} */
+            position_side?: "long" | "short" | "flat";
+            account_size?: components["schemas"]["SizeAmount"];
+            /** @description With `routing.no_bracket_profile`. */
+            instrument_ids?: components["schemas"]["Uuid"][];
+            /** @description With `routing.limits_pending` — the account's limits version not yet derived (ADR-0006). */
+            limits_version?: number;
+            /** @description Q74: abs(position) read at the decision, i.e. the quantity the close leg of a reverse is sent to flatten when its open leg is skipped with this code. The executed result is in the execution entries. */
+            reverse_closed_qty?: number;
+            /** @description Q75 (5.2.0): true when a flatten was sent while the expected position was flat, because the account is out of sync (a `close`, decision `routed`, or the close leg of a reverse, `routing.out_of_sync` capped). The adapter cancels every working order on the contract (manual ones included) and checks the real position; the result is in the execution entries (`execution.cancelled` + `command.already_flat`, or fills) and is notified once (`routing.out_of_sync_flatten`, or `routing.reverse_close_only` for a reverse that filled). Absent otherwise. */
+            expected_flat?: boolean;
+            ttl_ms?: number;
+            expiry_base?: components["schemas"]["Timestamp"];
+            /** @description The instruction's instrument (required with `routing.instrument_unavailable`). */
+            instrument_symbol?: string;
+            /**
+             * @description 5.4.0: with `routing.risk_blocked` when the block is an unknown trading day (protocol 1.4), not a reached limit.
+             * @enum {string}
+             */
+            risk_detail?: "day_unknown";
+            /** @description With `routing.adapter_protocol_outdated`: the version the session negotiated. */
+            protocol_version?: string;
+            /**
+             * @description 5.2.0 (Esquadro, S7 N1). True when the TTL ran out before the account gates 6–9 (out of sync,
+             *     risk, limits, bracket profile) answered. It applies only to entries, since only entries have a
+             *     TTL. The decision then uses only what is known: the action rule that does not depend on those
+             *     gates (`routing.position_conflict`), or else `routing.expired`. (`routing.nothing_to_reduce`
+             *     belongs to an exit, which is decided without gates 6–9 and never expires.) It
+             *     never names a gate that did not answer; the S10 text says "os gates de conta não responderam a
+             *     tempo". `routing.nothing_to_close` is never decided with `gates_unknown` (see the close rule).
+             *     Absent otherwise.
+             */
+            gates_unknown?: boolean;
+            /**
+             * @description 5.2.0 (Esquadro, S7 D2): the contract month the decision resolved (YYYY-MM). The instruction's
+             *     month wins when present; otherwise it is the rollover catalog's active contract at the decision
+             *     instant (P5). The resolved (symbol, month) is used for the position, the gates, the brackets and
+             *     the commands.
+             */
+            contract_month?: string;
+        };
+        /** @description `execution.command_sent` (the gateway; committed before the socket write) and `execution.command_requested` (5.2.0, Esquadro: routing committed an EXIT command that the gateway has not sent yet, so it is visible while it waits, even with the gateway or the connection down. Every exit command routing commits gets one: `close`, `reduce`, `cancel`, protective `modify`, and the close leg of a reverse. Audit only, actor system, outcome `info`, `is_exit` true; the gateway's `execution.command_sent` follows on the real send; `expires_at` absent, since exits carry none). */
+        DetailsCommandSent: {
+            step: string;
+            /** @enum {string} */
+            kind: "place" | "modify" | "cancel" | "flatten";
+            expires_at?: components["schemas"]["Timestamp"];
+            /**
+             * @description 5.3.0, ADR-0004 §5 r5 ("audited as late"; T1). Present only on an exit command sent after
+             *     `expiry_base` + the account's command TTL. Exits are `flatten` (close, reverse close leg), a
+             *     `place` reduce, `cancel`, and a protective `modify`. The value is `sent_at` − (`expiry_base` +
+             *     TTL) in milliseconds. Absent when the command was sent in time. Never on an entry: a late
+             *     entry expires and is not sent.
+             */
+            late_ms?: number;
+        };
+        /** @description S6 AC-4: requested distance → whole ticks used → resulting price, per side. */
+        DetailsBracketCalculated: {
+            mode: components["schemas"]["BracketMode"];
+            distance_unit: components["schemas"]["DistanceUnit"];
+            stop_requested: components["schemas"]["DistanceValue"];
+            target_requested: components["schemas"]["DistanceValue"];
+            stop_ticks: number;
+            target_ticks: number;
+            stop_rounded: boolean;
+            target_rounded: boolean;
+            entry_price?: components["schemas"]["Price"];
+            stop_price?: components["schemas"]["Price"];
+            target_price?: components["schemas"]["Price"];
+        };
+        /** @description Every `execution.order_*`, `execution.filled` … `execution.state_unknown` and `execution.fill_corrected` code. */
+        DetailsExecution: {
+            /** @enum {string} */
+            origin: "all_win" | "local_enforcement" | "external";
+            /**
+             * @description The protocol's child roles (1.3): `exit` for a `place` reduce, `flatten` for a flatten (5.3.0, Bigorna).
+             * @enum {string}
+             */
+            child_role?: "entry" | "stop" | "target" | "exit" | "flatten";
+            platform_order_id?: string;
+            quantity?: number;
+            fill_qty?: number;
+            fill_price?: components["schemas"]["Price"];
+            /** @enum {string} */
+            fill_operation?: "add" | "amend" | "remove";
+            commission?: components["schemas"]["Money"];
+            position_after?: number;
+            avg_price_after?: components["schemas"]["Price"];
+            platform_reason?: components["schemas"]["ErrorCode"];
+            platform_time?: components["schemas"]["Timestamp"];
+            /** @description Instruction receipt → this report (S19 AC-4 for followers). */
+            latency_ms?: number;
+        };
+        /** @description `sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored` after a disconnect, `reason` with `sync.restored` after a held reason is resolved (6.1.0). */
+        DetailsSync: {
+            /** @description `AccountSync.version` after the change. */
+            sync_version: number;
+            reason?: components["schemas"]["SyncReason"];
+            /** @description With `sync.cleared`: the distinct codes that were cleared (active and resolved). Instruments and commands are not repeated here, because the earlier `sync.flagged` entries carry them. */
+            cleared_reasons?: components["schemas"]["SyncReasonCode"][];
+            /** @description With `sync.cleared`: how many reasons were cleared in total. */
+            cleared_count?: number;
+            connection_id?: components["schemas"]["Uuid"];
+        };
+        /** @description `execution.unbound_activity` (5.3.0): activity on a platform account that no All Win account binds. */
+        DetailsUnboundActivity: {
+            connection_id: components["schemas"]["Uuid"];
+            connection_name?: components["schemas"]["DisplayName"];
+            platform_account: string;
+            /** @enum {string} */
+            kind: "fill" | "snapshot";
+            instrument_id?: components["schemas"]["Uuid"];
+            /** @description As reported on the wire. */
+            instrument_symbol?: string;
+            /** @description As reported on the wire. */
+            contract_month?: string;
+            /** @description With `snapshot`: the signed position reported. */
+            position?: number;
+            /** @description With `fill`. */
+            fill_qty?: number;
+            /**
+             * @description With `fill`.
+             * @enum {string}
+             */
+            side?: "buy" | "sell";
+        };
+        DetailsUndelivered: {
+            command_id: components["schemas"]["Uuid"];
+            created_at: components["schemas"]["Timestamp"];
+            /** @description The retransmission horizon in hours (72 in V1). */
+            horizon_h: number;
+        };
+        DetailsAccountKindChanged: {
+            account_id: components["schemas"]["Uuid"];
+            connection_id?: components["schemas"]["Uuid"];
+            /** @description The venue account as the plugin names it (`AccountBinding.platform_account`). */
+            platform_account: string;
+            /** @enum {string} */
+            previous_kind: "simulation" | "playback" | "live" | "unknown";
+            /** @enum {string} */
+            kind: "simulation" | "playback" | "live" | "unknown";
+        };
+        DetailsConnectionStatus: {
+            connection_id: components["schemas"]["Uuid"];
+            connection_name: string;
+            /** @enum {string} */
+            previous_status?: "awaiting_pairing" | "connected" | "disconnected" | "outdated" | "unpaired";
+            /** @enum {string} */
+            status: "awaiting_pairing" | "connected" | "disconnected" | "outdated" | "unpaired";
+        };
+        /**
+         * @description One changed field; values are strings, absent when empty. Scalars as their string form (money as
+         *     decimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string
+         *     amounts, e.g. `{"amount":"2000.00","type":"static"}`.
+         */
+        FieldChange: {
+            field: string;
+            old?: string;
+            new?: string;
+        };
+        /** @description `accounts.created` / `.updated` / `.archived`. `archived` also lists what was removed. */
+        DetailsAccountChange: {
+            changes: components["schemas"]["FieldChange"][];
+            removed_routes?: {
+                source_id: components["schemas"]["Uuid"];
+                source_name: string;
+            }[];
+            removed_follower_links?: components["schemas"]["Uuid"][];
+        };
+        DetailsLifecycleChanged: {
+            previous_state: components["schemas"]["LifecycleState"];
+            new_state: components["schemas"]["LifecycleState"];
+            had_open_position: boolean;
+        };
+        /** @description S5 AC-8: the choice and the exact rule text version the user saw. */
+        DetailsOptInChosen: {
+            kind: components["schemas"]["OptInKind"];
+            /** @enum {string} */
+            choice: "accepted" | "declined";
+            /** @enum {string} */
+            previous_choice?: "accepted" | "declined";
+            rule_version_id: components["schemas"]["Uuid"];
+            rule_version_number?: number;
+            firm_name?: string;
+            firm_stance: components["schemas"]["FirmStance"];
+            /** @description URL and access date of each quote shown (empty for the generic rule). */
+            sources: {
+                /** Format: uri */
+                url: string;
+                /** Format: date */
+                accessed_at: string;
+            }[];
+        };
+        DetailsOptInSuspended: {
+            kind: components["schemas"]["OptInKind"];
+            /** @enum {string} */
+            cause: "stance_changed" | "text_changed" | "preset_attached";
+            previous_rule_version_id?: components["schemas"]["Uuid"];
+            rule_version_id: components["schemas"]["Uuid"];
+            rule_version_number?: number;
+            firm_name?: string;
+        };
+        DetailsSubscriptionChanged: {
+            /** @enum {string} */
+            action: "created" | "updated" | "enabled" | "disabled" | "removed";
+            route_id: components["schemas"]["Uuid"];
+            source_id: components["schemas"]["Uuid"];
+            source_name: string;
+            previous_signal_types?: components["schemas"]["SignalType"][];
+            signal_types?: components["schemas"]["SignalType"][];
+            previous_is_enabled?: boolean;
+            is_enabled?: boolean;
+            /**
+             * @description `account_ineligible` — the Core switched the route off because its account became ineligible for the source (Q67 b).
+             * @enum {string}
+             */
+            cause?: "user" | "account_ineligible";
+        };
+        /** @description `profiles.default_changed` (with `size_amount`) and `profiles.account_changed` (with `action`). */
+        DetailsProfileChanged: {
+            instrument_id: components["schemas"]["Uuid"];
+            size_amount?: components["schemas"]["SizeAmount"];
+            /** @enum {string} */
+            action?: "initial_copy" | "edited" | "restored";
+            copied_from_size?: components["schemas"]["SizeAmount"];
+            previous?: components["schemas"]["DistanceProfile"];
+            new: components["schemas"]["DistanceProfile"];
+        };
+        /** @description Masked by the Core: e-mail `j***@d***.com`, number `+55******1234`. Always contains `*`. */
+        MaskedChannelValue: string;
+        /** @description Coarse browser/OS family (`Device.label`), never a full user agent; truncated and redacted by the Core. */
+        DeviceLabel: string;
+        DetailsSecuritySignedIn: {
+            channel: components["schemas"]["CodeChannel"];
+            new_device: boolean;
+            device_label: components["schemas"]["DeviceLabel"];
+        };
+        /** @description `security.sign_in_failed` (registered identifier only; the reason is always code_invalid, never detailed). */
+        DetailsSecurityChannel: {
+            channel: components["schemas"]["CodeChannel"];
+        };
+        /** @enum {string} */
+        CodePurpose: "login" | "signup" | "step_up" | "channel_change";
+        DetailsSecurityRateLimited: {
+            purpose: components["schemas"]["CodePurpose"];
+        };
+        DetailsSecurityDeliveryFailed: {
+            channel: components["schemas"]["CodeChannel"];
+            purpose: components["schemas"]["CodePurpose"];
+        };
+        /** @description `security.new_device_notice_sent`; with `device_id` for `security.device_forgotten`. */
+        DetailsSecurityDevice: {
+            device_id?: components["schemas"]["Uuid"];
+            device_label: components["schemas"]["DeviceLabel"];
+        };
+        /** @description `security.step_up_succeeded`; with `reason` for `security.step_up_failed`. */
+        DetailsSecurityStepUp: {
+            action: components["schemas"]["StepUpAction"];
+            target_id?: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            reason?: "missing" | "code_invalid";
+        };
+        /**
+         * @description Every `security.channel_change_*` code: `requested` adds `masked_new_value`; `on_hold` adds
+         *     `hold_until`; `completed` adds `masked_old_value` and `masked_new_value`; `cancelled` adds `by`;
+         *     `not_completed` adds nothing (expired, or the new value was taken during the hold; the reason is
+         *     never shown, auth policy §3).
+         *     `kind` (5.4.0, S3 AC-12) is written on every entry from 5.4.0; on older entries it is absent, which means `user_change`. With `admin_recovery`:
+         *     - the entry's actor is `platform_admin` (no new actor);
+         *     - every entry carries `verified_by` and may carry `break_glass` (true when the admin used the
+         *       break-glass path);
+         *     - `verification_ref` appears only on `requested` and `on_hold`;
+         *     - `cancelled.by` stays `user` or `system`. An admin cancel from the CLI is `system`, with actor
+         *       `platform_admin`.
+         *     The admin's identity is never in the user's trail. It is in the operator log and in the admin's own
+         *     step-up entries (`StepUpAction` `admin_recovery`).
+         */
+        DetailsSecurityChannelChange: {
+            change_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            kind?: "user_change" | "admin_recovery";
+            /**
+             * @description How the admin verified the user's identity (admin_recovery).
+             * @enum {string}
+             */
+            verified_by?: "video_call" | "phone_known_number" | "in_person" | "other";
+            /**
+             * @description The admin's reference for the verification, e.g. a ticket number. Plain text, shown to the target
+             *     user. It is required and non-empty with `verified_by: other`. It never carries contact data,
+             *     document numbers or anyone's personal data. The Core refuses control characters, `@`, a `+`
+             *     followed by a digit, more than 6 consecutive digits, and token-shaped parts (auth policy rev. 3.3
+             *     §9.1; Crivo L3).
+             */
+            verification_ref?: string;
+            break_glass?: boolean;
+            channel: components["schemas"]["CodeChannel"];
+            masked_old_value?: components["schemas"]["MaskedChannelValue"];
+            masked_new_value?: components["schemas"]["MaskedChannelValue"];
+            hold_until?: components["schemas"]["Timestamp"];
+            /** @enum {string} */
+            by?: "user" | "system";
+        } & (unknown & unknown);
+        DetailsEmpty: Record<string, never>;
+        DetailsPresetApplied: {
+            from_preset_version_id: components["schemas"]["Uuid"];
+            to_preset_version_id: components["schemas"]["Uuid"];
+            from_version_number: number;
+            to_version_number: number;
+            changes: components["schemas"]["FieldChange"][];
+            /** @description Edited fields the user kept (`keep_mine`). */
+            kept_fields?: components["schemas"]["RuleField"][];
+        };
+        DetailsPresetValueRestored: {
+            change: components["schemas"]["FieldChange"];
+        };
+        /** @description `sources.*` (S3). Only the 12-character `key_id` of a token, never the URL or the token. */
+        DetailsSourceLifecycle: {
+            source_id: components["schemas"]["Uuid"];
+            source_name: string;
+            previous_name?: string;
+            key_id: string;
+            /** @description With `sources.rotated`. */
+            previous_key_id?: string;
+        };
+        /** @description `connections.*` (S3). Never a pairing code or device token. */
+        DetailsConnectionLifecycle: {
+            connection_id: components["schemas"]["Uuid"];
+            connection_name: string;
+            previous_name?: string;
+            instance_name?: string;
+            adapter_version?: string;
+            code_expires_at?: components["schemas"]["Timestamp"];
+            /** @description With `connections.unpaired`. */
+            open_positions_acknowledged?: boolean;
+        };
+        DetailsRiskRulesChanged: {
+            changes: components["schemas"]["FieldChange"][];
+            limits_version: number;
+            /** @description When each changed rule applies (Q48). */
+            effective?: {
+                kind: components["schemas"]["RiskRuleKind"];
+                effective_from: components["schemas"]["Timestamp"];
+            }[];
+        };
+        /** @description `risk.warning`, `risk.limit_reached`, `risk.target_reached` (+ `action`), `risk.consistency_warning`. */
+        DetailsRiskState: {
+            kind: components["schemas"]["RiskRuleKind"];
+            /** @description Money, or a percent string for consistency. */
+            limit: string;
+            /** @description Money, or a percent string for consistency. */
+            used: string;
+            percent: number;
+            /** @enum {string} */
+            action?: "notify" | "flatten_and_block";
+        };
+        /** @description `trades.captured` (category `execution`) and `trades.manual_created` / `trades.manual_deleted` (`config`; the deleted trade's values are kept here). */
+        DetailsTrade: {
+            trade_id: components["schemas"]["Uuid"];
+            origin?: components["schemas"]["TradeOrigin"];
+            direction: components["schemas"]["TradeDirection"];
+            quantity: number;
+            entry_time?: components["schemas"]["Timestamp"];
+            entry_price?: components["schemas"]["Price"];
+            exit_time?: components["schemas"]["Timestamp"];
+            exit_price?: components["schemas"]["Price"];
+            /** @description Net (main value from 3.5.0). */
+            pnl: components["schemas"]["Money"];
+            gross_pnl?: components["schemas"]["Money"];
+            commission?: components["schemas"]["MoneyString"];
+            commission_source?: components["schemas"]["CommissionSource"];
+            mae?: components["schemas"]["MoneyString"];
+            mfe?: components["schemas"]["MoneyString"];
+        };
+        DetailsTradeChanged: {
+            trade_id: components["schemas"]["Uuid"];
+            changes: components["schemas"]["FieldChange"][];
+        };
+        /** @description The plugin's trade does not match the fills the Core knows; the plugin's numbers are kept (S21 AC-2). */
+        DetailsTradeMismatch: {
+            trade_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            mismatch: "unknown_fills" | "pnl_differs" | "quantity_differs";
+            plugin_pnl?: components["schemas"]["Money"];
+            fills_pnl?: components["schemas"]["Money"];
+        };
+        /** @description `risk.evaluation_target_reached` (notify only, Q70). */
+        DetailsEvaluation: {
+            /** Format: date */
+            start: string;
+            /** Format: date */
+            previous_start?: string;
+            earned_before?: components["schemas"]["Money"];
+            previous_earned_before?: components["schemas"]["Money"];
+            profit_target: components["schemas"]["Money"];
+            achieved: components["schemas"]["Money"];
+        };
+        /** @description `accounts.evaluation_restarted`: old and new start and earned-before, and the target in force. No progress figure (that is risk data, S13b). */
+        DetailsEvaluationRestarted: {
+            /** Format: date */
+            start: string;
+            /** Format: date */
+            previous_start: string;
+            earned_before?: components["schemas"]["Money"];
+            previous_earned_before?: components["schemas"]["Money"];
+            profit_target: components["schemas"]["Money"];
+        };
+        /** @description `accounts.evaluation_corrected` (5.4.0, Q-S13b-3): the earned-before amount changed with the same start; the count did not restart. Old and new earned-before (absent = none), the unchanged start and the target in force. */
+        DetailsEvaluationCorrected: {
+            /** Format: date */
+            start: string;
+            earned_before?: components["schemas"]["Money"];
+            previous_earned_before?: components["schemas"]["Money"];
+            profit_target: components["schemas"]["Money"];
+        };
+        /**
+         * @description `accounts.opt_in_rule_updated` (5.4.0, Esquadro; S16): a newer rule version with `change.cause:
+         *     not_material` (a typo or format fix) was published. The Core moved the account's `chosen` /
+         *     `accepted` opt-in to it automatically, keeping the same choice and `chosen_at`. It is an automatic
+         *     action on consent, so it is always audited (category config, actor system, outcome `info`); it is
+         *     not notified. A `stance_changed` or `text_changed` version never re-points: it suspends
+         *     (`accounts.opt_in_suspended`, Q26).
+         */
+        DetailsOptInRuleUpdated: {
+            account_id: components["schemas"]["Uuid"];
+            kind: components["schemas"]["OptInKind"];
+            previous_rule_version_id: components["schemas"]["Uuid"];
+            rule_version_id: components["schemas"]["Uuid"];
+            /** @constant */
+            cause: "not_material";
+        };
+        /** @description `risk.day_restarted` (5.4.0, Q92 c; actor user, category risk, outcome `info`): the user restarted today's count of an account whose day was unknown. It carries the values the Core sent in `day_reanchor`. */
+        DetailsDayRestarted: {
+            trading_day_start_at: components["schemas"]["Timestamp"];
+            day_realized_net_known: components["schemas"]["Money"];
+            /** @description The watermark; absent = no fill today. */
+            last_fill_id?: string;
+            reanchor_version: number;
+            /** @enum {string} */
+            day_unknown_reason?: "late_anchor" | "journal_lost" | "playback_rewind" | "account_reset";
+        };
+        /** @description `risk.blocked` (+ `trigger`) and `risk.flatten` (+ `action`), 6.1.0 (S15). `kind` / `limit` / `used` are those of the rule that triggered the block (S15 AC-5). */
+        DetailsRiskEnforcement: {
+            /** @description The Core's id of one enforcement episode: one block until the reset of one account. The same value on the `risk.blocked` and every `risk.flatten` of that episode (the 2–3 entries of one limit breach), and on its `risk.reactive_block_action` and `risk.unblocked` entries, so S18 groups them without heuristics (Nanquim). A new block, even on the same day, gets a new id. */
+            enforcement_id: components["schemas"]["Uuid"];
+            kind: components["schemas"]["RiskRuleKind"];
+            limit: components["schemas"]["Money"];
+            used: components["schemas"]["Money"];
+            limits_version: number;
+            /**
+             * @description With `risk.blocked`: `enabled_over_limit` = the user turned enforcement on while the limit was already exceeded today (S15 AC-8, Q61 a).
+             * @enum {string}
+             */
+            trigger?: "limit_reached" | "enabled_over_limit";
+            /**
+             * @description With `risk.flatten`.
+             * @enum {string}
+             */
+            action?: "flattened" | "orders_cancelled";
+            /** @description The plugin acted while the Core was unreachable, on its cached limits (S15 AC-4). */
+            while_disconnected?: boolean;
+            /** @description The connection's clock (Playback, S15 AC-7). */
+            platform_time?: components["schemas"]["Timestamp"];
+        };
+        /** @description `risk.unblocked` (6.1.0, S15 AC-9). */
+        DetailsRiskUnblocked: {
+            /** @description The ended block's `enforcement_id`; absent only when the Core never recorded that block. */
+            enforcement_id?: components["schemas"]["Uuid"];
+            /** @constant */
+            reason: "trading_day_reset";
+            blocked_at?: components["schemas"]["Timestamp"];
+            limits_version?: number;
+        };
+        /** @description `risk.reactive_block_action` (6.1.0, S15 AC-6): the cancel of a manual order while blocked (`risk_event` `blocked_order_cancelled`). A resulting position flattened while blocked is reported as `flattened` and recorded as `risk.flatten` (ADR-0004 §7 r6.1). */
+        DetailsReactiveBlockAction: {
+            /** @description The current block's `enforcement_id`; absent only when the Core never recorded that block. */
+            enforcement_id?: components["schemas"]["Uuid"];
+            /** @constant */
+            action: "order_cancelled";
+            /** @description The rule behind the block. */
+            kind?: components["schemas"]["RiskRuleKind"];
+            while_disconnected?: boolean;
+            platform_time?: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description `security.invitation_issued` (the admin's trail; with `masked_email` and `email_sent`),
+         *     `security.invitation_revoked`, and `security.account_created` (the new user's log: the
+         *     invitation that created the account). Never an unmasked address or the invitation token.
+         */
+        DetailsSecurityInvitation: {
+            invitation_id: components["schemas"]["Uuid"];
+            masked_email?: components["schemas"]["MaskedChannelValue"];
+            /** @description Whether the invitation e-mail was handed to the mail provider. */
+            email_sent?: boolean;
+        };
+        /**
+         * @description Type map, not a payload: `details` of an entry with code `<code>` matches property `<code>`.
+         *     Codes not listed have empty `details` (`{}`) unless their own contract adds a schema.
+         */
+        AuditDetailsByCode: {
+            "ingress.received"?: components["schemas"]["DetailsIngressReceived"];
+            "ingress.duplicate_ignored"?: components["schemas"]["DetailsIngressDuplicate"];
+            "ingress.duplicate_conflict"?: components["schemas"]["DetailsIngressDuplicateConflict"];
+            "ingress.rejected"?: components["schemas"]["DetailsIngressRejected"];
+            "ingress.rate_limited"?: components["schemas"]["DetailsIngressRateLimited"];
+            "routing.routed"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.quantity_capped"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.max_position_reached"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.signal_type_not_selected"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.automation_not_accepted"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.copy_not_accepted"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.account_inactive"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.platform_unbound"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.no_bracket_profile"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.limits_pending"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.out_of_sync"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.risk_blocked"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.position_conflict"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.nothing_to_close"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.nothing_to_reduce"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.no_correlated_order"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.instrument_unavailable"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.adapter_protocol_outdated"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.position_unknown"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.expired"?: components["schemas"]["DetailsRoutingDecision"];
+            "execution.command_requested"?: components["schemas"]["DetailsCommandSent"];
+            "execution.command_sent"?: components["schemas"]["DetailsCommandSent"];
+            "execution.bracket_calculated"?: components["schemas"]["DetailsBracketCalculated"];
+            "execution.order_received"?: components["schemas"]["DetailsExecution"];
+            "execution.order_working"?: components["schemas"]["DetailsExecution"];
+            "execution.partially_filled"?: components["schemas"]["DetailsExecution"];
+            "execution.filled"?: components["schemas"]["DetailsExecution"];
+            "execution.cancelled"?: components["schemas"]["DetailsExecution"];
+            "execution.rejected"?: components["schemas"]["DetailsExecution"];
+            "execution.expired"?: components["schemas"]["DetailsExecution"];
+            "execution.state_unknown"?: components["schemas"]["DetailsExecution"];
+            "execution.fill_corrected"?: components["schemas"]["DetailsExecution"];
+            "connection.status_changed"?: components["schemas"]["DetailsConnectionStatus"];
+            "execution.unbound_activity"?: components["schemas"]["DetailsUnboundActivity"];
+            "execution.undelivered"?: components["schemas"]["DetailsUndelivered"];
+            "execution.exit_sent_late"?: components["schemas"]["DetailsCommandSent"];
+            "connection.account_kind_changed"?: components["schemas"]["DetailsAccountKindChanged"];
+            "sync.flagged"?: components["schemas"]["DetailsSync"];
+            "sync.reason_resolved"?: components["schemas"]["DetailsSync"];
+            "sync.cleared"?: components["schemas"]["DetailsSync"];
+            "sync.restored"?: components["schemas"]["DetailsSync"];
+            "sources.created"?: components["schemas"]["DetailsSourceLifecycle"];
+            "sources.renamed"?: components["schemas"]["DetailsSourceLifecycle"];
+            "sources.rotated"?: components["schemas"]["DetailsSourceLifecycle"];
+            "sources.revoked"?: components["schemas"]["DetailsSourceLifecycle"];
+            "connections.created"?: components["schemas"]["DetailsConnectionLifecycle"];
+            "connections.renamed"?: components["schemas"]["DetailsConnectionLifecycle"];
+            "connections.pairing_code_issued"?: components["schemas"]["DetailsConnectionLifecycle"];
+            "connections.paired"?: components["schemas"]["DetailsConnectionLifecycle"];
+            "connections.repaired"?: components["schemas"]["DetailsConnectionLifecycle"];
+            "connections.unpaired"?: components["schemas"]["DetailsConnectionLifecycle"];
+            "security.signed_in"?: components["schemas"]["DetailsSecuritySignedIn"];
+            "security.sign_in_failed"?: components["schemas"]["DetailsSecurityChannel"];
+            "security.code_rate_limited"?: components["schemas"]["DetailsSecurityRateLimited"];
+            "security.code_delivery_failed"?: components["schemas"]["DetailsSecurityDeliveryFailed"];
+            "security.new_device_notice_sent"?: components["schemas"]["DetailsSecurityDevice"];
+            "security.step_up_succeeded"?: components["schemas"]["DetailsSecurityStepUp"];
+            "security.step_up_failed"?: components["schemas"]["DetailsSecurityStepUp"];
+            "security.channel_change_requested"?: components["schemas"]["DetailsSecurityChannelChange"];
+            "security.channel_change_on_hold"?: components["schemas"]["DetailsSecurityChannelChange"];
+            "security.channel_change_completed"?: components["schemas"]["DetailsSecurityChannelChange"];
+            "security.channel_change_cancelled"?: components["schemas"]["DetailsSecurityChannelChange"];
+            "security.channel_change_not_completed"?: components["schemas"]["DetailsSecurityChannelChange"];
+            "security.device_forgotten"?: components["schemas"]["DetailsSecurityDevice"];
+            "security.signed_out_everywhere"?: components["schemas"]["DetailsEmpty"];
+            "security.invitation_issued"?: components["schemas"]["DetailsSecurityInvitation"];
+            "security.invitation_revoked"?: components["schemas"]["DetailsSecurityInvitation"];
+            "security.account_created"?: components["schemas"]["DetailsSecurityInvitation"];
+            "accounts.created"?: components["schemas"]["DetailsAccountChange"];
+            "accounts.updated"?: components["schemas"]["DetailsAccountChange"];
+            "accounts.archived"?: components["schemas"]["DetailsAccountChange"];
+            "accounts.lifecycle_changed"?: components["schemas"]["DetailsLifecycleChanged"];
+            "accounts.opt_in_chosen"?: components["schemas"]["DetailsOptInChosen"];
+            "accounts.opt_in_rule_updated"?: components["schemas"]["DetailsOptInRuleUpdated"];
+            "accounts.opt_in_suspended"?: components["schemas"]["DetailsOptInSuspended"];
+            "routing.subscription_changed"?: components["schemas"]["DetailsSubscriptionChanged"];
+            "profiles.default_changed"?: components["schemas"]["DetailsProfileChanged"];
+            "profiles.account_changed"?: components["schemas"]["DetailsProfileChanged"];
+            "presets.version_applied"?: components["schemas"]["DetailsPresetApplied"];
+            "presets.value_restored"?: components["schemas"]["DetailsPresetValueRestored"];
+            "risk.rules_changed"?: components["schemas"]["DetailsRiskRulesChanged"];
+            "risk.warning"?: components["schemas"]["DetailsRiskState"];
+            "risk.limit_reached"?: components["schemas"]["DetailsRiskState"];
+            "risk.target_reached"?: components["schemas"]["DetailsRiskState"];
+            "risk.consistency_warning"?: components["schemas"]["DetailsRiskState"];
+            "risk.evaluation_target_reached"?: components["schemas"]["DetailsEvaluation"];
+            "risk.day_restarted"?: components["schemas"]["DetailsDayRestarted"];
+            "risk.blocked"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.flatten"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.unblocked"?: components["schemas"]["DetailsRiskUnblocked"];
+            "risk.reactive_block_action"?: components["schemas"]["DetailsReactiveBlockAction"];
+            "accounts.evaluation_restarted"?: components["schemas"]["DetailsEvaluationRestarted"];
+            "accounts.evaluation_corrected"?: components["schemas"]["DetailsEvaluationCorrected"];
+            "trades.captured"?: components["schemas"]["DetailsTrade"];
+            "trades.manual_created"?: components["schemas"]["DetailsTrade"];
+            "trades.manual_changed"?: components["schemas"]["DetailsTradeChanged"];
+            "trades.manual_deleted"?: components["schemas"]["DetailsTrade"];
+            "trades.reconcile_mismatch"?: components["schemas"]["DetailsTradeMismatch"];
+        };
+        /**
+         * @description Set by the Core from the registry. Web behaviour (S18 §3/§5): `info` / `warning` update the bell
+         *     silently; `success` uses the success colour; `danger` raises a destructive toast; `critical` is the
+         *     top severity of the ADRs and shows the `CriticalBanner`, which stays until the item is read
+         *     (Q51). The plugin may map `success` → `info` and `danger` → `warning` in its UI; the
+         *     protocol carries the five values unchanged.
+         * @enum {string}
+         */
+        NotificationSeverity: "info" | "success" | "warning" | "danger" | "critical";
+        /** @description A code of the registry (`contracts/notifications/v1/registry.json`); `NotificationParamsByCode` lists them with their params. Unknown codes are shown with the fallback "Aviso {code}". */
+        NotificationCode: string;
+        /** @description Structured link; the client builds the URL (Web route; plugin `welcome.app_url` + route). Never a URL in the payload. */
+        NotificationTarget: {
+            /** @enum {string} */
+            kind: "account" | "connection" | "instruction" | "route" | "activity_entry";
+            id: components["schemas"]["Uuid"];
+        };
+        Notification: {
+            notification_id: components["schemas"]["Uuid"];
+            /** @description Monotonic per `notification_id`; every change (new occurrence, read) bumps it. Clients upsert only with a higher revision. */
+            revision: number;
+            code: components["schemas"]["NotificationCode"];
+            category: components["schemas"]["AuditCategory"];
+            severity: components["schemas"]["NotificationSeverity"];
+            account_id?: components["schemas"]["Uuid"];
+            /** @description Snapshot (Web only; the plugin shows its platform account name). */
+            account_name?: string;
+            /** @description Typed per code — `NotificationParamsByCode[code]` (the same schemas as `params.schema.json`). For grouped items, the params of the last occurrence. */
+            params: Record<string, never>;
+            /** @description Occurrences grouped into this item (same code + account + trading day, or + source + trading day for `source_trading_day`; registry `grouping`, and `reopen_on_occurrence` for whether a new occurrence marks it unread). The audit keeps one entry per occurrence. */
+            count: number;
+            /** @description event_ids of the adapter→Core messages aggregated (only for notifications caused by plugin events). */
+            source_event_ids?: components["schemas"]["Uuid"][];
+            /** @description The audit entry of the last occurrence (Web link "Ver no registro"). */
+            audit_entry_id?: components["schemas"]["Uuid"];
+            created_at: components["schemas"]["Timestamp"];
+            /** @description The last occurrence (equals `created_at` while `count` is 1) or the last change. */
+            updated_at: components["schemas"]["Timestamp"];
+            read_at?: components["schemas"]["Timestamp"];
+            target?: components["schemas"]["NotificationTarget"];
+        };
+        UnreadCount: {
+            unread_count: number;
+            /** @description The worst severity among unread items; absent when there are none. */
+            worst_severity?: components["schemas"]["NotificationSeverity"];
+        };
+        NotificationPage: {
+            notifications: components["schemas"]["Notification"][];
+            /** @description Absent on the last page. */
+            next_cursor?: string;
+            unread: components["schemas"]["UnreadCount"];
+        };
+        MarkReadResult: {
+            notification: components["schemas"]["Notification"];
+            unread: components["schemas"]["UnreadCount"];
+        };
+        MarkManyRequest: {
+            notification_ids?: components["schemas"]["Uuid"][];
+            up_to?: components["schemas"]["Timestamp"];
+            category?: components["schemas"]["AuditCategory"][];
+            account_id?: components["schemas"]["Uuid"][];
+        } & (unknown | unknown);
+        /** @description `accounts.opt_in_suspended` grouped per firm and release (one notification, "{k} contas"); the audit keeps one entry per account. */
+        ParamsOptInSuspendedByFirm: {
+            kind: components["schemas"]["OptInKind"];
+            firm_id: components["schemas"]["Uuid"];
+            firm_name: string;
+            account_count: number;
+            rule_version_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            cause?: "stance_changed" | "text_changed" | "preset_attached";
+        };
+        /**
+         * @description Q74 (Vigia I1): a `reverse` that closed the position and skipped the open. The cause is one of the
+         *     four Q74 bars, or one of two cases with the same outcome by existing rules: no room (M = 0, ADR-0003
+         *     §4.2) or the open expired at routing (T1). Always notified, one per occurrence, whatever the gate
+         *     (including `routing.limits_pending`, which is otherwise not notified). It replaces the gate's own
+         *     grouped notification for that occurrence. Audit entries behind it: at routing (gates, M = 0,
+         *     `routing.expired`) the routing entry carries the gate code and
+         *     `DetailsRoutingDecision.reverse_closed_qty`; in the gateway-queue exception (5.1.1) the decision
+         *     entry stays `routing.routed`, the open leg's entry is `execution.expired` and the closed quantity
+         *     is in the flatten's execution entries; under Q75 the routing entry is `routing.out_of_sync` with
+         *     `expected_flat` and no `reverse_closed_qty`, and the closed quantity is in the flatten's
+         *     `execution.filled` entries. Q75 (5.2.0, decision 4b A): when the account is
+         *     out of sync and the expected position was flat (`expected_flat`), nothing is notified at the
+         *     decision. When the flatten is terminal: filled → this notification with `reason_code`
+         *     `routing.out_of_sync` and `closed_qty` / `closed_side` from the flatten's fills (when the real
+         *     position was already the reverse side, `closed_side` is that side); `command.already_flat` → not
+         *     this code but `routing.out_of_sync_flatten` (`ParamsOutOfSyncFlatten`), and the grouped
+         *     `routing.out_of_sync` notification covers the skipped open.
+         */
+        ParamsReverseCloseOnly: {
+            /**
+             * @description The gate that skipped the open leg; `routing.expired` when the routing decision saw the open's TTL exceeded (5.1.0), or when the open leg expired in the gateway queue under the ADR-0004 §5 reverse exception (5.1.1).
+             * @enum {string}
+             */
+            reason_code: "routing.out_of_sync" | "routing.risk_blocked" | "routing.limits_pending" | "routing.no_bracket_profile" | "routing.max_position_reached" | "routing.expired";
+            /** @description abs(position) read at the decision: the quantity the close leg is sent to flatten (as `DetailsRoutingDecision.reverse_closed_qty`). Q75 (`expected_flat`): the quantity filled by the flatten. */
+            closed_qty: number;
+            /**
+             * @description The side of the position that was closed (Q75: from the flatten's fills).
+             * @enum {string}
+             */
+            closed_side: "long" | "short";
+        };
+        /**
+         * @description Q75 (5.2.0, ADR-0003 r4): a flatten sent on an out-of-sync account whose expected position was
+         *     flat (`DetailsRoutingDecision.expected_flat`) ended in a terminal success. Sent once per such
+         *     flatten, except a `reverse` whose flatten filled, which is `routing.reverse_close_only`. As every
+         *     flatten, it first cancelled every working order on the contract, manual and other All Win orders
+         *     included, even when the position turned out flat; the text says so. The Core does not count the
+         *     cancelled orders (the adapter does not correlate them with the flatten).
+         */
+        ParamsOutOfSyncFlatten: {
+            /**
+             * @description The source instruction's action.
+             * @enum {string}
+             */
+            action: "close" | "reverse";
+            /**
+             * @description `filled`: the account held a position the Core did not expect, now closed; `already_flat`: `command.already_flat`.
+             * @enum {string}
+             */
+            result: "filled" | "already_flat";
+            /** @description Only with `filled`: the quantity filled by the flatten. */
+            closed_qty?: number;
+            /**
+             * @description Only with `filled`: the side of the position that was closed.
+             * @enum {string}
+             */
+            closed_side?: "long" | "short";
+        };
+        /** @description `presets.new_version` — one per firm (Q-S16-5): a newer release affects `account_count` of the caller's accounts. */
+        ParamsPresetNewVersion: {
+            firm_id: components["schemas"]["Uuid"];
+            firm_name: string;
+            version_number: number;
+            account_count: number;
+        };
+        /**
+         * @description Type map, not a payload: `params` of a notification with code `<code>` matches property `<code>`.
+         *     Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). The S15 codes
+         *     (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`) are in from 6.1.0
+         *     (registry 1.6.0).
+         */
+        NotificationParamsByCode: {
+            "routing.quantity_capped"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.max_position_reached"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.position_conflict"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.risk_blocked"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.out_of_sync"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.expired"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.no_bracket_profile"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.instrument_unavailable"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.adapter_protocol_outdated"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.position_unknown"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.nothing_to_reduce"?: components["schemas"]["DetailsRoutingDecision"];
+            "routing.reverse_close_only"?: components["schemas"]["ParamsReverseCloseOnly"];
+            "routing.out_of_sync_flatten"?: components["schemas"]["ParamsOutOfSyncFlatten"];
+            "risk.warning"?: components["schemas"]["DetailsRiskState"];
+            "risk.limit_reached"?: components["schemas"]["DetailsRiskState"];
+            "risk.target_reached"?: components["schemas"]["DetailsRiskState"];
+            "risk.consistency_warning"?: components["schemas"]["DetailsRiskState"];
+            "risk.evaluation_target_reached"?: components["schemas"]["DetailsEvaluation"];
+            "risk.blocked"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.flatten"?: components["schemas"]["DetailsRiskEnforcement"];
+            "risk.unblocked"?: components["schemas"]["DetailsRiskUnblocked"];
+            "risk.reactive_block_action"?: components["schemas"]["DetailsReactiveBlockAction"];
+            "connection.status_changed"?: components["schemas"]["DetailsConnectionStatus"];
+            "accounts.opt_in_suspended"?: components["schemas"]["ParamsOptInSuspendedByFirm"];
+            "presets.new_version"?: components["schemas"]["ParamsPresetNewVersion"];
+            "execution.unbound_activity"?: components["schemas"]["DetailsUnboundActivity"];
+            "sync.flagged"?: components["schemas"]["DetailsSync"];
+            "sync.bracket_orphan_leg"?: components["schemas"]["DetailsSync"];
+            "sync.bracket_incomplete"?: components["schemas"]["DetailsSync"];
+            "sync.bracket_double_fill"?: components["schemas"]["DetailsSync"];
+            "sync.flatten_failed_unprotected"?: components["schemas"]["DetailsSync"];
+            "sync.restored"?: components["schemas"]["DetailsSync"];
+            "ingress.duplicate_conflict"?: components["schemas"]["DetailsIngressDuplicateConflict"];
+        };
+        NotificationCreatedEvent: {
+            /** @constant */
+            type: "notification.created";
+            at: components["schemas"]["Timestamp"];
+            notification: components["schemas"]["Notification"];
+            unread: components["schemas"]["UnreadCount"];
+        };
+        /** @description A grouped item got a new occurrence (count, last time, params), or another change; upsert by revision. */
+        NotificationUpdatedEvent: {
+            /** @constant */
+            type: "notification.updated";
+            at: components["schemas"]["Timestamp"];
+            notification: components["schemas"]["Notification"];
+            unread: components["schemas"]["UnreadCount"];
+        };
+        /** @description Items were read on any channel (Web tab or plugin); `notification_ids` lists them (absent after a large `up_to` read, then refetch). */
+        NotificationReadEvent: {
+            /** @constant */
+            type: "notification.read";
+            at: components["schemas"]["Timestamp"];
+            notification_ids?: components["schemas"]["Uuid"][];
+            unread: components["schemas"]["UnreadCount"];
+        };
+        /** @description Percent with exactly one decimal (Q-S22-2). */
+        WinRate: string;
+        /**
+         * @description All P&L figures are NET (after commissions; S22 AC-3): a win is a trade with net P&L > 0, so a
+         *     trade of +2.00 gross with 2.50 commission is a loss (Q58: P&L = 0 is not a win; the counts are
+         *     shown). Win rate = wins ÷ all trades. MAE / MFE averages use only trades that have the value (`*_sample_count` of
+         *     `trade_count`, Q55).
+         */
+        PerformanceFigures: {
+            trade_count: number;
+            win_count: number;
+            loss_count: number;
+            breakeven_count: number;
+            total_pnl: components["schemas"]["Money"];
+            /**
+             * @description `net` from 3.5.0.
+             * @enum {string}
+             */
+            pnl_basis?: "gross" | "net";
+            total_gross_pnl: components["schemas"]["Money"];
+            total_commission: components["schemas"]["MoneyString"];
+            /** @description Trades whose commission is `none` (net = gross). */
+            uncommissioned_count?: number;
+            /** @description Net average per trade. */
+            avg_pnl?: components["schemas"]["Money"];
+            /** @description Gross average per trade, shown beside the net average (S22 AC-3: "totals and averages of P&L use net P&L with gross beside it"; 5.4.0). Same rounding as `avg_pnl`. */
+            avg_gross_pnl?: components["schemas"]["Money"];
+            win_rate?: components["schemas"]["WinRate"];
+            avg_duration_seconds?: number;
+            avg_mae?: components["schemas"]["MoneyString"];
+            mae_sample_count: number;
+            avg_mfe?: components["schemas"]["MoneyString"];
+            mfe_sample_count: number;
+        } & (unknown & unknown & unknown);
+        /**
+         * @description One group with at least one trade. Keys by `group_by`: `source_signal` → origin + source (routed) +
+         *     signal type; `source` → origin + source; `signal_type` → signal type (origin `manual` /
+         *     `platform` trades form their own groups without a signal type, Q-S22-7).
+         */
+        PerformanceGroup: {
+            origin: components["schemas"]["TradeOrigin"];
+            source_id?: components["schemas"]["Uuid"];
+            source_name?: string;
+            source_revoked?: boolean;
+            signal_type?: components["schemas"]["AuditSignalType"];
+            master_account_id?: components["schemas"]["Uuid"];
+            master_account_name?: string;
+            figures: components["schemas"]["PerformanceFigures"];
+            /** @description |total_pnl| of this group ÷ the largest |total_pnl| among the groups (the bar length; its sign comes from `total_pnl`). `0.0000` for every group when the largest |total_pnl| is 0. */
+            bar_ratio: string;
+        };
+        Performance: {
+            /** @description The instant the set was taken; pass it as `recorded_before` to the S21 list for the same trades. */
+            as_of: components["schemas"]["Timestamp"];
+            /** @enum {string} */
+            group_by: "source_signal" | "source" | "signal_type";
+            /** @description The whole filtered set; equals `getTradesSummary` for the same filters and `recorded_before = as_of` (S22 AC-2). */
+            totals: components["schemas"]["PerformanceFigures"];
+            groups: components["schemas"]["PerformanceGroup"][];
+        };
+        /** @description Text written by the catalog publisher in both UI languages (not firm text; firm text is never translated). */
+        LocalizedText: {
+            "pt-BR": string;
+            en: string;
+        };
+        /** @description A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2). `page_title` is absent when the firm's site blocks automated access (e.g. Apex, TPT; user decision 2026-10-24): then `title_note` explains it and clients show the URL as the link. The title is never derived. */
+        RuleQuote: {
+            text: string;
+            /** @description BCP 47, e.g. 'en'. */
+            language: string;
+            page_title?: string;
+            /** @description Only without `page_title` (and then required): the publisher's note, e.g. "title not retrieved: site blocks automated access, 2026-10-24". Plain text. */
+            title_note?: string;
+            /** @description Heading of the quoted part of the page, if any. */
+            section?: string;
+            /** Format: uri */
+            url: string;
+            /**
+             * Format: date
+             * @description Date the page was read (YYYY-MM-DD).
+             */
+            accessed_at: string;
+        } & unknown;
+        RuleVersion: {
+            id: components["schemas"]["Uuid"];
+            kind: components["schemas"]["OptInKind"];
+            firm_stance: components["schemas"]["FirmStance"];
+            /** @description The firm platform this rule version applies to; absent when the firm's stance does not vary by platform, and for generic rules. */
+            firm_platform?: components["schemas"]["FirmPlatform"];
+            /** @description True for the rule used by prop accounts without a preset (no firm, stance `unknown`, no quotes; the UI shows the generic warning). */
+            is_generic: boolean;
+            firm_id?: components["schemas"]["Uuid"];
+            firm_name?: string;
+            version_number: number;
+            published_at: components["schemas"]["Timestamp"];
+            /**
+             * @description Official quotes, in display order. Empty for `unknown`. For `not_confirmed` they are the
+             *     conflicting quotes, each with its own source and date.
+             */
+            quotes: components["schemas"]["RuleQuote"][];
+            /** @description With `unknown` (not generic) — where the publisher looked and found no rule. */
+            research?: {
+                /** Format: date */
+                searched_on: string;
+                /** @description 5.4.0 (Torno) — the same `SourceRef` as `StanceInfo.research` and the release file (`page_title` optional, `accessed_at` required). */
+                sources: components["schemas"]["SourceRef"][];
+            };
+            /** @description Present when this version replaced an earlier one for the same preset selection and kind. */
+            change?: {
+                previous_rule_version_id: components["schemas"]["Uuid"];
+                previous_firm_stance: components["schemas"]["FirmStance"];
+                /**
+                 * @description `stance_changed` and `text_changed` move `chosen` accounts to `pending_review` (Q26; the
+                 *     text case is Q42: the publisher flagged it as material). `not_material` never
+                 *     suspends (typo or format fix).
+                 * @enum {string}
+                 */
+                cause: "stance_changed" | "text_changed" | "not_material";
+                /** @description The publisher's explanation shown to the user, present with `text_changed` (Q42 a: the publisher flags the change and records why); optional in the schema for compatibility. */
+                reason?: components["schemas"]["LocalizedText"];
+            };
+        } & unknown;
+        OptInRules: {
+            automation: components["schemas"]["RuleVersion"];
+            copy: components["schemas"]["RuleVersion"];
+        };
+        SourceRef: {
+            /** Format: uri */
+            url: string;
+            /** Format: date */
+            accessed_at: string;
+            page_title?: string;
+            /** @description Optional, only without `page_title`: why the title is missing (the site blocks automated access). The title is never derived. */
+            title_note?: string;
+        } & unknown;
+        /** @description Non-negative money as a decimal string, exactly as published (X-3). */
+        MoneyAmount: string;
+        MaxPositionValue: {
+            /** @description MNQ (micro) contracts; the account's `max_position_qty` cannot exceed it. */
+            contracts: number;
+            /** @description As published, e.g. "5 minis / 50 micros". */
+            published_text?: string;
+        };
+        DrawdownValue: {
+            /** @enum {string} */
+            type: "trailing_intraday" | "trailing_eod" | "static" | "other";
+            amount: components["schemas"]["MoneyAmount"];
+            /** @description When it stops trailing, as published (the firm's text; the Core never interprets it). */
+            stops_trailing_at?: string;
+            /**
+             * @description 5.4.0 (Q90 a, user; Esquadro, Torno, Malha). Where a TRAILING drawdown stops trailing:
+             *     - `floor_reaches_start`: while floor < size_amount + `offset`, the floor trails as before. When it
+             *       reaches that value it locks there for the life of the evaluation. The base is the account's real
+             *       size (`size_amount`, Q73), not the nearest standard size.
+             *     - `never`: the floor never stops trailing.
+             *     Absent = the Q90 interim: the floor keeps trailing and the UI shows "regra de trava não
+             *     modelada". The publisher fills it from the research; ambiguous text makes the whole drawdown
+             *     `not_confirmed`, never a guessed lock. Side effects such as "and the daily loss limit is removed"
+             *     are out of scope (published text only). Allowed only for `trailing_intraday` / `trailing_eod`.
+             *     A `restartEvaluation` with a new start resets the lock with the evaluation (Malha). Changes follow
+             *     Q48:
+             *     - adding a lock or lowering `offset` loosens, so it applies from the next trading day
+             *       (`pending_changes` `drawdown_lock_changed`);
+             *     - removing it (`never`, or absent) or raising `offset` tightens, so it applies at once.
+             *     Removing a lock that already locked makes the floor trail again from the current high water.
+             */
+            trailing_lock?: {
+                /** @enum {string} */
+                mode: "floor_reaches_start" | "never";
+                /** @description With `floor_reaches_start` only; absent = `0.00`, so the floor locks at `size_amount` (Crivo n2). */
+                offset?: components["schemas"]["MoneyAmount"];
+            } & unknown;
+            /** @description Required for `other`. */
+            description?: string;
+        } & (unknown & unknown);
+        DailyLossValue: {
+            /** @enum {string} */
+            kind: "hard" | "soft_pause" | "none";
+            amount?: components["schemas"]["MoneyAmount"];
+        } & unknown;
+        DailyProfitTargetValue: {
+            amount: components["schemas"]["MoneyAmount"];
+        };
+        TradingDayResetValue: {
+            local_time: string;
+            time_zone: components["schemas"]["TimeZone"];
+            /** @description As published, e.g. "5:00 PM ET". */
+            published_text?: string;
+        };
+        ConsistencyValue: {
+            /** @description The firm's wording (not translated). */
+            text: string;
+            threshold_pct?: string;
+        };
+        /**
+         * @description `not_confirmed` = the firm's official pages disagree; never prefilled (S16 AC-5/AC-6).
+         * @enum {string}
+         */
+        ProvenanceStatus: "verified" | "not_confirmed";
+        /** @description `verified` → `value` + `sources`; `not_confirmed` → `published_values` (≥ 2) and no `value`. */
+        ProvenanceShape: unknown;
+        /** @description Maximum position (MNQ contracts) as the preset publishes it. */
+        MaxPositionRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["MaxPositionValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["MaxPositionValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        /** @description Drawdown amount and type. */
+        DrawdownRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["DrawdownValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["DrawdownValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        /** @description Daily loss limit and its kind. */
+        DailyLossRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["DailyLossValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["DailyLossValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        /** @description Daily profit target (S13 AC-5); absent from the preset when the firm has none. */
+        DailyProfitTargetRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["DailyProfitTargetValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["DailyProfitTargetValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        /** @description Trading-day reset time. */
+        TradingDayResetRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["TradingDayResetValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["TradingDayResetValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        /** @description Consistency rule; optional (an unresolved one is shown as not tracked). */
+        ConsistencyRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["ConsistencyValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["ConsistencyValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        CommissionValue: {
+            /** @description USD per contract and per side (a round turn costs twice), ≥ 0. */
+            amount: components["schemas"]["MoneyAmount"];
+        };
+        EvaluationTargetValue: {
+            /** @description Net profit to reach since the evaluation start, > 0. */
+            amount: components["schemas"]["MoneyAmount"];
+        };
+        /** @description Commission per contract and side, as the firm publishes it. */
+        CommissionRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["CommissionValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["CommissionValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        /** @description Evaluation profit target (Q46). */
+        EvaluationTargetRule: {
+            status: components["schemas"]["ProvenanceStatus"];
+            value?: components["schemas"]["EvaluationTargetValue"];
+            sources?: components["schemas"]["SourceRef"][];
+            published_values?: {
+                value: components["schemas"]["EvaluationTargetValue"];
+                sources: components["schemas"]["SourceRef"][];
+            }[];
+        } & components["schemas"]["ProvenanceShape"];
+        /**
+         * @description Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.
+         * @enum {string}
+         */
+        RuleField: "max_position_qty" | "drawdown" | "daily_loss_limit" | "daily_profit_target" | "trading_day_reset" | "consistency_rule" | "commission_per_contract_side" | "evaluation_profit_target";
+        PresetRules: {
+            max_position_qty: components["schemas"]["MaxPositionRule"];
+            drawdown: components["schemas"]["DrawdownRule"];
+            daily_loss_limit: components["schemas"]["DailyLossRule"];
+            daily_profit_target?: components["schemas"]["DailyProfitTargetRule"];
+            trading_day_reset: components["schemas"]["TradingDayResetRule"];
+            consistency_rule?: components["schemas"]["ConsistencyRule"];
+            /** @description The firm's published commission per contract and side (U20 a; prefills the account floor, editable on the account). */
+            commission_per_contract_side?: components["schemas"]["CommissionRule"];
+            /** @description Evaluation phase only — the profit to reach to pass (Q46; S16 AC-10). Absent for funded / live phases. */
+            evaluation_profit_target?: components["schemas"]["EvaluationTargetRule"];
+        };
+        /**
+         * @description The account's own value for a rule field, sent when it differs from the preset value (edited, S16
+         *     AC-2) or resolves a not-confirmed field (chosen among the published values or typed, S16 AC-6).
+         *     `max_position_qty` is not here: it is the account's top-level field (S5).
+         */
+        PresetRuleValues: {
+            drawdown?: components["schemas"]["DrawdownValue"];
+            daily_loss_limit?: components["schemas"]["DailyLossValue"];
+            daily_profit_target?: components["schemas"]["DailyProfitTargetValue"];
+            trading_day_reset?: components["schemas"]["TradingDayResetValue"];
+            consistency_rule?: components["schemas"]["ConsistencyValue"];
+            evaluation_profit_target?: components["schemas"]["EvaluationTargetValue"];
+        };
+        /** @description VPS/server and personal-device stances (S16 AC-8); verbatim quotes, never translated. */
+        StanceInfo: {
+            /** @enum {string} */
+            value: "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed" | "required" | "not_required";
+            quotes: components["schemas"]["RuleQuote"][];
+            research?: {
+                /** Format: date */
+                searched_on: string;
+                sources: components["schemas"]["SourceRef"][];
+            };
+        };
+        /**
+         * @description `automation` / `copy` are the rule versions of the opt-ins: one entry without `firm_platform` when
+         *     the stance is the same on every platform, otherwise one entry per firm platform. `vps` ∈ allowed /
+         *     forbidden / conditional / unknown / not_confirmed; `personal_device` ∈ required / not_required /
+         *     unknown / not_confirmed (Q-S16-2; `not_confirmed` from 5.4.0, S16 AC-5, Q-S16-7: the firm's pages
+         *     disagree, so at least 2 quotes and nothing is prefilled).
+         */
+        FirmStances: {
+            automation: components["schemas"]["RuleVersion"][];
+            copy: components["schemas"]["RuleVersion"][];
+            vps: components["schemas"]["StanceInfo"] & {
+                /** @enum {unknown} */
+                value?: "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed";
+            };
+            personal_device: components["schemas"]["StanceInfo"] & {
+                /** @enum {unknown} */
+                value?: "required" | "not_required" | "unknown" | "not_confirmed";
+            };
+        };
+        /** @description S16 AC-7: no V1 output reaches the firm's platforms; risk tracking only, no routing (S7 AC-7b). */
+        ManualOnly: {
+            reason: components["schemas"]["RuleQuote"];
+        };
+        FirmSummary: {
+            id: components["schemas"]["Uuid"];
+            slug: string;
+            name: string;
+            manual_only?: components["schemas"]["ManualOnly"];
+            plan_names: string[];
+            stances: {
+                automation: components["schemas"]["StanceSummary"];
+                copy: components["schemas"]["StanceSummary"];
+                /** @enum {string} */
+                vps: "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed";
+                /** @enum {string} */
+                personal_device: "required" | "not_required" | "unknown" | "not_confirmed";
+            };
+            /** @description The sum of `PresetOption.not_confirmed_count` over the presets of the current release. Stances are shown separately and are not counted. */
+            not_confirmed_count: number;
+            release: components["schemas"]["FirmReleaseRef"];
+        };
+        /**
+         * @description A `FirmStance`, or `varies_by_platform` when the firm's platforms have different stances (the firm detail lists them).
+         * @enum {string}
+         */
+        StanceSummary: "allowed" | "forbidden" | "conditional" | "unknown" | "not_confirmed" | "varies_by_platform";
+        FirmReleaseRef: {
+            version_number: number;
+            published_at: components["schemas"]["Timestamp"];
+            /** Format: date */
+            verified_on: string;
+        };
+        FirmList: {
+            firms: components["schemas"]["FirmSummary"][];
+        };
+        /** @description One size of a plan/phase in the current release. */
+        PresetOption: {
+            preset_id: components["schemas"]["Uuid"];
+            preset_version_id: components["schemas"]["Uuid"];
+            size_amount: components["schemas"]["SizeAmount"];
+            /** @description As published, e.g. "50K". */
+            size_label?: string;
+            /** @description True → the account must choose `firm_platform`. */
+            platform_specific: boolean;
+            /** @description The number of DISTINCT rule fields (`RuleField`) with status `not_confirmed` in any of the preset's rule sets. A field that is not confirmed on two platforms counts once. `stored_only` data and stances are not counted (5.4.0, Torno). */
+            not_confirmed_count: number;
+        };
+        FirmDetail: {
+            summary: components["schemas"]["FirmSummary"];
+            stances: components["schemas"]["FirmStances"];
+            platforms: {
+                code: components["schemas"]["FirmPlatform"];
+                /** @description Product name, e.g. "Rithmic" (not translated). */
+                label: string;
+                /** @description 5.4.0 (S-R3-2/S-R3-4, data from the preset release): this firm platform cannot be reached by any V1 output. An account with this `firm_platform` is manual only (routing `routing.account_manual_only`, listed in `listRouteCandidates.manual_only`), like a firm-level `manual_only`. */
+                manual_only?: components["schemas"]["ManualOnly"];
+            }[];
+            /** @description Plans and their phases in the release file's order; sizes inside a phase ascending by `size_amount` (5.4.0, Torno). */
+            plans: {
+                plan_id: components["schemas"]["Uuid"];
+                name: string;
+                phases: {
+                    /**
+                     * @description Research format phases; the UI translates them.
+                     * @enum {string}
+                     */
+                    phase: "evaluation" | "funded" | "live";
+                    sizes: components["schemas"]["PresetOption"][];
+                }[];
+            }[];
+            /** @description Plans not offered as presets (S16 AC-9); registered manually. */
+            excluded_plans: string[];
+        };
+        ReleaseChange: {
+            /** @enum {string} */
+            kind: "stance_changed" | "stance_text_changed" | "rule_value_changed" | "preset_added" | "preset_removed";
+            /** @enum {string} */
+            stance?: "automation" | "copy" | "vps" | "personal_device";
+            from?: string;
+            to?: string;
+            /**
+             * @description With `stance_text_changed` — flagged by the publisher as a material change (Q42;
+             *     `reason` is expected but optional while Q42 is open); only material automation/copy text
+             *     changes suspend. Always consistent with the new `RuleVersion.change.cause`: material ⇔
+             *     `text_changed`, not material ⇔ `not_material`.
+             */
+            material?: boolean;
+            reason?: components["schemas"]["LocalizedText"];
+            field?: components["schemas"]["RuleField"];
+            preset_id?: components["schemas"]["Uuid"];
+            /** @description 5.4.0 (preset release diff, Torno): set when the change concerns one firm platform. For `rule_value_changed` of a preset with per-platform rules there is one entry per platform; for a per-platform automation/copy text it names the platform. */
+            firm_platform?: components["schemas"]["FirmPlatform"];
+        } & (unknown & unknown & unknown & unknown & unknown);
+        FirmRelease: {
+            version_number: number;
+            published_at: components["schemas"]["Timestamp"];
+            /** Format: date */
+            verified_on: string;
+            changes: components["schemas"]["ReleaseChange"][];
+            /** @description The opt-in rule versions of this release (texts viewable with `getRuleVersion`). */
+            rule_versions: {
+                id: components["schemas"]["Uuid"];
+                kind: components["schemas"]["OptInKind"];
+                firm_platform?: components["schemas"]["FirmPlatform"];
+            }[];
+            vps: components["schemas"]["StanceInfo"];
+            personal_device: components["schemas"]["StanceInfo"];
+        };
+        FirmReleaseList: {
+            firm_id: components["schemas"]["Uuid"];
+            releases: components["schemas"]["FirmRelease"][];
+        };
+        PresetVersion: {
+            id: components["schemas"]["Uuid"];
+            preset_id: components["schemas"]["Uuid"];
+            firm_id: components["schemas"]["Uuid"];
+            firm_name: string;
+            plan_id: components["schemas"]["Uuid"];
+            plan_name: string;
+            /** @enum {string} */
+            phase: "evaluation" | "funded" | "live";
+            size_amount: components["schemas"]["SizeAmount"];
+            size_label?: string;
+            manual_only?: components["schemas"]["ManualOnly"];
+            release: components["schemas"]["FirmReleaseRef"];
+            /** @description Present when a newer version of this preset exists. */
+            superseded_by?: components["schemas"]["Uuid"];
+            /** @description One entry without `firm_platform`, or one entry per firm platform when the rules differ by platform. */
+            rule_sets: {
+                firm_platform?: components["schemas"]["FirmPlatform"];
+                rules: components["schemas"]["PresetRules"];
+            }[];
+            /** @description As `PresetOption.not_confirmed_count`. */
+            not_confirmed_count: number;
+        };
+        AccountRuleField: {
+            field: components["schemas"]["RuleField"];
+            /**
+             * @description `preset` = the preset's verified value; `edited` = the user changed it (badge `Editado`);
+             *     `chosen_from_conflict` = the user resolved a not-confirmed value (Q-S16-3: stored with the time
+             *     and whether one of the published values or another value was chosen); `unresolved` = an optional
+             *     not-confirmed field left open (not tracked).
+             * @enum {string}
+             */
+            origin: "preset" | "edited" | "chosen_from_conflict" | "unresolved";
+            /**
+             * @description With `chosen_from_conflict`.
+             * @enum {string}
+             */
+            chose?: "published_value" | "other_value";
+            chosen_at?: components["schemas"]["Timestamp"];
+            /** @description The account's value (typed by `field`, as in `PresetRuleValues`; for `max_position_qty` a `MaxPositionValue`). Absent with `unresolved`. */
+            account_value?: Record<string, never>;
+            /** @description The preset version's rule for this field (typed by `field`, as in `PresetRules`). */
+            preset_value?: Record<string, never>;
+        } & (unknown & unknown);
+        AccountPresetState: {
+            account_id: components["schemas"]["Uuid"];
+            preset_version_id: components["schemas"]["Uuid"];
+            release: components["schemas"]["FirmReleaseRef"];
+            firm_platform?: components["schemas"]["FirmPlatform"];
+            fields: components["schemas"]["AccountRuleField"][];
+            newer_version?: {
+                preset_version_id: components["schemas"]["Uuid"];
+                release: components["schemas"]["FirmReleaseRef"];
+                /** @description True when it changed the automation or copy stance or its material text, so the opt-in is already `pending_review` (Q-S5-3). */
+                suspends: boolean;
+            };
+            /** @description The account's `row_version`. */
+            row_version: number;
+        };
+        PresetDiffRow: {
+            field: components["schemas"]["RuleField"];
+            /** @description Typed by `field`; absent when unresolved. */
+            account_value?: Record<string, never>;
+            /** @description The current version's rule (typed by `field`). */
+            current_preset_value?: Record<string, never>;
+            /** @description The target version's rule (typed by `field`); absent when the field was removed. */
+            new_preset_value?: Record<string, never>;
+            /** @description The user had edited this field ("Você editou este valor"). */
+            edited: boolean;
+            requires_choice: boolean;
+            /** @description `max_position_qty` only: the new cap is below the account's value; apply is refused until the body lowers it. */
+            cap_conflict: boolean;
+        };
+        PresetDiff: {
+            account_id: components["schemas"]["Uuid"];
+            from_preset_version_id: components["schemas"]["Uuid"];
+            to_preset_version_id: components["schemas"]["Uuid"];
+            rows: components["schemas"]["PresetDiffRow"][];
+            /** @description True when the target has platform-specific rules and the account must name (or confirm) its `firm_platform` in the apply request. */
+            firm_platform_required: boolean;
+            /** @description The target's firm platforms (with `firm_platform_required`). */
+            firm_platforms?: components["schemas"]["FirmPlatform"][];
+            /** @description The new rule version per kind when it differs from the account's current one; then the apply request needs `opt_ins` for that kind if a choice is required. */
+            opt_in_changes: {
+                automation: components["schemas"]["Uuid"] | null;
+                copy: components["schemas"]["Uuid"] | null;
+            };
+        };
+        /** @description A field appears in `choices` or in `rule_values`, never in both (400 otherwise). */
+        ApplyPresetVersionRequest: {
+            target_preset_version_id: components["schemas"]["Uuid"];
+            row_version: number;
+            /** @description Required when the target has platform-specific rules and the account has no platform yet, or to change it (`PresetDiff.firm_platform_required`). */
+            firm_platform?: components["schemas"]["FirmPlatform"];
+            /** @description For each edited field of the diff, keep the user's value or take the new preset value. */
+            choices?: {
+                max_position_qty?: components["schemas"]["ApplyChoice"];
+                drawdown?: components["schemas"]["ApplyChoice"];
+                daily_loss_limit?: components["schemas"]["ApplyChoice"];
+                daily_profit_target?: components["schemas"]["ApplyChoice"];
+                trading_day_reset?: components["schemas"]["ApplyChoice"];
+                consistency_rule?: components["schemas"]["ApplyChoice"];
+                commission_per_contract_side?: components["schemas"]["ApplyChoice"];
+                evaluation_profit_target?: components["schemas"]["ApplyChoice"];
+            };
+            rule_values?: components["schemas"]["PresetRuleValues"];
+            max_position_qty?: components["schemas"]["MaxPositionQty"];
+            opt_ins?: components["schemas"]["OptInChoices"];
+            /** @description Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`, target = this account). */
+            step_up?: components["schemas"]["StepUpProof"];
+        } & (unknown & unknown & unknown & unknown & unknown);
+        /** @enum {string} */
+        ApplyChoice: "keep_mine" | "use_preset";
+        /** @description A new release of a firm affects some of the caller's accounts (refresh the notice; S18 sends one notification per firm, Q-S16-5). */
+        PresetVersionAvailableEvent: {
+            /** @constant */
+            type: "presets.version_available";
+            at: components["schemas"]["Timestamp"];
+            firm_id: components["schemas"]["Uuid"];
+            account_ids: components["schemas"]["Uuid"][];
+        };
+        /** @description Exact decimal as a string (no sign, no exponent, no separators). */
+        DecimalString: string;
+        /** @description Non-negative money as a decimal string (NUMERIC(18,4)). */
+        MoneyString: string;
+        Instrument: {
+            id: components["schemas"]["Uuid"];
+            /** @description Neutral root, e.g. 'MNQ'. */
+            symbol: string;
+            name: string;
+            exchange: string;
+            currency: string;
+            tick_size: components["schemas"]["DecimalString"];
+            /** @description Money per tick (tick_size × point_value, computed by the Core). */
+            tick_value: components["schemas"]["MoneyString"];
+            point_value: components["schemas"]["MoneyString"];
+            /** @description Decimals to display prices and points with. */
+            price_decimals: number;
+        };
+        InstrumentList: {
+            instruments: components["schemas"]["Instrument"][];
+        };
+        /** @enum {string} */
+        DistanceUnit: "points" | "ticks" | "usd";
+        /** @description Decimal string; its allowed shape depends on the unit (see `DistanceProfile`). */
+        DistanceValue: string;
+        /**
+         * @description `ticks` → whole numbers (`^[0-9]{1,5}$`); `usd` → at most 2 decimals (Q-S6-6); `points` → at most
+         *     10 decimals. Each distance must be at least one tick after conversion (422 otherwise).
+         */
+        DistanceProfile: {
+            distance_unit: components["schemas"]["DistanceUnit"];
+            stop_distance: components["schemas"]["DistanceValue"];
+            target_distance: components["schemas"]["DistanceValue"];
+        } & components["schemas"]["DistanceProfileShape"];
+        /** @description What execution will use for one side. All values computed by the Core. */
+        DistanceEquivalent: {
+            ticks: number;
+            points: components["schemas"]["DecimalString"];
+            usd: components["schemas"]["MoneyString"];
+            /** @description True when the requested distance was not a whole number of ticks and was rounded toward the entry. */
+            rounded: boolean;
+        };
+        ProfileEquivalents: {
+            instrument_id: components["schemas"]["Uuid"];
+            stop: components["schemas"]["DistanceEquivalent"];
+            target: components["schemas"]["DistanceEquivalent"];
+        };
+        NearestProfileSize: {
+            size_amount: components["schemas"]["SizeAmount"];
+            /** @description Ascending. Two entries only on an exact tie (the user chooses). */
+            candidates: {
+                size_amount: components["schemas"]["SizeAmount"];
+                /** @description False → the account will start without a profile (Q43). */
+                has_default: boolean;
+            }[];
+        };
+        DefaultProfileEntry: {
+            instrument_id: components["schemas"]["Uuid"];
+            size_amount: components["schemas"]["SizeAmount"];
+            /** @description Absent when the user has not defined this size. */
+            profile?: components["schemas"]["DistanceProfile"];
+            updated_at?: components["schemas"]["Timestamp"];
+        };
+        DefaultProfileList: {
+            instrument_id: components["schemas"]["Uuid"];
+            defaults: components["schemas"]["DefaultProfileEntry"][];
+        };
+        AccountProfileRequest: {
+            distance_unit: components["schemas"]["DistanceUnit"];
+            stop_distance: components["schemas"]["DistanceValue"];
+            target_distance: components["schemas"]["DistanceValue"];
+            row_version?: number;
+        } & components["schemas"]["DistanceProfileShape"];
+        /** @description The per-unit shape rules of `DistanceProfile`, reusable by request bodies that add fields. */
+        DistanceProfileShape: unknown & unknown;
+        AccountProfile: {
+            account_id: components["schemas"]["Uuid"];
+            instrument_id: components["schemas"]["Uuid"];
+            profile: components["schemas"]["DistanceProfile"];
+            equivalents: components["schemas"]["ProfileEquivalents"];
+            /**
+             * @description Where the values came from when last copied: the default of the account's size, the default of
+             *     the nearest standard size (an account of a non-standard size, real or prop, Q73 b; on an exact
+             *     tie the size the user picked, Q60), or typed by the user on an account that had no profile.
+             *     The nearest size only picks the profile: risk always uses the account's own size (Q73).
+             * @enum {string}
+             */
+            origin: "size_default" | "nearest_size_default" | "set_by_user";
+            /** @description With `size_default` / `nearest_size_default`. */
+            copied_from_size?: components["schemas"]["SizeAmount"];
+            copied_at?: components["schemas"]["Timestamp"];
+            /** @description True after the user edited the copy (badge `Personalizado`); false right after a copy or restore; always false with `set_by_user` (nothing to diverge from). */
+            customized: boolean;
+            /** @description The current default of `copied_from_size` (for the "default today" popover); absent if that size has none. */
+            default_now?: components["schemas"]["DistanceProfile"];
+            row_version: number;
+            updated_at: components["schemas"]["Timestamp"];
+        } & unknown;
+        AccountProfileList: {
+            account_id: components["schemas"]["Uuid"];
+            profiles: {
+                instrument_id: components["schemas"]["Uuid"];
+                /** @description Absent when the account has no profile for the instrument (its size had no default when it was created; Q43). */
+                profile?: components["schemas"]["AccountProfile"];
+            }[];
+        };
+        /** @enum {string} */
+        RiskRuleKind: "daily_loss" | "drawdown" | "daily_profit_target" | "consistency";
+        /**
+         * @description Exactly three levels plus the target (F§7.1, D18): `normal` < 80 %, `warning` ≥ 80 %, `reached` at
+         *     the limit, `target_reached` for the daily profit target. Consistency never goes beyond `warning`.
+         * @enum {string}
+         */
+        RiskState: "normal" | "warning" | "reached" | "target_reached";
+        /** @description The account's rules; an absent rule is not set (provenance per field for prop accounts is in `AccountRiskRules.preset_fields`). */
+        RiskRules: {
+            drawdown?: components["schemas"]["DrawdownValue"];
+            daily_loss_limit?: components["schemas"]["DailyLossValue"];
+            daily_profit_target?: components["schemas"]["DailyProfitTargetValue"];
+            /**
+             * @description Default `notify` (Q3). `flatten_and_block` only with enforcement on (Q49); it falls back to `notify` if enforcement is turned off later (Q63).
+             * @enum {string}
+             */
+            profit_target_on_reach: "notify" | "flatten_and_block";
+            /** @description Prop with a consistency rule only; the tracked threshold, greater than 0 and at most 100, with at most one decimal (Q-S13-7). `0` / `0.0` → 422 `risk.amount_invalid` (no divisor for the meter; Malha / Agulha, 5.4.0). Never enforced (S13 AC-6). */
+            consistency_threshold_pct?: string;
+            /** @description Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the CME session close. */
+            trading_day_reset?: components["schemas"]["TradingDayResetValue"];
+            /** @description Prop accounts in an evaluation phase (S13b; Q46) — prefilled from the preset, editable. Notify only when reached (Q70); it never blocks or flattens. */
+            evaluation_profit_target?: components["schemas"]["EvaluationTargetValue"];
+        };
+        RiskRulesRequest: {
+            /** @description The account's limits version read with the rules (ADR-0006); stale → 409. */
+            version: number;
+            rules: components["schemas"]["RiskRules"];
+            /** @description Required (true) when the new rules would already be reached today. */
+            acknowledge_reached?: boolean;
+        };
+        AccountRiskRules: {
+            account_id: components["schemas"]["Uuid"];
+            rules: components["schemas"]["RiskRules"];
+            /** @description Read-only here (S15 control; default off). */
+            enforcement_enabled: boolean;
+            /** @description Prop with a preset only — provenance of each field (same shape as `getAccountPreset`). */
+            preset_fields?: components["schemas"]["AccountRuleField"][];
+            version: number;
+        };
+        RiskRulesPreview: {
+            changes: {
+                kind: components["schemas"]["RiskRuleKind"];
+                /** @enum {string} */
+                effective: "now" | "next_trading_day";
+                effective_from: components["schemas"]["Timestamp"];
+            }[];
+            /** @description True when a change effective now makes a limit already reached; the save then needs `acknowledge_reached`. */
+            would_be_reached: boolean;
+        };
+        RiskMeter: {
+            kind: components["schemas"]["RiskRuleKind"];
+            state: components["schemas"]["RiskState"];
+            /** @description The limit or target in force today — money (`Money` pattern), or for `consistency` the threshold as a percent string. */
+            limit: string;
+            /** @description Today's value against the limit (loss used, drawdown used, profit made — money; for `consistency` the largest day's share of total profit, as a percent string). */
+            used: string;
+            /** @description used / limit × 100, truncated (F§6.2), so 80 is never shown while the state is `normal`. */
+            percent: number;
+            /** @enum {string} */
+            drawdown_type?: "trailing_intraday" | "trailing_eod" | "static";
+            /** @description Trailing drawdown only — the account balance at which the drawdown is breached, as it stands now (Q-S13-5). */
+            floor?: components["schemas"]["Money"];
+        } & unknown;
+        AccountRisk: {
+            account_id: components["schemas"]["Uuid"];
+            as_of: components["schemas"]["Timestamp"];
+            stale: boolean;
+            /** @enum {string} */
+            stale_reason?: "connection_down" | "no_recent_data";
+            /** @description The worst state over all meters. */
+            state: components["schemas"]["RiskState"];
+            trading_day: {
+                start: components["schemas"]["Timestamp"];
+                end: components["schemas"]["Timestamp"];
+                next_reset: components["schemas"]["Timestamp"];
+                /** @enum {string} */
+                source: "firm" | "cme_session_close";
+                firm_reset?: components["schemas"]["TradingDayResetValue"];
+                /** @description Playback accounts only — the simulated clock the day and P&L follow (S15 AC-7). */
+                playback_clock?: components["schemas"]["Timestamp"];
+            };
+            /** @description One meter per rule that is set and tracked, in the order daily loss, drawdown, daily profit target, consistency. */
+            meters: components["schemas"]["RiskMeter"][];
+            /** @description Rules not set (UI "sem limite definido"). */
+            unset_rules: components["schemas"]["RiskRuleKind"][];
+            /** @description Rules set but not tracked (a not-confirmed preset value left unresolved, or a drawdown of type `other`). */
+            untracked_rules: components["schemas"]["RiskRuleKind"][];
+            /** @description Present while the account is blocked until the reset (S15); no early unlock. */
+            blocked?: {
+                until: components["schemas"]["Timestamp"];
+                /** @enum {string} */
+                cause: "daily_loss" | "drawdown" | "daily_profit_target";
+            };
+            enforcement_enabled: boolean;
+            /**
+             * @description The basis of every meter (`net` from 3.5.0; S13 AC-2 — firms measure on net).
+             * @enum {string}
+             */
+            pnl_basis: "gross" | "net";
+            /** @description How today's commissions were obtained (`none` → the UI shows "comissão não informada; os limites podem estar folgados demais", a notice, not a block). */
+            commission_source: components["schemas"]["CommissionSource"];
+            commissions_today?: components["schemas"]["MoneyString"];
+            /** @description 5.4.0 (PO, S13 AC-11, Q54 exception): the trading day's net P&L (realized, after commissions) for the summary line "P&L do dia: líquido X · bruto Y · comissões Z". Present together with `gross_pnl_today` and `commissions_today`. The browser never derives one from the others. */
+            net_pnl_today?: components["schemas"]["Money"];
+            /** @description The same day's gross P&L, shown beside the net figure ONLY in the summary line. The limit meters (daily loss, drawdown, profit target, floor) and the S13b evaluation card stay net only, labelled "líquido". The plugin shows no gross in V1. */
+            gross_pnl_today?: components["schemas"]["Money"];
+            /**
+             * @description A LOWER commission floor saved on the account applies only from the next trading day (it would
+             *     loosen the net limits; ADR-0006 §3.7, ADR-0004 §7). A higher floor applies at once. Absent
+             *     when nothing is pending.
+             */
+            pending_commission_change?: {
+                effective_from: components["schemas"]["Timestamp"];
+                /** @description The new floor; absent when the floor is being removed. */
+                new_commission_per_contract_side: components["schemas"]["MoneyAmount"];
+                /** @enum {string} */
+                change?: "commission_floor_lowered" | "commission_floor_removed";
+            };
+            /**
+             * @description 5.4.0 (protocol 1.4 `risk_state.day_state`; Q92 c). `unknown`: the plugin cannot vouch for
+             *     today's start (`day_unknown_reason`), so new entries are blocked: the plugin refuses them with
+             *     `risk.day_unknown`, and the Core skips them with `routing.risk_blocked`, detail `day_unknown`.
+             *     Exits continue. The web offers `restartTradingDayCount`. Absent while the account has no 1.4
+             *     session.
+             * @enum {string}
+             */
+            day_state?: "known" | "unknown";
+            /**
+             * @description With `day_state` unknown.
+             * @enum {string}
+             */
+            day_unknown_reason?: "late_anchor" | "journal_lost" | "playback_rewind" | "account_reset";
+            /** @description True after `restartTradingDayCount` until the plugin confirms. */
+            day_restart_pending?: boolean;
+            /**
+             * @description 5.4.0 (S13 §12.1, AC-3). Present for an account with an evaluation target, or whose preset
+             *     phase is `evaluation`; absent otherwise. A manual prop account has a free-text phase, so it
+             *     has the field only when it has a target.
+             *     - `set`: the account has a target, so `evaluation` is present.
+             *     - `not_confirmed`: the preset's target is not confirmed and the account has not resolved it
+             *       (S16 AC-6). There is no `evaluation`; the card asks the user to choose or type the target.
+             *     - `absent`: an evaluation phase whose preset publishes no target. There is no `evaluation`;
+             *       the card says the firm publishes none, and the user may type one.
+             * @enum {string}
+             */
+            evaluation_target_status?: "set" | "not_confirmed" | "absent";
+            /**
+             * @description S13b (Q46) — present when the account has an `evaluation_profit_target`. `achieved` = net P&L
+             *     from `start` to now (the Core's sum of the account's fills; manual trades never count);
+             *     `remaining` = max(0, target − achieved); `percent` truncated. `target_reached` raises one
+             *     notification (`risk.evaluation_target_reached`, Q70); nothing automatic happens.
+             */
+            evaluation?: {
+                /**
+                 * Format: date
+                 * @description The account's `evaluation_start`.
+                 */
+                start: string;
+                profit_target: components["schemas"]["Money"];
+                earned_before: components["schemas"]["Money"];
+                /** @description earned_before + net P&L from `start` to now. */
+                achieved: components["schemas"]["Money"];
+                remaining: components["schemas"]["MoneyString"];
+                percent: number;
+                /** @enum {string} */
+                state: "in_progress" | "target_reached";
+                reached_at?: components["schemas"]["Timestamp"];
+                as_of: components["schemas"]["Timestamp"];
+            };
+            /** @description True while the risk module has not yet derived the account's latest limits version (ADR-0006); meters show the previous limits and new entries are skipped (`routing.limits_pending`). */
+            limits_pending: boolean;
+            /** @description Looser values saved today that apply from the next trading day (Q48). */
+            pending_changes: ({
+                kind: components["schemas"]["RiskRuleKind"];
+                effective_from: components["schemas"]["Timestamp"];
+                /** @description The new limit (money as a decimal string; a percent for consistency). Absent when the change removes the rule or changes only a kind or `profit_target_on_reach`. */
+                new_limit?: string;
+                /**
+                 * @description What is pending. `drawdown_lock_changed` (5.4.0, Q90: a lock added or its offset lowered
+                 *     loosens, so it waits; carries `new_drawdown`). `drawdown_type_changed` (a change of type is not comparable, so it waits
+                 *     for the next trading day), `daily_loss_softened` and `daily_loss_changed` (a mixed change
+                 *     that is stricter in one part and looser in another, e.g. `soft_pause` → `hard` with a
+                 *     higher amount: treated as looser, so it waits) carry the new value in `new_drawdown` /
+                 *     `new_daily_loss`.
+                 * @enum {string}
+                 */
+                change?: "limit_raised" | "rule_removed" | "profit_target_to_notify" | "daily_loss_softened" | "drawdown_type_changed" | "daily_loss_changed" | "drawdown_lock_changed";
+                new_drawdown?: components["schemas"]["DrawdownValue"];
+                new_daily_loss?: components["schemas"]["DailyLossValue"];
+            } & (unknown & unknown))[];
+            /** @description A saved change of the trading-day reset time (prop accounts), which always applies from the next trading day (ADR-0006 §3.7). */
+            pending_reset_change?: {
+                effective_from: components["schemas"]["Timestamp"];
+                new_reset: components["schemas"]["TradingDayResetValue"];
+            };
+        };
+        RiskSummaryList: {
+            summaries: {
+                account_id: components["schemas"]["Uuid"];
+                /** @description False → the list shows `—`. */
+                has_rules: boolean;
+                stale: boolean;
+                state?: components["schemas"]["RiskState"];
+                /** @description The meter with the worst state (highest percent on ties); absent when all are normal. */
+                worst?: {
+                    kind: components["schemas"]["RiskRuleKind"];
+                    percent: number;
+                };
+                blocked_until?: components["schemas"]["Timestamp"];
+            }[];
+        };
+        /** @description The risk state, staleness, block or trading day of an account changed (not on every tick); sent only to the account's owner, like every SSE event; the client refetches `getAccountRisk` / `listRiskSummaries`. */
+        RiskStateChangedEvent: {
+            /** @constant */
+            type: "risk.state_changed";
+            at: components["schemas"]["Timestamp"];
+            account_id: components["schemas"]["Uuid"];
+            state: components["schemas"]["RiskState"];
+            stale: boolean;
+            /** @enum {string} */
+            reason?: "state" | "stale" | "blocked" | "unblocked" | "trading_day_reset" | "rules_changed" | "evaluation_progress";
+        };
+        /**
+         * @description Selectable signal types of a TradingView route (ADR-0003). `master_account` belongs to follower routes (S19) and is not accepted here.
+         * @enum {string}
+         */
+        SignalType: "trigger" | "trade_plan" | "nq_trigger";
+        /** @description At least one (S7 AC-2, Q-S7-1); an empty list gets 400 `common.invalid_request` with pointer `/signal_types`. */
+        SignalTypes: components["schemas"]["SignalType"][];
+        /**
+         * @description Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,
+         *     in this order (F§7.2 extended with the route-level states): `source_revoked`, `route_disabled`,
+         *     `platform_unbound`, `out_of_sync`, `connection_disconnected`, `connection_checking`, `broker_disconnected`, `binding_pending`, `risk_blocked`, `limits_pending`,
+         *     `no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.
+         *     This is a display order only. The instruction gates and their order are ADR-0003 §4.1 (Esquadro's
+         *     S7 delta, with ADR-0008): `account_inactive` → `platform_unbound` → `automation_not_accepted` →
+         *     `copy_not_accepted` → `signal_type_not_selected` → `out_of_sync` → `risk_blocked` →
+         *     `limits_pending` → `no_bracket_profile` → action rules → `expired` (entries only). The audit code of a skipped
+         *     instruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and
+         *     `no_bracket_profile` block entries only. For a `reverse` the §4.2 position check runs before the
+         *     entry gates (Q74): position opposite → the close leg runs and the open is skipped with the gate
+         *     code; flat → skipped with the gate code; already on the reverse side → `routing.position_conflict`
+         *     (rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction
+         *     reaches the gates); `connection_disconnected` (every connection status other than `connected`:
+         *     disconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an
+         *     entry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a
+         *     protective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as
+         *     late (ADR-0003 §4.1, ADR-0004 T1). `connection_checking` (S11-03, 5.3.0) is route status only, like
+         *     `connection_disconnected`. It covers the connection being `connected` while the mandatory reconnect
+         *     check of the account has not finished. The window runs per mapped account, from `welcome` until the
+         *     Core has evaluated the reconnect snapshot and the replayed outbox reports (ADR-0004 §4 step 3,
+         *     §6.1 r5), or until the session ends. Meanwhile the Core sends no command to the account: entries
+         *     keep their TTL and expire if the window outlasts it, and exits wait. Nothing is skipped, and
+         *     `AccountSync.observable` is false. Bounds (Esquadro, Crivo Q2; ADR-0004 r5; provisional values,
+         *     tuned by Ferro and Pulso):
+         *     - after 60 s without the evaluation there is an operational and user alert ("verificação da
+         *       conexão não concluída; ordens aguardando"), and the route shows `connection_checking` with the
+         *       elapsed time;
+         *     - after 5 min the Core closes the session (4000, `snapshot_timeout`). The adapter reconnects and
+         *       sends the snapshot again. It counts as a normal disconnect (ADR-0004 §6), so an account with a
+         *       position becomes out of sync.
+         *     `broker_disconnected` (5.3.0, ADR-0004 r5 §6.3, Crivo m2) is route status only and never skips. A
+         *     snapshot reports `connected: false` (the platform lost its broker), so delivery to the account is
+         *     HELD: entries keep their TTL and expire, and exits wait. Sending would only produce
+         *     `command.account_not_simulation` and lose an exit. It ends with the next snapshot that reports
+         *     `connected: true`, of any trigger, at reconnect or mid-session.
+         *     `binding_pending` (5.3.0, Esquadro, Crivo R3 on r5) is route status only and never skips. It is
+         *     shown when the account was bound or rebound while its connection's session is open: the binding
+         *     takes effect at the next handshake. Until then, entries expire by their TTL and exits wait. The web
+         *     says "reconecte o plugin para ativar o vínculo".
+         *     New codes may be added in a minor version; clients show a generic text for an unknown code.
+         * @enum {string}
+         */
+        RouteReasonCode: "routing.account_inactive" | "routing.source_revoked" | "routing.platform_unbound" | "routing.automation_not_accepted" | "routing.copy_not_accepted" | "routing.connection_disconnected" | "routing.connection_checking" | "routing.binding_pending" | "routing.broker_disconnected" | "routing.out_of_sync" | "routing.risk_blocked" | "routing.no_bracket_profile" | "routing.limits_pending" | "routing.route_disabled";
+        RouteReason: {
+            code: components["schemas"]["RouteReasonCode"];
+            /**
+             * @description `entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`
+             *     (exits still go through, S7 AC-8 / P1); `all_actions` for every other code (a paused or
+             *     disabled account receives no exit either). Fixed per code.
+             * @enum {string}
+             */
+            blocks: "all_actions" | "entries_only";
+            /**
+             * @description With `routing.account_inactive` (`paused` or `disabled`), so the text can name it.
+             * @enum {string}
+             */
+            lifecycle_state?: "paused" | "disabled";
+            /**
+             * @description With `routing.automation_not_accepted` / `routing.copy_not_accepted`. `declined` = the state is `chosen` with choice `declined`; `pending_review` = the state is `pending_review`.
+             * @enum {string}
+             */
+            opt_in_state?: "declined" | "pending_review";
+            /** @description With `routing.no_bracket_profile` — the enabled instruments for which the account has no stop/target profile (profiles are per account × instrument); entries in other instruments still go through. */
+            instrument_ids?: components["schemas"]["Uuid"][];
+        } & (unknown & unknown & unknown & unknown);
+        /** @description Computed by the Core from the account, source, connection, opt-in, sync and risk state; the UI renders it and never re-implements a gate. */
+        RouteStatus: {
+            /**
+             * @description `receiving` = no reason; `exits_only` = only `entries_only` reasons; `not_receiving` = at least
+             *     one `all_actions` reason.
+             * @enum {string}
+             */
+            status: "receiving" | "exits_only" | "not_receiving";
+            /** @description Every reason that applies, most severe first (the Core's order follows the UI badge priority); empty with `receiving`. */
+            reasons: components["schemas"]["RouteReason"][];
+            computed_at: components["schemas"]["Timestamp"];
+        } & (unknown & unknown & unknown);
+        Route: {
+            id: components["schemas"]["Uuid"];
+            source_id: components["schemas"]["Uuid"];
+            account_id: components["schemas"]["Uuid"];
+            signal_types: components["schemas"]["SignalTypes"];
+            is_enabled: boolean;
+            effective: components["schemas"]["RouteStatus"];
+            row_version: number;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        RouteList: {
+            routes: components["schemas"]["Route"][];
+        };
+        RouteCreateRequest: {
+            source_id: components["schemas"]["Uuid"];
+            account_id: components["schemas"]["Uuid"];
+            signal_types: components["schemas"]["SignalTypes"];
+            /** @description Defaults to true. */
+            is_enabled?: boolean;
+            /** @description See `createRoute` (action `route_enable`, target = the account). */
+            step_up?: components["schemas"]["StepUpProof"];
+        };
+        RouteUpdateRequest: {
+            signal_types: components["schemas"]["SignalTypes"];
+            is_enabled: boolean;
+            row_version: number;
+            /** @description See `updateRoute` (action `route_enable`, target = the account). */
+            step_up?: components["schemas"]["StepUpProof"];
+        };
+        RouteCandidate: {
+            account_id: components["schemas"]["Uuid"];
+            /**
+             * @description Empty → selectable. Otherwise the option is shown disabled with these reasons, most severe
+             *     first. Only `routing.automation_not_accepted` (automated source) and `routing.platform_unbound`
+             *     (Q37) block creation; every other reason only affects `status_if_routed`.
+             */
+            blocking_reasons: components["schemas"]["RouteReason"][];
+            /** @description The status a new enabled route would have now (e.g. `exits_only` for an out-of-sync account). */
+            status_if_routed: components["schemas"]["RouteStatus"];
+        };
+        RouteCandidates: {
+            source_id: components["schemas"]["Uuid"];
+            /** @description Sorted by account `display_name`. */
+            candidates: components["schemas"]["RouteCandidate"][];
+            manual_only: {
+                account_id: components["schemas"]["Uuid"];
+                /** @description The preset's own explanation, verbatim with source and date (S16 AC-7, Q-S16-6); the UI frames it. */
+                reason: components["schemas"]["RuleQuote"];
+            }[];
+        };
+        /**
+         * @description Sent when a route is created, changed or removed, AND whenever the effective status of a route
+         *     changes for any cause (source revoked, account lifecycle or opt-in, binding, connection, out of
+         *     sync, risk block, stop/target profile created or removed). One event per affected route; the
+         *     client refetches `listRoutes` (and `listRouteCandidates` if the picker is open).
+         */
+        RouteChangedEvent: {
+            /** @constant */
+            type: "route.changed";
+            /** @enum {string} */
+            cause?: "configuration" | "status";
+            at: components["schemas"]["Timestamp"];
+            route_id: components["schemas"]["Uuid"];
+            source_id: components["schemas"]["Uuid"];
+            account_id: components["schemas"]["Uuid"];
+        };
+        /**
+         * @description Where the commission came from; per fill the same rule as adapter protocol 1.3 `fill.commission`
+         *     and ADR-0004 §7 (not reported ≠ reported 0). Effective commission of a fill = max(platform-
+         *     reported, the account's `commission_per_contract_side` × quantity) (U20 a). `platform` when the
+         *     reported value is ≥ floor × quantity (it won); `configured` when the floor won (reported lower,
+         *     zero, or absent with a floor); `none` when absent and no floor (net = gross; the UI shows
+         *     "comissões não informadas"). For a trade: `mixed` when its fills differ; `manual` = typed in a
+         *     manual trade.
+         * @enum {string}
+         */
+        CommissionSource: "platform" | "configured" | "mixed" | "manual" | "none";
+        /**
+         * @description Direction of the position (UI `Compra` = long, `Venda` = short).
+         * @enum {string}
+         */
+        TradeDirection: "long" | "short";
+        /**
+         * @description `routed` = created by a routed instruction (source + signal type); `master` = master replication
+         *     (S19, V1.1); `manual` = entered by the user (S21 AC-3); `platform` = placed by the user directly in
+         *     the platform and captured (UI "Plataforma (sem sinal)", PO).
+         * @enum {string}
+         */
+        TradeOrigin: "routed" | "master" | "manual" | "platform";
+        /**
+         * @description One completed trade (Q57: one trade per entry with FIFO exits in individual mode;
+         *     flat-to-flat in shared mode). Captured trades carry the numbers the plugin computed and sent
+         *     (S21 AC-2; adapter protocol 1.3 `trade_completed`; no raw price data is stored); the Core
+         *     reconciles them with the fills it knows and audits a difference as `trades.reconcile_mismatch`,
+         *     never correcting silently. Manual ones carry the Core's computation. Manual trades do not feed
+         *     daily loss, drawdown, profit target, consistency or blocks (S13/S15), and never unblock an
+         *     account; they feed only this list and the metrics (S21/S22) (PO rule: S13 AC-2 + S21 AC-3, PO clarification, slice-plan rev. 7;
+         *     QA Security I1). Money and prices are decimal strings (X-3).
+         */
+        Trade: {
+            trade_id: components["schemas"]["Uuid"];
+            account_id: components["schemas"]["Uuid"];
+            /** @description Snapshot. */
+            account_name: string;
+            account_deleted: boolean;
+            instrument_id: components["schemas"]["Uuid"];
+            instrument_symbol: string;
+            contract_month?: string;
+            direction: components["schemas"]["TradeDirection"];
+            quantity: number;
+            entry_time: components["schemas"]["Timestamp"];
+            entry_price: components["schemas"]["Price"];
+            exit_time: components["schemas"]["Timestamp"];
+            exit_price: components["schemas"]["Price"];
+            /** @description exit − entry (PO). */
+            duration_seconds: number;
+            /** @description The main P&L, in the basis of `pnl_basis` (net from 3.5.0). */
+            pnl: components["schemas"]["Money"];
+            /**
+             * @description The basis of `pnl`. From 3.5.0 always `net` (after commissions; user decision 2026-10-23,
+             *     S21 AC-1); `gross` is kept in the enum only for compatibility with 3.4 readers.
+             * @enum {string}
+             */
+            pnl_basis: "gross" | "net";
+            /** @description P&L before commissions (shown alongside). */
+            gross_pnl: components["schemas"]["Money"];
+            /**
+             * @description Effective commission allocated to this trade (floor applied). A fill shared by several trades (a flip, or a FIFO partial close in individual mode) is allocated pro rata by the quantity each trade takes from it: share = round(fill effective commission × quantity / fill quantity, 4 decimals, half away from zero), and the trade allocated last from that fill gets the remainder, so the shares always sum to the fill's effective commission. gross_pnl and pnl use the same quantities; pnl = gross_pnl − commission.
+             *     ≥ 0. The same rule as adapter protocol 1.3 `trade_completed.commission` (Esquadro).
+             */
+            commission: components["schemas"]["MoneyString"];
+            commission_source: components["schemas"]["CommissionSource"];
+            /** @description Maximum adverse excursion in USD, ≥ 0 (Q52). Absent when not provided (manual, Q55) or when the plugin did not observe the whole interval (never a partial value). */
+            mae?: components["schemas"]["MoneyString"];
+            /** @description Maximum favourable excursion in USD, ≥ 0 (as `mae`). */
+            mfe?: components["schemas"]["MoneyString"];
+            /** @description Captured trades — true when the plugin's numbers differ from the fills the Core knows (kept as sent; see the audit entry). */
+            reconcile_mismatch?: boolean;
+            /**
+             * @description 5.4.0 (S21 AC-13, Q80 a; ADR-0004 r5 §5 catch-up). True when the trade was built from executions
+             *     that the plugin recovered from the platform's history at startup or on reconnect: they happened
+             *     while All Win was not observing, so MAE/MFE are absent. The UI shows the "Recuperado" badge. The
+             *     Core derives it; it is never typed by the user. Absent means false.
+             */
+            recovered?: boolean;
+            origin: components["schemas"]["TradeOrigin"];
+            source_id?: components["schemas"]["Uuid"];
+            source_name?: string;
+            signal_type?: components["schemas"]["AuditSignalType"];
+            instruction_id?: components["schemas"]["Uuid"];
+            command_id?: components["schemas"]["Uuid"];
+            /** @description With `master` (S19). */
+            master_account_id?: components["schemas"]["Uuid"];
+            master_account_name?: string;
+            /** @description True only for manual trades (Q56). */
+            editable: boolean;
+            /** @description Manual trades only. */
+            row_version?: number;
+            captured_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+        } & (unknown & unknown & unknown);
+        TradePage: {
+            trades: components["schemas"]["Trade"][];
+            /** @description Absent on the last page. */
+            next_cursor?: string;
+        };
+        TradesSummary: {
+            /** @description The instant the summary was taken (or `recorded_before` when given). */
+            as_of: components["schemas"]["Timestamp"];
+            count: number;
+            /** @description Net (`pnl_basis`). */
+            total_pnl: components["schemas"]["Money"];
+            /**
+             * @description The basis of `pnl`. From 3.5.0 always `net` (after commissions; user decision 2026-10-23,
+             *     S21 AC-1); `gross` is kept in the enum only for compatibility with 3.4 readers.
+             * @enum {string}
+             */
+            pnl_basis: "gross" | "net";
+            total_gross_pnl: components["schemas"]["Money"];
+            total_commission: components["schemas"]["MoneyString"];
+            /** @description Trades with `commission_source` `none` (the UI warns that their net equals gross). */
+            uncommissioned_count?: number;
+        };
+        ManualTradeFields: {
+            account_id: components["schemas"]["Uuid"];
+            instrument_id: components["schemas"]["Uuid"];
+            direction: components["schemas"]["TradeDirection"];
+            quantity: number;
+            entry_time: components["schemas"]["Timestamp"];
+            entry_price: components["schemas"]["Price"];
+            exit_time: components["schemas"]["Timestamp"];
+            exit_price: components["schemas"]["Price"];
+            mae?: components["schemas"]["ExcursionInput"];
+            mfe?: components["schemas"]["ExcursionInput"];
+            /**
+             * @description Optional total commission of the trade, USD ≥ 0 (Q71, decided). Sent → used as typed
+             *     (`commission_source: manual`). Absent → computed by the Core, never by the browser, with the
+             *     per-fill rule of ADR-0004 §7 applied to both sides of the trade: commission =
+             *     `commission_per_contract_side` × quantity (entry side) + `commission_per_contract_side` ×
+             *     quantity (exit side) = floor × quantity × 2 (`commission_source: configured`); with no floor →
+             *     0 (`commission_source: none`, labelled "comissões não informadas"). The floor used is the
+             *     EFFECTIVE floor when the trade is saved (create or update), as derived by the risk module (data
+             *     model 15.1); a lowered floor still pending for the next trading day is not used early. The value
+             *     is stored; a later change of the floor
+             *     never recomputes it. The UI shows the Core's value from `previewManualTrade` and the user may
+             *     override it by typing a commission.
+             */
+            commission?: components["schemas"]["ExcursionInput"];
+        };
+        /** @description USD, ≥ 0, at most 2 decimals (Q52). */
+        ExcursionInput: string;
+        ManualTradeRequest: components["schemas"]["ManualTradeFields"];
+        ManualTradeUpdateRequest: components["schemas"]["ManualTradeFields"] & {
+            row_version: number;
+        };
+        ManualTradePreview: {
+            duration_seconds: number;
+            pnl: components["schemas"]["Money"];
+            /**
+             * @description `net` from 3.5.0.
+             * @enum {string}
+             */
+            pnl_basis: "gross" | "net";
+            gross_pnl: components["schemas"]["Money"];
+            commission: components["schemas"]["MoneyString"];
+            commission_source: components["schemas"]["CommissionSource"];
+        };
+        /** @description A trade was captured or entered (drives the "n new trades" banner); the client refetches. */
+        TradeCapturedEvent: {
+            /** @constant */
+            type: "trade.captured";
+            at: components["schemas"]["Timestamp"];
+            trade_id: components["schemas"]["Uuid"];
+            account_id: components["schemas"]["Uuid"];
+            origin?: components["schemas"]["TradeOrigin"];
         };
         utc_timestamp: string;
         /** @description Exact decimal as a string, strictly positive. */
@@ -963,17 +5199,8 @@ export interface components {
         } & (unknown & unknown & unknown & unknown & unknown);
     };
     responses: {
-        /** @description `auth.unauthenticated` (no session, expired, or pending_2fa on a full-session endpoint). Web redirects to login with `?reason=session_expired`. */
+        /** @description `auth.unauthenticated` (no session, or expired). Web redirects to sign-in with `?reason=session_expired`. */
         Unauthenticated: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /** @description `auth.invalid_credentials` — identical for unknown e-mail, wrong password and closed user. */
-        InvalidCredentials: {
             headers: {
                 [name: string]: unknown;
             };
@@ -991,8 +5218,30 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description `auth.step_up_required` — call POST /api/v1/auth/step-up and retry; or `common.forbidden_origin`. */
-        StepUpRequired: {
+        /**
+         * @description `auth.step_up_required` (the body has no `step_up` proof: call `requestStepUp`, then retry with
+         *     `step_up: { challenge_id, code }`), `auth.code_invalid` (the proof is wrong, expired, used, bound to
+         *     another session, action or target: one code for all), or `common.forbidden_origin`.
+         */
+        StepUpFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `auth.code_invalid` — wrong, expired, used, invalidated after 5 wrong attempts, unknown or forged challenge (one code for all; auth policy §3). */
+        CodeInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `auth.code_invalid` (as CodeInvalid) or `common.forbidden_origin`. */
+        CodeInvalidOrOrigin: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1011,7 +5260,7 @@ export interface components {
         };
         /**
          * @description `auth.forbidden` (not a platform admin; checked first, so a non-admin never gets a step-up prompt),
-         *     `auth.step_up_required`, or `common.forbidden_origin`.
+         *     `auth.step_up_required`, `auth.code_invalid` (as StepUpFailed), or `common.forbidden_origin`.
          */
         ForbiddenOrStepUp: {
             headers: {
@@ -1066,8 +5315,128 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description `auth.password_too_short`, `auth.password_too_long` or `auth.password_breached` (pointer to the field). */
-        PasswordRejected: {
+        /**
+         * @description Nothing saved. Codes (pointer where shown):
+         *     - `accounts.idempotency_key_reused` (create only; same key with a different body, or reuse after 24 h; never a second account);
+         *     - `common.version_conflict` (update; stale `row_version`, reload);
+         *     - `accounts.name_taken` — `/display_name` (case-insensitive, among the caller's live accounts);
+         *     - `accounts.platform_account_taken` — `/binding` (already bound to another of the caller's
+         *       accounts; a platform account of another user is never reported as taken, see 422);
+         *     - `accounts.binding_open_position` — `/binding` (update; Q38);
+         *     - `accounts.rule_version_changed` — `error.current_rule_version_id` (an `opt_ins` choice names a
+         *       rule version that is no longer the one in force for the selection);
+         *     - `accounts.bracket_mode_open_position` — `/bracket_mode` (update; Q86 b, user 2026-10-24): the
+         *       mode changes while the account has an open position or working All Win orders. It is refused
+         *       until the account is flat with no working orders, because the shared mode recalculates protection
+         *       from the average price.
+         */
+        AccountWriteConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description Valid shape, refused by a rule; nothing saved. Codes and pointers:
+         *     - `accounts.opt_in_required` — `/opt_ins/automation` or `/opt_ins/copy`;
+         *     - `accounts.opt_in_not_applicable` — `/opt_ins/<kind>` (the kind is `not_required` for the
+         *       selection, or `opt_ins` on update of a real account; on create a real account with `opt_ins`
+         *       is a schema error, 400); the client refetches and drops the section;
+         *     - `accounts.max_position_exceeds_preset` — `/max_position_qty` (above the preset maximum);
+         *     - `accounts.preset_version_unknown` — `/preset_version_id` (unknown, withdrawn, or a superseded
+         *       version on create);
+         *     - `accounts.firm_platform_required` / `accounts.firm_platform_unknown` — `/firm_platform`;
+         *     - `accounts.platform_account_unknown` — `/binding` (no such platform account on a connection of
+         *       the caller, or the connection is unpaired; identical for another user's connection);
+         *     - `accounts.platform_account_kind_not_allowed` — `/binding` (`live` or `unknown` kind outside
+         *       production; ADR-0004 §8);
+         *     - `accounts.profile_size_required` / `accounts.profile_size_invalid` — `/profile_size` (create of
+         *       an account whose size is a tie between two standard sizes; real, or prop outside the standard
+         *       list, Q60 / Q73 b);
+         *     - `accounts.evaluation_not_applicable` — `/evaluation_start` or `/evaluation_earned_before`, the
+         *       first one sent (create of an account without an evaluation target);
+         *     - `presets.required_field_unresolved` — `/rule_values/<field>` or `/max_position_qty` (a required
+         *       rule field of the preset is not confirmed and the body does not resolve it; S16 AC-6);
+         *     - `presets.use_apply_version` — `/preset_version_id` (update to a newer version of the same
+         *       preset; use `applyPresetVersion`);
+         *     - `accounts.rule_values_without_selection_change` — `/rule_values` (update with the same preset
+         *       selection; edit rules with `putAccountRiskRules`).
+         */
+        AccountWriteRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description Valid shape, refused by a rule; nothing saved. Codes and pointers (`/query/...` on the preview):
+         *     - `profiles.distance_below_one_tick` — `/stop_distance` or `/target_distance` (zero, or less than
+         *       one tick after conversion);
+         *     - `profiles.distance_too_large` — `/stop_distance` or `/target_distance` (more than 10 000 ticks).
+         *     A value whose shape does not fit its unit (fractional ticks, dollars with more than 2 decimals)
+         *     is a schema error: 400 `common.invalid_request` with the pointer.
+         */
+        DistanceRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description Valid shape, refused by a rule; nothing saved. Codes and pointers (under `/rules/...`):
+         *     - `risk.required_value_unresolved` — the field (a required preset value is not confirmed and not resolved);
+         *     - `risk.daily_loss_required` — `/rules/daily_loss_limit` (prop account whose preset does not say
+         *       "none"; Q47);
+         *     - `risk.flatten_requires_enforcement` — `/rules/profit_target_on_reach` (`flatten_and_block` while
+         *       enforcement is off; Q49);
+         *     - `risk.reset_not_editable` — `/rules/trading_day_reset` (real accounts use the CME session close);
+         *     - `risk.consistency_not_applicable` — `/rules/consistency_threshold_pct` (real account, or the
+         *       preset has no consistency rule);
+         *     - `risk.amount_invalid` — the field (zero where a positive amount is required).
+         */
+        RiskRulesRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description Valid shape, refused by a rule; nothing created. Codes and pointers:
+         *     - `routing.source_unknown` — `/source_id` (unknown or another user's; identical);
+         *     - `routing.source_revoked` — `/source_id`;
+         *     - `routing.account_unknown` — `/account_id` (unknown, archived or another user's; identical);
+         *     - `routing.account_manual_only` — `/account_id` (S16 AC-7);
+         *     - `routing.automation_not_accepted` — `/account_id` (automated source; the account's automation
+         *       opt-in is `declined` or `pending_review`);
+         *     - `routing.platform_unbound` — `/account_id` (Q37).
+         */
+        RouteRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description Valid shape, refused by a rule; nothing saved. Codes and pointers:
+         *     - `trades.exit_before_entry` — `/exit_time` (exit not after entry);
+         *     - `trades.in_future` — `/entry_time` or `/exit_time`;
+         *     - `trades.not_tick_multiple` — `/entry_price` or `/exit_price` (prices must be whole ticks of the
+         *       instrument; unlike profile distances they are never rounded);
+         *     - `trades.account_unknown` — `/account_id` (unknown, archived or another user's; identical);
+         *     - `trades.instrument_unknown` — `/instrument_id` (not enabled).
+         *     On the preview the pointers are `/query/<name>`.
+         */
+        ManualTradeRejected: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1082,6 +5451,29 @@ export interface components {
         SourceId: components["schemas"]["Uuid"];
         ConnectionId: components["schemas"]["Uuid"];
         AccountId: components["schemas"]["Uuid"];
+        DeviceId: components["schemas"]["Uuid"];
+        ChangeId: components["schemas"]["Uuid"];
+        /** @description UUID generated by the client once per create submission; reused on retries (not a secret). */
+        IdempotencyKey: components["schemas"]["Uuid"];
+        NotificationId: components["schemas"]["Uuid"];
+        FirmId: components["schemas"]["Uuid"];
+        PresetVersionId: components["schemas"]["Uuid"];
+        InstrumentIdPath: components["schemas"]["Uuid"];
+        InstrumentIdQuery: components["schemas"]["Uuid"];
+        RouteId: components["schemas"]["Uuid"];
+        TradeId: components["schemas"]["Uuid"];
+        /** @description Exit time at or after this instant (Q53). */
+        TradeFrom: components["schemas"]["Timestamp"];
+        /** @description Q79 (a), 5.4.0: include the trades of archived accounts (filter "Arquivadas"). Default false = hidden. With false, an archived id in `account_id` matches nothing. Part of the cursor binding. */
+        TradeIncludeArchived: boolean;
+        /** @description Exit time strictly before this instant (exclusive: `exit_time < to`). With `from`, the interval is half-open [from, to). For a custom period ending on day D in the profile's time zone, send D + 1 at 00:00 in that zone, converted to UTC. */
+        TradeTo: components["schemas"]["Timestamp"];
+        TradeAccountIds: components["schemas"]["Uuid"][];
+        TradeSourceIds: components["schemas"]["Uuid"][];
+        TradeOrigins: components["schemas"]["TradeOrigin"][];
+        /** @description Only trades recorded (captured or entered) at or before this instant — pass `getPerformance.as_of` to see exactly the set S22 measured (S22 AC-2). */
+        TradeRecordedBefore: components["schemas"]["Timestamp"];
+        TradeSignalTypes: components["schemas"]["AuditSignalType"][];
     };
     requestBodies: never;
     headers: {
@@ -1091,6 +5483,16 @@ export interface components {
         SessionCookie: string;
         /** @description Expires the session cookie. */
         SessionCookieClear: string;
+        /**
+         * @description `__Host-aw_session` (as SessionCookie) and, when the browser has no valid device cookie of this user,
+         *     `__Host-aw_device=<256-bit random>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=34560000` (400 days;
+         *     auth policy §5.2). Only an unknown or revoked value is replaced. A value that is valid for **another**
+         *     user of the same browser is kept, and this user gets their own device row with the same value, so a
+         *     shared browser stays a known device for each of its users.
+         */
+        SessionAndDeviceCookies: string;
+        /** @description Expires the session and device cookies. */
+        SessionAndDeviceCookiesClear: string;
         /** @description The response carries a one-time secret; no cache may store it. */
         NoStore: "no-store";
     };
@@ -1200,7 +5602,7 @@ export interface operations {
             };
         };
     };
-    login: {
+    requestLoginCode: {
         parameters: {
             query?: never;
             header?: never;
@@ -1212,16 +5614,47 @@ export interface operations {
                 "application/json": {
                     /** Format: email */
                     email: string;
-                    password: string;
+                    channel: components["schemas"]["CodeChannel"];
+                };
+            };
+        };
+        responses: {
+            /** @description Challenge issued (a code may or may not have been sent). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChallengeIssued"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["ForbiddenOrigin"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    verifyLoginCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    challenge_id: components["schemas"]["ChallengeId"];
+                    code: components["schemas"]["OneTimeCode"];
                     remember_me: boolean;
                 };
             };
         };
         responses: {
-            /** @description Authenticated, or second factor required. */
+            /** @description Authenticated. */
             200: {
                 headers: {
-                    "Set-Cookie": components["headers"]["SessionCookie"];
+                    "Set-Cookie": components["headers"]["SessionAndDeviceCookies"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -1229,13 +5662,13 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["InvalidCredentials"];
+            401: components["responses"]["CodeInvalid"];
             403: components["responses"]["ForbiddenOrigin"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
         };
     };
-    verifyLoginTotp: {
+    resendCode: {
         parameters: {
             query?: never;
             header?: never;
@@ -1245,37 +5678,27 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    code: string;
+                    challenge_id: components["schemas"]["ChallengeId"];
                 };
             };
         };
         responses: {
-            /** @description Authenticated; session id rotated. */
-            200: {
+            /** @description Accepted (a code may or may not have been sent). */
+            202: {
                 headers: {
-                    "Set-Cookie": components["headers"]["SessionCookie"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoginResult"];
+                    "application/json": components["schemas"]["ChallengeIssued"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
-            /** @description `auth.invalid_code` (wrong or replayed code) or `auth.pending_expired`. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             403: components["responses"]["ForbiddenOrigin"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
         };
     };
-    verifyLoginRecoveryCode: {
+    getChallengeDelivery: {
         parameters: {
             query?: never;
             header?: never;
@@ -1285,32 +5708,24 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description 10 Crockford Base32 characters; case, spaces and hyphens ignored. */
-                    code: string;
+                    challenge_id: components["schemas"]["ChallengeId"];
                 };
             };
         };
         responses: {
-            /** @description Authenticated; `recovery_codes_remaining` is included. */
+            /** @description Delivery state. */
             200: {
                 headers: {
-                    "Set-Cookie": components["headers"]["SessionCookie"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoginResult"];
+                    "application/json": {
+                        /** @enum {string} */
+                        delivery: "pending" | "sent" | "failed" | "not_reported";
+                    };
                 };
             };
             400: components["responses"]["InvalidRequest"];
-            /** @description `auth.invalid_code` or `auth.pending_expired`. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             403: components["responses"]["ForbiddenOrigin"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
@@ -1325,7 +5740,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Session ended; cookie cleared. */
+            /** @description Session ended; session cookie cleared. */
             204: {
                 headers: {
                     "Set-Cookie": components["headers"]["SessionCookieClear"];
@@ -1337,7 +5752,29 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    stepUp: {
+    signOutEverywhere: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done; session and device cookies cleared. */
+            204: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SessionAndDeviceCookiesClear"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    requestStepUp: {
         parameters: {
             query?: never;
             header?: never;
@@ -1347,29 +5784,29 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    password: string;
-                    /**
-                     * @description Required when TOTP is enabled; omitting it then gives 401 `auth.invalid_code`, not
-                     *     400 `common.invalid_request`. Ignored when TOTP is disabled.
-                     */
-                    code?: string;
+                    action: components["schemas"]["StepUpAction"];
+                    /** @description Required for source_rotate, pairing_code_new, connection_unpair, account_opt_in_accept, route_enable, account_binding_change, account_sync_clear, trading_day_restart; forbidden otherwise. */
+                    target_id?: components["schemas"]["Uuid"];
+                    channel: components["schemas"]["CodeChannel"];
                 };
             };
         };
         responses: {
-            /** @description Re-authenticated; `authenticated_at` refreshed. */
-            204: {
+            /** @description Code sent. */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChallengeIssued"];
+                };
             };
             400: components["responses"]["InvalidRequest"];
-            /**
-             * @description `auth.unauthenticated` (no session), `auth.reauth_failed` (wrong password) or `auth.invalid_code`
-             *     (wrong, replayed or missing code when TOTP is enabled).
-             */
-            401: {
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `auth.channel_unavailable` or `auth.step_up_channel_not_allowed`. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1377,7 +5814,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            403: components["responses"]["ForbiddenOrigin"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
         };
@@ -1416,7 +5852,36 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    acceptInvitation: {
+    startSignup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenBody"];
+            };
+        };
+        responses: {
+            /** @description Code sent to the invited e-mail. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChallengeIssued"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["InvitationInvalid"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    completeSignup: {
         parameters: {
             query?: never;
             header?: never;
@@ -1426,10 +5891,11 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    token: string;
-                    password: components["schemas"]["NewPassword"];
+                    challenge_id: components["schemas"]["ChallengeId"];
+                    code: components["schemas"]["OneTimeCode"];
                     locale: components["schemas"]["Locale"];
                     time_zone: components["schemas"]["TimeZone"];
+                    remember_me: boolean;
                 };
             };
         };
@@ -1437,7 +5903,7 @@ export interface operations {
             /** @description Account created; session started. */
             201: {
                 headers: {
-                    "Set-Cookie": components["headers"]["SessionCookie"];
+                    "Set-Cookie": components["headers"]["SessionAndDeviceCookies"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -1445,68 +5911,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["CodeInvalid"];
             403: components["responses"]["ForbiddenOrigin"];
-            404: components["responses"]["InvitationInvalid"];
-            422: components["responses"]["PasswordRejected"];
-            429: components["responses"]["RateLimited"];
-            500: components["responses"]["InternalError"];
-        };
-    };
-    requestPasswordReset: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: email */
-                    email: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Returned for every well-formed same-origin request, whether or not the e-mail exists or the request was throttled. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["InvalidRequest"];
-            403: components["responses"]["ForbiddenOrigin"];
-            500: components["responses"]["InternalError"];
-        };
-    };
-    confirmPasswordReset: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    token: string;
-                    new_password: components["schemas"]["NewPassword"];
-                };
-            };
-        };
-        responses: {
-            /** @description Password changed; every session of the user ended. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["InvalidRequest"];
-            403: components["responses"]["ForbiddenOrigin"];
-            /** @description `auth.reset_token_invalid` (unknown, used, expired or superseded; one code for all). */
-            404: {
+            /** @description `me.invalid_time_zone`. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1514,7 +5922,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            422: components["responses"]["PasswordRejected"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
         };
@@ -1590,7 +5997,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Security state for the settings page. */
+            /** @description Channels, current session and any pending channel change, for the settings page. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1603,7 +6010,7 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    startTotpSetup: {
+    listDevices: {
         parameters: {
             query?: never;
             header?: never;
@@ -1612,37 +6019,45 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Enrolment secret, shown once; expires if not confirmed within 10 minutes. */
+            /** @description Browsers that signed in to this account and are not revoked. */
             200: {
                 headers: {
-                    "Cache-Control": components["headers"]["NoStore"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        /** @description otpauth://totp/All%20Win:<email>?secret=…&issuer=All%20Win */
-                        otpauth_uri: string;
-                        /** @description Base32, for manual entry. */
-                        secret: string;
-                        expires_at: components["schemas"]["Timestamp"];
-                    };
+                    "application/json": components["schemas"]["Device"][];
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["StepUpRequired"];
-            /** @description `auth.totp_already_enabled`. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             500: components["responses"]["InternalError"];
         };
     };
-    confirmTotpSetup: {
+    forgetDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startChannelChange: {
         parameters: {
             query?: never;
             header?: never;
@@ -1652,25 +6067,35 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    code: string;
+                    channel: components["schemas"]["CodeChannel"];
+                    /** @description An e-mail address for `email`; an E.164 number (`+5511…`) for `whatsapp`. */
+                    new_value: string;
                 };
             };
         };
         responses: {
-            /** @description TOTP enabled. */
-            200: {
+            /** @description Codes sent. */
+            202: {
                 headers: {
-                    "Cache-Control": components["headers"]["NoStore"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecoveryCodes"];
+                    "application/json": components["schemas"]["ChannelChange"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["ForbiddenOrigin"];
-            /** @description `auth.invalid_code` or `auth.totp_setup_expired`. */
+            /** @description `me.channel_change_too_soon` or `me.channel_change_pending`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `me.channel_unchanged`, `auth.channel_unavailable`, or `me.invalid_channel_value` (pointer `/new_value`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1683,105 +6108,40 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    disableTotp: {
+    verifyChannelChangeCode: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordAndCode"];
+            path: {
+                change_id: components["parameters"]["ChangeId"];
             };
-        };
-        responses: {
-            /** @description TOTP disabled; recovery codes deleted. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["InvalidRequest"];
-            /** @description `auth.unauthenticated`, `auth.reauth_failed` or `auth.invalid_code`. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            403: components["responses"]["ForbiddenOrigin"];
-            429: components["responses"]["RateLimited"];
-            500: components["responses"]["InternalError"];
-        };
-    };
-    regenerateRecoveryCodes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordAndCode"];
-            };
-        };
-        responses: {
-            /** @description New batch, shown once; the old batch is invalid. */
-            200: {
-                headers: {
-                    "Cache-Control": components["headers"]["NoStore"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecoveryCodes"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            /** @description `auth.unauthenticated`, `auth.reauth_failed` or `auth.invalid_code`. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            403: components["responses"]["ForbiddenOrigin"];
-            429: components["responses"]["RateLimited"];
-            500: components["responses"]["InternalError"];
-        };
-    };
-    changePassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": {
-                    current_password: string;
-                    new_password: components["schemas"]["NewPassword"];
+                    challenge_id: components["schemas"]["ChallengeId"];
+                    code: components["schemas"]["OneTimeCode"];
                 };
             };
         };
         responses: {
-            /** @description Changed; current session rotated, other sessions ended. */
-            204: {
+            /** @description Updated state of the change. */
+            200: {
                 headers: {
+                    "Set-Cookie": components["headers"]["SessionCookie"];
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChannelChange"];
+                };
             };
             400: components["responses"]["InvalidRequest"];
-            /** @description `auth.unauthenticated` or `auth.reauth_failed` (wrong `current_password`). */
-            401: {
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CodeInvalidOrOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `me.channel_change_closed` (expired, cancelled or completed). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1789,9 +6149,41 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            403: components["responses"]["StepUpRequired"];
-            422: components["responses"]["PasswordRejected"];
             429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    cancelChannelChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_id: components["parameters"]["ChangeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `me.channel_change_closed` (already completed or expired). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             500: components["responses"]["InternalError"];
         };
     };
@@ -1833,6 +6225,7 @@ export interface operations {
                     locale: components["schemas"]["Locale"];
                     /** @default true */
                     send_email?: boolean;
+                    step_up?: components["schemas"]["StepUpProof"];
                 };
             };
         };
@@ -1855,7 +6248,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ForbiddenOrStepUp"];
             /** @description `invites.email_taken` (a user or an open invitation already exists for this e-mail; admin-only screen). */
             409: {
                 headers: {
@@ -1916,63 +6309,6 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    adminCreateResetLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: components["parameters"]["UserId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Link returned once (fragment form), valid 30 minutes; supersedes earlier links. */
-            201: {
-                headers: {
-                    "Cache-Control": components["headers"]["NoStore"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @description https://<host>/<locale>/reset-password#t=<token> */
-                        reset_url: string;
-                        expires_at: components["schemas"]["Timestamp"];
-                    };
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrStepUp"];
-            404: components["responses"]["NotFound"];
-            500: components["responses"]["InternalError"];
-        };
-    };
-    adminResetTotp: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: components["parameters"]["UserId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description TOTP and recovery codes removed; audited with the admin's id. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["InvalidRequest"];
-            401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrStepUp"];
-            404: components["responses"]["NotFound"];
-            500: components["responses"]["InternalError"];
-        };
-    };
     listSources: {
         parameters: {
             query?: {
@@ -2011,6 +6347,7 @@ export interface operations {
                     name: components["schemas"]["DisplayName"];
                     /** @enum {string} */
                     source_type: "tradingview";
+                    step_up?: components["schemas"]["StepUpProof"];
                 };
             };
         };
@@ -2027,7 +6364,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["StepUpRequired"];
+            403: components["responses"]["StepUpFailed"];
             /** @description `sources.name_taken` (case-insensitive, among active sources). */
             409: {
                 headers: {
@@ -2091,7 +6428,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepUpBody"];
+            };
+        };
         responses: {
             /** @description New URL returned once. */
             200: {
@@ -2105,7 +6446,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["StepUpRequired"];
+            403: components["responses"]["StepUpFailed"];
             404: components["responses"]["NotFound"];
             /** @description `sources.revoked` (a revoked source cannot be rotated). */
             409: {
@@ -2180,6 +6521,7 @@ export interface operations {
             content: {
                 "application/json": {
                     name: components["schemas"]["DisplayName"];
+                    step_up?: components["schemas"]["StepUpProof"];
                 };
             };
         };
@@ -2199,7 +6541,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["StepUpRequired"];
+            403: components["responses"]["StepUpFailed"];
             /** @description `connections.name_taken` (case-insensitive, among the user's connections that are not unpaired). */
             409: {
                 headers: {
@@ -2263,7 +6605,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepUpBody"];
+            };
+        };
         responses: {
             /** @description New code. */
             201: {
@@ -2277,7 +6623,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["StepUpRequired"];
+            403: components["responses"]["StepUpFailed"];
             404: components["responses"]["NotFound"];
             /** @description `connections.unpaired` (an unpaired connection cannot get a code; create a new one). */
             409: {
@@ -2305,6 +6651,7 @@ export interface operations {
                 "application/json": {
                     /** @description Must be true when any mapped account has an open position (design S3-10 checkbox). */
                     acknowledge_open_positions: boolean;
+                    step_up?: components["schemas"]["StepUpProof"];
                 };
             };
         };
@@ -2318,7 +6665,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["StepUpRequired"];
+            403: components["responses"]["StepUpFailed"];
             404: components["responses"]["NotFound"];
             /** @description `connections.open_positions_not_acknowledged` (body lists nothing sensitive; the client re-reads the connection). */
             409: {
@@ -2390,7 +6737,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description `pairing.rate_limited` (10/min per IP) or `pairing.temporarily_locked` (global lock after 100 failures in 10 minutes). Header `Retry-After`. */
+            /** @description `pairing.rate_limited` (per-IP and per-prefix limits, ADR-0004 §8; there is no global lock, U11). Header `Retry-After`. */
             429: {
                 headers: {
                     "Retry-After": components["headers"]["RetryAfter"];
@@ -2425,6 +6772,373 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    listAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The accounts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description UUID generated by the client once per create submission; reused on retries (not a secret). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Replay of a create already done with this `Idempotency-Key`; the account it created, unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Created and audited. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StepUpFailed"];
+            409: components["responses"]["AccountWriteConflict"];
+            422: components["responses"]["AccountWriteRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved and audited (a request that changes nothing returns the account and is not audited). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StepUpFailed"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AccountWriteConflict"];
+            422: components["responses"]["AccountWriteRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    archiveAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived and audited. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `accounts.delete_open_position` — nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAccountArchiveImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The impact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveImpact"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    setAccountLifecycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description The account in its new state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict` (stale `row_version`) or `accounts.lifecycle_transition_invalid`; nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    restartEvaluation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    evaluation_start: string;
+                    evaluation_earned_before?: components["schemas"]["MoneyAmount"];
+                    row_version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Restarted and audited. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict` — nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `accounts.evaluation_not_applicable` (no evaluation target) or `accounts.evaluation_start_invalid` (`/evaluation_start` in the future); nothing changed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    setAccountCommission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    commission_per_contract_side: components["schemas"]["MoneyAmount"] | null;
+                    row_version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved (or unchanged). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict` (stale `row_version`); nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    clearAccountSync: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUID the client generates once per confirmation and reuses on retries (not a secret). A double submit returns the first answer. */
+                "Idempotency-Key"?: components["schemas"]["Uuid"];
+            };
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expected_version: number;
+                    /** @description Action `account_sync_clear`, target = this account (Q95). */
+                    step_up?: components["schemas"]["StepUpProof"];
+                };
+            };
+        };
+        responses: {
+            /** @description Cleared and audited (or the replay of a clear that already succeeded). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StepUpFailed"];
+            404: components["responses"]["NotFound"];
+            /** @description `accounts.sync_state_changed` (the sync state changed since `expected_version`; refetch), `accounts.not_out_of_sync`, or `accounts.sync_not_observable` (Q83 a: not observable yet, so wait for the plugin's report); nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
     setAccountOptIn: {
         parameters: {
             query?: never;
@@ -2437,7 +7151,14 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OptInChoiceRequest"];
+                "application/json": {
+                    /** @enum {string} */
+                    choice: "accepted" | "declined";
+                    /** @description Rule version whose text was displayed (`RuleVersion.id`). */
+                    rule_version_id: components["schemas"]["Uuid"];
+                    /** @description Required when `choice` is `accepted` (step-up action `account_opt_in_accept`, target = this account). */
+                    step_up?: components["schemas"]["StepUpProof"];
+                };
             };
         };
         responses: {
@@ -2452,7 +7173,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["StepUpRequired"];
+            403: components["responses"]["StepUpFailed"];
             404: components["responses"]["NotFound"];
             /** @description `accounts.rule_version_changed` — `error.current_rule_version_id` carries the current version; nothing saved. */
             409: {
@@ -2463,7 +7184,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description `accounts.opt_in_not_applicable` (state is `not_required`: real account, or the firm allows that kind). */
+            /** @description `accounts.opt_in_not_applicable` (state is `not_required`: real account, the firm allows that kind, or `copy` on an account that is not a follower). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2472,6 +7193,1502 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getOptInRules: {
+        parameters: {
+            query?: {
+                preset_version_id?: components["schemas"]["Uuid"];
+                firm_platform?: components["schemas"]["FirmPlatform"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One rule version per kind. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptInRules"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description `accounts.firm_platform_required` or `accounts.firm_platform_unknown` (pointer `/query/firm_platform`; with `preset_version_id` only). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getRuleVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_version_id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleVersion"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listRoutes: {
+        parameters: {
+            query?: {
+                source_id?: components["schemas"]["Uuid"];
+                account_id?: components["schemas"]["Uuid"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The routes, sorted by account `display_name`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created and audited. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Route"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StepUpFailed"];
+            /** @description `routing.route_exists` — nothing created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["RouteRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route_id: components["parameters"]["RouteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved (a request that changes nothing is not audited). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Route"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StepUpFailed"];
+            404: components["responses"]["NotFound"];
+            /** @description `routing.source_revoked` or `common.version_conflict`; nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `routing.automation_not_accepted` / `routing.platform_unbound` (pointer `/is_enabled`) — switching on a route whose account is not eligible for the source (Q67 b). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route_id: components["parameters"]["RouteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed and audited. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `routing.source_revoked` — nothing removed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listRouteCandidates: {
+        parameters: {
+            query: {
+                source_id: components["schemas"]["Uuid"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The candidates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteCandidates"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listInstruments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The instruments, sorted by symbol. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstrumentList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listDefaultProfiles: {
+        parameters: {
+            query: {
+                instrument_id: components["parameters"]["InstrumentIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The defaults. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultProfileList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    putDefaultProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instrument_id: components["parameters"]["InstrumentIdPath"];
+                /** @description A standard size as a decimal string without separators, e.g. `50000` or `50000.00`. */
+                size_amount: components["schemas"]["SizeAmount"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DistanceProfile"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultProfileEntry"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["DistanceRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAccountProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account's profiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountProfileList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    putAccountProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+                instrument_id: components["parameters"]["InstrumentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved and audited. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountProfile"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict` — nothing saved. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["DistanceRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    restoreAccountProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+                instrument_id: components["parameters"]["InstrumentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Only for a `set_by_user` (or missing) profile of an account whose non-standard size is a tie (real, or prop, Q73 b). */
+                    profile_size?: components["schemas"]["SizeAmount"];
+                    row_version?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Restored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountProfile"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict` — nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `profiles.default_missing` (the size has no default profile yet), `profiles.profile_size_required` or `profiles.profile_size_invalid` (pointer `/profile_size`); nothing changed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getNearestProfileSize: {
+        parameters: {
+            query: {
+                size_amount: components["schemas"]["SizeAmount"];
+                instrument_id: components["parameters"]["InstrumentIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One or two candidates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NearestProfileSize"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    previewProfile: {
+        parameters: {
+            query: {
+                instrument_id: components["parameters"]["InstrumentIdQuery"];
+                distance_unit: components["schemas"]["DistanceUnit"];
+                stop_distance: components["schemas"]["DistanceValue"];
+                target_distance: components["schemas"]["DistanceValue"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The equivalents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileEquivalents"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["DistanceRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listActivity: {
+        parameters: {
+            query?: {
+                from?: components["schemas"]["Timestamp"];
+                to?: components["schemas"]["Timestamp"];
+                account_id?: components["schemas"]["Uuid"][];
+                source_id?: components["schemas"]["Uuid"][];
+                signal_type?: components["schemas"]["AuditSignalType"][];
+                outcome?: components["schemas"]["AuditOutcome"][];
+                category?: components["schemas"]["AuditCategory"][];
+                code?: components["schemas"]["AuditCode"][];
+                /** @description Exact instruction id or `message_id`. */
+                q?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getActivityFilterOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The options. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityFilterOptions"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getActivityEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The entry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEntry"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getInstructionTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instruction_id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The timeline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionTimeline"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listFirms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The firms. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getFirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                firm_id: components["parameters"]["FirmId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The firm. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmDetail"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listFirmReleases: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                firm_id: components["parameters"]["FirmId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The releases. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmReleaseList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getPresetVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preset_version_id: components["parameters"]["PresetVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preset version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetVersion"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAccountPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account's preset state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPresetState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `common.not_found` — unknown or foreign account, or an account without a preset. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAccountPresetDiff: {
+        parameters: {
+            query: {
+                target_preset_version_id: components["schemas"]["Uuid"];
+            };
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The diff. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetDiff"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description `presets.version_not_newer` (pointer `/query/target_preset_version_id`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    applyPresetVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyPresetVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Applied and audited. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPresetState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StepUpFailed"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Nothing saved. `common.version_conflict` (stale `row_version`); `presets.version_superseded`
+             *     (a newer version than the target was published meanwhile; reload the diff);
+             *     `accounts.rule_version_changed` (an `opt_ins` choice names a stale rule version).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Nothing saved. `presets.version_not_newer` (`/target_preset_version_id`);
+             *     `presets.choice_required` (`/choices/<field>`); `presets.required_field_unresolved`
+             *     (`/rule_values/<field>`); `accounts.max_position_exceeds_preset` (`/max_position_qty`; the new
+             *     cap is lower than the account's value and the body did not lower it);
+             *     `accounts.opt_in_required` (`/opt_ins/<kind>`); `accounts.firm_platform_required` /
+             *     `accounts.firm_platform_unknown` (`/firm_platform`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    restorePresetValue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+                field: components["schemas"]["RuleField"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    row_version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Restored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPresetState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict` — nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `presets.value_not_confirmed` — nothing changed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAccountRisk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The risk state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRisk"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    restartTradingDayCount: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUID the client generates once per confirmation and reuses on retries (not a secret). It makes a double submit return the first answer. */
+                "Idempotency-Key"?: components["schemas"]["Uuid"];
+            };
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    acknowledge_unseen_losses: true;
+                    /** @description Action `trading_day_restart`, target = this account (Q96). */
+                    step_up?: components["schemas"]["StepUpProof"];
+                };
+            };
+        };
+        responses: {
+            /** @description Requested (or already pending); the account's risk state shows it. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRisk"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StepUpFailed"];
+            404: components["responses"]["NotFound"];
+            /** @description `risk.day_not_unknown` (the day is known; nothing to restart), `risk.adapter_protocol_outdated` (the plugin is below 1.4: update it) or `common.idempotency_key_reused` (same key, different body); nothing sent. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listRiskSummaries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One summary per live account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskSummaryList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAccountRiskRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rules. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRiskRules"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    putAccountRiskRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskRulesRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved and audited. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRiskRules"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict` or `risk.reached_not_acknowledged`; nothing saved. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["RiskRulesRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    previewAccountRiskRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskRulesRequest"];
+            };
+        };
+        responses: {
+            /** @description The effect of each changed rule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskRulesPreview"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `common.version_conflict`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["RiskRulesRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                status?: "all" | "unread" | "read";
+                category?: components["schemas"]["AuditCategory"][];
+                account_id?: components["schemas"]["Uuid"][];
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getUnreadCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCount"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    markNotificationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: components["parameters"]["NotificationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The item and the new unread count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkReadResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    markNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkManyRequest"];
+            };
+        };
+        responses: {
+            /** @description The new unread count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCount"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listTrades: {
+        parameters: {
+            query?: {
+                /** @description Exit time at or after this instant (Q53). */
+                from?: components["parameters"]["TradeFrom"];
+                /** @description Exit time strictly before this instant (exclusive: `exit_time < to`). With `from`, the interval is half-open [from, to). For a custom period ending on day D in the profile's time zone, send D + 1 at 00:00 in that zone, converted to UTC. */
+                to?: components["parameters"]["TradeTo"];
+                account_id?: components["parameters"]["TradeAccountIds"];
+                source_id?: components["parameters"]["TradeSourceIds"];
+                origin?: components["parameters"]["TradeOrigins"];
+                signal_type?: components["parameters"]["TradeSignalTypes"];
+                /** @description Only trades recorded (captured or entered) at or before this instant — pass `getPerformance.as_of` to see exactly the set S22 measured (S22 AC-2). */
+                recorded_before?: components["parameters"]["TradeRecordedBefore"];
+                /** @description Q79 (a), 5.4.0: include the trades of archived accounts (filter "Arquivadas"). Default false = hidden. With false, an archived id in `account_id` matches nothing. Part of the cursor binding. */
+                include_archived?: components["parameters"]["TradeIncludeArchived"];
+                sort?: "exit_time" | "pnl" | "duration";
+                order?: "desc" | "asc";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradePage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createManualTrade: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description UUID generated by the client once per create submission; reused on retries (not a secret). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualTradeRequest"];
+            };
+        };
+        responses: {
+            /** @description Replay of a create already done with this key; the trade, unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trade"];
+                };
+            };
+            /** @description Created and audited. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trade"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            /** @description `trades.idempotency_key_reused` — nothing created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ManualTradeRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getTradesSummary: {
+        parameters: {
+            query?: {
+                /** @description Exit time at or after this instant (Q53). */
+                from?: components["parameters"]["TradeFrom"];
+                /** @description Exit time strictly before this instant (exclusive: `exit_time < to`). With `from`, the interval is half-open [from, to). For a custom period ending on day D in the profile's time zone, send D + 1 at 00:00 in that zone, converted to UTC. */
+                to?: components["parameters"]["TradeTo"];
+                account_id?: components["parameters"]["TradeAccountIds"];
+                source_id?: components["parameters"]["TradeSourceIds"];
+                origin?: components["parameters"]["TradeOrigins"];
+                signal_type?: components["parameters"]["TradeSignalTypes"];
+                /** @description Q79 (a), 5.4.0: include the trades of archived accounts (filter "Arquivadas"). Default false = hidden. With false, an archived id in `account_id` matches nothing. Part of the cursor binding. */
+                include_archived?: components["parameters"]["TradeIncludeArchived"];
+                /** @description Only trades recorded (captured or entered) at or before this instant — pass `getPerformance.as_of` to see exactly the set S22 measured (S22 AC-2). */
+                recorded_before?: components["parameters"]["TradeRecordedBefore"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradesSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getTrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trade_id: components["parameters"]["TradeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The trade. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trade"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateManualTrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trade_id: components["parameters"]["TradeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualTradeUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved and audited (no change → 200, not audited). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trade"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `trades.not_editable` or `common.version_conflict`; nothing saved. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ManualTradeRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteManualTrade: {
+        parameters: {
+            query: {
+                row_version: number;
+            };
+            header?: never;
+            path: {
+                trade_id: components["parameters"]["TradeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted and audited. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description `trades.not_editable` or `common.version_conflict`; nothing deleted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    previewManualTrade: {
+        parameters: {
+            query: {
+                account_id: components["schemas"]["Uuid"];
+                instrument_id: components["schemas"]["Uuid"];
+                direction: components["schemas"]["TradeDirection"];
+                quantity: number;
+                entry_time: components["schemas"]["Timestamp"];
+                entry_price: components["schemas"]["Price"];
+                exit_time: components["schemas"]["Timestamp"];
+                exit_price: components["schemas"]["Price"];
+                commission?: components["schemas"]["ExcursionInput"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The computed values. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualTradePreview"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
+            422: components["responses"]["ManualTradeRejected"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getPerformance: {
+        parameters: {
+            query?: {
+                /** @description Exit time at or after this instant (Q53). */
+                from?: components["parameters"]["TradeFrom"];
+                /** @description Exit time strictly before this instant (exclusive: `exit_time < to`). With `from`, the interval is half-open [from, to). For a custom period ending on day D in the profile's time zone, send D + 1 at 00:00 in that zone, converted to UTC. */
+                to?: components["parameters"]["TradeTo"];
+                account_id?: components["parameters"]["TradeAccountIds"];
+                /** @description Q79 (a), 5.4.0: include the trades of archived accounts (filter "Arquivadas"). Default false = hidden. With false, an archived id in `account_id` matches nothing. Part of the cursor binding. */
+                include_archived?: components["parameters"]["TradeIncludeArchived"];
+                group_by?: "source_signal" | "source" | "signal_type";
+                sort?: "total_pnl" | "trade_count" | "avg_pnl" | "win_rate";
+                order?: "desc" | "asc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The figures. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Performance"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            401: components["responses"]["Unauthenticated"];
             500: components["responses"]["InternalError"];
         };
     };
