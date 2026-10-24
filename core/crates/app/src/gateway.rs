@@ -353,6 +353,24 @@ impl AccountBindings for AccountsBindings {
             .map_err(gw_err)?;
         Ok(venue.map(|v| VenueAccountId::from_uuid(v.as_uuid())))
     }
+
+    /// Through the binding (accounts' public reads; D3): an account bound after the session's
+    /// handshake resolves, an unbound or archived one is `None` and the gateway falls back.
+    async fn account_name(
+        &self,
+        user_id: UserId,
+        account: GatewayAccountId,
+    ) -> Result<Option<String>, GatewayPortError> {
+        let Some(venue) = self.binding_of(user_id, account).await? else {
+            return Ok(None);
+        };
+        Ok(self
+            .accounts_for_venues(user_id, &[venue])
+            .await?
+            .remove(&venue)
+            .filter(|b| b.account_id == account)
+            .map(|b| b.display_name))
+    }
 }
 
 // ---- served to routing (S7) ----------------------------------------------------------------
@@ -889,6 +907,7 @@ pub fn wire(
             HandleFrame::new(schema, store.clone(), intake, snapshot),
             DeliverCommands::new(
                 store.clone(),
+                bindings.clone(),
                 settings.clone(),
                 chrono::Duration::seconds(PREREQUISITE_TIMEOUT_S),
             ),
@@ -975,6 +994,21 @@ mod tests {
             .await
             .is_err()
         );
+    }
+
+    #[test]
+    fn every_gateway_audit_code_is_auditable() {
+        // D2/D3: a code without a category or a rule fails every event in the audit consumer.
+        for code in gateway_application::events::AUDIT_CODES {
+            assert!(
+                audit_application::enterprise::Category::of_code(code).is_some(),
+                "{code} has no audit category"
+            );
+            assert!(
+                audit_application::rule_for(code).is_some(),
+                "{code} has no audit rule"
+            );
+        }
     }
 
     #[test]

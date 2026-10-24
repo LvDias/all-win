@@ -228,6 +228,7 @@ impl GatewayStore for FakeStore {
         }
         c.command.state = CommandState::Sent;
         c.command.sent_at = Some(at);
+        audit_rows_hold(&events);
         s.events.extend(events);
         Ok(true)
     }
@@ -495,18 +496,39 @@ impl GatewayStore for FakeStore {
         if let Some(d) = work.deferred {
             s.deferred.push(d);
         }
+        audit_rows_hold(&work.events);
         s.events.extend(work.events);
         Ok(CommitOutcome::Committed)
+    }
+}
+
+/// Every audit envelope the fake stores must be a row `audit.audit_entry` accepts (D3): an
+/// entry about an account carries its name (`audit_entry_account_name_check`), a non-empty
+/// `DisplayName` of at most 60 characters. Checked on every event of every use-case test.
+fn audit_rows_hold(events: &[GatewayEvent]) {
+    for e in events.iter().filter(|e| e.payload.get("actor").is_some()) {
+        let refs = &e.payload["refs"];
+        if refs.get("account_id").is_some() {
+            let name = refs["account_name"].as_str().unwrap_or_default();
+            assert!(
+                !name.is_empty() && name.chars().count() <= 60,
+                "{} about an account without its name: {refs}",
+                e.event_type
+            );
+        }
     }
 }
 
 #[derive(Default)]
 pub struct FakeBindings {
     pub by_venue: Mutex<HashMap<VenueAccountId, BoundAccount>>,
+    /// Account names accounts knows, bound or not (`account_name`).
+    pub names: Mutex<HashMap<AccountId, String>>,
 }
 
 impl FakeBindings {
     pub fn bind(&self, venue: VenueAccountId, account: AccountId, name: &str) {
+        self.names.lock().unwrap().insert(account, name.into());
         self.by_venue.lock().unwrap().insert(
             venue,
             BoundAccount {
@@ -547,6 +569,14 @@ impl AccountBindings for FakeBindings {
             .iter()
             .find(|(_, b)| b.account_id == account)
             .map(|(v, _)| *v))
+    }
+
+    async fn account_name(
+        &self,
+        _user_id: UserId,
+        account: AccountId,
+    ) -> Result<Option<String>, PortError> {
+        Ok(self.names.lock().unwrap().get(&account).cloned())
     }
 }
 

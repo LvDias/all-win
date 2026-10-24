@@ -58,6 +58,11 @@ pub struct HandleExecutionReport {
 }
 
 impl HandleExecutionReport {
+    /// The accounts read the frame handler shares for audit names.
+    pub(crate) fn bindings(&self) -> &dyn AccountBindings {
+        &*self.bindings
+    }
+
     pub fn new(
         store: Arc<dyn GatewayStore>,
         bindings: Arc<dyn AccountBindings>,
@@ -257,7 +262,8 @@ impl HandleExecutionReport {
                         }
                         d
                     },
-                    json!({ "account_id": account_id }),
+                    // About no All Win account (contract): no account refs (D3).
+                    json!({}),
                 ));
             }
             work.report = Some(ReportRow {

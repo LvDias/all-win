@@ -19,7 +19,8 @@ use serde_json::{Value, json};
 
 use crate::events::{self, GatewayEvent};
 use crate::ports::{
-    CommandTransition, GatewayStore, StoreError, StoredCommand, SyncWrite, UnitOfWork,
+    AccountBindings, CommandTransition, GatewayStore, StoreError, StoredCommand, SyncWrite,
+    UnitOfWork,
 };
 use crate::session::{Session, SessionSettings};
 
@@ -47,6 +48,7 @@ pub struct Pass {
 #[derive(Clone)]
 pub struct DeliverCommands {
     store: Arc<dyn GatewayStore>,
+    bindings: Arc<dyn AccountBindings>,
     settings: SessionSettings,
     /// A sent flatten's normal report timeout, after which a held reverse leg is decided.
     prerequisite_timeout: chrono::Duration,
@@ -62,11 +64,13 @@ pub(crate) struct Finish {
 impl DeliverCommands {
     pub fn new(
         store: Arc<dyn GatewayStore>,
+        bindings: Arc<dyn AccountBindings>,
         settings: SessionSettings,
         prerequisite_timeout: chrono::Duration,
     ) -> Self {
         Self {
             store,
+            bindings,
             settings,
             prerequisite_timeout,
         }
@@ -126,12 +130,29 @@ impl DeliverCommands {
             refused_by_environment: session.refused_by_environment(stored.account_id),
             account_out_of_sync: out_of_sync,
         };
-        let refs = crate::audit::refs(
-            stored.account_id,
-            mapped.map(|m| m.display_name.as_str()),
-            Some(stored.instruction_id),
-        );
-        match cmd.delivery(now, &ctx) {
+        let decision = cmd.delivery(now, &ctx);
+        // Read only when the pass writes an entry (not on every wait or retransmission).
+        let refs = match decision {
+            Delivery::Wait(_) | Delivery::Done => Value::Null,
+            Delivery::Send if cmd.state != CommandState::Pending => Value::Null,
+            // A first send passed the session gate, so the welcome maps the account: no accounts
+            // read on the send path.
+            Delivery::Send if mapped.is_some() => crate::audit::refs(
+                stored.account_id,
+                mapped.map(|m| m.display_name.as_str()),
+                Some(stored.instruction_id),
+            ),
+            _ => {
+                crate::audit::command_refs(
+                    &*self.bindings,
+                    session,
+                    stored.account_id,
+                    stored.instruction_id,
+                )
+                .await?
+            }
+        };
+        match decision {
             Delivery::Send => {
                 if cmd.state == CommandState::Pending {
                     let sent = crate::audit::command_sent(

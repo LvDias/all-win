@@ -201,6 +201,27 @@ pub fn rule_for(code: &str) -> Option<CodeRule> {
         | "sync.flagged"
         | "sync.reason_resolved"
         | "sync.restored" => rule(Info, false),
+        // S6 profiles (D2, Sunday rehearsal): safe, with the producer's tests (accounts
+        // `profiles_http`: closed envelope, details against `DetailsProfileChanged`).
+        "profiles.default_changed" | "profiles.account_changed" => rule(Info, true),
+        // Contract codes whose producers have not landed (D2: every `KnownAuditCode` has a
+        // rule, `info` per the outcome table). Fail-closed until each producer's details
+        // contract test lands.
+        "execution.bracket_calculated"
+        | "presets.version_applied"
+        | "presets.value_restored"
+        | "risk.rules_changed"
+        | "risk.warning"
+        | "risk.limit_reached"
+        | "risk.target_reached"
+        | "risk.consistency_warning"
+        | "risk.evaluation_target_reached"
+        | "trades.captured"
+        | "trades.manual_created"
+        | "trades.manual_changed"
+        | "trades.manual_deleted"
+        | "trades.reconcile_mismatch"
+        | "sync.cleared" => rule(Info, false),
         _ => None,
     }
 }
@@ -600,7 +621,7 @@ mod tests {
             ),
             // `sync.*` has a category since 5.3.0; a code without a rule still fails.
             (
-                "sync.cleared",
+                "sync.not_a_code",
                 json!({"actor":"system","details":{}}),
                 "no rule",
             ),
@@ -614,5 +635,26 @@ mod tests {
             let err = entry_for(&event(code, payload)).unwrap_err().to_string();
             assert_eq!(err, format!("not auditable: {code}: {why}"));
         }
+    }
+
+    /// D2: every code the contract defines (`KnownAuditCode`) has a category and a rule, so no
+    /// producer's events dead-letter in the audit consumer. A new contract code fails here
+    /// until its rule is added.
+    #[test]
+    fn every_known_audit_code_has_a_category_and_a_rule() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../contracts/http/openapi.bundled.yaml");
+        let contract: Value =
+            yaml_serde::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let codes = contract["components"]["schemas"]["KnownAuditCode"]["enum"]
+            .as_array()
+            .unwrap();
+        assert!(codes.len() > 90, "{}", codes.len());
+        let missing: Vec<&str> = codes
+            .iter()
+            .map(|c| c.as_str().unwrap())
+            .filter(|c| Category::of_code(c).is_none() || rule_for(c).is_none())
+            .collect();
+        assert!(missing.is_empty(), "not auditable: {missing:?}");
     }
 }

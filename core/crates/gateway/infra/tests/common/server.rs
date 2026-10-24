@@ -75,6 +75,13 @@ impl AccountBindings for Bindings {
             .then(|| *self.venue.lock().unwrap())
             .flatten())
     }
+    async fn account_name(
+        &self,
+        _u: UserId,
+        account: AccountId,
+    ) -> Result<Option<String>, PortError> {
+        Ok((account == self.account).then(|| "Conta A".into()))
+    }
 }
 
 pub struct NoRisk;
@@ -137,6 +144,7 @@ pub async fn start(db: &Db) -> Server {
         HandleFrame::new(schema.clone(), store.clone(), intake, snapshot),
         DeliverCommands::new(
             store.clone(),
+            bindings.clone(),
             settings.clone(),
             chrono::Duration::seconds(30),
         ),

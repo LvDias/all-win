@@ -99,6 +99,14 @@ pub trait AccountBindings: Send + Sync {
         user_id: UserId,
         account: AccountId,
     ) -> Result<Option<VenueAccountId>, PortError>;
+    /// The display name of this user's account, for the audit `refs.account_name` snapshot of
+    /// an entry about an account the session does not map (D3: every audit entry with an
+    /// account id needs its name). `None` when accounts does not know it (e.g. unbound).
+    async fn account_name(
+        &self,
+        user_id: UserId,
+        account: AccountId,
+    ) -> Result<Option<String>, PortError>;
 }
 
 // ---- risk (Malha): limits and commission rate ----------------------------------------------

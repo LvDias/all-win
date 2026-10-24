@@ -9,6 +9,8 @@ use gateway_enterprise::sync::{ReasonEntry, SyncChange};
 use serde_json::{Map, Value, json};
 
 use crate::events::{self, GatewayEvent};
+use crate::ports::{AccountBindings, StoreError};
+use crate::session::Session;
 use crate::wire::{ExecutionReport, timestamp};
 
 /// `refs` columns of an audit entry.
@@ -26,6 +28,29 @@ pub fn refs(
         r.insert("instruction_id".into(), json!(i));
     }
     Value::Object(r)
+}
+
+/// `refs` of an entry about a Core command's account (D3). The audit requires the account's name
+/// with its id, and the session maps only the accounts of its `welcome`: a command can expire or
+/// be refused for an account bound after the handshake (`binding_pending`). The name is read
+/// from accounts by id; the session's welcome snapshot is the fallback, then the id itself, so
+/// the entry is always recorded (PROVISIONAL, Bigorna: a proper accounts read by id for archived
+/// accounts is a follow-up with Malha). A port error is a store error: the caller retries.
+pub async fn command_refs(
+    bindings: &dyn AccountBindings,
+    session: &Session,
+    account: AccountId,
+    instruction_id: uuid::Uuid,
+) -> Result<Value, StoreError> {
+    let read = bindings
+        .account_name(session.user_id, account)
+        .await
+        .map_err(|e| StoreError::Other(e.0))?;
+    let name = read
+        .filter(|n| !n.is_empty())
+        .or_else(|| session.mapped(account).map(|m| m.display_name.clone()))
+        .unwrap_or_else(|| account.to_string());
+    Ok(refs(account, Some(&name), Some(instruction_id)))
 }
 
 fn put(m: &mut Map<String, Value>, k: &str, v: Option<Value>) {

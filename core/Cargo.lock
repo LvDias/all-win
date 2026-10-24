@@ -246,6 +246,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
+ "yaml_serde",
 ]
 
 [[package]]

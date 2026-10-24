@@ -94,7 +94,8 @@ impl HandlePositionSnapshot {
                                 "contract_month": instrument.contract_month(),
                                 "position": qty,
                             }),
-                            json!({ "account_id": account_id }),
+                            // About no All Win account (contract): no account refs (D3).
+                            json!({}),
                         ));
                     }
                     evaluated.push(account_id);

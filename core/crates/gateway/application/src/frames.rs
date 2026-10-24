@@ -335,13 +335,16 @@ impl HandleFrame {
                 ..FrameOutcome::default()
             };
         };
-        let refs = crate::audit::refs(
+        let Ok(refs) = crate::audit::command_refs(
+            self.intake.bindings(),
+            session,
             stored.account_id,
-            session
-                .mapped(stored.account_id)
-                .map(|m| m.display_name.as_str()),
-            Some(stored.instruction_id),
-        );
+            stored.instruction_id,
+        )
+        .await
+        else {
+            return FrameOutcome::close(CloseCode::Normal, "intake_retry");
+        };
         let outcome = Finish {
             to: CommandState::Failed,
             reason: Some((

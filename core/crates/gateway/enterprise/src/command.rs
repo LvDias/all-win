@@ -140,7 +140,8 @@ pub enum Delivery {
     /// Commit `sent` (first send) then write; for `Sent`, retransmit the stored frame unchanged.
     Send,
     Wait(WaitReason),
-    /// Becomes `expired`, audited (`execution.expired`). `flag` raises `sync.command_expired`;
+    /// Becomes `expired`, audited (`execution.expired`). `flag` raises `sync.command_expired`
+    /// (only for a reverse's opening leg whose closing leg is not proven flat);
     /// `reverse_close_only` notifies `routing.reverse_close_only` with `routing.expired`.
     Expire {
         flag: bool,
@@ -258,9 +259,14 @@ impl Command {
             return Delivery::ExpireOutOfSync;
         }
         if self.expired_at(now) {
+            // Still `pending`: `sent` is committed before the socket write (ADR-0004 §4), so this
+            // command never left the Core and cannot have reached the platform. It is expired and
+            // audited, with no sync reason, whatever held it (binding_pending,
+            // connection_checking, broker_disconnected; Esquadro, Sunday rehearsal). A `sent`
+            // command never takes this path: the adapter answers it, and its expiry flags.
             if !self.is_reverse_opening_leg() {
                 return Delivery::Expire {
-                    flag: true,
+                    flag: false,
                     reverse_close_only: false,
                 };
             }
@@ -477,10 +483,10 @@ mod tests {
     }
 
     #[test]
-    fn never_sends_after_expiry_and_flags() {
+    fn never_sends_after_expiry_and_never_flags_what_never_left_the_core() {
         let c = entry();
         let expired = Delivery::Expire {
-            flag: true,
+            flag: false,
             reverse_close_only: false,
         };
         assert_eq!(c.delivery(t(5_000), &ready()), expired);

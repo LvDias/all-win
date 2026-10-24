@@ -92,6 +92,7 @@ impl World {
     fn deliver_uc(&self) -> DeliverCommands {
         DeliverCommands::new(
             self.store.clone(),
+            self.bindings.clone(),
             SessionSettings::default(),
             Duration::seconds(30),
         )
@@ -363,7 +364,9 @@ async fn crash_between_commit_and_write_retransmits_the_same_bytes() {
 }
 
 #[tokio::test]
-async fn pending_entry_found_expired_is_expired_flagged_and_audited() {
+async fn pending_entry_found_expired_is_expired_and_audited_without_flagging() {
+    // Esquadro (Sunday rehearsal): a pending command never left the Core, so its expiry is no
+    // sync reason.
     let w = World::new();
     w.request(json!([entry(1, t(5_000))]), t(0)).await;
     let (session, _) = w.connect(&["1.2"], "simulation", t(60_000)).await.unwrap();
@@ -371,18 +374,76 @@ async fn pending_entry_found_expired_is_expired_flagged_and_audited() {
         .await;
     assert!(w.deliver(&session, t(60_002)).await.is_empty());
     assert_eq!(w.command_state(1), CommandState::Expired);
+    assert_eq!(w.sync_state(), (SyncState::InSync, vec![]));
+    let types = w.store.event_types();
+    assert!(types.contains(&"execution.expired"));
+    assert!(!types.contains(&"sync.flagged"));
+    assert!(!types.contains(&"gateway.account_sync_changed"));
+}
+
+#[tokio::test]
+async fn d3_entry_held_by_binding_pending_expires_in_sync_audited_with_the_accounts_name() {
+    let w = World::new();
+    let venue = gateway_enterprise::ids::VenueAccountId::from_uuid(Uuid::from_u128(5));
+    // Bound after the handshake: the live session does not map the account (binding_pending).
+    w.bindings.unbind_all();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    assert!(session.mapped(w.account).is_none());
+    w.bindings.bind(venue, w.account, "Conta A");
+    w.request(json!([entry(1, t(5_000))]), t(1)).await;
+    assert!(w.deliver(&session, t(2)).await.is_empty());
+    assert_eq!(w.command_state(1), CommandState::Pending);
+    // Renamed meanwhile: the entry carries the name accounts holds now.
+    w.bindings
+        .names
+        .lock()
+        .unwrap()
+        .insert(w.account, "Conta Sim101".into());
+    assert!(w.deliver(&session, t(6_000)).await.is_empty());
+    assert_eq!(w.command_state(1), CommandState::Expired);
+    assert_eq!(w.sync_state(), (SyncState::InSync, vec![]));
+    let s = w.store.state();
+    let expired = s
+        .events
+        .iter()
+        .find(|e| e.event_type == "execution.expired")
+        .unwrap();
+    assert_eq!(expired.payload["refs"]["account_id"], json!(w.account));
+    assert_eq!(expired.payload["refs"]["account_name"], "Conta Sim101");
+    assert!(s.events.iter().all(|e| e.event_type != "sync.flagged"));
+}
+
+#[tokio::test]
+async fn d3_crash_between_the_sent_commit_and_the_write_then_expiry_flags() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
+        .await;
+    w.request(json!([entry(1, t(5_000))]), t(2)).await;
+    // `sent` is committed and the frame handed over; the process dies before the write.
+    assert_eq!(w.deliver(&session, t(3)).await.len(), 1);
+    assert_eq!(w.command_state(1), CommandState::Sent);
+    w.sessions.remove(&session);
+    let (session2, _) = w.connect(&["1.2"], "simulation", t(10_000)).await.unwrap();
+    w.reconnect_snapshot(&session2, json!([]), json!([]), t(10_001))
+        .await;
+    // Past its expiry it is retransmitted, never expired by the Core: it may be on the platform.
+    assert_eq!(w.deliver(&session2, t(10_002)).await.len(), 1);
+    assert_eq!(w.command_state(1), CommandState::Sent);
+    let (r, p) = report(
+        &w,
+        json!({"command_id": Uuid::from_u128(1), "child_role": "entry", "status": "expired",
+        "reason_code": "command.expired"}),
+    );
+    w.intake_uc()
+        .handle(&session2, Uuid::now_v7(), &r, &p, t(10_003))
+        .await
+        .unwrap();
+    assert_eq!(w.command_state(1), CommandState::Expired);
     assert_eq!(
         w.sync_state(),
         (SyncState::OutOfSync, vec![SyncReason::CommandExpired])
     );
-    let types = w.store.event_types();
-    for t in [
-        "execution.expired",
-        "sync.flagged",
-        "gateway.account_sync_changed",
-    ] {
-        assert!(types.contains(&t), "{t}");
-    }
 }
 
 #[tokio::test]
