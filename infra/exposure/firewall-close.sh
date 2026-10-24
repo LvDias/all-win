@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# Closes the E2E exposure: stops the extra Caddy, removes the firewall rules, deletes the certificate and key.
-#   firewall-close.sh [--dry-run]
+# Removes the firewall rules of the E2E exposure and VERIFIES it. Exits non-zero with "NOT CLOSED" if anything remains.
+# Normally called by expose-close.sh.   firewall-close.sh [--dry-run]
 set -uo pipefail
 dry=0; [ "${1:-}" = "--dry-run" ] && dry=1
 PORT=8443; CHAIN=ALLWIN-ADAPTER
 SUDO=""; [ "$dry" = 1 ] || [ "$(id -u)" = 0 ] || SUDO="sudo"
 run() { if [ "$dry" = 1 ]; then echo "+ $*"; else "$@"; fi; }
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-compose="$here/../compose"
-if [ -f "$compose/.env" ]; then
-  run sg docker -c "docker compose -f '$compose/docker-compose.dev.yml' -f '$here/docker-compose.expose.yml' --env-file '$compose/.env' rm -sf caddy-adapter" 2>/dev/null \
-    || run docker rm -f "$(docker ps -aq --filter name=caddy-adapter 2>/dev/null)" 2>/dev/null
-fi
-run $SUDO iptables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport "$PORT" -j "$CHAIN" 2>/dev/null
-run $SUDO iptables -F "$CHAIN" 2>/dev/null
-run $SUDO iptables -X "$CHAIN" 2>/dev/null
-run $SUDO ip6tables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport "$PORT" -j DROP 2>/dev/null
-dir="${ALLWIN_E2E_CERT_DIR:-$HOME/.allwin-e2e-cert}"
-run rm -f -- "$dir/e2e.key" "$dir/e2e.crt"
-echo "closed. Check from outside: nothing may answer on $PORT."
-if [ "$dry" != 1 ]; then ss -ltn 2>/dev/null | awk '{print $4}' | grep -E ":$PORT\$" && echo "WARNING: something still listens on $PORT" || echo "no listener on $PORT"; fi
+
+# Delete every hook that points at the chain (any interface), then the chain itself, then the IPv6 drops.
+if [ "$dry" = 1 ]; then echo "+ (delete all DOCKER-USER rules with -j $CHAIN or --dport $PORT -j DROP, flush and delete $CHAIN)"; exit 0; fi
+while rule="$($SUDO iptables -S DOCKER-USER 2>/dev/null | grep -- "-j $CHAIN" | head -n 1)"; [ -n "$rule" ]; do
+  $SUDO iptables ${rule/-A /-D } 2>/dev/null || break
+done
+$SUDO iptables -F "$CHAIN" 2>/dev/null
+$SUDO iptables -X "$CHAIN" 2>/dev/null
+while rule="$($SUDO ip6tables -S DOCKER-USER 2>/dev/null | grep -- "--dport $PORT" | head -n 1)"; [ -n "$rule" ]; do
+  $SUDO ip6tables ${rule/-A /-D } 2>/dev/null || break
+done
+
+fail=0
+$SUDO iptables -S DOCKER-USER 2>/dev/null | grep -q -- "-j $CHAIN" && { echo "still present: DOCKER-USER hook" >&2; fail=1; }
+$SUDO iptables -S "$CHAIN" >/dev/null 2>&1 && { echo "still present: chain $CHAIN" >&2; fail=1; }
+$SUDO ip6tables -S DOCKER-USER 2>/dev/null | grep -q -- "--dport $PORT" && { echo "still present: IPv6 drop" >&2; fail=1; }
+[ "$fail" = 0 ] || { echo "NOT CLOSED (firewall)" >&2; exit 1; }
+echo "firewall rules removed and verified."
