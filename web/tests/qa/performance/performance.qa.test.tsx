@@ -121,14 +121,25 @@ describe("Q55 basis line and AC-5 empties", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Limpar filtros" }).length).toBeGreaterThan(0);
   });
-  // Q79 - CONTRACT-BLOCKED 5.4.0 (include_archived not in the contract yet). Remove .skip when it is.
-  it.skip("Q79 archived accounts are excluded by default; 'Incluir contas arquivadas' switch, off by default, in the URL and sent to the Core - CONTRACT-BLOCKED 5.4.0", async () => {
+  it("Q79 (decided): archived accounts are excluded by default - switch 'Incluir contas arquivadas' off, nothing sent; turning it on writes archived=1 to the URL", async () => {
     serve(); renderApp(<PerformancePage />);
     const sw = await screen.findByRole("switch", { name: "Incluir contas arquivadas" });
     expect(sw).not.toBeChecked();
-    expect(calls[calls.length - 1]!.searchParams.get("include_archived")).not.toBe("true");
+    await summary();
+    expect(calls[calls.length - 1]!.searchParams.get("include_archived")).toBeNull();
     await userEvent.setup().click(sw);
-    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived"));
+    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived=1"));
+  });
+  it("Q79: with archived=1 the switch is on, the Core gets include_archived=true, and the trade-list links carry archived=1; Limpar filtros turns it off", async () => {
+    navigation.search = "archived=1";
+    serve(); renderApp(<PerformancePage />);
+    expect(await screen.findByRole("switch", { name: "Incluir contas arquivadas" })).toBeChecked();
+    await summary();
+    expect(calls[calls.length - 1]!.searchParams.get("include_archived")).toBe("true");
+    const link = await screen.findByRole("link", { name: "Ver os trades deste filtro" });
+    expect(link.getAttribute("href")).toContain("archived=1");
+    await userEvent.setup().click(screen.getAllByRole("button", { name: "Limpar filtros" })[0]!);
+    expect(navigation.replace).toHaveBeenCalledWith(expect.not.stringContaining("archived"));
   });
   it("no trades with filters: totals 0, averages/rates '—', says there are no trades, never offers to create", async () => {
     navigation.search = `account=${uuid(100)}`;

@@ -175,6 +175,42 @@ describe("AC-4 filters", () => {
   });
 });
 
+describe("Q79 archived accounts (decided)", () => {
+  it("excluded by default: switch off, nothing sent on the list or the summary; turning it on writes archived=1 to the URL", async () => {
+    serve([{ trades: [trade()] }]); renderApp(<TradesPage />);
+    const sw = await screen.findByRole("switch", { name: "Incluir contas arquivadas" });
+    expect(sw).not.toBeChecked();
+    await waitFor(() => expect(summaryCalls.length).toBeGreaterThan(0));
+    expect(listCalls[listCalls.length - 1]!.searchParams.get("include_archived")).toBeNull();
+    expect(summaryCalls[summaryCalls.length - 1]!.searchParams.get("include_archived")).toBeNull();
+    await userEvent.setup().click(sw);
+    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived=1"));
+  });
+  it("archived=1: switch on and include_archived=true on BOTH the list and the summary (totals must match the rows); it counts as an active filter and Limpar clears it", async () => {
+    navigation.search = "archived=1";
+    serve([{ trades: [trade({ account_deleted: true })] }]); renderApp(<TradesPage />);
+    expect(await screen.findByRole("switch", { name: "Incluir contas arquivadas" })).toBeChecked();
+    await waitFor(() => expect(summaryCalls.length).toBeGreaterThan(0));
+    expect(listCalls[listCalls.length - 1]!.searchParams.get("include_archived")).toBe("true");
+    expect(summaryCalls[summaryCalls.length - 1]!.searchParams.get("include_archived")).toBe("true");
+    expect(screen.getByText("1 filtro ativo")).toBeInTheDocument();
+    expect(screen.getAllByText(/\(excluída\)/).length).toBeGreaterThan(0);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Limpar filtros" }));
+    expect(navigation.replace).toHaveBeenCalledWith(expect.not.stringContaining("archived"));
+  });
+  it("the cursor of an archived-inclusive list is not reused after switching it off (a new query starts from the first page)", async () => {
+    navigation.search = "archived=1";
+    serve([{ trades: [trade()], next_cursor: "cur1" }, { trades: [trade({ trade_id: uuid(2) })] }]);
+    const view = renderApp(<TradesPage />);
+    await screen.findByRole("button", { name: "Carregar mais" });
+    view.unmount();
+    navigation.search = "";
+    serve([{ trades: [trade()] }]); renderApp(<TradesPage />);
+    await screen.findAllByRole("button", { name: "Apex 50K" });
+    expect(listCalls[listCalls.length - 1]!.searchParams.get("cursor")).toBeNull();
+  });
+});
+
 describe("sorting, paging and live banner", () => {
   it("sort headers expose aria-sort and clicking sends the sort", async () => {
     serve([{ trades: [trade()] }]);
