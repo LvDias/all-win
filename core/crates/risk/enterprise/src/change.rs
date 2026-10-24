@@ -18,6 +18,7 @@ pub enum Pending {
     DailyLossSoftened,
     DailyLossChanged,
     DrawdownTypeChanged,
+    DrawdownLockChanged,
     ResetChanged,
     CommissionFloorLowered,
     CommissionFloorRemoved,
@@ -32,6 +33,7 @@ impl Pending {
             Self::DailyLossSoftened => "daily_loss_softened",
             Self::DailyLossChanged => "daily_loss_changed",
             Self::DrawdownTypeChanged => "drawdown_type_changed",
+            Self::DrawdownLockChanged => "drawdown_lock_changed",
             Self::ResetChanged => "reset_changed",
             Self::CommissionFloorLowered => "commission_floor_lowered",
             Self::CommissionFloorRemoved => "commission_floor_removed",
@@ -75,7 +77,7 @@ pub fn classify(change: RuleChange) -> Effect {
             (None, Some(_)) => Now,
             (Some(_), None) => Next(Pending::RuleRemoved),
             (Some(o), Some(n)) if o.kind != n.kind => Next(Pending::DrawdownTypeChanged),
-            (Some(o), Some(n)) => amount(o.amount, n.amount),
+            (Some(o), Some(n)) => drawdown(o, n),
             (None, None) => Unchanged,
         },
         RuleChange::DailyProfitTarget(old, new) => optional_amount(old, new),
@@ -127,6 +129,30 @@ fn optional_amount(old: Option<LimitAmount>, new: Option<LimitAmount>) -> Effect
     }
 }
 
+/// Same drawdown type: amount and trailing lock (Q90). A lock lets the floor stop rising, so adding
+/// one or lowering its offset loosens (next trading day) and removing one or raising the offset
+/// tightens (now). If the lock loosens, the change waits whatever the amount does (fail closed).
+fn drawdown(old: Drawdown, new: Drawdown) -> Effect {
+    use crate::rules::TrailingLock::FloorReachesStart;
+    // No lock (absent or `never`) is the strictest: the floor trails forever.
+    let lock = |d: Drawdown| match d.lock {
+        Some(FloorReachesStart { offset }) => Some(offset),
+        _ => None,
+    };
+    let looser_lock = match (lock(old), lock(new)) {
+        (None, Some(_)) => true,
+        (Some(o), Some(n)) => n < o,
+        _ => false,
+    };
+    if looser_lock {
+        return Effect::NextTradingDay(Pending::DrawdownLockChanged);
+    }
+    match amount(old.amount, new.amount) {
+        Effect::Unchanged if lock(old) != lock(new) => Effect::Now,
+        other => other,
+    }
+}
+
 /// Kind and amount compared separately; `none` has no amount (no limit).
 fn daily_loss(old: DailyLoss, new: DailyLoss) -> Effect {
     use std::cmp::Ordering::{Equal, Greater, Less};
@@ -157,7 +183,11 @@ mod tests {
     }
 
     fn dd(kind: DrawdownType, s: &str) -> Option<Drawdown> {
-        Some(Drawdown { kind, amount: a(s) })
+        Some(Drawdown {
+            kind,
+            amount: a(s),
+            lock: None,
+        })
     }
 
     #[test]
@@ -275,5 +305,39 @@ mod tests {
             )),
             Now
         );
+    }
+
+    #[test]
+    fn trailing_lock_changes_follow_q48() {
+        use crate::rules::{DrawdownType::TrailingEod, TrailingLock};
+        let with = |offset: Option<&str>, amt: &str| {
+            Some(Drawdown {
+                kind: TrailingEod,
+                amount: a(amt),
+                lock: offset.map(|o| TrailingLock::FloorReachesStart {
+                    offset: crate::values::NonNegativeMoney::parse(o).unwrap(),
+                }),
+            })
+        };
+        let c = |o, n| classify(RuleChange::Drawdown(o, n));
+        let lock_changed = Next(Pending::DrawdownLockChanged);
+        assert_eq!(c(with(None, "2000"), with(Some("0"), "2000")), lock_changed);
+        assert_eq!(
+            c(with(Some("100"), "2000"), with(Some("0"), "2000")),
+            lock_changed
+        );
+        // A looser lock waits even with a stricter amount.
+        assert_eq!(c(with(None, "2000"), with(Some("0"), "1500")), lock_changed);
+        assert_eq!(c(with(Some("0"), "2000"), with(None, "2000")), Now);
+        assert_eq!(c(with(Some("0"), "2000"), with(Some("100"), "2000")), Now);
+        assert_eq!(
+            c(with(Some("0"), "2000"), with(None, "2500")),
+            Next(Pending::LimitRaised)
+        );
+        let never = Some(Drawdown {
+            lock: Some(TrailingLock::Never),
+            ..with(None, "2000").unwrap()
+        });
+        assert_eq!(c(with(None, "2000"), never), Unchanged);
     }
 }

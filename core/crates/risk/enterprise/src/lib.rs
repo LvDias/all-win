@@ -15,6 +15,10 @@ pub use change::{Effect, Pending, RuleChange, classify};
 pub use drawdown::DrawdownTracker;
 pub use evaluation::{EvaluationProgress, EvaluationState};
 pub use meter::{Meter, MeterState, consistency_share, live_net};
-pub use rules::{DailyLoss, Drawdown, DrawdownType, OnReach, ResetTime, RiskRules, RuleKind};
+pub use rules::{
+    DailyLoss, Drawdown, DrawdownType, OnReach, ResetTime, RiskRules, RuleKind, TrailingLock,
+};
 pub use trading_day::{ResetSchedule, TradingDay};
-pub use values::{LimitAmount, Rate, ThresholdPct, ValueError, truncated_percent};
+pub use values::{
+    LimitAmount, NonNegativeMoney, Rate, ThresholdPct, ValueError, truncated_percent,
+};

@@ -4,7 +4,9 @@
 use chrono::NaiveTime;
 use chrono_tz::Tz;
 
-use crate::values::{LimitAmount, Rate, ThresholdPct};
+use rust_decimal::Decimal;
+
+use crate::values::{LimitAmount, NonNegativeMoney, Rate, ThresholdPct};
 
 /// The four rules with a meter (`RiskRuleKind`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -64,6 +66,30 @@ impl DrawdownType {
 pub struct Drawdown {
     pub kind: DrawdownType,
     pub amount: LimitAmount,
+    /// Trailing types only (Q90). `None` = not modelled: the floor keeps trailing (with a warning).
+    pub lock: Option<TrailingLock>,
+}
+
+/// When a trailing floor stops trailing (`DrawdownValue.trailing_lock`, Q90).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TrailingLock {
+    /// The floor locks once it reaches `size_amount` + `offset` (the account's own size, Q73).
+    FloorReachesStart { offset: NonNegativeMoney },
+    /// The firm states it never stops trailing.
+    Never,
+}
+
+impl Drawdown {
+    /// The equity at which the floor locks, if it ever does.
+    pub fn lock_at(&self, size_amount: Decimal) -> Option<Decimal> {
+        match (self.kind, self.lock) {
+            (
+                DrawdownType::TrailingIntraday | DrawdownType::TrailingEod,
+                Some(TrailingLock::FloorReachesStart { offset }),
+            ) => Some(size_amount + offset.value()),
+            _ => None,
+        }
+    }
 }
 
 /// `DailyLossValue`. `None` = the firm states it has no daily loss limit (a value, not "unset").

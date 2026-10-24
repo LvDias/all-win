@@ -60,11 +60,15 @@ impl LimitAmount {
     }
 }
 
-/// A commission rate per contract per side: money ≥ 0 (U20 a).
+/// Money ≥ 0 with at most 4 decimals: a commission rate per contract per side (U20 a) or a
+/// trailing-lock offset (Q90).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Rate(Decimal);
+pub struct NonNegativeMoney(Decimal);
 
-impl Rate {
+/// The commission floor per contract per side.
+pub type Rate = NonNegativeMoney;
+
+impl NonNegativeMoney {
     pub fn new(value: Decimal) -> Result<Self, ValueError> {
         if value.is_sign_negative() && !value.is_zero() || integer_digits(value) > 14 {
             return Err(ValueError::OutOfRange);
