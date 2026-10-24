@@ -1382,23 +1382,34 @@
       "counts": "{wins} wins · {losses} losses · {zero} zero",
       "secondary": "Gross {gross} · Commissions {commission}",
       "basis": "Based on {k} of {n} trades",
-      "uncommissioned": "{count, plural, one {# trade without commission data: its net equals gross.} other {# trades without commission data: their net equals gross.}}"
+      "uncommissioned": "{count, plural, one {# trade without commission data: its net equals gross.} other {# trades without commission data: their net equals gross.}}",
+      "commissionsNotice": "Net includes estimated commissions, or some accounts have no commission entered."
     },
     "definitions": {
       "trades": "Number of trades in the filter.",
       "totalPnl": "Sum of the net result (after commissions) of all trades in the filter.",
       "avgPnl": "Total P&L divided by the number of trades.",
-      "winRate": "Trades with a positive result divided by all trades. A trade with a zero result is not a win.",
+      "winRate": "Trades with a positive net result divided by all trades. A trade with a zero result is not a win.",
       "avgDuration": "Average time between entry and exit of each trade.",
       "excursion": "Average of the largest move against (MAE) or in favor (MFE) of each trade, reported by NinjaTrader/the plugin or typed by you. Trades without this value are left out of the average."
     },
     "table": {
-      "caption": "Performance by group, largest total P&L first. {count, plural, one {# group} other {# groups}}.",
+      "caption": "Performance by group, sorted by {column} ({direction}). {count, plural, one {# group} other {# groups}}.",
       "group": "Group",
       "total": "Total",
       "see": "See",
       "mae": "Avg MAE",
-      "mfe": "Avg MFE"
+      "mfe": "Avg MFE",
+      "sortColumns": {
+        "total_pnl": "total P&L",
+        "trade_count": "number of trades",
+        "avg_pnl": "average P&L",
+        "win_rate": "win rate"
+      },
+      "directions": {
+        "desc": "highest first",
+        "asc": "lowest first"
+      }
     },
     "group": {
       "manual": "Manual",
@@ -1419,7 +1430,8 @@
       "connections": "View connections",
       "add": "Add trade",
       "filteredTitle": "No trades match these filters.",
-      "filteredBody": "Change or clear the filters to see performance."
+      "filteredBody": "Change or clear the filters to see performance.",
+      "noTrades": "No trades in this filter."
     }
   }
 }

@@ -71,7 +71,7 @@ describe("PerformancePage", () => {
     const summary = await screen.findByLabelText("Resumo");
     expect(within(summary).getByText("+US$ 320,50")).toBeInTheDocument();
     expect(within(summary).getByText(/Bruto \+US\$ 350,00 · Comissões US\$ 29,50/)).toBeInTheDocument();
-    expect(within(summary).getByText("60.0 %")).toBeInTheDocument();
+    expect(within(summary).getByText("60,0 %")).toBeInTheDocument();
     expect(within(summary).getByText("6 vitórias · 3 derrotas · 1 zero")).toBeInTheDocument();
     expect(within(summary).getByText("12 min 30 s")).toBeInTheDocument();
     expect(screen.getByText(/Dados até/)).toBeInTheDocument();
@@ -153,6 +153,12 @@ describe("PerformancePage", () => {
     server.use(http.get("*/api/v1/trades/summary", () => HttpResponse.json({ as_of: "2026-10-23T14:00:00Z", count: 40, total_pnl: "10.00", pnl_basis: "net", total_gross_pnl: "10.00", total_commission: "0.00" })));
     renderApp(<PerformancePage />);
     expect(await screen.findByText("Nenhum trade com estes filtros.")).toBeInTheDocument();
+    // AC-5: the summary stays, with zero totals and dashes, and says there are no trades in the filter.
+    const summary = screen.getByLabelText("Resumo");
+    expect(within(summary).getAllByText("US$ 0,00", { exact: false }).length).toBeGreaterThan(0);
+    expect(screen.getByText("Nenhum trade neste filtro.")).toBeInTheDocument();
+    expect(within(summary).queryByText(/vitórias/)).not.toBeInTheDocument();
+    expect(within(summary).getAllByText("—").length).toBeGreaterThanOrEqual(3);
   });
 
   it("a captured trade only raises a banner; the figures change when the user refreshes", async () => {
@@ -184,5 +190,39 @@ describe("PerformancePage", () => {
     expect(await screen.findByText("Não foi possível carregar o desempenho.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "30 dias" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps every dt and dd one level under the dl, as a description list requires (S2)", async () => {
+    serve(performance());
+    renderApp(<PerformancePage />);
+    const summary = await screen.findByLabelText("Resumo");
+    const list = summary.querySelector("dl") as HTMLElement;
+    for (const term of Array.from(list.querySelectorAll("dt, dd"))) {
+      const parent = term.parentElement as HTMLElement;
+      expect(parent === list || parent.parentElement === list).toBe(true);
+      expect(parent.tagName).toBe("DIV");
+    }
+    expect(list.querySelectorAll("dt")).toHaveLength(7);
+  });
+
+  it("defines the win rate on the NET result (S4)", async () => {
+    serve(performance());
+    renderApp(<PerformancePage />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Como é calculado: Taxa de acerto" }));
+    expect(await screen.findByText(/resultado líquido positivo/)).toBeInTheDocument();
+  });
+
+  it("states the active sort in the table caption and follows a change (S6)", async () => {
+    navigation.search = "sort=win_rate&order=asc";
+    serve(performance());
+    renderApp(<PerformancePage />);
+    const table = await screen.findByRole("table");
+    expect(table.querySelector("caption")).toHaveTextContent("ordenado por taxa de acerto (do menor ao maior)");
+  });
+
+  it("notes that net includes estimated commissions when some trades have no commission data (S5)", async () => {
+    serve(performance({ totals: figures({ uncommissioned_count: 1 }) }));
+    renderApp(<PerformancePage />);
+    expect(await screen.findByText("O líquido inclui comissões estimadas ou há contas sem comissão informada.")).toBeInTheDocument();
   });
 });

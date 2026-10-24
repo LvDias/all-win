@@ -9,7 +9,7 @@ import { errorMessage } from "@/shared/api/error-message";
 import type { Performance, PerformanceFigures, PerformanceGroup } from "@/shared/api/types";
 import { PageHeader } from "@/shared/components/page-header";
 import { StatusBadge } from "@/shared/components/status-badge";
-import { formatCount, formatDateTime, formatMoney, formatSignedMoney } from "@/shared/format";
+import { formatCount, formatDateTime, formatDecimal, formatMoney, formatSignedMoney } from "@/shared/format";
 import { useLocalePath } from "@/shared/i18n/navigation";
 import { useIsDesktop } from "@/shared/lib/use-media-query";
 import { cn } from "@/shared/lib/utils";
@@ -135,11 +135,16 @@ export function PerformancePage() {
         </div>
       </EmptyState>
     ) : (
-      <EmptyState icon={ChartNoAxesColumn} title={t("empty.filteredTitle")} description={t("empty.filteredBody")}>
-        <Button variant="outline" onClick={clear}>
-          {t("filters.clear")}
-        </Button>
-      </EmptyState>
+      // AC-5: the summary keeps its figures (0 trades, US$ 0,00, averages and rates as a dash), the sentence says why, and the table is replaced.
+      <div className={cn("grid gap-6", dimmed && "opacity-60")} aria-busy={dimmed}>
+        <Figures totals={performance.data.totals} />
+        <p className="text-sm font-medium">{t("empty.noTrades")}</p>
+        <EmptyState icon={ChartNoAxesColumn} title={t("empty.filteredTitle")} description={t("empty.filteredBody")}>
+          <Button variant="outline" onClick={clear}>
+            {t("filters.clear")}
+          </Button>
+        </EmptyState>
+      </div>
     );
   } else {
     body = (
@@ -221,8 +226,8 @@ function Figures({ totals }: { totals: PerformanceFigures }) {
       key: "win",
       label: t("winRate"),
       definition: d("winRate"),
-      value: totals.win_rate !== undefined ? t("percent", { value: totals.win_rate }) : dash,
-      note: t("counts", { wins: totals.win_count, losses: totals.loss_count, zero: totals.breakeven_count }),
+      value: totals.win_rate !== undefined ? t("percent", { value: formatDecimal(totals.win_rate, locale, 1) }) : dash,
+      note: totals.trade_count > 0 ? t("counts", { wins: totals.win_count, losses: totals.loss_count, zero: totals.breakeven_count }) : undefined,
     },
     { key: "time", label: t("avgDuration"), definition: d("avgDuration"), value: totals.avg_duration_seconds !== undefined ? formatDuration(totals.avg_duration_seconds) : dash },
     {
@@ -244,21 +249,21 @@ function Figures({ totals }: { totals: PerformanceFigures }) {
     <section aria-label={t("label")} className="grid gap-3">
       <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((card) => (
-          <Card key={card.key}>
-            <CardContent className="grid gap-1 pt-4">
-              <dt className="flex items-center justify-between gap-1 text-sm text-muted-foreground">
-                {card.label}
-                <Definition figure={card.label} text={card.definition} />
-              </dt>
-              <dd className="grid gap-1">
-                <span className="text-lg font-semibold tabular-nums">{card.value}</span>
-                {card.note ? <span className="text-xs text-muted-foreground">{card.note}</span> : null}
-              </dd>
-            </CardContent>
-          </Card>
+          // dt and dd sit one level (this div) under the dl, as HTML and axe require for a description list.
+          <div key={card.key} className="grid gap-1 rounded-lg border bg-card p-4 text-card-foreground shadow-xs">
+            <dt className="flex items-center justify-between gap-1 text-sm text-muted-foreground">
+              {card.label}
+              <Definition figure={card.label} text={card.definition} />
+            </dt>
+            <dd className="grid gap-1">
+              <span className="text-lg font-semibold tabular-nums">{card.value}</span>
+              {card.note ? <span className="text-xs text-muted-foreground">{card.note}</span> : null}
+            </dd>
+          </div>
         ))}
       </dl>
       {(totals.uncommissioned_count ?? 0) > 0 ? <Alert tone="warning">{t("uncommissioned", { count: totals.uncommissioned_count ?? 0 })}</Alert> : null}
+      {(totals.uncommissioned_count ?? 0) > 0 ? <p className="flex items-center gap-1 text-xs text-muted-foreground"><Info aria-hidden="true" className="size-3.5" />{t("commissionsNotice")}</p> : null}
     </section>
   );
 }
@@ -324,7 +329,7 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
               <dt className="text-muted-foreground">{t("figures.avgPnl")}</dt>
               <dd>{figures.avg_pnl !== undefined ? <PnlText value={figures.avg_pnl} /> : dash}</dd>
               <dt className="text-muted-foreground">{t("figures.winRate")}</dt>
-              <dd>{figures.win_rate !== undefined ? t("figures.percent", { value: figures.win_rate }) : dash}</dd>
+              <dd>{figures.win_rate !== undefined ? t("figures.percent", { value: formatDecimal(figures.win_rate, locale, 1) }) : dash}</dd>
               <dt className="text-muted-foreground">{t("figures.avgDuration")}</dt>
               <dd>{figures.avg_duration_seconds !== undefined ? formatDuration(figures.avg_duration_seconds) : dash}</dd>
               <dt className="text-muted-foreground">{t("table.mae")}</dt>
@@ -346,7 +351,7 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
 
   return (
     <Table>
-      <caption className="pb-2 text-left text-sm text-muted-foreground">{t("table.caption", { count: data.groups.length })}</caption>
+      <caption className="pb-2 text-left text-sm text-muted-foreground">{t("table.caption", { count: data.groups.length, column: t(`table.sortColumns.${sort}`), direction: t(`table.directions.${order}`) })}</caption>
       <TableHeader>
         <TableRow>
           <TableHead>{t("table.group")}</TableHead>
@@ -374,7 +379,7 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
               <Bar ratio={group.bar_ratio} negative={group.figures.total_pnl.startsWith("-")} />
             </TableCell>
             <TableCell>{group.figures.avg_pnl !== undefined ? <PnlText value={group.figures.avg_pnl} /> : dash}</TableCell>
-            <TableCell>{group.figures.win_rate !== undefined ? t("figures.percent", { value: group.figures.win_rate }) : dash}</TableCell>
+            <TableCell>{group.figures.win_rate !== undefined ? t("figures.percent", { value: formatDecimal(group.figures.win_rate, locale, 1) }) : dash}</TableCell>
             <TableCell className="whitespace-nowrap">{group.figures.avg_duration_seconds !== undefined ? formatDuration(group.figures.avg_duration_seconds) : dash}</TableCell>
             <TableCell title={group.figures.mae_sample_count < group.figures.trade_count ? t("figures.basis", { k: group.figures.mae_sample_count, n: group.figures.trade_count }) : undefined}>{f(group.figures.avg_mae, (v) => formatMoney(v, locale))}</TableCell>
             <TableCell title={group.figures.mfe_sample_count < group.figures.trade_count ? t("figures.basis", { k: group.figures.mfe_sample_count, n: group.figures.trade_count }) : undefined}>{f(group.figures.avg_mfe, (v) => formatMoney(v, locale))}</TableCell>
@@ -389,7 +394,7 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
             <PnlText value={data.totals.total_pnl} />
           </TableCell>
           <TableCell>{data.totals.avg_pnl !== undefined ? <PnlText value={data.totals.avg_pnl} /> : dash}</TableCell>
-          <TableCell>{data.totals.win_rate !== undefined ? t("figures.percent", { value: data.totals.win_rate }) : dash}</TableCell>
+          <TableCell>{data.totals.win_rate !== undefined ? t("figures.percent", { value: formatDecimal(data.totals.win_rate, locale, 1) }) : dash}</TableCell>
           <TableCell className="whitespace-nowrap">{data.totals.avg_duration_seconds !== undefined ? formatDuration(data.totals.avg_duration_seconds) : dash}</TableCell>
           <TableCell>{f(data.totals.avg_mae, (v) => formatMoney(v, locale))}</TableCell>
           <TableCell>{f(data.totals.avg_mfe, (v) => formatMoney(v, locale))}</TableCell>

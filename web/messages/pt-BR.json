@@ -1382,23 +1382,34 @@
       "counts": "{wins} vitórias · {losses} derrotas · {zero} zero",
       "secondary": "Bruto {gross} · Comissões {commission}",
       "basis": "Base: {k} de {n} trades",
-      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele o líquido é igual ao bruto.} other {# trades sem comissão informada: neles o líquido é igual ao bruto.}}"
+      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele o líquido é igual ao bruto.} other {# trades sem comissão informada: neles o líquido é igual ao bruto.}}",
+      "commissionsNotice": "O líquido inclui comissões estimadas ou há contas sem comissão informada."
     },
     "definitions": {
       "trades": "Número de trades do filtro.",
       "totalPnl": "Soma do resultado líquido (depois das comissões) de todos os trades do filtro.",
       "avgPnl": "P&L total dividido pelo número de trades.",
-      "winRate": "Trades com resultado positivo divididos pelo total de trades. Um trade com resultado zero não conta como vitória.",
+      "winRate": "Trades com resultado líquido positivo divididos pelo total de trades. Um trade com resultado zero não conta como vitória.",
       "avgDuration": "Média do tempo entre a entrada e a saída de cada trade.",
       "excursion": "Média da maior oscilação contra (MAE) ou a favor (MFE) de cada trade, informada pelo NinjaTrader/plugin ou digitada por você. Trades sem este valor não entram na média."
     },
     "table": {
-      "caption": "Desempenho por grupo, do maior ao menor P&L total. {count, plural, one {# grupo} other {# grupos}}.",
+      "caption": "Desempenho por grupo, ordenado por {column} ({direction}). {count, plural, one {# grupo} other {# grupos}}.",
       "group": "Grupo",
       "total": "Total",
       "see": "Ver",
       "mae": "MAE médio",
-      "mfe": "MFE médio"
+      "mfe": "MFE médio",
+      "sortColumns": {
+        "total_pnl": "P&L total",
+        "trade_count": "número de trades",
+        "avg_pnl": "P&L médio",
+        "win_rate": "taxa de acerto"
+      },
+      "directions": {
+        "desc": "do maior ao menor",
+        "asc": "do menor ao maior"
+      }
     },
     "group": {
       "manual": "Manual",
@@ -1419,7 +1430,8 @@
       "connections": "Ver conexões",
       "add": "Registrar trade",
       "filteredTitle": "Nenhum trade com estes filtros.",
-      "filteredBody": "Mude ou limpe os filtros para ver o desempenho."
+      "filteredBody": "Mude ou limpe os filtros para ver o desempenho.",
+      "noTrades": "Nenhum trade neste filtro."
     }
   }
 }
