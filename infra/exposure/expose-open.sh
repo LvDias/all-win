@@ -39,6 +39,8 @@ exactly_one "compose network" "$net_id"
 gw_br="$(dk network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "$net_id" 2>/dev/null)"
 [ -n "$gw_br" ] && [ "$gw_br" != "<no value>" ] || gw_br="br-${net_id:0:12}"
 ip link show "$gw_br" >/dev/null 2>&1 || { echo "cannot find the gateway network bridge ($gw_br)" >&2; exit 1; }
+# 0b. nothing may already listen on 8443 (for example a stack edge left on the default 8443): otherwise the final listening check would pass by accident
+if ss -ltn | awk '{print $4}' | grep -qE ':8443$'; then echo "refusing: something already listens on 8443 (set the stack's CADDY_HTTPS_PORT to another port, e.g. 18443)" >&2; exit 1; fi
 # 1. firewall: applied AND verified before anything listens
 "$here/firewall-open.sh" "$ip" --gw-bridge "$gw_br"
 # 2. gate marker (tmpfs): written only after the firewall was verified; removed by expose-close.sh and by a reboot
