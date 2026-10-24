@@ -6,6 +6,11 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 wt="${1:-}"; tag="${2:-}"
 [ -f "$wt/web/package.json" ] && [[ "$tag" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$ ]] || { echo "usage: $0 <repo worktree> <image:tag>" >&2; exit 2; }
 dk() { if docker info >/dev/null 2>&1; then docker "$@"; else sg docker -c "$(printf '%q ' docker "$@")"; fi; }
+wt="$(cd "$wt" && pwd -P)"
+[ "$(git -C "$wt" rev-parse --show-toplevel)" = "$wt" ] || { echo "$wt is not the root of a git worktree" >&2; exit 2; }
+if [ -n "$(git -C "$wt" status --porcelain)" ] && [ "${ALLWIN_ALLOW_DIRTY:-0}" != 1 ]; then
+  echo "refusing: $wt has uncommitted changes, so the image would not match its HEAD (ALLWIN_ALLOW_DIRTY=1 to override)" >&2; exit 2
+fi
 cd "$wt/web"
 # ALLWIN_SKIP_BUILD=1 reuses an existing .next/standalone (already built through allwin-heavy) and only assembles the image.
 if [ "${ALLWIN_SKIP_BUILD:-0}" != 1 ]; then

@@ -17,6 +17,14 @@ case "$tag" in *-dev-stubs) tag_stubs=1 ;; *) tag_stubs=0 ;; esac
 [ "$has_stubs" = "$tag_stubs" ] || { echo "refusing: --features dev-stubs and a tag ending in -dev-stubs go together (feature=$has_stubs, tag=$tag_stubs)" >&2; exit 2; }
 pkg="${ALLWIN_BUILD_PACKAGE:-app}"; bin="${ALLWIN_BUILD_BIN:-allwin-core}"; dockerfile="${ALLWIN_RUNTIME_DOCKERFILE:-core.runtime.Dockerfile}"
 [[ "$pkg" =~ ^[a-z0-9_-]+$ && "$bin" =~ ^[a-z0-9_-]+$ && "$dockerfile" =~ ^[a-z.]+\.Dockerfile$ ]] || { echo "invalid package, binary or Dockerfile name" >&2; exit 2; }
+# The wrapper picks the target directory from the CURRENT directory: always run from the worktree that is being built, never from the caller's
+# directory, and refuse a dirty or non-root worktree, so "built from <HEAD>" is true.
+wt="$(cd "$wt" && pwd -P)"
+[ "$(git -C "$wt" rev-parse --show-toplevel)" = "$wt" ] || { echo "$wt is not the root of a git worktree" >&2; exit 2; }
+if [ -n "$(git -C "$wt" status --porcelain)" ] && [ "${ALLWIN_ALLOW_DIRTY:-0}" != 1 ]; then
+  echo "refusing: $wt has uncommitted changes, so the image would not match its HEAD (ALLWIN_ALLOW_DIRTY=1 to override)" >&2; exit 2
+fi
+cd "$wt"
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 dk() { if docker info >/dev/null 2>&1; then docker "$@"; else sg docker -c "$(printf '%q ' docker "$@")"; fi; }
 
@@ -29,5 +37,13 @@ SQLX_OFFLINE=true "$here/allwin-heavy" bash -c '
 cp "$here/../docker/$dockerfile" "$stage/Dockerfile"
 echo "binary sha256: $(sha256sum "$stage/$bin" | cut -d' ' -f1)"
 echo "marker 'allwin-dev-stub:routing-entry-gate' occurrences in the binary: $(grep -c -a -- 'allwin-dev-stub:routing-entry-gate' "$stage/$bin" || true)"
+# ADR-0006 rule 8, enforced on the BINARY (not only on the arguments): the stand-in marker present means a -dev-stubs tag, and a -dev-stubs tag means the marker is present.
+markers="$(grep -c -a -- 'allwin-dev-stub:routing-entry-gate' "$stage/$bin" || true)"
+if [ "$pkg" = app ]; then
+  case "$tag" in
+    *-dev-stubs) [ "$markers" -gt 0 ] || { echo "refusing: tag $tag claims dev-stubs but the binary has no stand-in marker" >&2; exit 2; } ;;
+    *) [ "$markers" -eq 0 ] || { echo "refusing: the binary carries the dev-stub marker ($markers) but tag $tag does not end in -dev-stubs" >&2; exit 2; } ;;
+  esac
+fi
 dk build -q -t "$tag" "$stage"
 echo "image $tag built from $(git -C "$wt" rev-parse --short HEAD)"
