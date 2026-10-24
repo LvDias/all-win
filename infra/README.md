@@ -52,3 +52,25 @@ log line, correlated by time and `change_id`, is the strong evidence; the variab
 
 **Runbook line:** break-glass trusts whoever has a shell on the host. It raises an alert and an e-mail notice, and the 72-hour
 wait and the notices to the user still apply.
+
+## Sunday stack (loopback only, simulation only)
+
+`compose/docker-compose.stack.yml` is an overlay on the dev compose: the Core with identity configured (`APP_ENV=development`,
+`APP_PUBLIC_ORIGIN=https://localhost:<CADDY_HTTPS_PORT>`, `IDENTITY_PEPPERS`, `CODE_SENDER=dev_smtp` to the local Mailpit), Mailpit (UI
+`127.0.0.1:8025`, SMTP `127.0.0.1:1025`) and the web behind the same Caddy (`caddy/Caddyfile.stack`: `/api/*` and `/ingress*` to the Core,
+`/adapter/*` to the Core with the WebSocket upgrade, everything else to the web). Nothing is published beyond `127.0.0.1`. The images are built
+from a host-compiled binary or a host-made Next.js build through `allwin-heavy` (`scripts/build-core-image.sh`, `scripts/build-web-image.sh`);
+an image built with a test feature (`dev-stubs`) gets its own tag and never goes to staging or a release.
+
+**Deployment note (X-Forwarded-For, L-W2):** the Core's gateway trusts the **last** hop of `X-Forwarded-For`. That is correct only with
+exactly **one** trusted proxy in front of the Core (this Caddy), and that proxy must **overwrite** the header with the real peer address, never
+append to a value sent by the client. Caddy's `reverse_proxy` does that by default when no `trusted_proxies` is configured (checked with a real
+Caddy: a forged `X-Forwarded-For: 1.2.3.4, 5.6.7.8` reached the backend as the peer address only), and the `/adapter/*` route sets it explicitly
+with `header_up X-Forwarded-For {remote_host}`. Do not add a second proxy or CDN in front, and do not set `trusted_proxies`, without revisiting this.
+
+**Mailpit authentication.** The host is shared, so Mailpit's UI and API (`127.0.0.1:8025`) need basic auth: an htpasswd file on the host (mode 600, outside
+the repository, path in `ALLWIN_MAILPIT_AUTH_FILE`), mounted read-only as `MP_UI_AUTH_FILE`. SMTP (`127.0.0.1:1025`) stays unauthenticated and loopback only.
+Readers use the credential through a file, never on a command line or in a message: `curl -K <credential.curlrc> http://127.0.0.1:8025/api/v1/messages`.
+
+**Before any staging use:** pin the base images by digest (`ubuntu:24.04`, `node:24-alpine`, `caddy:2.10-alpine`, `postgres:16-alpine`, `axllent/mailpit:v1.27`); the tags are
+mutable. The runtime Dockerfiles and the overlay use tags only for the loopback Sunday stack.

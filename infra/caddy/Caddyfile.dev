@@ -64,6 +64,15 @@ https://localhost:{$CADDY_HTTPS_PORT:8443} {
 		reverse_proxy core:{$CORE_PORT:8080}
 	}
 
+	# Plugin gateway on the LOCAL edge (pairing POST and the WebSocket /adapter/v1; Caddy proxies the upgrade). The Bearer token never reaches a
+	# log: the site log above deletes the URI, the Referer and the Location header, and log_credentials stays off, so Caddy redacts Authorization and Cookie on any line that logs headers. The client address is OVERWRITTEN, never
+	# appended (L-W2: the Core trusts the last X-Forwarded-For hop, which is only right with exactly ONE trusted proxy, this Caddy, in front).
+	handle /adapter/* {
+		reverse_proxy core:{$CORE_PORT:8080} {
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
 	# `web` joins here once S3/S4 provide it (same origin, ADR-0001).
 	handle {
 		respond "All Win dev edge" 200
