@@ -26,6 +26,29 @@ Segundo a [página oficial do TradingView](https://www.tradingview.com/support/s
 
 Cada conta escolhe quais tipos aceita (tela de roteamento).
 
+**Quando cada sinal é enviado:**
+
+| Sinal | Enviado |
+|---|---|
+| Gatilhos (Setups) por engolfo | no **fechamento da barra** (sem repintura, até uma barra de atraso) |
+| Triggers do NQ por engolfo | no **fechamento da barra** |
+| Trade Plan | **dentro da barra**, no toque |
+| Gatilhos no modo toque | **dentro da barra**, no toque |
+
+**Risco do sinal no toque:** o sinal é enviado no momento em que o preço toca. Se a condição deixar de valer até o fechamento da barra, o gráfico pode não mostrar mais o sinal, mas a ordem já foi enviada e executada; o All Win não a desfaz.
+
+**Direção:** Bull compra (`buy`), Bear vende (`sell`). O Trade Plan segue a direção do alvo (alvo acima do preço = compra). Um sinal por barra, setup e direção: o mesmo sinal repetido na mesma barra conta uma vez só.
+
+**Alertas de take e stop do indicador nunca viram ordens:** stop e alvo vêm do perfil de cada conta. O indicador só grava esses alertas no Pine Logs e não envia nada ao All Win.
+
+**Sinal oposto ao último sinal de abertura do indicador:** você escolhe no input **"Opposite signal sends"** do indicador: `reverse` (inverte a posição), `close` (só zera) ou `do not send` (não envia; só grava no Pine Logs). O padrão é `do not send`. Quem decide é a ação do JSON, não o All Win. O indicador compara com a **sua própria** última direção **do mesmo tipo de sinal** (gatilhos, Trade Plan e Triggers do NQ têm cada um a sua, porque cada conta escolhe os tipos que aceita), não com a posição real da conta: se a conta estiver na posição oposta a um `buy`/`sell`, o All Win **recusa** a ordem e avisa.
+
+Limites conhecidos:
+- Com `do not send`, depois de um sinal oposto ignorado, o indicador continua ignorando os sinais nessa nova direção até aparecer um sinal na direção antiga.
+- Ao recarregar o indicador, a direção é refeita pelas barras do histórico, onde o toque é avaliado no fechamento da barra. Um toque que disparou ao vivo e sumiu no fechamento não entra nessa reconstrução (o mesmo risco do sinal no toque, acima). O que executa continua sendo decidido pela posição real da conta no All Win.
+
+**Quantidade base:** 1 para todos os tipos (antes do multiplicador de cada conta).
+
 ## 3. Campos por ação
 
 Sempre: `schema_version` = `"1.0"`, `message_id` (gerado pelo indicador: `tv-<Source name>-MNQ-<tipo>-<setup>-<ação[_lado]>-<ticker do gráfico>-<timeframe>-<hora da barra em ms>`), `sent_at` (UTC, termina em `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (o **futuro operado** na V1; `QQQ`/`SPY` são só referência).
@@ -50,7 +73,7 @@ Compra (gatilho):
 ```
 Venda (Trade Plan):
 ```json
-{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000","sent_at":"2026-10-22T15:00:00.120Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trade_plan","action":"sell","instrument":{"symbol":"MNQ"},"quantity":2}
+{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000","sent_at":"2026-10-22T15:00:00.120Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trade_plan","action":"sell","instrument":{"symbol":"MNQ"},"quantity":1}
 ```
 Venda (Trigger do NQ):
 ```json

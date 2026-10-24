@@ -14,7 +14,7 @@ aw_src_ver   = input.string("4.0", "Indicator version", group = AW_GRP)
 aw_qty_trig  = input.int(1, "Quantity: triggers", minval = 1, maxval = 1000, group = AW_GRP)
 aw_qty_tp    = input.int(1, "Quantity: Trade Plan", minval = 1, maxval = 1000, group = AW_GRP)
 aw_qty_nq    = input.int(1, "Quantity: NQ Triggers", minval = 1, maxval = 1000, group = AW_GRP)
-aw_on_close  = input.bool(true, "Send only at bar close", group = AW_GRP, tooltip = "On: a signal is sent on the bar's last tick (no repainting, up to one bar of delay). Off: sent as soon as the condition is true intrabar.")
+aw_opposite  = input.string("do not send", "Opposite signal sends", options = ["reverse", "close", "do not send"], group = AW_GRP, tooltip = "A signal opposite to the indicator's last opening direction. reverse: flips the position. close: only flattens. do not send: written to Pine Logs only. The other signals always send buy/sell.")
 aw_live      = input.bool(true, "Send alerts (off = Pine Logs only)", group = AW_GRP, tooltip = "Off: messages are only written to Pine Logs, nothing is sent to the webhook.")
 
 // ---- Constants and state -----------------------------------------------------
@@ -25,6 +25,15 @@ AW_ID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:
 // Ids already sent during this script run. Persists across realtime ticks (varip);
 // it is reset when the script reloads, and then the Core's message_id dedupe applies.
 varip array<string> aw_sent = array.new<string>()
+// The indicator's own view of its position PER SIGNAL TYPE: "long", "short" or "" (flat), from the opening
+// signals of that type (accounts subscribe per signal type, so the types are independent). Index:
+// 0 = trigger, 1 = trade_plan, 2 = nq_trigger. Historical bars rebuild it after a reload. It is not the
+// account's position: All Win decides with the account's real position and refuses a conflicting buy/sell.
+// An array: a function cannot reassign a global variable, but it can change an array.
+varip array<string> aw_dir = array.from("", "", "")
+// Opening events already decided (kind|setup|dir|bar time), so a touch signal re-evaluated on later
+// ticks of the same bar is decided once.
+varip array<string> aw_events = array.new<string>()
 
 // ---- Helpers ---------------------------------------------------------------
 // Keeps only characters allowed in message_id ([A-Za-z0-9._:-]).
@@ -70,23 +79,28 @@ if barstate.isfirst
 // ---- Main function ---------------------------------------------------------------
 // Builds the All Win instruction and calls alert() once per distinct event.
 //   kind    : "trigger" | "trade_plan" | "nq_trigger"
+//   timing  : "close" = sent on the bar's last tick (engulfing triggers and NQ Triggers; no repainting,
+//             up to one bar of delay) | "touch" = sent intrabar as soon as the condition is true (Trade Plan
+//             and triggers in touch mode; the order is sent even if the condition is gone at bar close)
 //   action  : "buy" | "sell" | "close" | "reverse"
 //   side    : "long" | "short" for reverse (final side); "" otherwise
 //   setup   : short code that identifies the signal, part of message_id: 1-16 characters
 //             A-Z a-z 0-9 . _ (e.g. "s6", "tp", "nq"); anything else is refused, never stripped
 //   qty     : base quantity in contracts (ignored for close)
 //   details : "" or pairs built with aw_kv(), joined with ","; hard limit 32 pairs (more = nothing sent).
-//             Values must be deterministic for the event (no timenow, live price or counters).
+//             Good practice: values deterministic for the event (no timenow, live price or counters);
+//             details are not compared for duplicate conflicts.
 // Returns the message_id, or "" when nothing was sent.
-aw_send(string kind, string action, string side, string setup, int qty, string details) =>
+aw_send(string kind, string timing, string action, string side, string setup, int qty, string details) =>
     string sentId = ""
     bool kindOk = kind == "trigger" or kind == "trade_plan" or kind == "nq_trigger"
+    bool timingValid = timing == "close" or timing == "touch"
     bool actionOk = action == "buy" or action == "sell" or action == "close" or (action == "reverse" and (side == "long" or side == "short"))
     bool setupOk = str.match(setup, "^[A-Za-z0-9._]{1,16}$") != ""
     bool detailsOk = details == "" or array.size(str.split(details, "\":\"")) - 1 <= 32
-    bool timingOk = barstate.isrealtime and (not aw_on_close or barstate.isconfirmed)
-    if not kindOk or not actionOk or not setupOk or not detailsOk
-        log.error("All Win: invalid kind/action/side/setup or more than 32 details: " + kind + " " + action + " " + side + " " + setup + " (nothing sent)")
+    bool timingOk = barstate.isrealtime and (timing == "touch" or barstate.isconfirmed)
+    if not kindOk or not timingValid or not actionOk or not setupOk or not detailsOk
+        log.error("All Win: invalid kind/timing/action/side/setup or more than 32 details: " + kind + " " + timing + " " + action + " " + side + " " + setup + " (nothing sent)")
     else if timingOk
         string act = action == "reverse" ? "reverse_" + side : action
         // Deterministic event key: the same event re-fired has the same id (the Core answers
@@ -119,15 +133,57 @@ aw_send(string kind, string action, string side, string setup, int qty, string d
             sentId := id
     sentId
 
+// Opening signal: dir = "long" (Bull, buys) | "short" (Bear, sells), with the kind's base quantity.
+// Same direction or flat: buy/sell. Opposite to the last opening direction OF THE SAME SIGNAL TYPE: what the
+// "Opposite signal sends" input says (reverse, close, or nothing). Returns the message_id, or "".
+aw_open(string kind, string timing, string dir, string setup, string details) =>
+    int qty = kind == "trade_plan" ? aw_qty_tp : kind == "nq_trigger" ? aw_qty_nq : aw_qty_trig
+    string sentId = ""
+    int slot = kind == "trade_plan" ? 1 : kind == "nq_trigger" ? 2 : 0
+    // The event counts on a historical bar (rebuilds aw_dir) or when aw_send may send it now.
+    bool due = barstate.ishistory or (barstate.isrealtime and (timing == "touch" or barstate.isconfirmed))
+    string key = kind + "|" + setup + "|" + dir + "|" + str.tostring(time)
+    if dir != "long" and dir != "short"
+        log.error("All Win: dir must be long or short: " + dir + " (nothing sent)")
+    else if due and not array.includes(aw_events, key)
+        array.push(aw_events, key)
+        if array.size(aw_events) > 100
+            array.shift(aw_events)
+        string last = array.get(aw_dir, slot)
+        bool opposite = last != "" and last != dir
+        if not opposite
+            sentId := aw_send(kind, timing, dir == "long" ? "buy" : "sell", "", setup, qty, details)
+            array.set(aw_dir, slot, dir)
+        else if aw_opposite == "reverse"
+            sentId := aw_send(kind, timing, "reverse", dir, setup, qty, details)
+            array.set(aw_dir, slot, dir)
+        else if aw_opposite == "close"
+            sentId := aw_send(kind, timing, "close", "", setup, 0, details)
+            array.set(aw_dir, slot, "")
+        else if barstate.isrealtime
+            log.info("All Win: not sent (opposite signal, input 'do not send'): " + kind + " " + setup + " " + dir)
+    sentId
+
+// The indicator's own take/stop alerts: written to Pine Logs only, NEVER sent to All Win
+// (stop and target come from each account's profile).
+aw_note(string what, string text) =>
+    log.info("All Win: not sent (" + what + "): " + text)
+
 // ---- Usage (replace the conditions with the indicator's own) --------------------
-// if longSetup6
-//     aw_send("trigger", "buy", "", "s6", aw_qty_trig, aw_kv("setup", "Setup 6") + "," + aw_kv("zone", zoneName))
-// if tradePlanShort
-//     aw_send("trade_plan", "sell", "", "tp", aw_qty_tp, "")
-// if nqTriggerLong
-//     aw_send("nq_trigger", "buy", "", "nq", aw_qty_nq, "")
-// if exitSignal
-//     aw_send("trigger", "close", "", "s6", 0, "")
-// if flipToShort
-//     aw_send("trigger", "reverse", "short", "s3", aw_qty_trig, "")
+// Triggers (Setups) by engulfing: bar close. Bull buys, Bear sells.
+// if bullEngulfSetup6
+//     aw_open("trigger", "close", "long", "s6", aw_kv("setup", "Setup 6") + "," + aw_kv("zone", zoneName))
+// Trigger in touch mode: intrabar. Give it its own setup code, so a touch and an engulfing
+// on the same bar stay two signals.
+// if bearTouchSetup3
+//     aw_open("trigger", "touch", "short", "s3t", "")
+// Trade Plan: intrabar, in the direction of its target (target above the price = long).
+// if tradePlanActivated
+//     aw_open("trade_plan", "touch", tpTarget > close ? "long" : "short", "tp", "")
+// NQ Trigger by engulfing: bar close.
+// if nqBearEngulf
+//     aw_open("nq_trigger", "close", "short", "nq", "")
+// Take/stop alerts of the indicator: log only.
+// if takeHit
+//     aw_note("take", "Setup 6 target reached")
 // ============================================================================

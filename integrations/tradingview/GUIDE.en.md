@@ -26,6 +26,29 @@ According to [TradingView's official page](https://www.tradingview.com/support/s
 
 Each account chooses which types it takes (routing screen).
 
+**When each signal is sent:**
+
+| Signal | Sent |
+|---|---|
+| Triggers (Setups) by engulfing | at **bar close** (no repainting, up to one bar of delay) |
+| NQ Triggers by engulfing | at **bar close** |
+| Trade Plan | **intrabar**, on the touch |
+| Triggers in touch mode | **intrabar**, on the touch |
+
+**Touch signal risk:** the signal is sent the moment the price touches. If the condition is no longer true at bar close, the chart may no longer show the signal, but the order was already sent and executed; All Win does not undo it.
+
+**Direction:** Bull buys (`buy`), Bear sells (`sell`). The Trade Plan follows its target's direction (target above the price = buy). One signal per bar, setup and direction: the same signal repeated on the same bar counts once.
+
+**The indicator's take and stop alerts never become orders:** stop and target come from each account's profile. The indicator only writes those alerts to Pine Logs and sends nothing to All Win.
+
+**Signal opposite to the indicator's last opening signal:** you choose it in the indicator input **"Opposite signal sends"**: `reverse` (flips the position), `close` (only flattens) or `do not send` (nothing sent; Pine Logs only). The default is `do not send`. The JSON action decides, not All Win. The indicator compares with **its own** last direction **of the same signal type** (triggers, Trade Plan and NQ Triggers each have their own, because each account chooses the types it takes), not with the account's real position: if the account holds the side opposite to a `buy`/`sell`, All Win **refuses** the order and warns you.
+
+Known limits:
+- With `do not send`, after an ignored opposite signal the indicator keeps ignoring signals in that new direction until a signal in the old direction comes again.
+- When the indicator reloads, the direction is rebuilt from historical bars, where a touch is evaluated at bar close. A touch that fired live and was gone at the close is not part of that rebuild (the same touch-signal risk as above). What executes is still decided by the account's real position in All Win.
+
+**Base quantity:** 1 for every type (before each account's multiplier).
+
 ## 3. Fields per action
 
 Always: `schema_version` = `"1.0"`, `message_id` (built by the indicator: `tv-<Source name>-MNQ-<kind>-<setup>-<action[_side]>-<chart ticker>-<timeframe>-<bar time ms>`), `sent_at` (UTC, ends with `Z`), `source.type` = `"tradingview"`, `signal_type`, `action`, `instrument.symbol` = `MNQ` (the **traded future** in V1; `QQQ`/`SPY` are references only).
@@ -50,7 +73,7 @@ Buy (trigger):
 ```
 Sell (Trade Plan):
 ```json
-{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000","sent_at":"2026-10-22T15:00:00.120Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trade_plan","action":"sell","instrument":{"symbol":"MNQ"},"quantity":2}
+{"schema_version":"1.0","message_id":"tv-nq-es-strikes-MNQ-trade_plan-tp-sell-QQQ-5-1792681200000","sent_at":"2026-10-22T15:00:00.120Z","source":{"type":"tradingview","name":"nq-es-strikes","version":"4.0"},"signal_type":"trade_plan","action":"sell","instrument":{"symbol":"MNQ"},"quantity":1}
 ```
 Sell (NQ Trigger):
 ```json
