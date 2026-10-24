@@ -1382,8 +1382,7 @@
       "counts": "{wins} vitórias · {losses} derrotas · {zero} zero",
       "secondary": "Bruto {gross} · Comissões {commission}",
       "basis": "Base: {k} de {n} trades",
-      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele o líquido é igual ao bruto.} other {# trades sem comissão informada: neles o líquido é igual ao bruto.}}",
-      "commissionsNotice": "O líquido inclui comissões estimadas ou há contas sem comissão informada."
+      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele, o líquido é igual ao bruto.} other {# trades sem comissão informada: neles, o líquido é igual ao bruto.}}"
     },
     "definitions": {
       "trades": "Número de trades do filtro.",

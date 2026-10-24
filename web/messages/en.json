@@ -1382,8 +1382,7 @@
       "counts": "{wins} wins · {losses} losses · {zero} zero",
       "secondary": "Gross {gross} · Commissions {commission}",
       "basis": "Based on {k} of {n} trades",
-      "uncommissioned": "{count, plural, one {# trade without commission data: its net equals gross.} other {# trades without commission data: their net equals gross.}}",
-      "commissionsNotice": "Net includes estimated commissions, or some accounts have no commission entered."
+      "uncommissioned": "{count, plural, one {# trade has no commission entered: for it, net equals gross.} other {# trades have no commission entered: for those, net equals gross.}}"
     },
     "definitions": {
       "trades": "Number of trades in the filter.",

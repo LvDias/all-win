@@ -263,7 +263,6 @@ function Figures({ totals }: { totals: PerformanceFigures }) {
         ))}
       </dl>
       {(totals.uncommissioned_count ?? 0) > 0 ? <Alert tone="warning">{t("uncommissioned", { count: totals.uncommissioned_count ?? 0 })}</Alert> : null}
-      {(totals.uncommissioned_count ?? 0) > 0 ? <p className="flex items-center gap-1 text-xs text-muted-foreground"><Info aria-hidden="true" className="size-3.5" />{t("commissionsNotice")}</p> : null}
     </section>
   );
 }

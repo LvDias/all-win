@@ -89,7 +89,7 @@ describe("PerformancePage", () => {
   it("warns that net equals gross for trades without commission data", async () => {
     serve(performance({ totals: figures({ uncommissioned_count: 2 }) }));
     renderApp(<PerformancePage />);
-    expect(await screen.findByText("2 trades sem comissão informada: neles o líquido é igual ao bruto.")).toBeInTheDocument();
+    expect(await screen.findByText("2 trades sem comissão informada: neles, o líquido é igual ao bruto.")).toBeInTheDocument();
   });
 
   it("lists one row per group with its label, a Total row from the Core in the footer, and aria-hidden proportion bars from bar_ratio", async () => {
@@ -220,9 +220,29 @@ describe("PerformancePage", () => {
     expect(table.querySelector("caption")).toHaveTextContent("ordenado por taxa de acerto (do menor ao maior)");
   });
 
-  it("notes that net includes estimated commissions when some trades have no commission data (S5)", async () => {
+  it("warns with the decided wording, singular and plural, only when trades have no commission data", async () => {
     serve(performance({ totals: figures({ uncommissioned_count: 1 }) }));
+    const view = renderApp(<PerformancePage />);
+    expect(await screen.findByText("1 trade sem comissão informada: nele, o líquido é igual ao bruto.")).toBeInTheDocument();
+    expect(screen.queryByText(/inclui comissões estimadas/)).not.toBeInTheDocument();
+    view.unmount();
+    serve(performance({ totals: figures({ uncommissioned_count: 3 }) }));
+    const second = renderApp(<PerformancePage />);
+    expect(await screen.findByText("3 trades sem comissão informada: neles, o líquido é igual ao bruto.")).toBeInTheDocument();
+    second.unmount();
+    serve(performance({ totals: figures({ uncommissioned_count: 0 }) }));
     renderApp(<PerformancePage />);
-    expect(await screen.findByText("O líquido inclui comissões estimadas ou há contas sem comissão informada.")).toBeInTheDocument();
+    await screen.findByRole("table");
+    expect(screen.queryByText(/sem comissão informada/)).not.toBeInTheDocument();
+  });
+
+  it("uses the English wording, singular and plural", async () => {
+    serve(performance({ totals: figures({ uncommissioned_count: 1 }) }));
+    const view = renderApp(<PerformancePage />, "en");
+    expect(await screen.findByText("1 trade has no commission entered: for it, net equals gross.")).toBeInTheDocument();
+    view.unmount();
+    serve(performance({ totals: figures({ uncommissioned_count: 2 }) }));
+    renderApp(<PerformancePage />, "en");
+    expect(await screen.findByText("2 trades have no commission entered: for those, net equals gross.")).toBeInTheDocument();
   });
 });
