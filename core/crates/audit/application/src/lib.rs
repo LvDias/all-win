@@ -96,6 +96,9 @@ pub fn rule_for(code: &str) -> Option<CodeRule> {
         // S1 (Architect, 2026-10-23: safe, details are closed and redacted).
         "ingress.received" => rule(Received, true),
         "ingress.duplicate_ignored" => rule(Skipped, true),
+        // HTTP 5.4.0 (Esquadro): still 200 and nothing executed; a visible warning, field
+        // names only (closed enum), so safe.
+        "ingress.duplicate_conflict" => rule(Info, true),
         "ingress.rejected" | "ingress.rate_limited" => rule(Rejected, true),
         // S7.
         "routing.subscription_changed" => rule(Info, true),

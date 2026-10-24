@@ -763,3 +763,166 @@ async fn p95_latency_is_well_under_budget() {
     eprintln!("ingress p95 in-process: {p95:?}");
     assert!(p95 < std::time::Duration::from_millis(300), "p95 {p95:?}");
 }
+
+/// The audit codes and details of `user`, oldest first.
+async fn audited(db: &TestDb, user: uuid::Uuid) -> Vec<(String, Value)> {
+    as_user(db, user, |c| {
+        Box::pin(async move {
+            sqlx::query_as("SELECT code, details FROM audit.audit_entry ORDER BY event_seq")
+                .fetch_all(c)
+                .await
+                .unwrap()
+        })
+    })
+    .await
+}
+
+/// HTTP 5.4.0 (Esquadro's final rule): a re-sent `message_id` is compared on the closed list
+/// of fields only. A change outside it is a plain duplicate; a change inside it is still 200
+/// and executes nothing, but is audited as `ingress.duplicate_conflict` with field names only.
+#[tokio::test]
+async fn a_re_sent_message_id_conflicts_only_on_compared_fields() {
+    let db = db_or_skip!();
+    let app = wire(db, &config());
+    let s = seed(db).await;
+    let path = ingress_path(&s.token);
+    let msg = unique_message_id();
+    let body = |quantity: u32, sent_at: &str, extra: &str| {
+        format!(
+            r#"{{"schema_version":"1.0","message_id":"{msg}","sent_at":"{sent_at}",
+                "source":{{"type":"tradingview"}},"signal_type":"trigger","action":"buy",
+                "instrument":{{"symbol":"MNQ"}},"quantity":{quantity}{extra}}}"#
+        )
+    };
+    let (status, _, first) = send(
+        &app.state,
+        post_json(&path, body(1, "2026-10-22T16:03:20Z", "")),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let first = json(&first);
+    // Only sent_at, details and reference_price change: a plain duplicate.
+    let (status, _, again) = send(
+        &app.state,
+        post_json(
+            &path,
+            body(
+                1,
+                "2026-10-22T16:03:25Z",
+                r#","reference_price":"21000.25","details":{"setup":"B"}"#,
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(json(&again)["status"], "duplicate");
+    // The quantity changes: still 200 and the first instruction stands.
+    let (status, _, conflict) = send(
+        &app.state,
+        post_json(&path, body(2, "2026-10-22T16:03:30Z", "")),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let conflict = json(&conflict);
+    assert_eq!(conflict["status"], "duplicate");
+    assert_eq!(conflict["instruction_id"], first["instruction_id"]);
+    let instructions: i64 = as_user(db, s.user_id, |c| {
+        Box::pin(async move {
+            sqlx::query_scalar("SELECT count(*) FROM routing.instruction")
+                .fetch_one(c)
+                .await
+                .unwrap()
+        })
+    })
+    .await;
+    assert_eq!(instructions, 1);
+
+    drain(&app, db, s.user_id).await;
+    let entries = audited(db, s.user_id).await;
+    let codes: Vec<&str> = entries.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(
+        codes,
+        [
+            "ingress.received",
+            "ingress.duplicate_ignored",
+            "ingress.duplicate_conflict"
+        ]
+    );
+    let details = &entries[2].1;
+    assert_eq!(details["differing_fields"], serde_json::json!(["quantity"]));
+    assert_eq!(details["original_instruction_id"], first["instruction_id"]);
+    assert_eq!(details["message_id"], msg.as_str());
+    assert!(details["first_received_at"].is_string() && details["second_received_at"].is_string());
+    assert!(!details.to_string().contains("21000.25"));
+}
+
+/// After the Q13 b purge only the key remains: deleting the instruction clears the receipt's
+/// hash in the same statement, a re-send is a plain duplicate with `content_not_retained`
+/// (never a conflict), and a receipt can lose its hash only together with `content_purged_at`.
+#[tokio::test]
+async fn after_the_purge_a_re_send_is_a_duplicate_without_content() {
+    let db = db_or_skip!();
+    let app = wire(db, &config());
+    let s = seed(db).await;
+    let path = ingress_path(&s.token);
+    let msg = unique_message_id();
+    assert_eq!(
+        send(&app.state, post_json(&path, instruction(&msg)))
+            .await
+            .0,
+        200
+    );
+
+    // The purge, in one batch (as the owner, in the user's context).
+    let mut tx = db.owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(s.user_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    // Clearing the hash alone is refused (message_receipt_body_hash_check).
+    let err = sqlx::query("UPDATE routing.message_receipt SET body_sha256 = NULL")
+        .execute(&mut *tx)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("message_receipt_body_hash_check"),
+        "{err}"
+    );
+    tx.rollback().await.unwrap();
+    let mut tx = db.owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(s.user_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    // Deleting the instruction clears its receipt's hash in the same statement (trigger).
+    sqlx::query("DELETE FROM routing.instruction")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let (hashed, stamped, orphans): (i64, i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE body_sha256 IS NOT NULL),
+                count(*) FILTER (WHERE content_purged_at IS NOT NULL),
+                count(*) FILTER (WHERE body_sha256 IS NOT NULL AND NOT EXISTS (
+                  SELECT 1 FROM routing.instruction i
+                   WHERE i.user_id = r.user_id AND i.id = r.instruction_id))
+           FROM routing.message_receipt r",
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!((hashed, stamped, orphans), (0, 1, 0));
+    tx.commit().await.unwrap();
+
+    let changed = instruction(&msg).replace(r#""quantity":1"#, r#""quantity":5"#);
+    let (status, _, body) = send(&app.state, post_json(&path, changed)).await;
+    assert_eq!(status, 200);
+    assert_eq!(json(&body)["status"], "duplicate");
+
+    drain(&app, db, s.user_id).await;
+    let entries = audited(db, s.user_id).await;
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[1].0, "ingress.duplicate_ignored");
+    assert_eq!(entries[1].1["content_not_retained"], true);
+}

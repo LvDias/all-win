@@ -1,0 +1,72 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT r.instruction_id, r.received_at, r.body_sha256,\n                              r.content_purged_at IS NOT NULL AS \"purged!\", i.payload AS \"payload?\"\n                         FROM routing.message_receipt r\n                         LEFT JOIN routing.instruction i\n                           ON i.user_id = r.user_id AND i.id = r.instruction_id\n                        WHERE r.user_id = $1 AND r.message_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "instruction_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "routing.message_receipt",
+            "name": "instruction_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "received_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "routing.message_receipt",
+            "name": "received_at"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "body_sha256",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "routing.message_receipt",
+            "name": "body_sha256"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "purged!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "payload?",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "routing.instruction",
+            "name": "payload"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      null,
+      false
+    ]
+  },
+  "hash": "12286d5a0402259d201aaf9e32589de759a2eb4f090ff5dcb7af999f950ea55b"
+}

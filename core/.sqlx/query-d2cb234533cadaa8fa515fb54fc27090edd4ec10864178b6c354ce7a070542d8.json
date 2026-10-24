@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO routing.message_receipt (user_id, message_id, instruction_id, received_at)\n               VALUES ($1, $2, $3, $4)\n               ON CONFLICT (user_id, message_id) DO NOTHING\n               RETURNING instruction_id",
+  "query": "INSERT INTO routing.message_receipt\n                 (user_id, message_id, instruction_id, received_at, body_sha256)\n               VALUES ($1, $2, $3, $4, $5)\n               ON CONFLICT (user_id, message_id) DO NOTHING\n               RETURNING instruction_id",
   "describe": {
     "columns": [
       {
@@ -20,12 +20,13 @@
         "Uuid",
         "Text",
         "Uuid",
-        "Timestamptz"
+        "Timestamptz",
+        "Bytea"
       ]
     },
     "nullable": [
       false
     ]
   },
-  "hash": "f6e8b37900c455f8f323d2212da1947553eb8753a07920c36a7105571ec3a0c5"
+  "hash": "d2cb234533cadaa8fa515fb54fc27090edd4ec10864178b6c354ce7a070542d8"
 }

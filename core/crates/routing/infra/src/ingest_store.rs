@@ -2,8 +2,9 @@
 //! request, scoped by `app.user_id` so RLS applies.
 
 use async_trait::async_trait;
+use routing_application::duplicate;
 use routing_application::enterprise::{IngressEvent, InstructionId};
-use routing_application::ports::event_payload;
+use routing_application::ports::{FirstReceipt, event_payload};
 use routing_application::{IngestOutcome, IngestStore, NewInstruction, StoreError};
 use shared_kernel::UserId;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -43,14 +44,16 @@ impl IngestStore for PgIngestStore {
         // A concurrent duplicate blocks on the primary-key entry until the first
         // transaction commits, then takes the DO NOTHING path.
         let inserted = sqlx::query_scalar!(
-            r#"INSERT INTO routing.message_receipt (user_id, message_id, instruction_id, received_at)
-               VALUES ($1, $2, $3, $4)
+            r#"INSERT INTO routing.message_receipt
+                 (user_id, message_id, instruction_id, received_at, body_sha256)
+               VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT (user_id, message_id) DO NOTHING
                RETURNING instruction_id"#,
             i.user_id.as_uuid(),
             i.message_id.as_str(),
             i.id.as_uuid(),
             i.times.received_at,
+            &duplicate::body_sha256(&i.payload)[..],
         )
         .fetch_optional(&mut *tx)
         .await
@@ -89,16 +92,32 @@ impl IngestStore for PgIngestStore {
                 IngestOutcome::Accepted(InstructionId::from_uuid(id))
             }
             None => {
-                let original = sqlx::query_scalar!(
-                    r#"SELECT instruction_id FROM routing.message_receipt
-                       WHERE user_id = $1 AND message_id = $2"#,
+                // The first message, with its content while it is retained (Q13 b), to tell a
+                // plain re-send from a conflicting one (HTTP 5.4.0).
+                let r = sqlx::query!(
+                    r#"SELECT r.instruction_id, r.received_at, r.body_sha256,
+                              r.content_purged_at IS NOT NULL AS "purged!", i.payload AS "payload?"
+                         FROM routing.message_receipt r
+                         LEFT JOIN routing.instruction i
+                           ON i.user_id = r.user_id AND i.id = r.instruction_id
+                        WHERE r.user_id = $1 AND r.message_id = $2"#,
                     i.user_id.as_uuid(),
                     i.message_id.as_str(),
                 )
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(store_error)?;
-                IngestOutcome::Duplicate(InstructionId::from_uuid(original))
+                let first = FirstReceipt {
+                    instruction_id: InstructionId::from_uuid(r.instruction_id),
+                    received_at: r.received_at,
+                    body_sha256: r.body_sha256.and_then(|h| <[u8; 32]>::try_from(h).ok()),
+                    content_purged: r.purged,
+                    payload: r.payload,
+                };
+                let verdict = first.verdict(i);
+                append_outbox(&mut tx, &first.event_for(i, verdict)).await?;
+                tx.commit().await.map_err(store_error)?;
+                return Ok(IngestOutcome::Duplicate(first.instruction_id));
             }
         };
 

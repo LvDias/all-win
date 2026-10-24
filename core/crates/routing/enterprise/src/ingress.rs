@@ -55,6 +55,17 @@ pub enum IngressEventKind {
         instruction_id: InstructionId,
         message_id: MessageId,
         signal_type: String,
+        /// The first message's content was purged (Q13 b): it could not be compared.
+        content_not_retained: bool,
+    },
+    /// The same `message_id` again with a different compared field (HTTP 5.4.0): still 200 and
+    /// nothing executed, but made visible. Field names only, never values.
+    DuplicateConflict {
+        instruction_id: InstructionId,
+        message_id: MessageId,
+        signal_type: String,
+        first_received_at: DateTime<Utc>,
+        differing_fields: Vec<&'static str>,
     },
     Rejected {
         code: RejectionCode,
@@ -82,9 +93,10 @@ pub struct IngressEvent {
 
 impl IngressEvent {
     /// Every outbox `event_type` this module emits; each must have a consumer at startup.
-    pub const TYPES: [&'static str; 4] = [
+    pub const TYPES: [&'static str; 5] = [
         "ingress.received",
         "ingress.duplicate_ignored",
+        "ingress.duplicate_conflict",
         "ingress.rejected",
         "ingress.rate_limited",
     ];
@@ -94,6 +106,7 @@ impl IngressEvent {
         match self.kind {
             IngressEventKind::Received { .. } => "ingress.received",
             IngressEventKind::DuplicateIgnored { .. } => "ingress.duplicate_ignored",
+            IngressEventKind::DuplicateConflict { .. } => "ingress.duplicate_conflict",
             IngressEventKind::Rejected { .. } => "ingress.rejected",
             IngressEventKind::RateLimited { .. } => "ingress.rate_limited",
         }

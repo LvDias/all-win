@@ -27,9 +27,15 @@ macro_rules! db_or_skip {
     };
 }
 
+/// The repository's bundle, or `ALLWIN_HTTP_BUNDLE` to check a contract draft before it lands.
 fn bundle() -> Value {
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/http/openapi.bundled.yaml");
+    let path = std::env::var_os("ALLWIN_HTTP_BUNDLE").map_or_else(
+        || {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../contracts/http/openapi.bundled.yaml")
+        },
+        Into::into,
+    );
     yaml_serde::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
@@ -51,19 +57,18 @@ fn details_validator(bundle: &Value, code: &str) -> jsonschema::Validator {
 async fn emitted_ingress_details_match_the_contract_and_never_carry_body_values() {
     let db = db_or_skip!();
     let mut cfg = config();
-    cfg.rate_per_key_per_min = 3;
+    cfg.rate_per_key_per_min = 4;
     let app = wire(db, &cfg);
     let s = seed(db).await;
     let path = ingress_path(&s.token);
     let msg = unique_message_id();
-    // received, duplicate_ignored
-    for _ in 0..2 {
-        assert_eq!(
-            send(&app.state, post_json(&path, instruction(&msg)))
-                .await
-                .0,
-            200
-        );
+    // received, duplicate_ignored, duplicate_conflict (a compared field changed)
+    for body in [
+        instruction(&msg),
+        instruction(&msg),
+        instruction(&msg).replace(r#""quantity":1"#, r#""quantity":3"#),
+    ] {
+        assert_eq!(send(&app.state, post_json(&path, body)).await.0, 200);
     }
     // rejected: an unknown key whose value looks like a secret
     let secret_like = "s3cr3t-Value-0123456789-should-never-be-stored";
@@ -73,7 +78,7 @@ async fn emitted_ingress_details_match_the_contract_and_never_carry_body_values(
         1,
     );
     assert_eq!(send(&app.state, post_json(&path, body)).await.0, 400);
-    // rate_limited: the key's own limit (3/min)
+    // rate_limited: the key's own limit (4/min)
     assert_eq!(
         send(
             &app.state,
@@ -155,4 +160,57 @@ fn adapter_tradingview_types() -> Vec<String> {
         .iter()
         .map(|t| (*t).to_owned())
         .collect()
+}
+
+/// `ingress.duplicate_ignored` after the Q13 b purge carries `content_not_retained` (HTTP
+/// 5.4.0), and its details still match the closed schema.
+#[tokio::test]
+async fn a_re_send_after_the_purge_matches_the_contract() {
+    let db = db_or_skip!();
+    let app = wire(db, &config());
+    let s = seed(db).await;
+    let path = ingress_path(&s.token);
+    let msg = unique_message_id();
+    assert_eq!(
+        send(&app.state, post_json(&path, instruction(&msg)))
+            .await
+            .0,
+        200
+    );
+    let mut tx = db.owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('app.user_id', $1, true)")
+        .bind(s.user_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    // The purge: deleting the instruction clears the receipt's hash (trigger, 061250).
+    sqlx::query("DELETE FROM routing.instruction")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        send(&app.state, post_json(&path, instruction(&msg)))
+            .await
+            .0,
+        200
+    );
+    let payload: Value = as_user(db, s.user_id, |c| {
+        Box::pin(async move {
+            sqlx::query_scalar(
+                "SELECT payload FROM app.outbox WHERE event_type = 'ingress.duplicate_ignored'",
+            )
+            .fetch_one(c)
+            .await
+            .unwrap()
+        })
+    })
+    .await;
+    assert_eq!(payload["details"]["content_not_retained"], true);
+    let v = details_validator(&bundle(), "ingress.duplicate_ignored");
+    let errors: Vec<String> = v
+        .iter_errors(&payload["details"])
+        .map(|e| e.to_string())
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}");
 }
