@@ -171,7 +171,7 @@ pub async fn events(owner: &PgPool, user: UserId) -> Vec<(String, serde_json::Va
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::query_as("SELECT event_type, payload FROM app.outbox WHERE user_id = $1 ORDER BY id")
+    sqlx::query_as("SELECT event_type, payload FROM app.outbox WHERE user_id = $1 ORDER BY seq")
         .bind(user.as_uuid())
         .fetch_all(&mut *tx)
         .await

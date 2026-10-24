@@ -1,0 +1,31 @@
+{
+  "instruction_id": "0192b3c4-0000-7000-8000-000000000006",
+  "account_id": "0192b3c4-0000-7000-8000-000000000001",
+  "created_at": "2026-10-24T14:31:06.120Z",
+  "commands": [
+    {
+      "command_id": "774f1a46-91a9-5892-952d-cf022ca175ac",
+      "kind": "place",
+      "step": "place",
+      "expires_at": "2026-10-24T14:31:10.000Z",
+      "position_effect": "open",
+      "instrument": {
+        "symbol": "MNQ",
+        "contract_month": "2026-12"
+      },
+      "body": {
+        "side": "buy",
+        "quantity": 2,
+        "order": {
+          "type": "market"
+        },
+        "position_effect": "open",
+        "protection": {
+          "mode": "individual",
+          "stop_ticks": 40,
+          "target_ticks": 80
+        }
+      }
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 //! ingress outcome recording (s1-webhook-ingest §2 steps 8–9, §3), and route
 //! configuration (S7).
 
+pub mod commands;
 pub mod decisions;
 #[cfg(feature = "dev-stubs")]
 pub mod dev_stubs;
