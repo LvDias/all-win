@@ -1817,6 +1817,7 @@ dependencies = [
  "shared-kernel",
  "thiserror",
  "tokio",
+ "tracing",
  "yaml_serde",
 ]
 

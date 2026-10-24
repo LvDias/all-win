@@ -3,6 +3,8 @@
 //! configuration (S7).
 
 pub mod decisions;
+#[cfg(feature = "dev-stubs")]
+pub mod dev_stubs;
 pub mod ingest;
 pub mod ports;
 pub mod routes;

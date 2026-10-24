@@ -816,6 +816,111 @@ async fn exits_and_close_legs_commit_while_entries_wait() {
     assert_eq!(rows.values().next().unwrap().account_id, w.account);
 }
 
+/// Test build (ADR-0006 rule 8; Vigia C2/C4): gates 7–8 answered by the simulation-only
+/// stand-in; gates 6 and 9 stay real.
+#[cfg(feature = "dev-stubs")]
+mod stand_in {
+    use super::*;
+    use crate::dev_stubs::{Environment, STAND_IN_MARKER, SimulationOnlyGate, StandInGate};
+
+    struct Kind(Mutex<(AccountKind, usize)>);
+
+    #[async_trait]
+    impl AccountKindOf for Kind {
+        async fn kind(&self, _: UserId, _: AccountId) -> Result<AccountKind, PortError> {
+            let mut k = self.0.lock().unwrap();
+            k.1 += 1;
+            Ok(k.0)
+        }
+    }
+
+    fn decide_with(
+        w: &World,
+        environment: Environment,
+        kind: AccountKind,
+    ) -> (DecideInstruction, Arc<Kind>, EntryGatePorts) {
+        let kinds = Arc::new(Kind(Mutex::new((kind, 0))));
+        let mut gates = w.gates.ports();
+        gates.risk_blocked = Arc::new(SimulationOnlyGate::new(
+            StandInGate::RiskBlocked,
+            environment,
+            kinds.clone(),
+        ));
+        gates.limits_pending = Arc::new(SimulationOnlyGate::new(
+            StandInGate::LimitsPending,
+            environment,
+            kinds.clone(),
+        ));
+        let use_case = DecideInstruction::new(DecisionDeps {
+            store: w.store.clone(),
+            routes: w.routes.clone(),
+            accounts: w.facts.clone(),
+            sources: w.facts.clone(),
+            positions: w.facts.clone(),
+            contracts: w.facts.clone(),
+            gates: gates.clone(),
+            clock: Arc::new(FixedClock(at(w.now_ms))),
+        });
+        (use_case, kinds, gates)
+    }
+
+    fn only_code(w: &World) -> &'static str {
+        let events = w.store.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        events[0].0
+    }
+
+    #[tokio::test]
+    async fn a_simulation_account_is_routed_outside_production() {
+        for kind in [AccountKind::Simulation, AccountKind::Playback] {
+            let w = world();
+            let (use_case, _, gates) = decide_with(&w, Environment::NonProduction, kind);
+            use_case.handle(w.user, w.instruction).await.unwrap();
+            assert_eq!(only_code(&w), "routing.routed", "{kind:?}");
+            assert_eq!(gates.stand_ins(), ["risk_blocked", "limits_pending"]);
+            assert_eq!(
+                gates.risk_blocked.stand_in(),
+                Some(STAND_IN_MARKER),
+                "marked for the release checks"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn any_other_account_or_production_skips_the_entry_with_the_real_gates_code() {
+        for (environment, kind) in [
+            (Environment::NonProduction, AccountKind::Live),
+            (Environment::NonProduction, AccountKind::Unknown),
+            (Environment::Production, AccountKind::Simulation),
+        ] {
+            let w = world();
+            let (use_case, _, _) = decide_with(&w, environment, kind);
+            let decided = use_case.handle(w.user, w.instruction).await.unwrap();
+            assert_eq!(decided.len(), 1);
+            let (code, p) = w.store.events.lock().unwrap()[0].clone();
+            assert_eq!(code, "routing.risk_blocked", "{environment:?} {kind:?}");
+            assert_eq!(p["refs"]["outcome"], "refused");
+            // Nothing about the stand-in in the user-visible audit (Vigia C3).
+            assert!(!p.to_string().contains("stand"), "{p}");
+        }
+    }
+
+    #[tokio::test]
+    async fn exits_never_consult_the_stand_in() {
+        let w = world();
+        w.set_instruction("close", None, None);
+        w.set_position(2);
+        let (use_case, kinds, _) = decide_with(&w, Environment::Production, AccountKind::Live);
+        use_case.handle(w.user, w.instruction).await.unwrap();
+        assert_eq!(only_code(&w), "routing.routed");
+        assert_eq!(
+            kinds.0.lock().unwrap().1,
+            0,
+            "the kind is never read for an exit"
+        );
+    }
+}
+
 /// Q75 (ADR-0003 r4; Crivo C1): a close against a FLAT expected position needs gate 6 alone.
 #[tokio::test]
 async fn a_flat_close_waits_for_gate_6_and_then_trusts_it_only_in_sync() {
