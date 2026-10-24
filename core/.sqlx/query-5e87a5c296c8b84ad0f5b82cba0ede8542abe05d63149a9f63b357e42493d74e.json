@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT consumer || '/' || event_type AS \"pair!\" FROM app.outbox_consumer\n               WHERE retired_at IS NULL ORDER BY 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pair!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "5e87a5c296c8b84ad0f5b82cba0ede8542abe05d63149a9f63b357e42493d74e"
+}

@@ -54,13 +54,19 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     // Dead-lettered: an audit entry missing from a user's log (X-5). Unconsumed: events of
     // a type with no registered consumer, never fetched (Architect decision (A)). Alert on > 0.
     // Allowlisted types (crate::unconsumed) are not unconsumed: no consumer yet, by decision.
+    // Dead letters count both the legacy #1b rows and the per-consumer ones (#14). When a new
+    // backfill consumer is registered, its type's retained rows become unpublished again until it
+    // catches up: an old-unpublished alert during that catch-up is expected (Esmeril note).
     let mut consumed: Vec<String> = state.consumed_event_types.to_vec();
     consumed.extend(crate::unconsumed::types(crate::unconsumed::UNCONSUMED));
     match sqlx::query!(
-        r#"SELECT count(*) FILTER (WHERE dead_lettered_at IS NOT NULL) AS "dead_lettered!",
-                  count(*) FILTER (WHERE published_at IS NULL AND dead_lettered_at IS NULL
-                                   AND NOT (event_type = ANY($1))) AS "unconsumed!"
-             FROM app.outbox"#,
+        r#"SELECT (SELECT count(*) FROM app.outbox WHERE dead_lettered_at IS NOT NULL)
+                + (SELECT count(*) FROM app.outbox_delivery WHERE dead_lettered_at IS NOT NULL)
+                  AS "dead_lettered!",
+                  (SELECT count(*) FROM app.outbox
+                    WHERE published_at IS NULL AND dead_lettered_at IS NULL
+                      AND NOT (event_type = ANY($1))) AS "unconsumed!",
+                  pg_notification_queue_usage() AS "notify_queue_usage!""#,
         &consumed
     )
     .fetch_one(&state.worker)
@@ -74,6 +80,13 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
             ));
             out.push_str("# TYPE allwin_outbox_unconsumed gauge\n");
             out.push_str(&format!("allwin_outbox_unconsumed {}\n", row.unconsumed));
+            // Alert above 0.5: a listener stuck in a transaction lets the queue fill, and then
+            // the producers' commits fail (#14).
+            out.push_str("# TYPE allwin_outbox_notify_queue_usage gauge\n");
+            out.push_str(&format!(
+                "allwin_outbox_notify_queue_usage {}\n",
+                row.notify_queue_usage
+            ));
         }
         Err(e) => tracing::error!(error = %e, "metrics: outbox counts failed"),
     }

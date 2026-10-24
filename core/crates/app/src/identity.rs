@@ -36,7 +36,7 @@ use shared_kernel::{Clock, UserId};
 use sqlx::PgPool;
 
 use crate::config::{CodeSenderConfig, Config, IdentityConfig};
-use crate::outbox::{Consumers, EventConsumer, OutboxEvent};
+use crate::outbox::{Consumers, EventConsumer, OutboxEvent, StartPolicy};
 
 /// Assumed limit of the public token endpoints (invitation lookup, sign-up start) per IP and
 /// minute; not set by the policy yet (open question to the PO).
@@ -125,7 +125,12 @@ struct SseConsumer(Arc<SseHub>);
 #[async_trait]
 impl EventConsumer for SseConsumer {
     fn name(&self) -> &'static str {
-        "identity-sse"
+        "identity.sse"
+    }
+
+    /// Live projection: clients refetch on reconnect, so past rows are never replayed.
+    fn start(&self) -> StartPolicy {
+        StartPolicy::FromNow
     }
 
     async fn handle(&self, e: &OutboxEvent) -> Result<(), String> {
@@ -150,7 +155,17 @@ struct NoticeConsumer {
 #[async_trait]
 impl EventConsumer for NoticeConsumer {
     fn name(&self) -> &'static str {
-        "identity-notice"
+        "identity.notice"
+    }
+
+    /// Never re-send old e-mails when the consumer is first registered (cutover, #14).
+    fn start(&self) -> StartPolicy {
+        StartPolicy::FromNow
+    }
+
+    /// One e-mail per transaction: a failed commit re-sends at most one (at least once delivery).
+    fn batch(&self) -> i64 {
+        1
     }
 
     async fn handle(&self, e: &OutboxEvent) -> Result<(), String> {

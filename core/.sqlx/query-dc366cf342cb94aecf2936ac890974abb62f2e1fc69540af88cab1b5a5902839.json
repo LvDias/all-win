@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE app.outbox SET published_at = NULL\n                           WHERE event_type = $1 AND published_at IS NOT NULL\n                             AND dead_lettered_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dc366cf342cb94aecf2936ac890974abb62f2e1fc69540af88cab1b5a5902839"
+}

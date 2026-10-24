@@ -162,6 +162,7 @@ dependencies = [
  "identity-application",
  "identity-enterprise",
  "identity-infra",
+ "jsonschema",
  "rand 0.10.3",
  "routing-application",
  "routing-infra",

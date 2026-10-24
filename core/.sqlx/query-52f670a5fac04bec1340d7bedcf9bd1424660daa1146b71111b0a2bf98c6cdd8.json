@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT start_policy FROM app.outbox_consumer WHERE consumer = $1 AND event_type = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "start_policy",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "app.outbox_consumer",
+            "name": "start_policy"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "52f670a5fac04bec1340d7bedcf9bd1424660daa1146b71111b0a2bf98c6cdd8"
+}

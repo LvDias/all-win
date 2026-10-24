@@ -138,6 +138,8 @@ fn token_failure(s: &IngressState, ip: Option<IpAddr>) -> (Outcome, Response) {
 struct Caller {
     user_id: shared_kernel::UserId,
     source_id: routing_application::enterprise::SourceId,
+    /// Audit snapshot only; never logged.
+    source_name: String,
     key_id: String,
 }
 
@@ -214,17 +216,16 @@ async fn handle(
     let caller = Caller {
         user_id: key.user_id,
         source_id: key.source_id,
+        source_name: key.source_name.clone(),
         key_id: token.key_id().to_owned(),
     };
     drop(token);
 
     if let Err(retry) = s.key_limiter.check(&caller.key_id, Instant::now()) {
-        let rejection = Rejection {
-            code: RejectionCode::RateLimited,
-            pointer: None,
-            message_id: None,
+        let kind = IngressEventKind::RateLimited {
+            retry_after_s: retry.max(1),
         };
-        audit_rejection(s, &caller, received_at, rejection, None).await;
+        audit(s, &caller, received_at, kind).await;
         return (Outcome::RateLimitedKey, rate_limited(retry));
     }
 
@@ -367,6 +368,7 @@ fn new_instruction(
         id: InstructionId::new_v7(),
         user_id: caller.user_id,
         source_id: caller.source_id,
+        source_name: caller.source_name.clone(),
         source_type: i.source.kind.clone(),
         source_key_id: Some(caller.key_id.clone()),
         message_id,
@@ -410,17 +412,29 @@ async fn audit_rejection(
     rejection: Rejection,
     size_bytes: Option<u64>,
 ) {
+    let kind = IngressEventKind::Rejected {
+        code: rejection.code,
+        pointer: rejection.pointer,
+        message_id: rejection.message_id,
+        size_bytes,
+    };
+    audit(s, caller, at, kind).await;
+}
+
+/// Records an ingress outcome without a stored instruction (rejection, rate limit).
+async fn audit(
+    s: &IngressState,
+    caller: &Caller,
+    at: chrono::DateTime<chrono::Utc>,
+    kind: IngressEventKind,
+) {
     let event = IngressEvent {
         user_id: caller.user_id,
         at,
         source_id: caller.source_id,
+        source_name: caller.source_name.clone(),
         key_id: caller.key_id.clone(),
-        kind: IngressEventKind::Rejected {
-            code: rejection.code,
-            pointer: rejection.pointer,
-            message_id: rejection.message_id,
-            size_bytes,
-        },
+        kind,
     };
     if let Err(e) = s.reject.handle(event).await {
         tracing::error!(error = %e, "ingress rejection not audited");

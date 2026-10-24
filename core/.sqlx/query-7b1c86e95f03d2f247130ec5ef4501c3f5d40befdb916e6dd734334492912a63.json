@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO app.outbox_delivery\n                             (consumer, event_id, attempts, next_attempt_at, delivered_at)\n                           VALUES ($1, $2, $3, now(), now())\n                           ON CONFLICT (consumer, event_id) DO UPDATE\n                             SET attempts = EXCLUDED.attempts, delivered_at = EXCLUDED.delivered_at,\n                                 last_error = NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7b1c86e95f03d2f247130ec5ef4501c3f5d40befdb916e6dd734334492912a63"
+}

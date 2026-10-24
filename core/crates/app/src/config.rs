@@ -5,6 +5,7 @@
 //! | `DATABASE_URL` | required | PostgreSQL, role `allwin_app` (RLS enforced) |
 //! | `WORKER_DATABASE_URL` | `DATABASE_URL` | role `allwin_worker` (BYPASSRLS) for the outbox dispatcher |
 //! | `MIGRATION_DATABASE_URL` | unset | role `allwin_owner`; when set, migrations run at startup and the dev seed uses it |
+//! | `MAINT_DATABASE_URL` | unset | role `allwin_maint`; when set, the worker purges the outbox (7 days, §6.5); unset = no purge, with a warning |
 //! | `CORE_BIND` | `127.0.0.1:8080` | listen address |
 //! | `DB_MAX_CONNECTIONS` | `10` | pool size |
 //! | `INGRESS_TRUST_FORWARDED_FOR` | `false` | client IP from the last `X-Forwarded-For` hop; only when Caddy sets it and the Core is reachable only through Caddy |
@@ -65,6 +66,8 @@ pub struct Config {
     pub database_url: SecretString,
     pub worker_database_url: SecretString,
     pub migration_database_url: Option<SecretString>,
+    /// `allwin_maint`: the outbox purge job (`None`: no purge).
+    pub maint_database_url: Option<SecretString>,
     pub bind: SocketAddr,
     pub db_max_connections: u32,
     pub trust_forwarded_for: bool,
@@ -269,6 +272,7 @@ impl Config {
             database_url: SecretString::new(database_url),
             worker_database_url: SecretString::new(worker_database_url),
             migration_database_url: non_empty("MIGRATION_DATABASE_URL").map(SecretString::new),
+            maint_database_url: non_empty("MAINT_DATABASE_URL").map(SecretString::new),
             bind: parse_or(&get, "CORE_BIND", "127.0.0.1:8080".parse().ok())?,
             db_max_connections: parse_or(&get, "DB_MAX_CONNECTIONS", Some(10))?,
             trust_forwarded_for,
@@ -359,6 +363,7 @@ mod tests {
         assert_eq!(c.db_max_connections, 10);
         assert_eq!(c.worker_database_url.expose(), c.database_url.expose());
         assert!(c.migration_database_url.is_none());
+        assert!(c.maint_database_url.is_none());
         assert!(!c.trust_forwarded_for);
         assert_eq!(
             (

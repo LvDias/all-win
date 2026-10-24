@@ -7,6 +7,7 @@ pub mod http;
 pub mod identity;
 pub mod openapi;
 pub mod outbox;
+pub mod purge;
 pub mod telemetry;
 pub mod unconsumed;
 pub mod wiring;
