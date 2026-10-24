@@ -387,3 +387,74 @@ async fn failed_deliveries_back_off_and_dead_letter_after_max_attempts() {
         (false, app::outbox::MAX_ATTEMPTS, true)
     );
 }
+
+/// 061300: a token-shaped `message_id` is refused by both routing tables (storage barrier
+/// behind the S1 credential guard); a normal id passes.
+#[tokio::test]
+async fn token_shaped_message_ids_are_refused_by_both_routing_tables() {
+    let Some(db) = db().await else { return };
+    let db = &db;
+    let s = seed(db).await;
+    let user = s.user_id;
+    for (message_id, refused) in [(PLANTED, true), ("tv-2026-10-23-001", false)] {
+        let results = as_user(db, user, move |c| {
+            Box::pin(async move {
+                let id = uuid::Uuid::now_v7();
+                // A savepoint, so the second insert still runs after a refused first one.
+                sqlx::query("SAVEPOINT s").execute(&mut *c).await.unwrap();
+                let receipt = sqlx::query(
+                    // With a body hash, so only the message_id CHECK can refuse it (061250's
+                    // body_hash_check would otherwise fire first).
+                    "INSERT INTO routing.message_receipt (user_id, message_id, instruction_id, received_at, body_sha256)
+                     VALUES ($1, $2, $3, now(), decode(repeat('00', 32), 'hex'))",
+                )
+                .bind(user)
+                .bind(message_id)
+                .bind(id)
+                .execute(&mut *c)
+                .await
+                .err()
+                .map(|e| e.to_string());
+                if receipt.is_some() {
+                    sqlx::query("ROLLBACK TO SAVEPOINT s")
+                        .execute(&mut *c)
+                        .await
+                        .unwrap();
+                }
+                let instruction = sqlx::query(
+                    "INSERT INTO routing.instruction (id, user_id, source_id, source_type, message_id, schema_version, signal_type, action,
+                       instrument_symbol, sent_at, received_at, expiry_base, payload)
+                     VALUES ($1, $2, $3, 'tradingview', $4, '1.0', 'trigger', 'buy', 'MNQ', now(), now(), now(), '{}')",
+                )
+                .bind(id)
+                .bind(user)
+                .bind(uuid::Uuid::now_v7())
+                .bind(message_id)
+                .execute(&mut *c)
+                .await
+                .err()
+                .map(|e| e.to_string());
+                (receipt, instruction)
+            })
+        })
+        .await;
+        if refused {
+            assert!(
+                results
+                    .0
+                    .as_deref()
+                    .is_some_and(|e| e.contains("message_receipt_message_id_no_token")),
+                "{results:?}"
+            );
+            assert!(
+                results
+                    .1
+                    .as_deref()
+                    .is_some_and(|e| e.contains("instruction_message_id_no_token")),
+                "{results:?}"
+            );
+        } else {
+            assert_eq!(results, (None, None));
+        }
+    }
+}
