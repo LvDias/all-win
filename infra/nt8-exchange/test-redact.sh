@@ -26,4 +26,8 @@ done
 # the redacted output is stable, and --check agrees
 if ! perl "$here/redact.pl" --check "$out" 2>/dev/null; then echo "FAIL: output not stable under --check"; fail=1; fi
 if perl "$here/redact.pl" --check "$tmp/in.log" 2>/dev/null; then echo "FAIL: --check missed secrets"; fail=1; fi
+# plugin journal line (crc + body) keeps its shape; only the secret goes
+printf '%s\n' 'a1b2c3d4 {"t":"fill","instruction_id":"0f1e2d3c-1111-2222-3333-444455556666","account":"Sim101","token":"abcDEF1234567890xyz"}' > "$tmp/journal.log"
+perl "$here/redact.pl" "$tmp/journal.log" 2>/dev/null > "$tmp/journal.out"
+if grep -q 'a1b2c3d4 {"t":"fill"' "$tmp/journal.out" && grep -q Sim101 "$tmp/journal.out" && ! grep -q abcDEF1234567890xyz "$tmp/journal.out"; then :; else echo "FAIL: journal line"; fail=1; fi
 [ "$fail" = 0 ] && echo "redact tests OK" || exit 1

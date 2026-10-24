@@ -16,7 +16,7 @@ my @rules = (
   ['all-win-key',      qr/\baw[kd]_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{20,}/,       '<redacted:key>'],
   ['tailscale-key',    qr/\btskey-[A-Za-z0-9-]{10,}/,                          '<redacted:key>'],
   ['bearer-basic',     qr/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]{8,}/i,        '$1 <redacted>'],
-  ['secret-assignment',qr/\b((?:authorization|password|passwd|pwd|secret|token|api[_-]?key|apikey|license[_-]?key|serial(?:[_ ]?number)?|private[_-]?key|credential)s?\s*[:=]\s*)(?!<redacted)["']?[^\s,;"'&]+/i, '$1<redacted>'],
+  ['secret-assignment',qr/\b((?:authorization|password|passwd|pwd|secret|token|api[_-]?key|apikey|license[_-]?key|serial(?:[_ ]?number)?|private[_-]?key|credential)s?["']?\s*[:=]\s*["']?)(?!<redacted)[^\s,;"'&]+/i, '$1<redacted>'],
   ['url-credential',   qr/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s\/@:]+:[^\s\/@]+@/i,   '$1<redacted>@'],
   ['email',            qr/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,  '<redacted:email>'],
   ['tailnet-host',     qr/\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.ts\.net\b/i,    '<redacted:host>'],

@@ -15,8 +15,13 @@ out="$work/nt8-logs-$stamp"
 n=0
 
 while IFS= read -r -d '' f; do
+  base_name="$(basename "$f" | tr 'A-Z' 'a-z')"
+  case "$base_name" in
+    *token*|*consent*|*secret*|*password*|*credential*) echo "$f (secret-like name, never sent)" >> "$work/skipped.txt"; continue ;;
+  esac
   case "$f" in
-    *.txt|*.log|*.json|*.csv|*.xml|*.md) ;;
+    *.txt|*.log|*.json|*.jsonl|*.ndjson|*.csv|*.xml|*.md) ;;
+    *.snap) grep -Iq . "$f" || { echo "$f (binary)" >> "$work/skipped.txt"; continue; } ;;   # plugin state snapshot, only if text
     *) echo "$f" >> "$work/skipped.txt"; continue ;;
   esac
   size="$(wc -c < "$f" | tr -d ' ')"

@@ -49,8 +49,10 @@ Tell the team (through the Maestro) that an upload is in; DevOps runs `check-inb
 (except `127.0.0.1`), long hex or base64-like strings, the Windows user name in `C:\Users\<name>`, private-key lines, and any
 account name that is not `Sim<n>` or `Playback<n>`. Counts per rule are reported, never the text.
 
-1. **On the Mac**, `redact-nt8-logs.sh` redacts text files (`txt log json csv xml md`, up to 50 MB each) and skips everything
-   else (listed in the report, not sent).
+1. **On the Mac**, `redact-nt8-logs.sh` redacts text files (`txt log json jsonl ndjson csv xml md`, and `.snap` only when it is
+   text; up to 50 MB each) and skips everything else (listed in the report, not sent). Files whose name contains `token`, `consent`,
+   `secret`, `password` or `credential` are never sent. This also covers the plugin's "Export diagnostics" zip (log and journal;
+   unzip it into the log folder first, or point the script at the unzipped folder).
 2. **On the server**, `check-inbox.sh` re-scans each upload with `redact.pl --check`. A clean upload is extracted to `clean/`
    and the raw file is deleted. An upload with a secret pattern left, a non-text file, a symlink, an unsafe zip path
    (`..` or absolute), more than 2000 entries or more than 200 MB goes to `quarantine/` with a reason (rule names only).

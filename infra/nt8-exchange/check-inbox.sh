@@ -21,8 +21,12 @@ scan_dir() { # dir -> 0 clean; prints reasons on failure
   local d="$1" f reasons=""
   if find "$d" -type l | grep -q .; then echo "symlink inside"; return 1; fi
   while IFS= read -r -d '' f; do
+    case "$(basename "$f" | tr 'A-Z' 'a-z')" in
+      *token*|*consent*|*secret*|*password*|*credential*) echo "secret-like file name"; return 1 ;;
+    esac
     case "$f" in
-      *.txt|*.log|*.json|*.csv|*.xml|*.md) ;;
+      *.txt|*.log|*.json|*.jsonl|*.ndjson|*.csv|*.xml|*.md) ;;
+      *.snap) grep -Iq . "$f" || { echo "binary .snap"; return 1; } ;;
       *) echo "non-text file type: ${f##*.}"; return 1 ;;
     esac
     if ! out="$(perl "$here/redact.pl" --check "$f" 2>&1 >/dev/null)"; then reasons="$reasons ${out//$'\n'/;}"; fi
