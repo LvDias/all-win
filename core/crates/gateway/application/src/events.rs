@@ -20,6 +20,36 @@ pub const EMITTED: &[&str] = &[
     CONNECTION_SESSION_CHANGED,
 ];
 
+/// Audit codes the gateway writes as `{actor, details, refs}` envelopes (HTTP 5.3.0
+/// `KnownAuditCode`). `sync.flagged` and `sync.restored` are also the S18 notification source.
+pub const AUDIT_CODES: &[&str] = &[
+    "connection.account_kind_changed",
+    "execution.cancelled",
+    "execution.command_sent",
+    "execution.expired",
+    "execution.fill_corrected",
+    "execution.filled",
+    "execution.order_received",
+    "execution.order_working",
+    "execution.partially_filled",
+    "execution.rejected",
+    "execution.state_unknown",
+    "execution.unbound_activity",
+    "execution.undelivered",
+    "sync.flagged",
+    "sync.reason_resolved",
+    "sync.restored",
+];
+
+/// Notification events with their own type (registry code), consumed by S18 (from_now).
+pub const NOTIFICATIONS: &[&str] = &[
+    "routing.reverse_close_only",
+    "sync.bracket_double_fill",
+    "sync.bracket_incomplete",
+    "sync.bracket_orphan_leg",
+    "sync.flatten_failed_unprotected",
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GatewayEvent {
     pub id: Uuid,

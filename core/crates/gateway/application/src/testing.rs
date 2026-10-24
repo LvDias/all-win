@@ -170,6 +170,48 @@ impl GatewayStore for FakeStore {
             .cloned())
     }
 
+    async fn venue_by_name(
+        &self,
+        _user_id: UserId,
+        connection: ConnectionId,
+        platform_account: &str,
+    ) -> Result<Option<VenueAccount>, StoreError> {
+        Ok(self
+            .state()
+            .venues
+            .iter()
+            .find(|(c, v)| *c == connection && v.platform_account == platform_account)
+            .map(|(_, v)| v.clone()))
+    }
+
+    async fn venues(
+        &self,
+        _user_id: UserId,
+        ids: &[VenueAccountId],
+    ) -> Result<Vec<(ConnectionId, VenueAccount)>, StoreError> {
+        Ok(self
+            .state()
+            .venues
+            .iter()
+            .filter(|(_, v)| ids.contains(&v.id))
+            .cloned()
+            .collect())
+    }
+
+    async fn venues_of_connections(
+        &self,
+        _user_id: UserId,
+        connections: &[ConnectionId],
+    ) -> Result<Vec<(ConnectionId, VenueAccount)>, StoreError> {
+        Ok(self
+            .state()
+            .venues
+            .iter()
+            .filter(|(c, _)| connections.contains(c))
+            .cloned()
+            .collect())
+    }
+
     async fn mark_sent(
         &self,
         _user_id: UserId,

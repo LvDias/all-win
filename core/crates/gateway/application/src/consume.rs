@@ -100,6 +100,16 @@ impl ConsumeCommandsRequested {
         };
         let mut rows = Vec::with_capacity(event.commands.len());
         for c in &event.commands {
+            // The top-level effect drives the command's rules; the body goes verbatim to the
+            // plugin. They must agree (agreed with Ferro for C1), or nothing is stored.
+            let body_effect = c.body.get("position_effect").cloned();
+            let top_effect = c.position_effect.map(|e| json!(e));
+            if c.kind == CommandKind::Place && body_effect != top_effect {
+                return Err(ConsumeError::Invalid(format!(
+                    "command {}: position_effect differs from the body",
+                    c.command_id
+                )));
+            }
             let command = Command::new_pending(
                 CommandId::from_uuid(c.command_id),
                 c.kind,
@@ -140,7 +150,7 @@ impl ConsumeCommandsRequested {
     }
 }
 
-fn command_payload(
+pub fn command_payload(
     event: &CommandsRequested,
     c: &RequestedCommand,
     platform_account: &str,
@@ -173,20 +183,37 @@ fn command_payload(
 
 // ---- C2 ------------------------------------------------------------------------------------
 
+/// `identity.device_token_revoked` (Brasa, S3): the connection was unpaired or re-paired. Its
+/// token is no longer valid, so any live session of the connection is closed with 4002.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeviceTokenRevoked {
     pub connection_id: Uuid,
-    pub key_id: String,
+    /// `unpaired` | `repaired`; informative only.
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
-/// Returns the live session to close with 4002, if any (its key matches).
+/// Returns the live session to close with 4002, if any.
 pub fn on_token_revoked(
     sessions: &Sessions,
     event: &DeviceTokenRevoked,
 ) -> Option<Arc<crate::session::Session>> {
-    sessions
-        .get(ConnectionId::from_uuid(event.connection_id))
-        .filter(|s| s.key_id == event.key_id)
+    sessions.get(ConnectionId::from_uuid(event.connection_id))
+}
+
+#[cfg(test)]
+mod revoked_tests {
+    use super::*;
+
+    #[test]
+    fn the_revocation_payload_has_no_key() {
+        let e: DeviceTokenRevoked = serde_json::from_value(serde_json::json!({
+            "connection_id": Uuid::nil(), "reason": "unpaired"
+        }))
+        .unwrap();
+        assert_eq!(e.connection_id, Uuid::nil());
+        assert!(on_token_revoked(&Sessions::default(), &e).is_none());
+    }
 }
 
 // ---- C3 ------------------------------------------------------------------------------------

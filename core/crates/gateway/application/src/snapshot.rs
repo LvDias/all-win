@@ -196,7 +196,6 @@ impl HandlePositionSnapshot {
                 {
                     restored.push(account_id);
                     work.events.extend(crate::audit::restored(
-                        account_id,
                         sync.version(),
                         session.connection_id,
                         now,

@@ -13,6 +13,11 @@ workspace = true
 name = "allwin-core"
 path = "src/main.rs"
 
+[features]
+# Test-build stand-ins for modules not built yet (routing entry gates 7/8, gateway risk port).
+# Never enabled by a release or deploy build.
+dev-stubs = ["routing-application/dev-stubs"]
+
 [dependencies]
 access = { workspace = true, features = ["axum"] }
 adapter-tradingview.workspace = true
@@ -28,6 +33,9 @@ chrono.workspace = true
 chrono-tz.workspace = true
 catalog-application.workspace = true
 catalog-infra.workspace = true
+gateway-application.workspace = true
+gateway-enterprise.workspace = true
+gateway-infra.workspace = true
 identity-application.workspace = true
 identity-enterprise.workspace = true
 identity-infra.workspace = true

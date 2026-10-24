@@ -3,6 +3,7 @@
 pub mod accounts;
 pub mod config;
 pub mod dev;
+pub mod gateway;
 pub mod http;
 pub mod identity;
 pub mod openapi;

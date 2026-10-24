@@ -44,7 +44,8 @@ impl Category {
             "routing" => Self::Routing,
             "execution" => Self::Execution,
             "risk" => Self::Risk,
-            "connection" => Self::Connection,
+            // `sync.*` (S11, HTTP 5.3.0): connection, for every reason (Esquadro, V1).
+            "connection" | "sync" => Self::Connection,
             "security" => Self::Security,
             "config" | "sources" | "connections" | "accounts" | "profiles" | "presets" => {
                 Self::Config
@@ -191,7 +192,11 @@ mod tests {
             assert_eq!(Category::of_code(code), Some(category), "{code}");
         }
         assert_eq!(Category::of_code("trades.other"), None);
-        assert_eq!(Category::of_code("sync.cleared"), None);
+        assert_eq!(
+            Category::of_code("sync.cleared"),
+            Some(Category::Connection)
+        );
+        assert_eq!(Category::of_code("other.code"), None);
         assert_eq!(Category::of_code("nodot"), None);
     }
 }

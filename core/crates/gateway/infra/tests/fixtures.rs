@@ -92,3 +92,27 @@ fn control_frames_the_gateway_sends_are_valid() {
         }
     }
 }
+
+/// Each command of routing's C1 fixtures becomes a schema-valid `command` frame.
+#[test]
+fn routing_c1_fixture_commands_are_valid_protocol_commands() {
+    use gateway_application::consume::{CommandsRequested, command_payload};
+    let schema = ProtocolSchema::load().unwrap();
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../application/fixtures/c1");
+    for name in ["entry", "reverse-step1-close-leg", "reverse-step2-open-leg"] {
+        let text = std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap();
+        let ev: CommandsRequested = serde_json::from_str(&text).unwrap();
+        for c in &ev.commands {
+            let frame = serde_json::json!({
+                "protocol_version": "1.2", "msg_id": Uuid::now_v7(), "type": "command",
+                "sent_at": "2026-10-24T14:31:06.200Z",
+                "payload": command_payload(&ev, c, "Sim101"),
+            });
+            assert!(
+                schema.validate(&frame).is_ok(),
+                "{name}: {:?}",
+                schema.validate(&frame)
+            );
+        }
+    }
+}

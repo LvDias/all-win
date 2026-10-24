@@ -241,12 +241,9 @@ async fn adapter_session_end_to_end() {
         .await
         .unwrap();
     assert_eq!(state, "acked");
-    let reasons: Vec<Option<String>> = sqlx::query_scalar(
-        "SELECT payload->>'disconnect_reason' FROM app.outbox WHERE event_type = 'gateway.connection_session_changed' ORDER BY occurred_at",
-    )
-    .fetch_all(&db.inspect)
-    .await
-    .unwrap();
+    // The by-user disconnect is recorded after the socket closes: wait for it (Sonda M-S2-1:
+    // reading after a fixed sleep raced it under load). Causal order is the outbox `seq`.
+    let reasons = session_reasons_until_user(&db, 1).await;
     // outdated; then connected, network drop, connected, (superseded: nothing), connected, user.
     assert_eq!(
         reasons.first().cloned().flatten().as_deref(),
@@ -260,5 +257,121 @@ async fn adapter_session_end_to_end() {
             .count(),
         1
     );
+    db.teardown().await;
+}
+
+fn harness(srv: &server::Server) -> Harness {
+    Harness {
+        url: srv.url.clone(),
+        runtime: srv.runtime.clone(),
+        schema: srv.schema.clone(),
+        consume: srv.consume.clone(),
+        user: srv.user,
+        account: srv.account,
+        connection: srv.connection,
+    }
+}
+
+/// Crivo g1/g2: failed authentications are charged to the client IP; over budget even the
+/// valid token gets the same 4001, with no detail.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn failed_authentications_are_throttled_per_ip_with_the_same_refusal() {
+    let Some(db) = common::setup().await else {
+        return;
+    };
+    let srv = server::start(&db).await;
+    let h = harness(&srv);
+    for _ in 0..gateway_infra::ws::DEFAULT_FAILURES_PER_MIN {
+        let mut c = h.connect(Some("awd_wrong")).await;
+        assert_eq!(h.next(&mut c).await, Err(Some(4001)));
+    }
+    let mut c = h.connect(Some(TOKEN)).await;
+    assert_eq!(h.next(&mut c).await, Err(Some(4001)), "throttled");
+    db.teardown().await;
+}
+
+/// G1 (Guarita): a frame over the protocol's 256 KiB closes the socket; nothing is stored.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_oversized_frame_closes_the_session() {
+    let Some(db) = common::setup().await else {
+        return;
+    };
+    let srv = server::start(&db).await;
+    let h = harness(&srv);
+    let mut c = h.connect(Some(TOKEN)).await;
+    h.hello(&mut c, &["1.2"]).await;
+    let welcome = h.next(&mut c).await.unwrap();
+    assert_eq!(welcome["type"], "welcome");
+    let big = "x".repeat(256 * 1024 + 1);
+    let _ = c.send(Message::Text(big.into())).await;
+    let end = loop {
+        match h.next(&mut c).await {
+            Ok(_) => continue,
+            Err(code) => break code,
+        }
+    };
+    assert!(
+        matches!(end, None | Some(1009)),
+        "closed for size, got {end:?}"
+    );
+    let receipts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM gateway.inbound_receipt WHERE connection_id = $1")
+            .bind(srv.connection.as_uuid())
+            .fetch_one(&db.inspect)
+            .await
+            .unwrap();
+    assert_eq!(receipts, 0);
+    db.teardown().await;
+}
+
+/// `disconnect_reason` of every `gateway.connection_session_changed`, in outbox order, once at
+/// least `users` by-user disconnects are recorded (or after 10 s).
+async fn session_reasons_until_user(db: &common::Db, users: usize) -> Vec<Option<String>> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let reasons: Vec<Option<String>> = sqlx::query_scalar(
+            "SELECT payload->>'disconnect_reason' FROM app.outbox WHERE event_type = 'gateway.connection_session_changed' ORDER BY seq",
+        )
+        .fetch_all(&db.inspect)
+        .await
+        .unwrap();
+        let by_user = reasons
+            .iter()
+            .filter(|r| r.as_deref() == Some("user"))
+            .count();
+        if by_user >= users || tokio::time::Instant::now() >= deadline {
+            return reasons;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// Sonda M-S2-1: the plugin's "Desconectar" (close 4100) is always a by-user end, never a
+/// network drop, however quickly sessions follow each other.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn close_4100_is_always_classified_as_by_user() {
+    let Some(db) = common::setup().await else {
+        return;
+    };
+    let srv = server::start(&db).await;
+    let h = harness(&srv);
+    const ROUNDS: usize = 15;
+    for round in 1..=ROUNDS {
+        let mut c = h.connect(Some(TOKEN)).await;
+        h.hello(&mut c, &["1.3"]).await;
+        assert_eq!(h.next(&mut c).await.unwrap()["type"], "welcome");
+        c.close(Some(CloseFrame {
+            code: CloseCode::from(4100),
+            reason: "".into(),
+        }))
+        .await
+        .unwrap();
+        // Recorded before the next session starts (a quicker reconnect would supersede it).
+        session_reasons_until_user(&db, round).await;
+    }
+    let reasons = session_reasons_until_user(&db, ROUNDS).await;
+    let ends: Vec<&str> = reasons.iter().filter_map(|r| r.as_deref()).collect();
+    assert_eq!(ends.len(), ROUNDS, "{ends:?}");
+    assert!(ends.iter().all(|r| *r == "user"), "{ends:?}");
     db.teardown().await;
 }

@@ -121,6 +121,26 @@ impl Venue {
         r
     }
 
+    /// Rejection of a command addressed to an account this venue does not execute.
+    pub fn reject_foreign(
+        &self,
+        cmd: &Value,
+        account_id: Uuid,
+        platform_account: &str,
+        now: DateTime<Utc>,
+    ) -> Value {
+        let mut r = self.report(
+            cmd["command_id"].as_str(),
+            &cmd["instrument"],
+            "entry",
+            "rejected",
+            now,
+        );
+        r.insert("account_id".into(), json!(account_id));
+        r.insert("platform_account".into(), json!(platform_account));
+        Self::with_reason(r, "order.platform_rejected")
+    }
+
     fn with_reason(mut r: Map<String, Value>, code: &str) -> Value {
         r.insert("reason_code".into(), json!(code));
         Value::Object(r)
@@ -542,5 +562,38 @@ mod tests {
             ),
             (Some("partially_filled"), Some(1))
         );
+    }
+
+    #[test]
+    fn in_tree_scenarios_parse() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios");
+        let bracket: Script = serde_json::from_str(
+            &std::fs::read_to_string(format!("{dir}/sunday-bracket.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(bracket.default, Behavior::Fill);
+        assert_eq!(bracket.price, "21450.25");
+        let reject: Script = serde_json::from_str(
+            &std::fs::read_to_string(format!("{dir}/sunday-reject.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            reject.default,
+            Behavior::Reject {
+                code: "order.platform_rejected".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_foreign_account_command_is_rejected_for_that_account() {
+        let v = Venue::new(Uuid::from_u128(1), "Sim101", Script::default());
+        let other = Uuid::from_u128(2);
+        let r = v.reject_foreign(&place("x", "buy", 1, "open", None), other, "Live1", now());
+        assert_eq!(r["status"], "rejected");
+        assert_eq!(r["reason_code"], "order.platform_rejected");
+        assert_eq!(r["account_id"], json!(other));
+        assert_eq!(r["platform_account"], "Live1");
+        assert_eq!(r["command_id"], "x");
     }
 }

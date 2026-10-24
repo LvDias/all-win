@@ -1,0 +1,6 @@
+{
+  "queue": [],
+  "default": { "kind": "reject", "code": "order.platform_rejected" },
+  "price": "21450.25",
+  "commission": null
+}

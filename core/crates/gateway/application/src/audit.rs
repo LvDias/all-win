@@ -146,10 +146,9 @@ fn reason(r: &ReasonEntry) -> Value {
 }
 
 /// `sync.flagged` per added reason and `sync.reason_resolved` per resolved one (`DetailsSync`).
-/// Per added reason: the audit entry `sync.flagged` and, in the same transaction, its
-/// notification event (registry code: the reason's own for the bracket reasons and a flatten
-/// that lost protection, else `sync.flagged`; Compasso/Esquadro pattern, S18 from_now). Per
-/// resolved reason: `sync.reason_resolved` (audit only).
+/// Per added reason: the audit entry `sync.flagged` and, for the bracket reasons and a flatten
+/// that lost protection, in the same transaction, a notification event typed with the reason's
+/// own registry code (S18 from_now). Per resolved reason: `sync.reason_resolved` (audit only).
 pub fn sync_entries(change: &SyncChange, at: DateTime<Utc>, refs: &Value) -> Vec<GatewayEvent> {
     let account = refs
         .get("account_id")
@@ -160,7 +159,11 @@ pub fn sync_entries(change: &SyncChange, at: DateTime<Utc>, refs: &Value) -> Vec
     for r in &change.added {
         let details = json!({ "sync_version": change.version, "reason": reason(r) });
         let audit = events::audit("sync.flagged", at, details.clone(), refs.clone());
-        let note = account.map(|a| {
+        // A reason notified as `sync.flagged` has no separate event: the audit entry of the same
+        // type is the notification source (S18 reads it; Brasa/Esquadro option (a)). Two
+        // payload shapes under one event type would break the audit consumer.
+        let own_code = r.code.notification_code() != "sync.flagged";
+        let note = account.filter(|_| own_code).map(|a| {
             events::notification(
                 r.code.notification_code(),
                 at,
@@ -184,23 +187,14 @@ pub fn sync_entries(change: &SyncChange, at: DateTime<Utc>, refs: &Value) -> Vec
     out
 }
 
-/// `sync.restored` (ADR-0004 §6 row 3): audit entry and its info notification.
+/// `sync.restored` (ADR-0004 §6 row 3): the audit entry, which is also the S18 notification
+/// source (no separate event of the same type).
 pub fn restored(
-    account: AccountId,
     sync_version: i64,
     connection: impl serde::Serialize,
     at: DateTime<Utc>,
     refs: Value,
 ) -> Vec<GatewayEvent> {
     let details = json!({ "sync_version": sync_version, "connection_id": connection });
-    let audit = events::audit("sync.restored", at, details.clone(), refs);
-    let note = events::notification(
-        "sync.restored",
-        at,
-        account,
-        json!({ "kind": "account", "id": account }),
-        audit.id,
-        details,
-    );
-    vec![audit, note]
+    vec![events::audit("sync.restored", at, details, refs)]
 }

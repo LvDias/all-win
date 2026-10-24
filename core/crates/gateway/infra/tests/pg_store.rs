@@ -179,6 +179,51 @@ async fn store_end_to_end() {
             .is_none(),
         "cross-user read"
     );
+    assert_eq!(
+        store
+            .venue_by_name(user, conn, "Sim101")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        v1[0].id
+    );
+    assert!(
+        store
+            .venue_by_name(user, conn, "Sim102")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        store
+            .venue_by_name(other, conn, "Sim101")
+            .await
+            .unwrap()
+            .is_none(),
+        "cross-user read"
+    );
+    assert_eq!(store.venues(user, &[v1[0].id]).await.unwrap()[0].0, conn);
+    assert!(
+        store.venues(other, &[v1[0].id]).await.unwrap().is_empty(),
+        "cross-user read"
+    );
+    assert_eq!(
+        store
+            .venues_of_connections(user, &[conn])
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        store
+            .venues_of_connections(other, &[conn])
+            .await
+            .unwrap()
+            .is_empty(),
+        "cross-user read"
+    );
 
     // commands: idempotent insert, open order, CAS mark_sent with its event, ack.
     let place = new_command(user, account, conn, 1, CommandKind::Place);

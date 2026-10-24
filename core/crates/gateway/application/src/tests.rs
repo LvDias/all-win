@@ -557,6 +557,14 @@ async fn rejected_command_flags_with_the_adapter_code() {
         (SyncState::OutOfSync, vec![SyncReason::CommandRejected])
     );
     let s = w.store.state();
+    // Every `sync.flagged` event is an audit envelope: a reason notified as `sync.flagged` has
+    // no notification event of the same type (the audit consumer would reject its shape).
+    assert!(
+        s.events
+            .iter()
+            .filter(|e| e.event_type == "sync.flagged")
+            .all(|e| e.payload.get("actor").is_some())
+    );
     let flagged = s
         .events
         .iter()
@@ -817,19 +825,18 @@ async fn flat_disconnect_then_matching_reconnect_is_restored_once() {
     w.reconnect_snapshot(&session2, json!([]), json!([]), t(4))
         .await;
     let s = w.store.state();
-    // One audit entry and its S18 notification, both typed with the registry code.
+    // One audit entry; it is also the S18 notification source (no second event of that type).
     let (restored, notes): (Vec<_>, Vec<_>) = s
         .events
         .iter()
         .filter(|e| e.event_type == "sync.restored")
         .partition(|e| e.payload.get("actor").is_some());
     assert_eq!(restored.len(), 1);
-    assert_eq!(notes.len(), 1);
+    assert!(notes.is_empty());
     assert_eq!(
         restored[0].payload["details"]["connection_id"],
         json!(session2.connection_id)
     );
-    assert_eq!(notes[0].payload["audit_event_id"], json!(restored[0].id));
     drop(s);
     assert_eq!(w.sync_state().0, SyncState::InSync);
 }
@@ -1156,4 +1163,54 @@ async fn l8_the_same_event_id_under_a_new_msg_id_is_stored_once() {
         IntakeOutcome::Duplicate
     );
     assert_eq!(w.store.state().reports.len(), 1);
+}
+
+/// The C1 events routing emits (Ferro's S7 fixtures, frozen 2026-10-24) are consumed as is.
+fn c1_fixture(name: &str, account: AccountId) -> CommandsRequested {
+    let path = format!("{}/fixtures/c1/{name}.json", env!("CARGO_MANIFEST_DIR"));
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    v["account_id"] = json!(account);
+    serde_json::from_value(v).unwrap()
+}
+
+#[tokio::test]
+async fn routing_c1_fixtures_are_consumed() {
+    for name in ["entry", "reverse-step1-close-leg", "reverse-step2-open-leg"] {
+        let w = World::new();
+        w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+        let ev = c1_fixture(name, w.account);
+        let out = ConsumeCommandsRequested::new(w.store.clone(), w.bindings.clone())
+            .handle(w.principal.user_id, &ev)
+            .await
+            .unwrap();
+        assert!(
+            matches!(out, CommandsOutcome::Enqueued { new: 1, .. }),
+            "{name}: {out:?}"
+        );
+        let s = w.store.state();
+        let stored = s
+            .commands
+            .get(&CommandId::from_uuid(ev.commands[0].command_id))
+            .unwrap();
+        let env: Value = serde_json::from_str(&stored.frame).unwrap();
+        let kind = env["payload"]["kind"].as_str().unwrap().to_owned();
+        assert_eq!(
+            env["payload"][&kind], ev.commands[0].body,
+            "{name}: body verbatim"
+        );
+        assert_eq!(stored.step, ev.commands[0].step, "{name}");
+    }
+}
+
+#[tokio::test]
+async fn a_place_whose_body_disagrees_on_position_effect_is_refused() {
+    let w = World::new();
+    w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    let mut ev = c1_fixture("entry", w.account);
+    ev.commands[0].body["position_effect"] = json!("reduce");
+    let out = ConsumeCommandsRequested::new(w.store.clone(), w.bindings.clone())
+        .handle(w.principal.user_id, &ev)
+        .await;
+    assert!(matches!(out, Err(crate::consume::ConsumeError::Invalid(_))));
+    assert!(w.store.state().commands.is_empty(), "nothing stored");
 }

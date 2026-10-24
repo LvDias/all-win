@@ -335,6 +335,28 @@ pub trait GatewayStore: Send + Sync {
         seq: i64,
     ) -> Result<Option<i64>, StoreError>;
 
+    /// ADR-0008 `resolve`: the platform account as reported on one of the user's connections.
+    async fn venue_by_name(
+        &self,
+        user_id: UserId,
+        connection: ConnectionId,
+        platform_account: &str,
+    ) -> Result<Option<VenueAccount>, StoreError>;
+
+    /// Venue accounts by id (unknown or another user's ids are absent).
+    async fn venues(
+        &self,
+        user_id: UserId,
+        ids: &[VenueAccountId],
+    ) -> Result<Vec<(ConnectionId, VenueAccount)>, StoreError>;
+
+    /// Every venue account reported on these connections.
+    async fn venues_of_connections(
+        &self,
+        user_id: UserId,
+        connections: &[ConnectionId],
+    ) -> Result<Vec<(ConnectionId, VenueAccount)>, StoreError>;
+
     /// Compare-and-set `pending → sent` with `sent_at`, committed before the socket write.
     /// `false` when the row is no longer pending.
     /// The events (`execution.command_sent`) are written in the same transaction.

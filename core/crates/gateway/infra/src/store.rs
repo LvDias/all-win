@@ -251,6 +251,16 @@ fn report_row(r: &PgRow) -> Result<(Option<Instrument>, ReportFact), StoreError>
     ))
 }
 
+fn venue_row(r: &PgRow) -> Result<VenueAccount, StoreError> {
+    Ok(VenueAccount {
+        id: VenueAccountId::from_uuid(r.try_get("id").map_err(db)?),
+        platform_account: r.try_get("platform_account").map_err(db)?,
+        kind: r.try_get("kind").map_err(db)?,
+        oco_location: r.try_get("oco_location").map_err(db)?,
+        previous_kind: None,
+    })
+}
+
 fn decimal(s: &str) -> Result<Decimal, StoreError> {
     Decimal::from_str(s).map_err(|_| StoreError::Other("invalid decimal".into()))
 }
@@ -429,6 +439,81 @@ impl GatewayStore for PgGatewayStore {
             ))
         })
         .transpose()
+    }
+
+    async fn venue_by_name(
+        &self,
+        user_id: UserId,
+        connection: ConnectionId,
+        platform_account: &str,
+    ) -> Result<Option<VenueAccount>, StoreError> {
+        let mut tx = self.begin_for(user_id).await?;
+        let row = sqlx::query(
+            "SELECT id, platform_account, kind, oco_location FROM gateway.venue_account
+             WHERE user_id = $1 AND connection_id = $2 AND platform_account = $3",
+        )
+        .bind(user_id.as_uuid())
+        .bind(connection.as_uuid())
+        .bind(platform_account)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        row.as_ref().map(venue_row).transpose()
+    }
+
+    async fn venues(
+        &self,
+        user_id: UserId,
+        ids: &[VenueAccountId],
+    ) -> Result<Vec<(ConnectionId, VenueAccount)>, StoreError> {
+        let ids: Vec<Uuid> = ids.iter().map(|i| i.as_uuid()).collect();
+        let mut tx = self.begin_for(user_id).await?;
+        let rows = sqlx::query(
+            "SELECT id, connection_id, platform_account, kind, oco_location FROM gateway.venue_account
+             WHERE user_id = $1 AND id = ANY($2) ORDER BY platform_account, id",
+        )
+        .bind(user_id.as_uuid())
+        .bind(&ids)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        rows.iter()
+            .map(|r| {
+                Ok((
+                    ConnectionId::from_uuid(r.try_get("connection_id").map_err(db)?),
+                    venue_row(r)?,
+                ))
+            })
+            .collect()
+    }
+
+    async fn venues_of_connections(
+        &self,
+        user_id: UserId,
+        connections: &[ConnectionId],
+    ) -> Result<Vec<(ConnectionId, VenueAccount)>, StoreError> {
+        let ids: Vec<Uuid> = connections.iter().map(|c| c.as_uuid()).collect();
+        let mut tx = self.begin_for(user_id).await?;
+        let rows = sqlx::query(
+            "SELECT id, connection_id, platform_account, kind, oco_location FROM gateway.venue_account
+             WHERE user_id = $1 AND connection_id = ANY($2) ORDER BY platform_account, id",
+        )
+        .bind(user_id.as_uuid())
+        .bind(&ids)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        rows.iter()
+            .map(|r| {
+                Ok((
+                    ConnectionId::from_uuid(r.try_get("connection_id").map_err(db)?),
+                    venue_row(r)?,
+                ))
+            })
+            .collect()
     }
 
     async fn mark_sent(

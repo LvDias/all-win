@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::venue::Venue;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SimConfig {
     pub url: String,
     /// Device token; never logged.
@@ -30,8 +30,35 @@ pub struct SimConfig {
     pub no_ack: bool,
     /// Drop the connection (no close frame) after this many commands, to test reconnects.
     pub drop_after_commands: Option<usize>,
+    /// With `drop_after_commands`: drop before acking the last command (its reports stay in
+    /// the outbox), so the Core retransmits the command and the venue answers `duplicate`.
+    pub drop_before_ack: bool,
     /// Close with 4100 ("Desconectar") after this many commands.
     pub user_disconnect_after_commands: Option<usize>,
+    /// More accounts announced in `hello` as `(platform_account, kind)`. Only the venue's
+    /// account executes; a command for any other account is logged and rejected.
+    pub extra_accounts: Vec<(String, String)>,
+}
+
+impl std::fmt::Debug for SimConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SimConfig")
+            .field("url", &self.url)
+            .field("token", &"***")
+            .field("instance_id", &self.instance_id)
+            .field("versions", &self.versions)
+            .field("kind", &self.kind)
+            .field("oco_location", &self.oco_location)
+            .field("no_ack", &self.no_ack)
+            .field("drop_after_commands", &self.drop_after_commands)
+            .field("drop_before_ack", &self.drop_before_ack)
+            .field(
+                "user_disconnect_after_commands",
+                &self.user_disconnect_after_commands,
+            )
+            .field("extra_accounts", &self.extra_accounts)
+            .finish()
+    }
 }
 
 impl SimConfig {
@@ -45,7 +72,9 @@ impl SimConfig {
             oco_location: "local".into(),
             no_ack: false,
             drop_after_commands: None,
+            drop_before_ack: false,
             user_disconnect_after_commands: None,
+            extra_accounts: Vec::new(),
         }
     }
 }
@@ -67,6 +96,8 @@ pub struct SimClient {
     outbox: Vec<(Uuid, String)>,
     pub commands_seen: usize,
     pub negotiated: Option<String>,
+    /// `account_id` → platform account of the announced non-venue accounts (from `welcome`).
+    foreign: Vec<(Uuid, String)>,
 }
 
 fn ts() -> String {
@@ -80,12 +111,33 @@ fn envelope(version: &str, kind: &str, payload: Value) -> (Uuid, String) {
 }
 
 impl SimClient {
+    /// The venue's reports for a command, or a rejection when it targets another account
+    /// (the Core must never send one: an `ERROR` line is the evidence that it did).
+    fn answer(&mut self, cmd: &Value) -> Vec<Value> {
+        let target = cmd["account_id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok());
+        match target {
+            Some(id) if id != self.venue.account_id => {
+                let name = self
+                    .foreign
+                    .iter()
+                    .find(|(a, _)| *a == id)
+                    .map_or_else(|| "unknown".to_owned(), |(_, n)| n.clone());
+                tracing::error!(account = %name, command_id = %cmd["command_id"], "command for a non-venue account");
+                vec![self.venue.reject_foreign(cmd, id, &name, Utc::now())]
+            }
+            _ => self.venue.on_command(cmd, Utc::now()),
+        }
+    }
+
     pub fn new(venue: Venue) -> Self {
         Self {
             venue,
             outbox: Vec::new(),
             commands_seen: 0,
             negotiated: None,
+            foreign: Vec::new(),
         }
     }
 
@@ -107,6 +159,12 @@ impl SimClient {
             .context("connect")?;
 
         let hello_version = cfg.versions.last().cloned().unwrap_or_else(|| "1.2".into());
+        let mut accounts = vec![
+            json!({"platform_account": self.venue.platform_account, "kind": cfg.kind, "oco_location": cfg.oco_location}),
+        ];
+        accounts.extend(cfg.extra_accounts.iter().map(|(name, kind)| {
+            json!({"platform_account": name, "kind": kind, "oco_location": cfg.oco_location})
+        }));
         let (_, hello) = envelope(
             &hello_version,
             "hello",
@@ -114,7 +172,7 @@ impl SimClient {
                 "instance_id": cfg.instance_id,
                 "adapter": {"type": "adapter_sim", "version": env!("CARGO_PKG_VERSION"), "build": "development"},
                 "supported_protocol_versions": cfg.versions,
-                "accounts": [{"platform_account": self.venue.platform_account, "kind": cfg.kind, "oco_location": cfg.oco_location}],
+                "accounts": accounts,
                 "pending_outbound": self.outbox.len(),
             }),
         );
@@ -148,6 +206,20 @@ impl SimClient {
                             {
                                 self.venue.account_id = id;
                             }
+                            self.foreign = v["payload"]["accounts"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .filter(|a| {
+                                    a["platform_account"] != self.venue.platform_account.as_str()
+                                })
+                                .filter_map(|a| {
+                                    let id = a["account_id"]
+                                        .as_str()
+                                        .and_then(|s| Uuid::parse_str(s).ok())?;
+                                    Some((id, a["platform_account"].as_str()?.to_owned()))
+                                })
+                                .collect();
                             tracing::info!(version = %version, "welcome");
                             self.negotiated = Some(version);
                             break heartbeat;
@@ -196,16 +268,24 @@ impl SimClient {
                                 }
                                 Some("command") => {
                                     self.commands_seen += 1;
+                                    let dropping = cfg.drop_after_commands.is_some_and(|n| self.commands_seen >= n);
+                                    if dropping && cfg.drop_before_ack {
+                                        // Executed, but neither acked nor reported on this socket.
+                                        for report in self.answer(&v["payload"]) {
+                                            self.outbox.push(envelope(&version, "execution_report", report));
+                                        }
+                                        return Ok(SimEnd::Dropped);
+                                    }
                                     if !cfg.no_ack {
                                         let (_, ack) = envelope(&version, "ack", json!({ "msg_ids": [msg_id] }));
                                         ws.send(Message::Text(ack.into())).await?;
                                     }
-                                    for report in self.venue.on_command(&v["payload"], Utc::now()) {
+                                    for report in self.answer(&v["payload"]) {
                                         let rep = envelope(&version, "execution_report", report);
                                         ws.send(Message::Text(rep.1.clone().into())).await?;
                                         self.outbox.push(rep);
                                     }
-                                    if cfg.drop_after_commands.is_some_and(|n| self.commands_seen >= n) {
+                                    if dropping {
                                         return Ok(SimEnd::Dropped);
                                     }
                                     if cfg.user_disconnect_after_commands.is_some_and(|n| self.commands_seen >= n) {
@@ -232,5 +312,18 @@ impl SimClient {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_never_prints_the_token() {
+        let cfg = SimConfig::new("ws://127.0.0.1:1/adapter/v1", "awd_secret-value");
+        let out = format!("{cfg:?}");
+        assert!(!out.contains("awd_secret-value"));
+        assert!(out.contains("***"));
     }
 }

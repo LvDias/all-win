@@ -4,6 +4,7 @@
 //! parameter. They are not compile-time checked macros so this module adds nothing to the shared
 //! `.sqlx` cache; the PostgreSQL integration tests cover every statement instead.
 
+pub mod failures;
 pub mod schema;
 pub mod store;
 pub mod ws;

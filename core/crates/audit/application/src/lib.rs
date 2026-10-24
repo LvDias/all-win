@@ -184,6 +184,23 @@ pub fn rule_for(code: &str) -> Option<CodeRule> {
         | "accounts.evaluation_restarted" => rule(Info, true),
         // No producer (and no producer test) yet: fail-closed.
         "accounts.opt_in_suspended" => rule(Info, false),
+        // S2 gateway (HTTP 5.3.0; s10 §2.1 report-status mapping). Not displayable until the
+        // producer's details contract test lands (Sonda E-S2-1): fail-closed.
+        "execution.filled" => rule(Executed, false),
+        "execution.partially_filled" => rule(Partial, false),
+        "execution.rejected" => rule(Rejected, false),
+        "execution.expired" => rule(Expired, false),
+        "execution.state_unknown" | "execution.undelivered" => rule(Unknown, false),
+        "execution.command_sent"
+        | "execution.order_received"
+        | "execution.order_working"
+        | "execution.cancelled"
+        | "execution.fill_corrected"
+        | "execution.unbound_activity"
+        | "connection.account_kind_changed"
+        | "sync.flagged"
+        | "sync.reason_resolved"
+        | "sync.restored" => rule(Info, false),
         _ => None,
     }
 }
@@ -500,6 +517,39 @@ mod tests {
     }
 
     #[test]
+    fn gateway_codes_have_rules_categories_and_fixed_outcomes() {
+        use Outcome::*;
+        let codes = [
+            ("execution.command_sent", Category::Execution, Info),
+            ("execution.order_received", Category::Execution, Info),
+            ("execution.order_working", Category::Execution, Info),
+            ("execution.filled", Category::Execution, Executed),
+            ("execution.partially_filled", Category::Execution, Partial),
+            ("execution.cancelled", Category::Execution, Info),
+            ("execution.rejected", Category::Execution, Rejected),
+            ("execution.expired", Category::Execution, Expired),
+            ("execution.state_unknown", Category::Execution, Unknown),
+            ("execution.undelivered", Category::Execution, Unknown),
+            ("execution.fill_corrected", Category::Execution, Info),
+            ("execution.unbound_activity", Category::Execution, Info),
+            (
+                "connection.account_kind_changed",
+                Category::Connection,
+                Info,
+            ),
+            ("sync.flagged", Category::Connection, Info),
+            ("sync.reason_resolved", Category::Connection, Info),
+            ("sync.restored", Category::Connection, Info),
+        ];
+        for (code, category, outcome) in codes {
+            let r = rule_for(code).unwrap_or_else(|| panic!("{code}"));
+            assert_eq!(r.outcome, OutcomeRule::Fixed(outcome), "{code}");
+            assert!(!r.safe_to_display, "{code}: fail-closed until E-S2-1");
+            assert_eq!(Category::of_code(code), Some(category), "{code}");
+        }
+    }
+
+    #[test]
     fn accounts_codes_are_config_with_account_columns() {
         let aid = Uuid::now_v7();
         let a = entry_for(&event(
@@ -544,9 +594,15 @@ mod tests {
             ),
             ("ingress.received", json!("x"), "payload is not an object"),
             (
-                "sync.cleared",
+                "other.code",
                 json!({"actor":"system","details":{}}),
                 "no category",
+            ),
+            // `sync.*` has a category since 5.3.0; a code without a rule still fails.
+            (
+                "sync.cleared",
+                json!({"actor":"system","details":{}}),
+                "no rule",
             ),
             (
                 "routing.not_a_code",

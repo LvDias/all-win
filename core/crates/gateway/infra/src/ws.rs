@@ -10,7 +10,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::http::HeaderMap;
+use axum::http::{Extensions, HeaderMap};
 use axum::response::Response;
 use axum::routing::get;
 use gateway_application::deliver::DeliverCommands;
@@ -33,6 +33,8 @@ const MAX_FRAME: usize = 256 * 1024;
 const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 const TICK: Duration = Duration::from_millis(250);
 const TOKEN_RECHECK: Duration = Duration::from_secs(60);
+/// Same default as the ingress token path (`INGRESS_IP_TOKEN_FAILURES_PER_MIN`).
+pub const DEFAULT_FAILURES_PER_MIN: u32 = 30;
 
 /// Signals to a live session task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +56,9 @@ pub struct GatewayRuntime {
     pub settings: SessionSettings,
     pub clock: Arc<dyn Clock>,
     controls: Mutex<HashMap<SessionId, mpsc::UnboundedSender<Control>>>,
+    /// Failed authentications per IP (Crivo g1).
+    failures: crate::failures::FailureBudget,
+    trust_forwarded_for: bool,
 }
 
 impl GatewayRuntime {
@@ -80,7 +85,17 @@ impl GatewayRuntime {
             settings,
             clock,
             controls: Mutex::new(HashMap::new()),
+            failures: crate::failures::FailureBudget::new(DEFAULT_FAILURES_PER_MIN),
+            trust_forwarded_for: false,
         }
+    }
+
+    /// The per-IP failure budget (the ingress's `ip_token_failures_per_min`) and whether the
+    /// last `X-Forwarded-For` hop is the client (behind the trusted proxy).
+    pub fn with_failure_budget(mut self, per_minute: u32, trust_forwarded_for: bool) -> Self {
+        self.failures = crate::failures::FailureBudget::new(per_minute);
+        self.trust_forwarded_for = trust_forwarded_for;
+        self
     }
 
     fn controls(
@@ -126,15 +141,29 @@ fn bearer(headers: &HeaderMap) -> Option<PresentedToken> {
 
 /// The device is authenticated BEFORE the upgrade (Guarita I2). A refused peer still gets the
 /// upgrade, only to receive close 4001 (the code the plugin acts on, ADR-0004 §2); nothing is
-/// read from it, and frames are capped at the protocol's 256 KiB either way.
+/// read from it, and frames are capped at the protocol's 256 KiB either way. Failed attempts
+/// are charged to the client IP; over budget, the token is not checked and the refusal is the
+/// same 4001 (Crivo g1/g2: identical on the wire for missing, malformed, unknown, wrong,
+/// revoked and throttled).
 async fn upgrade(
     State(rt): State<Arc<GatewayRuntime>>,
     headers: HeaderMap,
+    extensions: Extensions,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let auth = match bearer(&headers) {
-        Some(t) => rt.tokens.authenticate(&t).await,
-        None => Ok(None),
+    let ip = crate::failures::client_ip(&headers, &extensions, rt.trust_forwarded_for);
+    let now = std::time::Instant::now();
+    let auth = if ip.is_some_and(|ip| rt.failures.exhausted(ip, now)) {
+        Ok(None)
+    } else {
+        let auth = match bearer(&headers) {
+            Some(t) => rt.tokens.authenticate(&t).await,
+            None => Ok(None),
+        };
+        if let (Ok(None), Some(ip)) = (&auth, ip) {
+            rt.failures.record(ip, now);
+        }
+        auth
     };
     ws.max_frame_size(MAX_FRAME)
         .max_message_size(MAX_FRAME)
