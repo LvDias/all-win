@@ -373,7 +373,13 @@
         "help": "The account size is exactly between two standard sizes. Choose which one to copy stops and targets from; balance and limits use the account size."
       },
       "preset": {
-        "choose": "Choose a firm preset"
+        "choose": "Choose a firm preset",
+        "current": "Current preset: {label}",
+        "change": "Change the preset",
+        "manual": "Register without a preset",
+        "cancelChange": "Keep the current setup",
+        "backToCurrent": "Go back to the account's preset",
+        "attachNotice": "Attaching the preset suspends this account's automated orders until you review and choose."
       }
     },
     "optIn": {

@@ -14,7 +14,7 @@ import { OptInSection } from "./opt-in-section";
 export function OptInFormSection({ form, rule, staleNotice }: { form: UseFormReturn<AccountFormValues>; rule: RuleVersion; staleNotice: boolean }) {
   const t = useTranslations("accounts.optIn");
   const fieldError = useFieldError(form);
-  const [choice, ack, ruleId] = useWatch({ control: form.control, name: ["automationChoice", "automationAck", "automationRuleId"] });
+  const [choice, ack, ruleId, typedFirm] = useWatch({ control: form.control, name: ["automationChoice", "automationAck", "automationRuleId", "firmName"] });
   const stale = ruleId !== "" && ruleId !== rule.id;
   return (
     <OptInSection
@@ -30,7 +30,8 @@ export function OptInFormSection({ form, rule, staleNotice }: { form: UseFormRet
       choiceError={fieldError("automationChoice")}
       ackError={fieldError("automationAck")}
       notice={staleNotice ? t("ruleStale") : stale ? t("ruleChanged") : undefined}
-      firmFallback={t("automation.genericFirm")}
+      // The generic rule names no firm: the sentence uses the one the user typed ("da Apex"); "esta firma" only if none was typed.
+      firmFallback={typedFirm.trim() !== "" ? typedFirm.trim() : t("automation.genericFirm")}
     />
   );
 }

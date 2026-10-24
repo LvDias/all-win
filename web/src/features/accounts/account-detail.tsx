@@ -73,8 +73,12 @@ function OptInCard({ account, state, onReview }: { account: Account; state: OptI
   );
 }
 
-/** `presetSection` is composed by the page (features never import each other): the S16 preset panel. */
-export function AccountDetail({ accountId, stepUp, presetSection }: { accountId: string; stepUp?: StepUpRunner; presetSection?: ReactNode }) {
+/**
+ * Slots composed by the page (features never import each other): `presetSection` is the S16 preset panel, `alertSlot` a risk alert shown
+ * right under the header (above everything else, most severe first) and `riskSection` the risk card after "Dados da conta". A slot that is
+ * null, false or absent renders nothing (no empty wrapper).
+ */
+export function AccountDetail({ accountId, stepUp, presetSection, alertSlot, riskSection }: { accountId: string; stepUp?: StepUpRunner; presetSection?: ReactNode; alertSlot?: ReactNode; riskSection?: ReactNode }) {
   const t = useTranslations();
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
@@ -125,6 +129,8 @@ export function AccountDetail({ accountId, stepUp, presetSection }: { accountId:
         }
       />
 
+      {alertSlot ? <div>{alertSlot}</div> : null}
+
       {inactive ? <Alert tone="info">{t(a.lifecycle_state === "paused" ? "accounts.detail.pausedNote" : "accounts.detail.disabledNote")}</Alert> : null}
 
       <Card>
@@ -136,6 +142,8 @@ export function AccountDetail({ accountId, stepUp, presetSection }: { accountId:
           <p className="text-muted-foreground">{t("accounts.detail.createdAt", { date: formatDateTime(a.created_at, locale, "UTC") })}</p>
         </CardContent>
       </Card>
+
+      {riskSection}
 
       {presetSection}
 

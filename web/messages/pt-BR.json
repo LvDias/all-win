@@ -373,7 +373,13 @@
         "help": "O tamanho da conta fica exatamente entre dois tamanhos padrão. Escolha de qual copiar os stops e alvos; o saldo e os limites usam o tamanho da conta."
       },
       "preset": {
-        "choose": "Escolher um preset da firma"
+        "choose": "Escolher um preset da firma",
+        "current": "Preset atual: {label}",
+        "change": "Trocar o preset",
+        "manual": "Cadastrar sem preset",
+        "cancelChange": "Manter como está",
+        "backToCurrent": "Voltar ao preset da conta",
+        "attachNotice": "Ao anexar o preset, as ordens automatizadas desta conta ficam suspensas até você revisar e escolher."
       }
     },
     "optIn": {

@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { formatMoney } from "@/shared/format";
@@ -17,9 +17,10 @@ import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { ErrorState } from "@/shared/ui/error-state";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { BindingField, DataFields } from "./account-fields";
+import { BindingField, DataFields, FirmFields } from "./account-fields";
 import { useAccount, useOptInRules, useUpdateAccount } from "./api/use-accounts";
 import type { Account } from "./api/types";
+import type { PresetSlot } from "./api/preset-slot";
 import { OptInFormSection } from "./opt-in-form-section";
 import { accountFormSchema, bindingToValue, emptyAccountForm, fieldFromPointer, toUpdateBody, toWriteBody, type AccountFormValues } from "./lib/account-form";
 import { needsStepUp } from "./lib/opt-in";
@@ -27,7 +28,8 @@ import { useStepUpRunner, type StepUpRunner } from "./lib/use-step-up";
 import { PageHeader } from "@/shared/components/page-header";
 
 /** Edit page: the same fields as "Nova conta", as sections on one page (F§10.1: edit is not a stepper). */
-export function AccountFormPage({ accountId, stepUp }: { accountId: string; stepUp?: StepUpRunner }) {
+/** `preset`: the S16 picker, composed by the page (features do not import each other); without it the edit page keeps its current firm fields. */
+export function AccountFormPage({ accountId, stepUp, preset }: { accountId: string; stepUp?: StepUpRunner; preset?: PresetSlot }) {
   const t = useTranslations();
   const existing = useAccount(accountId);
   if (existing.isPending)
@@ -43,10 +45,12 @@ export function AccountFormPage({ accountId, stepUp }: { accountId: string; step
     const notFound = existing.error instanceof ApiError && existing.error.code === "common.not_found";
     return <ErrorState title={notFound ? t("accounts.detail.notFound") : t("accounts.detail.loadError")} code={code} onRetry={() => void existing.refetch()} />;
   }
-  return <AccountEditBody account={existing.data} stepUp={stepUp} />;
+  return <AccountEditBody account={existing.data} stepUp={stepUp} preset={preset} />;
 }
 
-function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepUpRunner }) {
+type FirmMode = "keep" | "preset" | "manual";
+
+function AccountEditBody({ account, stepUp, preset }: { account: Account; stepUp?: StepUpRunner; preset?: PresetSlot }) {
   const t = useTranslations();
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
@@ -80,7 +84,16 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
   const values = useWatch({ control: form.control }) as AccountFormValues;
 
   const prop = account.kind === "prop";
-  const rules = useOptInRules(null, null, prop);
+  // Firm, plan, phase and size: keep the account's preset, pick (or attach) another one, or go back to free text (Q40).
+  const hadPreset = account.preset_version_id !== undefined;
+  const [mode, setMode] = useState<FirmMode>(hadPreset ? "keep" : "manual");
+  const outcome = mode === "preset" ? (preset?.outcome ?? null) : null;
+  const presetReady = outcome?.valid === true;
+  const [presetError, setPresetError] = useState<string | undefined>();
+  const sameSelection = outcome !== null && outcome.presetVersionId === account.preset_version_id && (outcome.firmPlatform ?? "") === (account.firm_platform ?? "");
+  // The rules (and so the opt-in question) belong to the preset the account will have after this save, not to the generic text.
+  const rulesPreset = mode === "keep" ? { id: account.preset_version_id ?? null, platform: account.firm_platform ?? null } : mode === "preset" && presetReady ? { id: outcome.presetVersionId, platform: outcome.firmPlatform } : { id: null, platform: null };
+  const rules = useOptInRules(rulesPreset.id, rulesPreset.platform, prop && (mode !== "preset" || presetReady));
   const rule = rules.data?.automation;
   // Only a kind whose rule version this edit changes reopens a decision (contract 3.0.0); otherwise no section, no opt_ins.
   const differs = rule !== undefined && rule.id !== account.opt_ins.automation.current_rule_version_id;
@@ -88,14 +101,23 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
   const optInRequired = showSection && rule.firm_stance !== "allowed";
   const stale = values.automationRuleId !== "" && rule !== undefined && values.automationRuleId !== rule.id;
   const openPositionLock = account.has_open_position && account.binding !== undefined;
+  const outcomeSize = outcome?.sizeAmount;
+  useEffect(() => {
+    if (outcomeSize !== undefined) form.setValue("size", outcomeSize);
+  }, [form, outcomeSize]);
 
   async function submit(formValues: AccountFormValues) {
     setFormError(null);
     setConflict(false);
     const choice = showSection && !stale ? formValues.automationChoice : "";
     const merged: AccountFormValues = { ...formValues, automationChoice: choice, automationAck: choice === "" ? false : formValues.automationAck };
-    const parsed = accountFormSchema(locale, { kind: account.kind, optInRequired }).safeParse(merged);
+    const parsed = accountFormSchema(locale, { kind: account.kind, optInRequired, maxPositionCap: presetReady ? outcome.maxPositionCap : null }).safeParse(merged);
     form.clearErrors();
+    setPresetError(undefined);
+    if (mode === "preset" && !presetReady) {
+      setPresetError(t("accounts.form.errors.presetRequired"));
+      return;
+    }
     if (!parsed.success) {
       let first: keyof AccountFormValues | null = null;
       for (const issue of parsed.error.issues) {
@@ -109,8 +131,14 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
     }
     // A preset account stays on its preset: only the selection is sent, never the manual fields (that would switch it to manual
     // mode and drop the preset link and each value's origin). `rule_values` is omitted: the stored values are kept (contract).
-    const preset = account.preset_version_id ? { presetVersionId: account.preset_version_id, firmPlatform: account.firm_platform ?? null, ruleValues: {} } : undefined;
-    const body = toWriteBody(merged, { kind: account.kind, locale, automationRuleVersionId: rule?.id, ...(preset ? { preset } : {}) });
+    // A new selection sends its own rule_values; an unchanged one must not (422 accounts.rule_values_without_selection_change).
+    const sentPreset =
+      mode === "keep" && account.preset_version_id
+        ? { presetVersionId: account.preset_version_id, firmPlatform: account.firm_platform ?? null, ruleValues: {} }
+        : mode === "preset" && outcome
+          ? { presetVersionId: outcome.presetVersionId, firmPlatform: outcome.firmPlatform, ruleValues: sameSelection ? {} : outcome.ruleValues }
+          : undefined;
+    const body = toWriteBody(merged, { kind: account.kind, locale, automationRuleVersionId: rule?.id, ...(sentPreset ? { preset: sentPreset } : {}) });
     const send = (proof?: { challenge_id: string; code: string }) => update.mutateAsync(toUpdateBody({ ...body, ...(proof ? { step_up: proof } : {}) }, account.row_version));
     try {
       // Always through the runner: it sends without proof first and only opens the dialog when the Core asks, which also covers
@@ -138,6 +166,9 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
         if (error.code === "accounts.opt_in_not_applicable") return void rules.refetch();
         if (error.code === "common.version_conflict") return setConflict(true);
         const field = error.status === 400 ? null : fieldFromPointer(error.pointer);
+        if (field === "presetVersionId") return setPresetError(errorMessage(t, error).message);
+        // The edit contract has no profile_size (only create does), so this field is not on the page: if the Core ever answers about it, say so in the banner instead of failing silently.
+        if (field === "profileSize") return setFormError(errorMessage(t, error).message);
         if (field) {
           form.setError(field, { type: "server", message: errorMessage(t, error).message });
           if (field !== "automationChoice") form.setFocus(field);
@@ -173,9 +204,45 @@ function AccountEditBody({ account, stepUp }: { account: Account; stepUp?: StepU
         <p>{t("accounts.form.kind.fixed", { kind: t(`accounts.type.${account.kind}`) })}</p>
       </Card>
 
+      {prop && preset ? (
+        <Card className="space-y-3 p-4">
+          <h2 className="text-base font-semibold">{t("accounts.form.steps.firm")}</h2>
+          {mode === "keep" ? (
+            <>
+              <p className="text-sm">{t("accounts.form.preset.current", { label: `${account.firm_name ?? ""} · ${account.plan_name ?? ""} · ${account.phase ?? ""}` })}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={() => setMode("preset")}>{t("accounts.form.preset.change")}</Button>
+                <Button type="button" variant="ghost" onClick={() => setMode("manual")}>{t("accounts.form.preset.manual")}</Button>
+              </div>
+            </>
+          ) : mode === "preset" ? (
+            <>
+              {!hadPreset ? <Alert tone="warning">{t("accounts.form.preset.attachNotice")}</Alert> : null}
+              {preset.render({ switchToManual: () => setMode("manual"), error: presetError })}
+              <Button type="button" variant="ghost" onClick={() => setMode(hadPreset ? "keep" : "manual")}>{t("accounts.form.preset.cancelChange")}</Button>
+            </>
+          ) : (
+            <>
+              <FirmFields form={form} formId={formId} />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={() => setMode("preset")}>{t("accounts.form.preset.choose")}</Button>
+                {hadPreset ? <Button type="button" variant="ghost" onClick={() => setMode("keep")}>{t("accounts.form.preset.backToCurrent")}</Button> : null}
+              </div>
+            </>
+          )}
+        </Card>
+      ) : null}
+
       <Card className="space-y-4 p-4">
         <h2 className="text-base font-semibold">{t("accounts.form.sections.data")}</h2>
-        <DataFields form={form} formId={formId} editing withFirm={prop && !account.preset_version_id} preset={account.preset_version_id ? { sizeText: formatMoney(account.size_amount, locale), maxPositionCap: null } : undefined} />
+        <DataFields
+          form={form}
+          formId={formId}
+          editing
+          // Firm, plan and phase are edited once: in the "Firma e plano" card when the page gives the picker, here only otherwise.
+          withFirm={prop && mode === "manual" && !preset}
+          preset={mode === "keep" ? { sizeText: formatMoney(account.size_amount, locale), maxPositionCap: null } : outcome ? { sizeText: formatMoney(outcome.sizeAmount, locale), maxPositionCap: outcome.maxPositionCap } : undefined}
+        />
       </Card>
 
       <Card className="space-y-3 p-4">

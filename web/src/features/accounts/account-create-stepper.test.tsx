@@ -54,6 +54,19 @@ async function toOptIn(user: User) {
   await next(user); // platform is optional and left empty
 }
 
+
+describe("generic opt-in sentence (free text)", () => {
+  it("names the firm the user typed, not 'esta firma'", async () => {
+    const { handlers } = accountHandlers([]);
+    server.use(connectionsHandler, ...handlers);
+    const user = userEvent.setup();
+    renderAccounts(<AccountCreateStepper />);
+    await toOptIn(user);
+    expect(await screen.findByText(/Não encontramos uma regra oficial da Apex sobre automação\./)).toBeInTheDocument();
+    expect(screen.queryByText(/esta firma/)).not.toBeInTheDocument();
+  });
+});
+
 describe("AccountCreateStepper", () => {
   it("real account: Tipo → Dados → Conta na plataforma → Revisar, one idempotency key, no opt-in", async () => {
     const { handlers, calls } = accountHandlers([]);

@@ -10,6 +10,7 @@ import { AccountFormPage } from "./account-form";
 import { ids, propAccount } from "./testing/fixtures";
 import { accountHandlers, apiError } from "./testing/handlers";
 import type { StepUpRunner } from "./lib/use-step-up";
+import type { PresetOutcome, PresetSlot } from "./api/preset-slot";
 import { ruleVersion } from "./testing/fixtures";
 
 const connection = {
@@ -59,6 +60,106 @@ describe("AccountFormPage (edit)", () => {
     await waitFor(() => expect(calls.update).toHaveLength(1));
     expect(calls.update[0]).toMatchObject({ row_version: 7, display_name: "Renomeada", preset_version_id: presetVersion, firm_platform: "rithmic" });
     for (const forbidden of ["firm_name", "plan_name", "phase", "size_amount", "rule_values"]) expect(calls.update[0]).not.toHaveProperty(forbidden);
+  });
+
+  it("shows a 422 about a field the edit page does not render in the banner (never a silent save)", async () => {
+    const acc = propAccount({ row_version: 7 });
+    const { handlers } = accountHandlers([acc]);
+    server.use(http.put("/api/v1/accounts/:id", () => apiError(422, "accounts.profile_size_required", { pointer: "/profile_size" })), connectionsHandler, ...handlers);
+    const user = userEvent.setup();
+    renderAccounts(<AccountFormPage accountId={acc.id} />);
+    await screen.findByLabelText("Nome");
+    await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  describe("firm preset on the edit page", () => {
+    const current = "00000000-0000-4000-8000-0000000000c1";
+    const other = "00000000-0000-4000-8000-0000000000c2";
+    const outcome = (over: Partial<PresetOutcome> = {}): PresetOutcome => ({ presetVersionId: other, firmPlatform: null, label: "Apex · Plan A · Avaliação · 50K", sizeAmount: "50000.00", maxPositionCap: 60, maxPositionDefault: 60, ruleValues: { drawdown: { type: "static", amount: "2000.00" } }, valid: true, ...over });
+    // A stand-in for the S16 picker: renders the chosen outcome's label and lets the test switch to free text.
+    const slot = (o: PresetOutcome | null): PresetSlot => ({ outcome: o, render: ({ switchToManual, error }) => <div><span>picker aberto</span><button type="button" onClick={switchToManual}>sem preset (picker)</button>{error ? <p>{error}</p> : null}</div> });
+
+    it("asks the opt-in rules of the account's own preset, not the generic text", async () => {
+      const acc = propAccount({ preset_version_id: current, firm_platform: "rithmic" });
+      const { handlers } = accountHandlers([acc]);
+      const asked: string[] = [];
+      server.use(http.get("/api/v1/opt-in-rules", ({ request }) => { asked.push(new URL(request.url).search); return HttpResponse.json({ automation: ruleVersion({ id: ids.ruleAuto }), copy: ruleVersion({ id: ids.ruleCopy, kind: "copy" }) }); }), connectionsHandler, ...handlers);
+      renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(null)} />);
+      await screen.findByLabelText("Nome");
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+      expect(asked[0]).toContain(`preset_version_id=${current}`);
+      expect(asked[0]).toContain("firm_platform=rithmic");
+    });
+
+    it("attaches a preset to a free-text account: sends the preset and its rule values, no manual fields, and warns first", async () => {
+      const acc = propAccount({ row_version: 4, firm_name: "Apex", plan_name: "50K", phase: "Avaliação" });
+      const { handlers, calls } = accountHandlers([acc]);
+      server.use(connectionsHandler, ...handlers);
+      const user = userEvent.setup();
+      renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(outcome())} />);
+      await user.click(await screen.findByRole("button", { name: "Escolher um preset da firma" }));
+      expect(screen.getByText("Ao anexar o preset, as ordens automatizadas desta conta ficam suspensas até você revisar e escolher.")).toBeInTheDocument();
+      expect(screen.getByText("picker aberto")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+      await waitFor(() => expect(calls.update).toHaveLength(1));
+      expect(calls.update[0]).toMatchObject({ row_version: 4, preset_version_id: other, rule_values: { drawdown: { type: "static", amount: "2000.00" } } });
+      for (const manual of ["firm_name", "plan_name", "phase", "size_amount"]) expect(calls.update[0]).not.toHaveProperty(manual);
+    });
+
+    it("does not send rule_values when the picked preset is the account's own selection", async () => {
+      const acc = propAccount({ row_version: 4, preset_version_id: current, firm_platform: "rithmic" });
+      const { handlers, calls } = accountHandlers([acc]);
+      server.use(connectionsHandler, ...handlers);
+      const user = userEvent.setup();
+      renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(outcome({ presetVersionId: current, firmPlatform: "rithmic" }))} />);
+      await user.click(await screen.findByRole("button", { name: "Trocar o preset" }));
+      await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+      await waitFor(() => expect(calls.update).toHaveLength(1));
+      expect(calls.update[0]).toMatchObject({ preset_version_id: current, firm_platform: "rithmic" });
+      expect(calls.update[0]).not.toHaveProperty("rule_values");
+    });
+
+    it("blocks the save while the picked preset is not valid (a required value is unresolved)", async () => {
+      const acc = propAccount({ preset_version_id: current });
+      const { handlers, calls } = accountHandlers([acc]);
+      server.use(connectionsHandler, ...handlers);
+      const user = userEvent.setup();
+      renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(outcome({ valid: false }))} />);
+      await user.click(await screen.findByRole("button", { name: "Trocar o preset" }));
+      await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+      expect(await screen.findByText("Escolha um preset e resolva os valores obrigatórios.")).toBeInTheDocument();
+      expect(calls.update).toHaveLength(0);
+    });
+
+    it("free text shows ONE set of firm, plan and phase fields, and what is typed is what the PUT sends", async () => {
+      const acc = propAccount({ row_version: 4, firm_name: "Apex", plan_name: "50K", phase: "Avaliação" });
+      const { handlers, calls } = accountHandlers([acc]);
+      server.use(connectionsHandler, ...handlers);
+      const user = userEvent.setup();
+      renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(null)} />);
+      const firm = await screen.findByLabelText("Firma");
+      expect(screen.getAllByLabelText("Firma")).toHaveLength(1);
+      expect(document.querySelectorAll("[id$='-firmName']")).toHaveLength(1);
+      await user.clear(firm);
+      await user.type(firm, "Topstep");
+      await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+      await waitFor(() => expect(calls.update).toHaveLength(1));
+      expect(calls.update[0]).toMatchObject({ firm_name: "Topstep" });
+    });
+
+    it("goes back to free text: sends the manual fields and no preset", async () => {
+      const acc = propAccount({ row_version: 4, preset_version_id: current, firm_platform: "rithmic", firm_name: "Apex", plan_name: "Plan A", phase: "evaluation", size_amount: "50000.00" });
+      const { handlers, calls } = accountHandlers([acc]);
+      server.use(connectionsHandler, ...handlers);
+      const user = userEvent.setup();
+      renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(null)} />);
+      await user.click(await screen.findByRole("button", { name: "Cadastrar sem preset" }));
+      await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+      await waitFor(() => expect(calls.update).toHaveLength(1));
+      expect(calls.update[0]).toMatchObject({ firm_name: "Apex", plan_name: "Plan A", phase: "evaluation", size_amount: "50000" });
+      for (const preset of ["preset_version_id", "firm_platform", "rule_values"]) expect(calls.update[0]).not.toHaveProperty(preset);
+    });
   });
 
   it("shows the reload alert on a version conflict and keeps typed values", async () => {

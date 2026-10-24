@@ -63,7 +63,7 @@ export function stepSchemas(locale: Locale, current: { automationRuleId: string 
 }
 
 /** Whole-form schema, used by the edit page (sections, not steps). */
-export function accountFormSchema(locale: Locale, opts: { kind: AccountKind; optInRequired: boolean }) {
+export function accountFormSchema(locale: Locale, opts: { kind: AccountKind; optInRequired: boolean; maxPositionCap?: number | null }) {
   return z
     .object({
       kind: z.enum(["prop", "real", ""]),
@@ -90,7 +90,7 @@ export function accountFormSchema(locale: Locale, opts: { kind: AccountKind; opt
         if (v.planName === "") fail("planName", formErrorKeys.required);
         if (v.phase === "") fail("phase", formErrorKeys.required);
       }
-      refineData(v, locale, fail);
+      refineData(v, locale, fail, opts.maxPositionCap ?? null);
       if (opts.kind === "prop" && opts.optInRequired) refineOptIn(v, fail);
     });
 }

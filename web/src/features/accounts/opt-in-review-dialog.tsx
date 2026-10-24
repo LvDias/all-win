@@ -94,7 +94,7 @@ export function OptInReviewDialog({ account, kind, onClose, stepUp }: { account:
               ackError={errors.ack}
               notice={stale ? t("accounts.optIn.ruleStale") : undefined}
               previous={previous.data ? { rule: previous.data, label: t("accounts.optIn.review.previousText", { n: previous.data.version_number }) } : undefined}
-              firmFallback={t("accounts.optIn.automation.genericFirm")}
+              firmFallback={account.firm_name ?? t("accounts.optIn.automation.genericFirm")}
             />
           </>
         ) : null}
