@@ -81,7 +81,20 @@ Control above the table: `ToggleGroup` "Agrupar por" with three options: `Fonte`
 - **Total row** equals the summary figures and, by construction, the S21 totals strip for the same filter (AC-2). It is a data row from the Core, not the sum of the visible rows computed in the browser.
 - **Proportion bars (PO: ok, provided the exact number is always visible and color is not the only gain/loss signal):** in the P&L total cell a thin bar whose length is the group's `|net P&L total|` relative to the largest group, using `--pnl-positive` / `--pnl-negative`; the exact length is a Core value (`bar_ratio`); the bar is `aria-hidden` because the signed amount in text already carries everything. No categorical palette is needed in V1; the P&L bars need only the two P&L tokens, so no chart palette is requested from Aquarela now (F§4); a later chart slice asks for it.
 - Sort: default net P&L total, highest first (stated in the caption). Sortable headers: `Trades`, `P&L líquido total`, `P&L líquido médio`, `Taxa de acerto` (`button`, `aria-sort`). Groups never exceed a few dozen, so no paging.
-- Below `md`: each group is a `Card` (group name as title, net P&L total top-right, then a definition list in the same order); the `Total` card comes first. The cards keep the table's sort control (C§4, rule from Aquarela): a `Select` "Ordenar por" / "Sort by" above the cards with the same keys and directions as the sortable headers (`Trades`, `P&L líquido total`, `P&L líquido médio`, `Taxa de acerto`) and the same default; the `Total` card stays first whatever the sort.
+- Below `md`: each group is a `Card` (group name as title, net P&L total top-right, then a definition list in the same order); the `Total` card comes first. The cards keep the table's sort control (C§4, rule from Aquarela): a `Select` "Ordenar por" / "Sort by" above the cards with the same keys and directions as the sortable headers (`Trades`, `P&L líquido total`, `P&L líquido médio`, `Taxa de acerto`) and the same default; the `Total` card stays first whatever the sort. One option per key and direction (labels pt-BR / en; API `sort`, `order` in the last column):
+
+  | Option pt-BR | Option en | `sort`, `order` |
+  |---|---|---|
+  | P&L líquido total: maior primeiro *(padrão)* | Net P&L total: highest first *(default)* | `total_pnl`, `desc` |
+  | P&L líquido total: menor primeiro | Net P&L total: lowest first | `total_pnl`, `asc` |
+  | P&L líquido médio: maior primeiro | Avg net P&L: highest first | `avg_pnl`, `desc` |
+  | P&L líquido médio: menor primeiro | Avg net P&L: lowest first | `avg_pnl`, `asc` |
+  | Taxa de acerto: maior primeiro | Win rate: highest first | `win_rate`, `desc` |
+  | Taxa de acerto: menor primeiro | Win rate: lowest first | `win_rate`, `asc` |
+  | Trades: mais primeiro | Trades: most first | `trade_count`, `desc` |
+  | Trades: menos primeiro | Trades: fewest first | `trade_count`, `asc` |
+
+  Behavior as C§4 "Sorting below `md` (cards)": the visible label "Ordenar por" / "Sort by"; desktop and mobile share one sort state and send the same request (the browser does not sort money); changing it refetches the groups from the Core, as a header click does. **On change, focus stays on the `Select` and a polite live region says "Ordenado por {campo}, {direção}" / "Sorted by {field}, {direction}"** (for example "Ordenado por Taxa de acerto, maior primeiro" / "Sorted by Win rate, highest first"). The header buttons are not rendered below `md`.
 
 ### 3.4 Definitions (popovers; text from the PO's AC-1, no invented formulas)
 
