@@ -23,8 +23,8 @@ use chrono::{DateTime, Utc};
 use identity_application::ports::IdentityStore;
 use routing_application::commands::Protection;
 use routing_application::decisions::{
-    ActiveContract, BracketFor, Contract, DecideError, DecideInstruction, DecisionDeps, EntryGate,
-    EntryGatePorts, PositionFor,
+    ActiveContract, BracketFor, Contract, DecideError, DecideInstruction, DecisionDeps,
+    EXIT_RETRY_CAP, EntryGate, EntryGatePorts, ExitStallAlert, PositionFor, exit_stall_alert,
 };
 use routing_application::enterprise::{
     AccountId, InstructionId, LifecycleState, NotAccepted, OptIn, SourceId,
@@ -38,7 +38,7 @@ use shared_kernel::{Clock, UserId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::outbox::{EventConsumer, OutboxEvent, StartPolicy};
+use crate::outbox::{EventConsumer, OutboxEvent, RetryPolicy, StartPolicy};
 
 /// TODO(S5): read `accounts.account.command_ttl_ms` once the account exposes it. No operation
 /// changes it yet, so every account has the column default (Q16/T2).
@@ -132,6 +132,7 @@ pub fn wire(
         gates: gates.clone(),
         clock: clock.clone(),
     });
+    let consumer_clock = clock.clone();
     let deps = RoutingDeps {
         routes,
         accounts: directory,
@@ -150,7 +151,11 @@ pub fn wire(
     )));
     RoutingWiring {
         router,
-        decisions: Arc::new(DecisionConsumer(decide)),
+        decisions: Arc::new(DecisionConsumer {
+            decide,
+            clock: consumer_clock,
+            stalls: StallClock::default(),
+        }),
         gates,
     }
 }
@@ -159,7 +164,24 @@ pub fn wire(
 
 /// `ingress.received` → the instruction's routing decision (S7 AC-2…AC-8). Idempotent: a
 /// redelivery stores and requests nothing new.
-struct DecisionConsumer(DecideInstruction);
+///
+/// Retries (Architect, L4): never dead-lettered by count, backoff capped at 30 s. An exit waits
+/// for gate 6 as long as it takes (the 72 h terminal comes with HTTP 6.3.0) and alerts the
+/// operator at 60 s and at 5 min + every 30 min. An entry ends by its TTL inside the decision;
+/// past [`ENTRY_GIVE_UP`] (a port down, a defect) the proven entries are given up as
+/// `routing.expired` with `gates_unknown` in the user's audit, never executed late; what is not
+/// a proven entry, or cannot be classified, keeps waiting (Vigia M1/M2). Until the give-up is
+/// written the operator gets the stalled alert and the delivery is retried. A permanent error
+/// (malformed event) is alerted and dropped at once.
+struct DecisionConsumer {
+    decide: DecideInstruction,
+    clock: Arc<dyn Clock>,
+    stalls: StallClock,
+}
+
+/// Well past any entry TTL (1–60 s): a failing proven entry is given up after this
+/// (PROVISIONAL threshold).
+const ENTRY_GIVE_UP: chrono::Duration = chrono::Duration::minutes(10);
 
 #[async_trait]
 impl EventConsumer for DecisionConsumer {
@@ -178,20 +200,139 @@ impl EventConsumer for DecisionConsumer {
         1
     }
 
+    fn retry(&self) -> RetryPolicy {
+        RetryPolicy {
+            max_attempts: None,
+            max_backoff_secs: EXIT_RETRY_CAP.num_seconds(),
+        }
+    }
+
     async fn handle(&self, e: &OutboxEvent) -> Result<(), String> {
         let Some(id) = e.payload["refs"]["instruction_id"]
             .as_str()
             .and_then(|s| Uuid::parse_str(s).ok())
         else {
-            return Err("ingress.received without refs.instruction_id".into());
+            tracing::error!(event_id = %e.id, "ALERT routing.decide: ingress.received without refs.instruction_id; dropped");
+            return Ok(());
         };
-        match self.0.handle(e.user_id, InstructionId::from_uuid(id)).await {
-            Ok(_) => Ok(()),
-            // Purged, or not a V1 routable action: nothing to route, ever.
-            Err(DecideError::NotFound | DecideError::NotRoutable) => Ok(()),
-            // Entries waiting for gates are retried (they expire by their TTL, never late).
-            Err(err) => Err(err.to_string()),
+        let key = (e.user_id, id);
+        let err = match self
+            .decide
+            .handle(e.user_id, InstructionId::from_uuid(id))
+            .await
+        {
+            // Decided, or nothing to route ever (purged; not a V1 routable action).
+            Ok(_) | Err(DecideError::NotFound | DecideError::NotRoutable) => {
+                self.stalls.forget(key);
+                return Ok(());
+            }
+            Err(err) => err,
+        };
+        // `occurred_at` of `ingress.received` is the instruction's receipt.
+        let stalled = self.clock.now() - e.occurred_at;
+        let mut exits = err.waiting_exits();
+        let action = e.payload["details"]["action"].as_str().unwrap_or_default();
+        // A close (or a reverse's close leg) whose decision cannot run is an exit waiting too.
+        let mut waits = !exits.is_empty() || matches!(action, "close" | "reverse");
+        if stalled >= ENTRY_GIVE_UP {
+            // Classified from the stored instruction, failing closed toward waiting.
+            match self
+                .decide
+                .give_up_entries(e.user_id, InstructionId::from_uuid(id))
+                .await
+            {
+                Ok(given_up) => {
+                    if !given_up.expired.is_empty() {
+                        let account_ids: Vec<Uuid> = given_up
+                            .expired
+                            .iter()
+                            .map(|d| d.account_id.as_uuid())
+                            .collect();
+                        tracing::warn!(
+                            instruction_id = %id, account_ids = ?account_ids,
+                            stalled_s = stalled.num_seconds(), error = %err,
+                            "routing.decide gave up: entry expired with gates unknown, audited, never routed late"
+                        );
+                    }
+                    if !given_up.waiting {
+                        self.stalls.forget(key);
+                        return Ok(());
+                    }
+                    exits = given_up.waiting_accounts;
+                    waits = true;
+                }
+                Err(not_given_up) => {
+                    let previous = self.stalls.observe(key, stalled);
+                    if exit_stall_alert(previous, stalled).is_some() {
+                        tracing::error!(
+                            instruction_id = %id, stalled_s = stalled.num_seconds(),
+                            error = %not_given_up,
+                            "ALERT routing.decide stalled: not decided and not given up, retrying, never routed late"
+                        );
+                    }
+                    return Err(not_given_up.to_string());
+                }
+            }
         }
+        if waits {
+            let instrument = match &err {
+                DecideError::GatesUnavailable { contract, .. } => {
+                    format!("{} {}", contract.symbol, contract.month)
+                }
+                _ => e.payload["details"]["instrument_symbol"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+            };
+            let account_ids: Vec<Uuid> = exits.iter().map(AccountId::as_uuid).collect();
+            let previous = self.stalls.observe(key, stalled);
+            let stalled_s = stalled.num_seconds();
+            match exit_stall_alert(previous, stalled) {
+                Some(ExitStallAlert::Waiting) => tracing::warn!(
+                    instruction_id = %id, instrument = %instrument, account_ids = ?account_ids,
+                    stalled_s, error = %err, "ALERT exit decision waiting for account sync check"
+                ),
+                Some(ExitStallAlert::Stalled) => tracing::error!(
+                    instruction_id = %id, instrument = %instrument, account_ids = ?account_ids,
+                    stalled_s, error = %err, "ALERT exit decision stalled"
+                ),
+                None => {}
+            }
+            return Err(err.to_string());
+        }
+        Err(err.to_string())
+    }
+}
+
+/// The time since receipt at the previous attempt of each waiting exit, for the edge-triggered
+/// alert (Esmeril, WIP #13). Bounded: an entry goes when the instruction is decided or dropped,
+/// and past [`StallClock::CAPACITY`] the map is cleared (an alert may then repeat, never miss).
+#[derive(Default)]
+struct StallClock(std::sync::Mutex<HashMap<(UserId, Uuid), chrono::Duration>>);
+
+impl StallClock {
+    const CAPACITY: usize = 10_000;
+
+    /// Records `stalled` and returns the previous value, if this process saw one.
+    fn observe(&self, key: (UserId, Uuid), stalled: chrono::Duration) -> Option<chrono::Duration> {
+        let Ok(mut map) = self.0.lock() else {
+            return None;
+        };
+        if map.len() >= Self::CAPACITY && !map.contains_key(&key) {
+            map.clear();
+        }
+        map.insert(key, stalled)
+    }
+
+    fn forget(&self, key: (UserId, Uuid)) {
+        if let Ok(mut map) = self.0.lock() {
+            map.remove(&key);
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.0.lock().map_or(0, |m| m.len())
     }
 }
 
@@ -452,5 +593,27 @@ impl AccountRoutes for RoutesOfAccount {
             }
         }
         Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_stall_clock_returns_the_previous_value_and_stays_bounded() {
+        let clock = StallClock::default();
+        let key = (UserId::new_v7(), Uuid::now_v7());
+        let s = chrono::Duration::seconds;
+        assert_eq!(clock.observe(key, s(2)), None);
+        assert_eq!(clock.observe(key, s(32)), Some(s(2)));
+        clock.forget(key);
+        assert_eq!(clock.len(), 0, "a decided instruction is dropped");
+        for _ in 0..StallClock::CAPACITY {
+            clock.observe((UserId::new_v7(), Uuid::now_v7()), s(1));
+        }
+        assert_eq!(clock.len(), StallClock::CAPACITY);
+        clock.observe(key, s(1));
+        assert_eq!(clock.len(), 1, "past the capacity the map starts over");
     }
 }

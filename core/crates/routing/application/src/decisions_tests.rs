@@ -1342,3 +1342,139 @@ async fn only_waiting_exits_are_named_for_the_stall_alert() {
         .unwrap_err();
     assert!(err.waiting_exits().is_empty(), "an entry is not an exit");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Give-up (Vigia M1/M2): only a proven entry past its TTL expires, audited with gates unknown;
+// everything else keeps waiting.
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_proven_entry_given_up_expires_with_gates_unknown_and_is_audited() {
+    let mut w = world();
+    *w.facts.positions_down.lock().unwrap() = true;
+    w.now_ms = 600_000;
+    let err = w
+        .use_case()
+        .handle(w.user, w.instruction)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DecideError::Port(_)));
+
+    let g = w
+        .use_case()
+        .give_up_entries(w.user, w.instruction)
+        .await
+        .unwrap();
+    assert!(!g.waiting, "{g:?}");
+    let [d] = g.expired.as_slice() else {
+        panic!("one expired decision: {g:?}");
+    };
+    assert_eq!(
+        (d.account_id, d.outcome, d.reason_code),
+        (w.account, Outcome::Expired, Some("routing.expired"))
+    );
+    assert!(d.gates_unknown);
+    assert!(d.commands.is_none());
+    assert_eq!(d.position_before, None);
+    let events = w.store.events.lock().unwrap().clone();
+    let [(code, p)] = events.as_slice() else {
+        panic!("one audit event: {events:?}");
+    };
+    assert_eq!(*code, "routing.expired");
+    assert_eq!(p["refs"]["outcome"], "expired");
+    assert_eq!(p["details"]["gates_unknown"], true);
+    assert_eq!(w.store.legs(), [Leg::Whole]);
+
+    // Given up again: nothing new is stored or audited.
+    let again = w
+        .use_case()
+        .give_up_entries(w.user, w.instruction)
+        .await
+        .unwrap();
+    assert_eq!(again, GiveUp::default());
+    assert_eq!(w.store.events.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn what_is_not_a_proven_entry_is_never_given_up() {
+    let cases = [
+        ("close", None, None, None),
+        ("sell", None, Some(1), Some("reduce")),
+        ("cancel", None, None, None),
+        ("modify", None, None, None),
+    ];
+    for (action, side, quantity, effect) in cases {
+        let mut w = world();
+        w.set_instruction(action, side, quantity);
+        w.store
+            .instructions
+            .lock()
+            .unwrap()
+            .get_mut(&(w.user, w.instruction))
+            .unwrap()
+            .position_effect = effect.map(Into::into);
+        w.now_ms = 4 * 3_600_000;
+        let g = w
+            .use_case()
+            .give_up_entries(w.user, w.instruction)
+            .await
+            .unwrap();
+        assert!(g.waiting && g.expired.is_empty(), "{action}: {g:?}");
+        assert!(w.store.legs().is_empty(), "{action}");
+        assert!(w.store.events.lock().unwrap().is_empty(), "{action}");
+    }
+}
+
+#[tokio::test]
+async fn an_entry_before_its_ttl_is_never_given_up() {
+    let w = world();
+    let g = w
+        .use_case()
+        .give_up_entries(w.user, w.instruction)
+        .await
+        .unwrap();
+    assert_eq!((g.waiting, g.waiting_accounts), (true, vec![w.account]));
+    assert!(g.expired.is_empty());
+    assert!(w.store.legs().is_empty());
+}
+
+#[tokio::test]
+async fn a_reverse_is_given_up_only_after_its_close_leg() {
+    let mut w = world();
+    w.set_instruction("reverse", Some("short"), Some(1));
+    w.now_ms = 600_000;
+    // Not yet closed: the flatten is an exit, so the reverse keeps waiting.
+    let g = w
+        .use_case()
+        .give_up_entries(w.user, w.instruction)
+        .await
+        .unwrap();
+    assert_eq!((g.waiting, g.waiting_accounts), (true, vec![w.account]));
+    assert!(w.store.legs().is_empty());
+
+    // Closed at once against the opposite position while the gates are down; the opening is
+    // then given up, expired with the position the close leg read.
+    w.now_ms = 300;
+    w.set_position(3);
+    *w.gates.0[0].unavailable.lock().unwrap() = true;
+    assert!(w.use_case().handle(w.user, w.instruction).await.is_err());
+    assert_eq!(w.store.legs(), [Leg::Close]);
+    w.now_ms = 600_000;
+    *w.facts.positions_down.lock().unwrap() = true;
+    let g = w
+        .use_case()
+        .give_up_entries(w.user, w.instruction)
+        .await
+        .unwrap();
+    assert!(!g.waiting, "{g:?}");
+    let [d] = g.expired.as_slice() else {
+        panic!("one expired opening: {g:?}");
+    };
+    assert_eq!((d.leg, d.reason_code), (Leg::Open, Some("routing.expired")));
+    assert!(d.gates_unknown && d.commands.is_none());
+    assert_eq!(d.position_before, Some(3));
+    assert_eq!(w.store.legs(), [Leg::Close, Leg::Open]);
+    let events = w.store.events.lock().unwrap().clone();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].1["details"]["gates_unknown"], true);
+}

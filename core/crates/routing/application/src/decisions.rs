@@ -14,7 +14,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use routing_enterprise::decision::{self, Action, Decision, DecisionFacts, Outcome, Side};
-use routing_enterprise::{AccountId, InstructionId, RouteSignalType, SourceId, Uuid};
+use routing_enterprise::{AccountId, InstructionId, RouteSignalType, SignalTypes, SourceId, Uuid};
 use serde_json::{Map, Value, json};
 use shared_kernel::{Clock, UserId};
 
@@ -472,31 +472,9 @@ impl DecideInstruction {
             return Ok(Vec::new());
         };
 
-        let routes: Vec<_> = d
-            .routes
-            .list(
-                user,
-                RouteFilter {
-                    source_id: Some(i.source_id),
-                    account_id: None,
-                },
-            )
-            .await?
-            .into_iter()
-            .filter(|r| r.is_enabled)
-            .collect();
-        let accounts: HashMap<AccountId, AccountFacts> = d
-            .accounts
-            .accounts(user)
-            .await?
-            .into_iter()
-            .map(|a| (a.id, a))
-            .collect();
-        // An archived account has no routes left; a route without its account is skipped.
-        let targets: Vec<(&AccountFacts, _)> = routes
-            .iter()
-            .filter_map(|r| accounts.get(&r.account_id).map(|a| (a, &r.signal_types)))
-            .collect();
+        let owned = self.targets(user, &i).await?;
+        let targets: Vec<(&AccountFacts, &SignalTypes)> =
+            owned.iter().map(|(a, s)| (a, s)).collect();
         if targets.is_empty() {
             return Ok(Vec::new());
         }
@@ -761,6 +739,167 @@ impl DecideInstruction {
         }
         Ok(out)
     }
+
+    /// The accounts of the enabled routes of the instruction's source, with each route's
+    /// signal types. An archived account has no routes left; a route without its account is
+    /// skipped.
+    async fn targets(
+        &self,
+        user: UserId,
+        i: &InstructionToRoute,
+    ) -> Result<Vec<(AccountFacts, SignalTypes)>, DecideError> {
+        let d = &self.deps;
+        let routes = d
+            .routes
+            .list(
+                user,
+                RouteFilter {
+                    source_id: Some(i.source_id),
+                    account_id: None,
+                },
+            )
+            .await?;
+        let mut accounts: HashMap<AccountId, AccountFacts> = d
+            .accounts
+            .accounts(user)
+            .await?
+            .into_iter()
+            .map(|a| (a.id, a))
+            .collect();
+        Ok(routes
+            .into_iter()
+            .filter(|r| r.is_enabled)
+            .filter_map(|r| accounts.remove(&r.account_id).map(|a| (a, r.signal_types)))
+            .collect())
+    }
+
+    /// Gives up the proven entries of an instruction whose decision kept failing (the
+    /// consumer's horizon; Vigia M1/M2, Maestro 2026-10-24). A target account whose pending
+    /// part is an entry — a `buy`/`sell` opening, or a reverse's opening after its stored close
+    /// leg — and whose TTL has passed gets `routing.expired` with `gates_unknown` (HTTP 5.2.0),
+    /// stored and audited without reading the expected position or the entry gates; it never
+    /// places. Everything else keeps waiting (fail closed): an exit, a reverse not yet closed,
+    /// an action this engine does not classify, an entry before its TTL. An error (the
+    /// instruction, its routes, accounts or the store unreachable) gives up nothing.
+    pub async fn give_up_entries(
+        &self,
+        user: UserId,
+        instruction_id: InstructionId,
+    ) -> Result<GiveUp, DecideError> {
+        let d = &self.deps;
+        let unclassified = GiveUp {
+            expired: Vec::new(),
+            waiting: true,
+            waiting_accounts: Vec::new(),
+        };
+        // Purged, or another user's: nothing is left to decide.
+        let Some(i) = d.store.instruction(user, instruction_id).await? else {
+            return Ok(GiveUp::default());
+        };
+        let (Some(signal_type), Some(action)) = (
+            RouteSignalType::parse(&i.signal_type),
+            Action::from_instruction(
+                &i.action,
+                i.position_effect.as_deref(),
+                i.side.as_deref(),
+                i.quantity,
+            ),
+        ) else {
+            return Ok(unclassified);
+        };
+        if action == Action::Close {
+            return Ok(unclassified);
+        }
+        let Some(source) = d.sources.source(user, i.source_id).await? else {
+            return Ok(GiveUp::default());
+        };
+        let targets = self.targets(user, &i).await?;
+        let decided = d.store.decided(user, instruction_id).await?;
+        let now = d.clock.now();
+        let mut out = Vec::new();
+        let mut waiting = Vec::new();
+        for (account, signal_types) in &targets {
+            let legs: Vec<&DecidedLeg> = decided
+                .iter()
+                .filter(|x| x.account_id == account.id)
+                .collect();
+            if legs.iter().any(|x| matches!(x.leg, Leg::Whole | Leg::Open)) {
+                continue;
+            }
+            let close_leg = legs.iter().find(|x| x.leg == Leg::Close);
+            let (leg, position) = match (action, close_leg) {
+                (Action::Open { .. }, None) => (Leg::Whole, None),
+                (Action::Reverse { .. }, Some(close)) => (Leg::Open, Some(close.position_before)),
+                // A reverse not yet closed is an exit first.
+                _ => {
+                    waiting.push(account.id);
+                    continue;
+                }
+            };
+            let ttl = Duration::milliseconds(i64::from(account.sizing.command_ttl_ms));
+            if now < i.expiry_base + ttl {
+                waiting.push(account.id);
+                continue;
+            }
+            let facts = DecisionFacts {
+                account_active: account.lifecycle.is_none(),
+                platform_bound: account.platform_bound,
+                automation_not_accepted: source.automated
+                    && account.automation.not_accepted().is_some(),
+                signal_types: signal_types.clone(),
+                out_of_sync: true,
+                risk_blocked: true,
+                expired: true,
+                limits_pending: true,
+                has_bracket_profile: false,
+                multiplier: account.sizing.multiplier,
+                max_position: account.sizing.max_position_qty,
+                // Unread for a whole entry: 0 never reads as a position conflict.
+                position: position.unwrap_or(0),
+            };
+            let mut decision = decision::decide_expired_unanswered(signal_type, action, &facts);
+            // The close leg is already stored.
+            decision.steps.retain(|s| *s != decision::Step::Flatten);
+            if !decision.steps.is_empty() {
+                waiting.push(account.id);
+                continue;
+            }
+            out.push(record(
+                user,
+                &i,
+                &source,
+                account,
+                action,
+                &facts,
+                &decision,
+                now,
+                leg,
+                Known {
+                    month: i.contract_month.as_deref(),
+                    position,
+                    gates_unknown: true,
+                },
+                None,
+            ));
+        }
+        d.store.record(user, &out).await?;
+        Ok(GiveUp {
+            expired: out,
+            waiting: !waiting.is_empty(),
+            waiting_accounts: waiting,
+        })
+    }
+}
+
+/// What [`DecideInstruction::give_up_entries`] did.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GiveUp {
+    /// The entries expired now, stored and audited (`routing.expired`, `gates_unknown`).
+    pub expired: Vec<DecisionRecord>,
+    /// Some part of the instruction is not a proven expired entry and keeps waiting.
+    pub waiting: bool,
+    /// The accounts known to wait (empty when the instruction could not be classified).
+    pub waiting_accounts: Vec<AccountId>,
 }
 
 /// The decision's row and audit event (`DetailsRoutingDecision`, HTTP 5.1.0; s10 §5: actor
