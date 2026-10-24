@@ -126,8 +126,6 @@ pub trait AccountStore: Send + Sync {
         except: Option<AccountId>,
     ) -> Result<bool, StoreError>;
 
-    /// The account's evaluation target, if it has one (rule value `evaluation_profit_target`,
-    /// or its preset's; S13b).
     /// The account's `account_rule_value` rows (S16; empty for an unknown account).
     async fn rule_values(
         &self,
@@ -135,6 +133,8 @@ pub trait AccountStore: Send + Sync {
         id: AccountId,
     ) -> Result<Vec<AccountRuleValue>, StoreError>;
 
+    /// The account's evaluation target, if it has one (rule value `evaluation_profit_target`,
+    /// or its preset's; S13b).
     async fn evaluation_target(
         &self,
         user_id: UserId,
@@ -227,7 +227,8 @@ pub struct PresetRuleSet {
     pub firm_platform: Option<FirmPlatform>,
     pub rules: accounts_enterprise::preset_values::PresetRules,
     /// The same rules as the contract's `PresetRules` (without the release files' quotes), shown
-    /// as `preset_value` / the diff's preset values.
+    /// as `preset_value` / the diff's preset values. Display only: no decision reads it; every
+    /// rule decision uses the typed `rules`.
     pub wire: serde_json::Value,
 }
 
