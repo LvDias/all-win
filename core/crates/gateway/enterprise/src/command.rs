@@ -119,6 +119,9 @@ pub struct DeliveryContext {
     /// Outside production the bound platform account is now `live`/`unknown` (ADR-0008 §3.6;
     /// Esquadro C-c): a pending command is refused at once, exits included.
     pub refused_by_environment: bool,
+    /// The account is out of sync (Q14): pending position-increasing commands are not sent
+    /// (Esquadro Q3 on the gateway review); exits still go (P1).
+    pub account_out_of_sync: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,6 +150,9 @@ pub enum Delivery {
     Undeliver,
     /// Environment guard: `rejected` + `command.account_not_simulation`, `sync.command_rejected`.
     Refuse,
+    /// A pending position-increasing command on an out-of-sync account: `expired`, never sent,
+    /// audited with `routing.out_of_sync`; no new reason (the account is already flagged).
+    ExpireOutOfSync,
     /// Acked or final: nothing to deliver.
     Done,
 }
@@ -210,6 +216,12 @@ impl Command {
             && self.depends_on.is_some()
     }
 
+    /// `place` with `position_effect: open` (an entry or the opening leg of a reverse). A
+    /// `modify` of an entry is not issued in V1 (routing emits flatten and place only).
+    pub fn increases_position(&self) -> bool {
+        self.kind == CommandKind::Place && self.position_effect == Some(PositionEffect::Open)
+    }
+
     pub fn is_reduce(&self) -> bool {
         self.position_effect == Some(PositionEffect::Reduce)
     }
@@ -241,6 +253,9 @@ impl Command {
     fn pending_delivery(&self, now: DateTime<Utc>, ctx: &DeliveryContext) -> Delivery {
         if ctx.refused_by_environment {
             return Delivery::Refuse;
+        }
+        if ctx.account_out_of_sync && self.increases_position() {
+            return Delivery::ExpireOutOfSync;
         }
         if self.expired_at(now) {
             if !self.is_reverse_opening_leg() {
@@ -356,6 +371,7 @@ mod tests {
             prerequisite: Prerequisite::None,
             other_sync_reason_open: false,
             refused_by_environment: false,
+            account_out_of_sync: false,
         }
     }
 
@@ -601,6 +617,35 @@ mod tests {
             entry().delivery(t(9_000), &refused_no_map),
             Delivery::Refuse
         );
+    }
+
+    #[test]
+    fn out_of_sync_expires_pending_entries_but_exits_still_go() {
+        let flagged = DeliveryContext {
+            account_out_of_sync: true,
+            other_sync_reason_open: true,
+            ..ready()
+        };
+        assert_eq!(entry().delivery(t(1), &flagged), Delivery::ExpireOutOfSync);
+        assert_eq!(
+            reverse_open().delivery(t(1), &flagged),
+            Delivery::ExpireOutOfSync
+        );
+        assert_eq!(flatten().delivery(t(1), &flagged), Delivery::Send);
+        let reduce = Command::new_pending(
+            id(9),
+            CommandKind::Place,
+            Some(PositionEffect::Reduce),
+            None,
+            None,
+            t(0),
+        )
+        .unwrap();
+        assert_eq!(reduce.delivery(t(1), &flagged), Delivery::Send);
+        // Already sent: never re-decided by the pending rules.
+        let mut sent = entry();
+        sent.mark_sent(t(1)).unwrap();
+        assert_eq!(sent.delivery(t(2), &flagged), Delivery::Send);
     }
 
     #[test]

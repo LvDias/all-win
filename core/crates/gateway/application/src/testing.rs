@@ -5,11 +5,11 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use gateway_enterprise::command::CommandState;
+use gateway_enterprise::command::{CommandKind, CommandState};
 use gateway_enterprise::ids::{AccountId, CommandId, ConnectionId, VenueAccountId};
 use gateway_enterprise::instrument::Instrument;
 use gateway_enterprise::position::ExpectedPosition;
-use gateway_enterprise::report::{FillOperation, ReportFact};
+use gateway_enterprise::report::{ChildRole, FillOperation, ReportFact, ReportStatus};
 use gateway_enterprise::sync::AccountSync;
 use shared_kernel::{Money, UserId};
 use uuid::Uuid;
@@ -33,6 +33,8 @@ pub struct StoreState {
     pub outbound: Vec<OutboundMessage>,
     pub receipts: HashSet<(ConnectionId, Uuid)>,
     pub reports: Vec<(AccountId, Option<Instrument>, ReportFact)>,
+    /// Arrival time of each report (`occurred_at` here), parallel to `reports`.
+    pub report_times: Vec<DateTime<Utc>>,
     pub event_ids: HashSet<Uuid>,
     pub fills: HashSet<(AccountId, String)>,
     pub sync: HashMap<AccountId, AccountSync>,
@@ -119,12 +121,15 @@ impl GatewayStore for FakeStore {
         connection: ConnectionId,
     ) -> Result<Vec<StoredCommand>, StoreError> {
         let s = self.state();
-        Ok(s.command_order
-            .iter()
-            .filter_map(|id| s.commands.get(id))
+        // Same order as the PG store: created_at, then msg_id (Grosa H1).
+        let mut v: Vec<StoredCommand> = s
+            .commands
+            .values()
             .filter(|c| c.connection_id == connection && c.command.state.awaits_ack())
             .cloned()
-            .collect())
+            .collect();
+        v.sort_by_key(|c| (c.command.created_at, c.msg_id));
+        Ok(v)
     }
 
     async fn command(
@@ -277,14 +282,75 @@ impl GatewayStore for FakeStore {
         &self,
         _user_id: UserId,
         account: AccountId,
-    ) -> Result<Vec<(Instrument, ReportFact)>, StoreError> {
+    ) -> Result<Vec<(Instrument, ReportFact, Option<CommandKind>)>, StoreError> {
+        let s = self.state();
+        Ok(s.reports
+            .iter()
+            .filter(|(a, _, _)| *a == account)
+            .filter_map(|(_, i, f)| {
+                let kind = f
+                    .command_id
+                    .and_then(|c| s.commands.get(&c))
+                    .map(|c| c.command.kind);
+                i.clone().map(|i| (i, f.clone(), kind))
+            })
+            .collect())
+    }
+
+    async fn receipt_known(
+        &self,
+        _user_id: UserId,
+        connection: ConnectionId,
+        msg_id: Uuid,
+    ) -> Result<bool, StoreError> {
+        Ok(self.state().receipts.contains(&(connection, msg_id)))
+    }
+
+    async fn command_by_msg(
+        &self,
+        _user_id: UserId,
+        connection: ConnectionId,
+        msg_id: Uuid,
+    ) -> Result<Option<StoredCommand>, StoreError> {
+        Ok(self
+            .state()
+            .commands
+            .values()
+            .find(|c| c.connection_id == connection && c.msg_id == msg_id)
+            .cloned())
+    }
+
+    async fn protective_reports_since(
+        &self,
+        _user_id: UserId,
+        account: AccountId,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<(CommandId, ChildRole, ReportStatus)>, StoreError> {
+        let s = self.state();
+        Ok(s.reports
+            .iter()
+            .zip(s.report_times.iter())
+            .filter(|((a, _, f), at)| {
+                *a == account && **at >= since && f.child_role.is_some_and(ChildRole::is_protective)
+            })
+            .filter_map(|((_, _, f), _)| Some((f.command_id?, f.child_role?, f.status)))
+            .collect())
+    }
+
+    async fn position_before(
+        &self,
+        _user_id: UserId,
+        account: AccountId,
+        instrument: &Instrument,
+        seq: i64,
+    ) -> Result<Option<i64>, StoreError> {
         Ok(self
             .state()
             .reports
             .iter()
-            .filter(|(a, _, _)| *a == account)
-            .filter_map(|(_, i, f)| i.clone().map(|i| (i, f.clone())))
-            .collect())
+            .filter(|(a, i, f)| *a == account && i.as_ref() == Some(instrument) && f.seq < seq)
+            .filter_map(|(_, _, f)| f.position_after)
+            .next_back())
     }
 
     async fn command_reports(
@@ -374,6 +440,7 @@ impl GatewayStore for FakeStore {
             }
             s.reports
                 .push((report.account_id, report.instrument.clone(), fact));
+            s.report_times.push(report.occurred_at);
         }
         for t in work.commands {
             if let Some(c) = s.commands.get_mut(&t.id) {

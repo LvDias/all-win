@@ -5,14 +5,17 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use gateway_enterprise::command::CommandState;
 use gateway_enterprise::protocol::ProtocolVersion;
+use gateway_enterprise::sync::{ReasonDetails, SyncReason};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::intake::{HandleExecutionReport, IntakeError};
 use gateway_enterprise::ids::AccountId;
 
-use crate::ports::{DeferredInbound, GatewayStore, UnitOfWork};
+use crate::deliver::{Finish, finish};
+use crate::ports::{DeferredInbound, GatewayStore, StoreError, UnitOfWork};
 use crate::session::Session;
 use crate::snapshot::{HandlePositionSnapshot, SnapshotError};
 use crate::wire::{self, Ack, Envelope, ExecutionReport, PositionSnapshot};
@@ -52,6 +55,17 @@ pub struct FrameOutcome {
     pub close: Option<(CloseCode, &'static str)>,
     /// Run a delivery pass (a reconnect snapshot was evaluated).
     pub deliver: bool,
+    /// An adapter `error` to log and alert on (code and ref only, never `detail`).
+    pub alert: Option<AdapterAlert>,
+}
+
+/// Operational alert: the adapter refused a Core frame (a Core bug, ADR-0004 §5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdapterAlert {
+    pub code: String,
+    pub ref_msg_id: Option<Uuid>,
+    /// The ref is a Core command (now `failed`, account flagged).
+    pub command: bool,
 }
 
 impl FrameOutcome {
@@ -136,10 +150,11 @@ impl HandleFrame {
         let Ok(env) = serde_json::from_value::<Envelope>(value) else {
             return FrameOutcome::reply(error_frame(v, "protocol.invalid_message", ref_id, now));
         };
-        // A frame from a newer minor than the session's is refused without ack (rollback, §9).
-        let accepted =
-            ProtocolVersion::parse(&env.protocol_version).is_ok_and(|e| v.accepts_envelope(e));
-        if !accepted {
+        // §9 rollback rule (Grosa M5): a frame from another minor is accepted when its type exists
+        // in the negotiated version; the full schema has already validated its payload.
+        let known_major =
+            ProtocolVersion::parse(&env.protocol_version).is_ok_and(|e| e.same_major(v));
+        if !known_major || !type_exists(&env.kind, v) {
             return FrameOutcome::reply(error_frame(
                 v,
                 "protocol.unsupported_value",
@@ -147,16 +162,14 @@ impl HandleFrame {
                 now,
             ));
         }
+        let invalid =
+            |id| FrameOutcome::reply(error_frame(v, "protocol.invalid_message", Some(id), now));
         match env.kind.as_str() {
-            "heartbeat" => FrameOutcome::default(),
+            "heartbeat" | "risk_state" => FrameOutcome::default(),
+            "error" => self.adapter_error(session, &env, now).await,
             "ack" => {
                 let Ok(ack) = serde_json::from_value::<Ack>(env.payload) else {
-                    return FrameOutcome::reply(error_frame(
-                        v,
-                        "protocol.invalid_message",
-                        Some(env.msg_id),
-                        now,
-                    ));
+                    return invalid(env.msg_id);
                 };
                 session.acked(&ack.msg_ids);
                 match self
@@ -169,77 +182,86 @@ impl HandleFrame {
                     Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
                 }
             }
+            "execution_report" | "position_snapshot" | "risk_event" | "instruction"
+            | "trade_completed" | "notification_read" => self.reliable(session, env, now).await,
+            // `hello` after the handshake, or a C→A type sent by the adapter.
+            _ => FrameOutcome::close(CloseCode::ProtocolViolation, "unexpected_type"),
+        }
+    }
+
+    /// Reliable A→C frames. A known `(connection_id, msg_id)` is acked at once, before any
+    /// mapping check, so a retransmission after a lost ack never loops (Grosa M4).
+    async fn reliable(&self, session: &Session, env: Envelope, now: DateTime<Utc>) -> FrameOutcome {
+        let v = session.version;
+        let ack = || FrameOutcome::reply(ack_frame(v, &[env.msg_id], now));
+        let invalid = || {
+            FrameOutcome::reply(error_frame(
+                v,
+                "protocol.invalid_message",
+                Some(env.msg_id),
+                now,
+            ))
+        };
+        match self
+            .store
+            .receipt_known(session.user_id, session.connection_id, env.msg_id)
+            .await
+        {
+            Ok(true) => return ack(),
+            Ok(false) => {}
+            Err(_) => return FrameOutcome::close(CloseCode::Normal, "intake_retry"),
+        }
+        match env.kind.as_str() {
             "execution_report" => {
                 let Ok(report) = serde_json::from_value::<ExecutionReport>(env.payload.clone())
                 else {
-                    return FrameOutcome::reply(error_frame(
-                        v,
-                        "protocol.invalid_message",
-                        Some(env.msg_id),
-                        now,
-                    ));
+                    return invalid();
                 };
                 match self
                     .intake
                     .handle(session, env.msg_id, &report, &env.payload, now)
                     .await
                 {
-                    Ok(_) => FrameOutcome::reply(ack_frame(v, &[env.msg_id], now)),
-                    Err(IntakeError::Invalid(_)) => FrameOutcome::reply(error_frame(
-                        v,
-                        "protocol.invalid_message",
-                        Some(env.msg_id),
-                        now,
-                    )),
+                    Ok(_) => ack(),
+                    Err(IntakeError::Invalid(_) | IntakeError::Store(StoreError::Rejected(_))) => {
+                        invalid()
+                    }
                     Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
                 }
             }
             "position_snapshot" => {
                 let Ok(snapshot) = serde_json::from_value::<PositionSnapshot>(env.payload) else {
-                    return FrameOutcome::reply(error_frame(
-                        v,
-                        "protocol.invalid_message",
-                        Some(env.msg_id),
-                        now,
-                    ));
+                    return invalid();
                 };
                 match self
                     .snapshot
-                    .handle(session, env.msg_id, &snapshot, now)
+                    .handle(session, env.msg_id, env.sent_at, &snapshot, now)
                     .await
                 {
                     Ok(_) => FrameOutcome {
                         replies: vec![ack_frame(v, &[env.msg_id], now)],
                         close: None,
                         deliver: true,
+                        alert: None,
                     },
-                    Err(SnapshotError::Invalid(_)) => FrameOutcome::reply(error_frame(
-                        v,
-                        "protocol.invalid_message",
-                        Some(env.msg_id),
-                        now,
-                    )),
+                    Err(
+                        SnapshotError::Invalid(_) | SnapshotError::Store(StoreError::Rejected(_)),
+                    ) => invalid(),
                     Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
                 }
             }
-            // Reliable A→C messages whose Core consumer is a later slice (S13/S15 risk, S18
-            // notifications, S19 master input, S21 trades): stored and acked in one transaction
-            // (ack = durably received, Esquadro). The owning slice consumes them later; a stored
-            // `instruction` is never routed late (its consumer expires it by TTL).
-            "risk_event" | "instruction" | "trade_completed" | "notification_read" => {
+            // Store-and-ack for types whose consumer is a later slice (Esquadro). The account id is
+            // kept only when it is in this session's mapping (Grosa M10); consumers re-verify.
+            _ => {
                 let account_id = env
                     .payload
                     .get("account_id")
                     .and_then(Value::as_str)
                     .and_then(|s| Uuid::parse_str(s).ok())
-                    .map(AccountId::from_uuid);
+                    .map(AccountId::from_uuid)
+                    .filter(|a| session.mapped(*a).is_some());
                 let Ok(version) = ProtocolVersion::parse(&env.protocol_version) else {
-                    return FrameOutcome::reply(error_frame(
-                        v,
-                        "protocol.invalid_message",
-                        Some(env.msg_id),
-                        now,
-                    ));
+                    return invalid();
                 };
                 let work = UnitOfWork {
                     receipt: Some((session.connection_id, env.msg_id)),
@@ -255,14 +277,107 @@ impl HandleFrame {
                     ..UnitOfWork::default()
                 };
                 match self.store.commit(session.user_id, work).await {
-                    Ok(_) => FrameOutcome::reply(ack_frame(v, &[env.msg_id], now)),
+                    Ok(_) => ack(),
+                    // A deterministic refusal (e.g. a token-shaped value): never a retry loop (L3).
+                    Err(StoreError::Rejected(_)) => invalid(),
                     Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
                 }
             }
-            // Latest-value-wins display data: nothing to store in S2.
-            "risk_state" => FrameOutcome::default(),
-            // `hello` after the handshake, or a C→A type sent by the adapter.
-            _ => FrameOutcome::close(CloseCode::ProtocolViolation, "unexpected_type"),
         }
+    }
+
+    /// An `error` from the adapter (Esquadro H2): logged by code and ref only, never acked, the
+    /// session stays open. When it refers to a Core command, that frame got a definitive answer:
+    /// the command is `failed` at once (no more retransmission), audited as `execution.rejected`,
+    /// and the account is flagged `sync.command_rejected`. Any other ref: alert only.
+    async fn adapter_error(
+        &self,
+        session: &Session,
+        env: &Envelope,
+        now: DateTime<Utc>,
+    ) -> FrameOutcome {
+        let code = env
+            .payload
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or("protocol.unknown")
+            .to_owned();
+        let Some(ref_id) = env
+            .payload
+            .get("ref_msg_id")
+            .and_then(Value::as_str)
+            .and_then(|s| Uuid::parse_str(s).ok())
+        else {
+            return FrameOutcome {
+                alert: Some(AdapterAlert {
+                    code,
+                    ref_msg_id: None,
+                    command: false,
+                }),
+                ..FrameOutcome::default()
+            };
+        };
+        let stored = match self
+            .store
+            .command_by_msg(session.user_id, session.connection_id, ref_id)
+            .await
+        {
+            Ok(s) => s,
+            Err(_) => return FrameOutcome::close(CloseCode::Normal, "intake_retry"),
+        };
+        let Some(stored) = stored else {
+            return FrameOutcome {
+                alert: Some(AdapterAlert {
+                    code,
+                    ref_msg_id: Some(ref_id),
+                    command: false,
+                }),
+                ..FrameOutcome::default()
+            };
+        };
+        let refs = crate::audit::refs(
+            stored.account_id,
+            session
+                .mapped(stored.account_id)
+                .map(|m| m.display_name.as_str()),
+            Some(stored.instruction_id),
+        );
+        let outcome = Finish {
+            to: CommandState::Failed,
+            reason: Some((
+                SyncReason::CommandRejected,
+                ReasonDetails {
+                    command_id: Some(stored.command.id),
+                    adapter_reason_code: Some(code.clone()),
+                    ..ReasonDetails::default()
+                },
+            )),
+            events: vec![crate::events::audit(
+                "execution.rejected",
+                now,
+                json!({ "origin": "all_win", "platform_reason": code }),
+                refs.clone(),
+            )],
+        };
+        let alert = Some(AdapterAlert {
+            code,
+            ref_msg_id: Some(ref_id),
+            command: true,
+        });
+        match finish(&*self.store, &stored, outcome, &refs, now).await {
+            Ok(()) => FrameOutcome {
+                alert,
+                ..FrameOutcome::default()
+            },
+            Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
+        }
+    }
+}
+
+/// Whether an A→C (or shared) type exists in a negotiated version (§9).
+fn type_exists(kind: &str, v: ProtocolVersion) -> bool {
+    match kind {
+        "trade_completed" | "notification_read" => v.supports_notifications(),
+        _ => true,
     }
 }

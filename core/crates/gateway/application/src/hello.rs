@@ -64,6 +64,7 @@ impl HandleHello {
         &self,
         principal: &AdapterPrincipal,
         hello: &Hello,
+        hello_sent_at: DateTime<Utc>,
         now: DateTime<Utc>,
     ) -> Result<HelloOutcome, HelloError> {
         let offered: Vec<ProtocolVersion> = hello
@@ -187,7 +188,8 @@ impl HandleHello {
                 hello.adapter.version.clone(),
                 mapped,
             )
-            .with_refused(refused),
+            .with_refused(refused)
+            .with_hello_sent_at(hello_sent_at),
         );
 
         let welcome = Welcome {

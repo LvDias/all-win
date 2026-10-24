@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use gateway_enterprise::command::CommandKind;
+use gateway_enterprise::ids::AccountId;
 use gateway_enterprise::report::{ChildRole, FillOperation, ReportFact, ReportStatus};
 use gateway_enterprise::sync::{ReasonEntry, SyncChange};
 use serde_json::{Map, Value, json};
@@ -145,22 +146,61 @@ fn reason(r: &ReasonEntry) -> Value {
 }
 
 /// `sync.flagged` per added reason and `sync.reason_resolved` per resolved one (`DetailsSync`).
+/// Per added reason: the audit entry `sync.flagged` and, in the same transaction, its
+/// notification event (registry code: the reason's own for the bracket reasons and a flatten
+/// that lost protection, else `sync.flagged`; Compasso/Esquadro pattern, S18 from_now). Per
+/// resolved reason: `sync.reason_resolved` (audit only).
 pub fn sync_entries(change: &SyncChange, at: DateTime<Utc>, refs: &Value) -> Vec<GatewayEvent> {
-    let flagged = change.added.iter().map(|r| {
-        events::audit(
-            "sync.flagged",
-            at,
-            json!({ "sync_version": change.version, "reason": reason(r) }),
-            refs.clone(),
-        )
-    });
-    let resolved = change.resolved.iter().map(|r| {
-        events::audit(
+    let account = refs
+        .get("account_id")
+        .and_then(Value::as_str)
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .map(AccountId::from_uuid);
+    let mut out = Vec::new();
+    for r in &change.added {
+        let details = json!({ "sync_version": change.version, "reason": reason(r) });
+        let audit = events::audit("sync.flagged", at, details.clone(), refs.clone());
+        let note = account.map(|a| {
+            events::notification(
+                r.code.notification_code(),
+                at,
+                a,
+                json!({ "kind": "account", "id": a }),
+                audit.id,
+                details,
+            )
+        });
+        out.push(audit);
+        out.extend(note);
+    }
+    for r in &change.resolved {
+        out.push(events::audit(
             "sync.reason_resolved",
             at,
             json!({ "sync_version": change.version, "reason": reason(r) }),
             refs.clone(),
-        )
-    });
-    flagged.chain(resolved).collect()
+        ));
+    }
+    out
+}
+
+/// `sync.restored` (ADR-0004 §6 row 3): audit entry and its info notification.
+pub fn restored(
+    account: AccountId,
+    sync_version: i64,
+    connection: impl serde::Serialize,
+    at: DateTime<Utc>,
+    refs: Value,
+) -> Vec<GatewayEvent> {
+    let details = json!({ "sync_version": sync_version, "connection_id": connection });
+    let audit = events::audit("sync.restored", at, details.clone(), refs);
+    let note = events::notification(
+        "sync.restored",
+        at,
+        account,
+        json!({ "kind": "account", "id": account }),
+        audit.id,
+        details,
+    );
+    vec![audit, note]
 }

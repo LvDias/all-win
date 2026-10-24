@@ -105,10 +105,12 @@ impl HandleExecutionReport {
         // ADR-0008 §3.2 step 4: activity on a venue account that is no longer bound to it.
         let bound_now = self.bindings.binding_of(user, account_id).await? == Some(mapped.venue.id);
 
-        let stored_instruction = match fact.command_id {
-            Some(c) => self.store.command(user, c).await?.map(|s| s.instruction_id),
+        let stored_command = match fact.command_id {
+            Some(c) => self.store.command(user, c).await?,
             None => None,
         };
+        let stored_instruction = stored_command.as_ref().map(|s| s.instruction_id);
+        let flatten_sent_at = stored_command.as_ref().and_then(|s| s.command.sent_at);
 
         let mut attempts = 0;
         loop {
@@ -134,6 +136,21 @@ impl HandleExecutionReport {
                 }
                 _ => true,
             };
+            // A failed flatten: did it cancel protective legs before failing (U19, Esmeril M1)?
+            let protection_cancelled_by_flatten =
+                match (fact.child_role, fact.status, &flatten_sent_at) {
+                    (
+                        Some(ChildRole::Flatten),
+                        ReportStatus::Rejected | ReportStatus::Unknown,
+                        Some(since),
+                    ) => self
+                        .store
+                        .protective_reports_since(user, account_id, *since)
+                        .await?
+                        .iter()
+                        .any(|(_, _, st)| *st == ReportStatus::Cancelled),
+                    _ => false,
+                };
             let ctx = ReportContext {
                 // S19 (master replication) is V1.1: every destination is TradingView-only (T3).
                 master_replication_destination: false,
@@ -142,6 +159,7 @@ impl HandleExecutionReport {
                 fill_add_known,
                 correction_consistent: fact.position_after.is_none()
                     || fact.position_after == expected.quantity(),
+                protection_cancelled_by_flatten,
             };
             let reasons = if bound_now {
                 classify_report(&fact, &ctx)

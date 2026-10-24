@@ -145,3 +145,26 @@ pub fn audit(
         json!({ "actor": "system", "details": details, "refs": refs }),
     )
 }
+
+/// A notification fact for S18 (Compasso/Esquadro, s18-notifications §3): type = the registry
+/// code, written with its audit entry in one transaction; allowlisted `from_now` until S18.
+pub fn notification(
+    code: &'static str,
+    occurred_at: DateTime<Utc>,
+    account: AccountId,
+    target: Value,
+    audit_event_id: Uuid,
+    params: Value,
+) -> GatewayEvent {
+    GatewayEvent::new(
+        code,
+        occurred_at,
+        json!({
+            "account_id": account,
+            "target": target,
+            "occurred_at": timestamp(occurred_at),
+            "audit_event_id": audit_event_id,
+            "params": params,
+        }),
+    )
+}

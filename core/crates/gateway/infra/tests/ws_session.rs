@@ -65,6 +65,11 @@ impl Harness {
 
     /// Next text frame from the Core, skipping heartbeats; `None` on close (with its code).
     async fn next(&self, c: &mut Client) -> Result<Value, Option<u16>> {
+        self.next_raw(c).await.map(|(_, v)| v)
+    }
+
+    /// As `next`, with the exact text received (for byte-identical comparisons, Grosa L8).
+    async fn next_raw(&self, c: &mut Client) -> Result<(String, Value), Option<u16>> {
         loop {
             let msg = tokio::time::timeout(Duration::from_secs(5), c.next())
                 .await
@@ -73,7 +78,7 @@ impl Harness {
                 Some(Ok(Message::Text(t))) => {
                     let v = self.check(t.as_str());
                     if v["type"] != "heartbeat" {
-                        return Ok(v);
+                        return Ok((t.as_str().to_owned(), v));
                     }
                 }
                 Some(Ok(Message::Close(f))) => return Err(f.map(|f| u16::from(f.code))),
@@ -189,7 +194,7 @@ async fn adapter_session_end_to_end() {
     let snap_id = h.snapshot(&mut c, "1.3").await;
     let ack = h.next(&mut c).await.unwrap();
     assert_eq!(ack["payload"]["msg_ids"], json!([snap_id]));
-    let command = h.next(&mut c).await.unwrap();
+    let (first_bytes, command) = h.next_raw(&mut c).await.unwrap();
     assert_eq!(
         (
             command["type"].as_str(),
@@ -197,7 +202,6 @@ async fn adapter_session_end_to_end() {
         ),
         (Some("command"), Some("1.2"))
     );
-    let first_bytes = command.to_string();
 
     // Not acked; the connection drops. A new session retransmits the same frame.
     drop(c);
@@ -207,11 +211,10 @@ async fn adapter_session_end_to_end() {
     h.next(&mut c).await.unwrap();
     h.snapshot(&mut c, "1.3").await;
     h.next(&mut c).await.unwrap();
-    let again = h.next(&mut c).await.unwrap();
+    let (again_bytes, again) = h.next_raw(&mut c).await.unwrap();
     assert_eq!(
-        again.to_string(),
-        first_bytes,
-        "byte-identical retransmission"
+        again_bytes, first_bytes,
+        "byte-identical retransmission (raw text)"
     );
     let msg_id = again["msg_id"].clone();
     let ack = json!({"protocol_version": "1.3", "msg_id": Uuid::now_v7(), "type": "ack",

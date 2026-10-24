@@ -79,6 +79,16 @@ impl World {
         )
     }
 
+    async fn deliver(
+        &self,
+        session: &Session,
+        now: DateTime<Utc>,
+    ) -> Vec<crate::deliver::Outgoing> {
+        let pass = self.deliver_uc().handle(session, now).await.unwrap();
+        assert!(pass.failures.is_empty(), "{:?}", pass.failures);
+        pass.outgoing
+    }
+
     fn deliver_uc(&self) -> DeliverCommands {
         DeliverCommands::new(
             self.store.clone(),
@@ -114,7 +124,7 @@ impl World {
         .unwrap();
         match self
             .hello_uc()
-            .handle(&self.principal, &hello, now)
+            .handle(&self.principal, &hello, now, now)
             .await
             .unwrap()
         {
@@ -147,7 +157,7 @@ impl World {
         }))
         .unwrap();
         self.snapshot_uc()
-            .handle(session, Uuid::now_v7(), &snap, now)
+            .handle(session, Uuid::now_v7(), now, &snap, now)
             .await
             .unwrap();
     }
@@ -262,7 +272,7 @@ async fn live_account_is_left_out_and_its_pending_commands_are_refused() {
             .contains(&"connection.account_kind_changed")
     );
     w.request(json!([flatten(1)]), t(2)).await;
-    let out = w.deliver_uc().handle(&session, t(3)).await.unwrap();
+    let out = w.deliver(&session, t(3)).await;
     assert!(out.is_empty());
     assert_eq!(w.command_state(1), CommandState::Rejected);
     assert_eq!(
@@ -314,17 +324,11 @@ async fn no_command_before_the_reconnect_snapshot_is_evaluated() {
     let w = World::new();
     let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
     w.request(json!([entry(1, t(5_000))]), t(0)).await;
-    assert!(
-        w.deliver_uc()
-            .handle(&session, t(10))
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(w.deliver(&session, t(10)).await.is_empty());
     assert_eq!(w.command_state(1), CommandState::Pending);
     w.reconnect_snapshot(&session, json!([]), json!([]), t(20))
         .await;
-    let out = w.deliver_uc().handle(&session, t(30)).await.unwrap();
+    let out = w.deliver(&session, t(30)).await;
     assert_eq!(out.len(), 1);
     assert_eq!(w.command_state(1), CommandState::Sent);
     assert!(w.store.event_types().contains(&"execution.command_sent"));
@@ -339,7 +343,7 @@ async fn crash_between_commit_and_write_retransmits_the_same_bytes() {
     w.request(json!([flatten(2), entry(1, t(5_000))]), t(2))
         .await;
     // First pass commits `sent` and hands the frames over; the "process" dies before writing.
-    let first = w.deliver_uc().handle(&session, t(3)).await.unwrap();
+    let first = w.deliver(&session, t(3)).await;
     assert_eq!(first.len(), 2);
     assert_eq!(w.command_state(1), CommandState::Sent);
     // Restart: a new session after reconnect, past the entry's expiry.
@@ -347,7 +351,7 @@ async fn crash_between_commit_and_write_retransmits_the_same_bytes() {
     let (session2, _) = w.connect(&["1.2"], "simulation", t(10_000)).await.unwrap();
     w.reconnect_snapshot(&session2, json!([]), json!([]), t(10_001))
         .await;
-    let again = w.deliver_uc().handle(&session2, t(10_002)).await.unwrap();
+    let again = w.deliver(&session2, t(10_002)).await;
     assert_eq!(
         again, first,
         "byte-identical retransmission, in creation order"
@@ -355,13 +359,7 @@ async fn crash_between_commit_and_write_retransmits_the_same_bytes() {
     // Sent never qualifies for any pending-only rule: still sent, not expired, not exempt.
     assert_eq!(w.command_state(1), CommandState::Sent);
     // Not rewritten before the ack timeout.
-    assert!(
-        w.deliver_uc()
-            .handle(&session2, t(10_003))
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(w.deliver(&session2, t(10_003)).await.is_empty());
 }
 
 #[tokio::test]
@@ -371,13 +369,7 @@ async fn pending_entry_found_expired_is_expired_flagged_and_audited() {
     let (session, _) = w.connect(&["1.2"], "simulation", t(60_000)).await.unwrap();
     w.reconnect_snapshot(&session, json!([]), json!([]), t(60_001))
         .await;
-    assert!(
-        w.deliver_uc()
-            .handle(&session, t(60_002))
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(w.deliver(&session, t(60_002)).await.is_empty());
     assert_eq!(w.command_state(1), CommandState::Expired);
     assert_eq!(
         w.sync_state(),
@@ -403,10 +395,7 @@ async fn exits_past_the_horizon_become_undelivered() {
         .unwrap();
     w.reconnect_snapshot(&session, json!([]), json!([]), t(1) + Duration::hours(72))
         .await;
-    w.deliver_uc()
-        .handle(&session, t(2) + Duration::hours(72))
-        .await
-        .unwrap();
+    w.deliver(&session, t(2) + Duration::hours(72)).await;
     assert_eq!(w.command_state(2), CommandState::Undelivered);
     assert_eq!(w.sync_state().1, vec![SyncReason::CommandUndelivered]);
     assert!(w.store.event_types().contains(&"execution.undelivered"));
@@ -552,7 +541,7 @@ async fn rejected_command_flags_with_the_adapter_code() {
     w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
         .await;
     w.request(json!([entry(1, t(5_000))]), t(1)).await;
-    w.deliver_uc().handle(&session, t(2)).await.unwrap();
+    w.deliver(&session, t(2)).await;
     let (r, p) = report(
         &w,
         json!({"command_id": Uuid::from_u128(1), "child_role": "entry", "status": "rejected",
@@ -586,7 +575,7 @@ async fn already_flat_completes_without_flagging() {
     w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
         .await;
     w.request(json!([flatten(2)]), t(1)).await;
-    w.deliver_uc().handle(&session, t(2)).await.unwrap();
+    w.deliver(&session, t(2)).await;
     let (r, p) = report(
         &w,
         json!({"command_id": Uuid::from_u128(2), "child_role": "flatten", "status": "cancelled",
@@ -649,7 +638,8 @@ async fn disconnect_flat_only_reports_the_session_change() {
 }
 
 #[tokio::test]
-async fn disconnect_in_trade_flags_and_supersede_records_nothing() {
+async fn quick_reconnect_with_an_open_position_flags_without_e3() {
+    // Esquadro Q1: a supersede after a network drop is a real disconnect (nothing observed).
     let w = World::new();
     let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
     let (r, p) = report(
@@ -660,19 +650,32 @@ async fn disconnect_in_trade_flags_and_supersede_records_nothing() {
         .handle(&session, Uuid::now_v7(), &r, &p, t(1))
         .await
         .unwrap();
+    let e3_before = w
+        .store
+        .event_types()
+        .iter()
+        .filter(|t| **t == "gateway.connection_session_changed")
+        .count();
     let uc = HandleDisconnect::new(w.store.clone(), w.sessions.clone());
-    let before = w.store.state().events.len();
-    uc.handle(&session, SessionEnd::Network, true, t(2))
-        .await
-        .unwrap();
-    assert_eq!(w.store.state().events.len(), before);
-    uc.handle(&session, SessionEnd::ByUser, false, t(3))
+    uc.handle(&session, SessionEnd::ByUser, true, t(2))
         .await
         .unwrap();
     assert_eq!(
         w.sync_state(),
-        (SyncState::OutOfSync, vec![SyncReason::DisconnectedByUser])
+        (SyncState::OutOfSync, vec![SyncReason::DisconnectedInTrade]),
+        "runs as Network"
     );
+    let e3_after = w
+        .store
+        .event_types()
+        .iter()
+        .filter(|t| **t == "gateway.connection_session_changed")
+        .count();
+    assert_eq!(e3_before, e3_after, "no E3 for a superseded session");
+    uc.handle(&session, SessionEnd::ByUser, false, t(3))
+        .await
+        .unwrap();
+    assert!(w.sync_state().1.contains(&SyncReason::DisconnectedByUser));
 }
 
 // ---- frames --------------------------------------------------------------------------------
@@ -814,16 +817,19 @@ async fn flat_disconnect_then_matching_reconnect_is_restored_once() {
     w.reconnect_snapshot(&session2, json!([]), json!([]), t(4))
         .await;
     let s = w.store.state();
-    let restored: Vec<_> = s
+    // One audit entry and its S18 notification, both typed with the registry code.
+    let (restored, notes): (Vec<_>, Vec<_>) = s
         .events
         .iter()
         .filter(|e| e.event_type == "sync.restored")
-        .collect();
+        .partition(|e| e.payload.get("actor").is_some());
     assert_eq!(restored.len(), 1);
+    assert_eq!(notes.len(), 1);
     assert_eq!(
         restored[0].payload["details"]["connection_id"],
         json!(session2.connection_id)
     );
+    assert_eq!(notes[0].payload["audit_event_id"], json!(restored[0].id));
     drop(s);
     assert_eq!(w.sync_state().0, SyncState::InSync);
 }
@@ -835,4 +841,319 @@ async fn first_connection_is_not_a_restore() {
     w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
         .await;
     assert!(!w.store.event_types().contains(&"sync.restored"));
+}
+
+// ---- Grosa review (08a764b) ----------------------------------------------------------------
+
+fn reverse_open(id: u128, dep: u128, expires: DateTime<Utc>) -> Value {
+    let mut v = entry(id, expires);
+    v["depends_on"] = json!(Uuid::from_u128(dep));
+    v
+}
+
+fn command_types(frames: &[crate::deliver::Outgoing]) -> Vec<String> {
+    frames
+        .iter()
+        .map(|o| {
+            let v: Value = serde_json::from_str(&o.frame).unwrap();
+            v["payload"]["kind"].as_str().unwrap_or("").to_owned()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn h1_a_reverse_goes_flatten_first_whatever_the_id_order() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
+        .await;
+    // The place's command id sorts BEFORE the flatten's (1 < 9).
+    w.request(json!([flatten(9), reverse_open(1, 9, t(5_000))]), t(2))
+        .await;
+    let out = w.deliver(&session, t(3)).await;
+    assert_eq!(command_types(&out), ["flatten", "place"]);
+}
+
+#[tokio::test]
+async fn m1_both_legs_pending_through_a_long_outage_are_not_flagged() {
+    let w = World::new();
+    w.request(json!([flatten(9), reverse_open(1, 9, t(5_000))]), t(0))
+        .await;
+    // Reconnect 10 minutes later (> prerequisite timeout): the flatten never left the Core.
+    let (session, _) = w.connect(&["1.2"], "simulation", t(600_000)).await.unwrap();
+    w.reconnect_snapshot(&session, json!([]), json!([]), t(600_001))
+        .await;
+    let out = w.deliver(&session, t(600_002)).await;
+    assert_eq!(
+        command_types(&out),
+        ["flatten"],
+        "the open leg is held, not sent"
+    );
+    assert_eq!(w.command_state(1), CommandState::Pending);
+    assert_eq!(w.sync_state().0, SyncState::InSync);
+    // The flatten fills to flat; the held open leg then expires under the exception.
+    let (r, p) = report(
+        &w,
+        json!({"command_id": Uuid::from_u128(9), "child_role": "flatten", "status": "filled", "side": "sell",
+        "fill": {"fill_id": "FL", "quantity": 2, "price": "1"}, "position_after": {"quantity": 0}}),
+    );
+    // The position before the flatten was long 2.
+    let (r0, p0) = report(
+        &w,
+        json!({"status": "filled", "origin": "external", "fill": {"fill_id": "F0", "quantity": 2, "price": "1"},
+        "position_after": {"quantity": 2}}),
+    );
+    w.intake_uc()
+        .handle(&session, Uuid::now_v7(), &r0, &p0, t(600_003))
+        .await
+        .unwrap();
+    w.intake_uc()
+        .handle(&session, Uuid::now_v7(), &r, &p, t(600_004))
+        .await
+        .unwrap();
+    w.deliver(&session, t(600_005)).await;
+    assert_eq!(w.command_state(1), CommandState::Expired);
+    assert_eq!(
+        w.sync_state().0,
+        SyncState::InSync,
+        "exempt: never sent, flat proven"
+    );
+    // M2: the notification event exists, with the closed quantity and side.
+    let s = w.store.state();
+    let n = s
+        .events
+        .iter()
+        .find(|e| e.event_type == "routing.reverse_close_only")
+        .expect("notification");
+    assert_eq!(
+        n.payload["params"],
+        json!({"reason_code": "routing.expired", "closed_qty": 2, "closed_side": "long"})
+    );
+    let audit = s
+        .events
+        .iter()
+        .rev()
+        .find(|e| e.event_type == "execution.expired")
+        .unwrap();
+    assert_eq!(n.payload["audit_event_id"], json!(audit.id));
+}
+
+#[tokio::test]
+async fn l8_a_sent_reverse_open_leg_is_never_exempt() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
+        .await;
+    w.request(json!([flatten(9), reverse_open(1, 9, t(5_000))]), t(2))
+        .await;
+    // Both committed as sent, then the process dies before writing.
+    assert_eq!(w.deliver(&session, t(3)).await.len(), 2);
+    let (r, p) = report(
+        &w,
+        json!({"command_id": Uuid::from_u128(9), "child_role": "flatten", "status": "cancelled",
+        "reason_code": "command.already_flat"}),
+    );
+    w.intake_uc()
+        .handle(&session, Uuid::now_v7(), &r, &p, t(4))
+        .await
+        .unwrap();
+    // The open leg left the Core: it stays sent (retransmitted), never expired by the exception.
+    w.deliver(&session, t(60_000)).await;
+    assert_eq!(w.command_state(1), CommandState::Sent);
+    assert!(
+        !w.store
+            .event_types()
+            .contains(&"routing.reverse_close_only")
+    );
+}
+
+#[tokio::test]
+async fn q3_out_of_sync_expires_pending_entries_and_still_sends_exits() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    w.reconnect_snapshot(&session, json!([{"instrument": {"symbol": "MNQ", "contract_month": "2026-12"}, "position": {"quantity": 1}}]), json!([]), t(1)).await;
+    assert_eq!(w.sync_state().0, SyncState::OutOfSync);
+    w.request(json!([entry(1, t(5_000)), flatten(2)]), t(2))
+        .await;
+    let out = w.deliver(&session, t(3)).await;
+    assert_eq!(command_types(&out), ["flatten"]);
+    assert_eq!(w.command_state(1), CommandState::Expired);
+    let s = w.store.state();
+    let audit = s
+        .events
+        .iter()
+        .find(|e| e.event_type == "execution.expired")
+        .unwrap();
+    assert_eq!(
+        audit.payload["details"]["platform_reason"],
+        "routing.out_of_sync"
+    );
+}
+
+#[tokio::test]
+async fn h2_an_adapter_error_about_a_command_fails_it_and_flags_without_closing() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    w.reconnect_snapshot(&session, json!([]), json!([]), t(1))
+        .await;
+    w.request(json!([flatten(2)]), t(2)).await;
+    let out = w.deliver(&session, t(3)).await;
+    let sent: Value = serde_json::from_str(&out[0].frame).unwrap();
+    let uc = frames_uc(&w, Arc::new(AcceptAll));
+    let err = frame(
+        "error",
+        "1.2",
+        Uuid::now_v7(),
+        json!({"code": "protocol.invalid_message", "ref_msg_id": sent["msg_id"], "detail": "x"}),
+    );
+    let o = uc.handle(&session, &err, t(4)).await;
+    assert_eq!((o.close, o.replies.len()), (None, 0), "no close, no ack");
+    assert!(
+        o.alert
+            .as_ref()
+            .is_some_and(|a| a.command && a.code == "protocol.invalid_message")
+    );
+    assert_eq!(w.command_state(2), CommandState::Failed);
+    assert_eq!(
+        w.sync_state(),
+        (SyncState::OutOfSync, vec![SyncReason::CommandRejected])
+    );
+    assert!(
+        w.deliver(&session, t(10_000)).await.is_empty(),
+        "no more retransmission"
+    );
+    // An error about something else only alerts.
+    let o = uc
+        .handle(
+            &session,
+            &frame(
+                "error",
+                "1.2",
+                Uuid::now_v7(),
+                json!({"code": "protocol.invalid_message", "ref_msg_id": Uuid::now_v7()}),
+            ),
+            t(5),
+        )
+        .await;
+    assert!(o.alert.as_ref().is_some_and(|a| !a.command) && o.close.is_none());
+}
+
+#[tokio::test]
+async fn m4_a_known_report_is_acked_even_if_the_account_left_the_mapping() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    let uc = frames_uc(&w, Arc::new(AcceptAll));
+    let msg = Uuid::now_v7();
+    let (_, p) = report(&w, json!({"status": "working"}));
+    let text = frame("execution_report", "1.2", msg, p);
+    assert_eq!(
+        serde_json::from_str::<Value>(&uc.handle(&session, &text, t(1)).await.replies[0]).unwrap()
+            ["type"],
+        "ack"
+    );
+    // Next session without that account in the welcome (unbound): the retransmission is acked.
+    w.bindings.unbind_all();
+    let (session2, _) = w.connect(&["1.2"], "simulation", t(2)).await.unwrap();
+    let o = uc.handle(&session2, &text, t(3)).await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&o.replies[0]).unwrap()["type"],
+        "ack"
+    );
+}
+
+#[tokio::test]
+async fn m5_a_newer_minor_report_is_accepted_on_an_older_session() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    let uc = frames_uc(&w, Arc::new(AcceptAll));
+    let (_, p) = report(&w, json!({"status": "working"}));
+    let o = uc
+        .handle(
+            &session,
+            &frame("execution_report", "1.3", Uuid::now_v7(), p),
+            t(1),
+        )
+        .await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&o.replies[0]).unwrap()["type"],
+        "ack"
+    );
+    // A type that does not exist in 1.2 is still refused without ack.
+    let o = uc
+        .handle(
+            &session,
+            &frame("trade_completed", "1.3", Uuid::now_v7(), json!({})),
+            t(2),
+        )
+        .await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&o.replies[0]).unwrap()["payload"]["code"],
+        "protocol.unsupported_value"
+    );
+}
+
+#[tokio::test]
+async fn m9_an_old_retransmitted_snapshot_does_not_open_the_gate() {
+    let w = World::new();
+    // The session's hello was sent at t(100) by the adapter.
+    let (session, _) = w.connect(&["1.2"], "simulation", t(100)).await.unwrap();
+    let snap: PositionSnapshot = serde_json::from_value(json!({
+        "trigger": "reconnect", "taken_at": crate::wire::timestamp(t(50)),
+        "accounts": [{"account_id": w.account, "platform_account": "Sim101", "connected": true, "positions": [], "working_orders": []}],
+    }))
+    .unwrap();
+    w.snapshot_uc()
+        .handle(&session, Uuid::now_v7(), t(50), &snap, t(101))
+        .await
+        .unwrap();
+    assert!(
+        !session.snapshot_evaluated(w.account),
+        "sent before this session's hello"
+    );
+    w.snapshot_uc()
+        .handle(&session, Uuid::now_v7(), t(102), &snap, t(103))
+        .await
+        .unwrap();
+    assert!(session.snapshot_evaluated(w.account));
+}
+
+#[tokio::test]
+async fn m10_deferred_account_ids_outside_the_mapping_are_not_kept() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.3"], "simulation", t(0)).await.unwrap();
+    let uc = frames_uc(&w, Arc::new(AcceptAll));
+    uc.handle(
+        &session,
+        &frame(
+            "risk_event",
+            "1.3",
+            Uuid::now_v7(),
+            json!({"account_id": Uuid::from_u128(4242)}),
+        ),
+        t(1),
+    )
+    .await;
+    assert_eq!(w.store.state().deferred[0].account_id, None);
+}
+
+#[tokio::test]
+async fn l8_the_same_event_id_under_a_new_msg_id_is_stored_once() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    let (r, p) = report(&w, json!({"status": "working"}));
+    assert_eq!(
+        w.intake_uc()
+            .handle(&session, Uuid::now_v7(), &r, &p, t(1))
+            .await
+            .unwrap(),
+        IntakeOutcome::Stored
+    );
+    assert_eq!(
+        w.intake_uc()
+            .handle(&session, Uuid::now_v7(), &r, &p, t(2))
+            .await
+            .unwrap(),
+        IntakeOutcome::Duplicate
+    );
+    assert_eq!(w.store.state().reports.len(), 1);
 }
