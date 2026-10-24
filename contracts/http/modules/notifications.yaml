@@ -306,8 +306,7 @@ components:
       additionalProperties: false
       description: |
         Type map, not a payload: `params` of a notification with code `<code>` matches property `<code>`.
-        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S11
-        (`sync.*`) and S15 (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
+        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S15 (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
         are added with those contracts.
       properties:
         routing.quantity_capped: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
@@ -318,6 +317,8 @@ components:
         routing.expired: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.no_bracket_profile: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.instrument_unavailable: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.adapter_protocol_outdated: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
+        routing.position_unknown: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.nothing_to_reduce: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.reverse_close_only: { $ref: '#/components/schemas/ParamsReverseCloseOnly' }
         routing.out_of_sync_flatten: { $ref: '#/components/schemas/ParamsOutOfSyncFlatten' }
@@ -329,6 +330,13 @@ components:
         connection.status_changed: { $ref: 'audit.yaml#/components/schemas/DetailsConnectionStatus' }
         accounts.opt_in_suspended: { $ref: '#/components/schemas/ParamsOptInSuspendedByFirm' }
         presets.new_version: { $ref: '#/components/schemas/ParamsPresetNewVersion' }
+        execution.unbound_activity: { $ref: 'audit.yaml#/components/schemas/DetailsUnboundActivity' }
+        sync.flagged: { $ref: 'audit.yaml#/components/schemas/DetailsSync' }
+        sync.bracket_orphan_leg: { $ref: 'audit.yaml#/components/schemas/DetailsSync' }
+        sync.bracket_incomplete: { $ref: 'audit.yaml#/components/schemas/DetailsSync' }
+        sync.bracket_double_fill: { $ref: 'audit.yaml#/components/schemas/DetailsSync' }
+        sync.flatten_failed_unprotected: { $ref: 'audit.yaml#/components/schemas/DetailsSync' }
+        sync.restored: { $ref: 'audit.yaml#/components/schemas/DetailsSync' }
 
     NotificationCreatedEvent:
       type: object

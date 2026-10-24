@@ -226,6 +226,9 @@ components:
         - routing.automation_not_accepted
         - routing.copy_not_accepted
         - routing.connection_disconnected
+        - routing.connection_checking
+        - routing.binding_pending
+        - routing.broker_disconnected
         - routing.out_of_sync
         - routing.risk_blocked
         - routing.no_bracket_profile
@@ -234,7 +237,7 @@ components:
       description: |
         Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,
         in this order (F§7.2 extended with the route-level states): `source_revoked`, `route_disabled`,
-        `platform_unbound`, `out_of_sync`, `connection_disconnected`, `risk_blocked`, `limits_pending`,
+        `platform_unbound`, `out_of_sync`, `connection_disconnected`, `connection_checking`, `broker_disconnected`, `binding_pending`, `risk_blocked`, `limits_pending`,
         `no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.
         This is a display order only. The instruction gates and their order are ADR-0003 §4.1 (Esquadro's
         S7 delta, with ADR-0008): `account_inactive` → `platform_unbound` → `automation_not_accepted` →
@@ -249,7 +252,29 @@ components:
         disconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an
         entry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a
         protective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as
-        late (ADR-0003 §4.1, ADR-0004 T1).
+        late (ADR-0003 §4.1, ADR-0004 T1). `connection_checking` (S11-03, 5.3.0) is route status only, like
+        `connection_disconnected`. It covers the connection being `connected` while the mandatory reconnect
+        check of the account has not finished. The window runs per mapped account, from `welcome` until the
+        Core has evaluated the reconnect snapshot and the replayed outbox reports (ADR-0004 §4 step 3,
+        §6.1 r5), or until the session ends. Meanwhile the Core sends no command to the account: entries
+        keep their TTL and expire if the window outlasts it, and exits wait. Nothing is skipped, and
+        `AccountSync.observable` is false. Bounds (Esquadro, Crivo Q2; ADR-0004 r5; provisional values,
+        tuned by Ferro and Pulso):
+        - after 60 s without the evaluation there is an operational and user alert ("verificação da
+          conexão não concluída; ordens aguardando"), and the route shows `connection_checking` with the
+          elapsed time;
+        - after 5 min the Core closes the session (4000, `snapshot_timeout`). The adapter reconnects and
+          sends the snapshot again. It counts as a normal disconnect (ADR-0004 §6), so an account with a
+          position becomes out of sync.
+        `broker_disconnected` (5.3.0, ADR-0004 r5 §6.3, Crivo m2) is route status only and never skips. A
+        snapshot reports `connected: false` (the platform lost its broker), so delivery to the account is
+        HELD: entries keep their TTL and expire, and exits wait. Sending would only produce
+        `command.account_not_simulation` and lose an exit. It ends with the next snapshot that reports
+        `connected: true`, of any trigger, at reconnect or mid-session.
+        `binding_pending` (5.3.0, Esquadro, Crivo R3 on r5) is route status only and never skips. It is
+        shown when the account was bound or rebound while its connection's session is open: the binding
+        takes effect at the next handshake. Until then, entries expire by their TTL and exits wait. The web
+        says "reconecte o plugin para ativar o vínculo".
         New codes may be added in a minor version; clients show a generic text for an unknown code.
     RouteReason:
       type: object

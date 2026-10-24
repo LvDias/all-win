@@ -205,6 +205,8 @@ components:
         - routing.nothing_to_reduce
         - routing.no_correlated_order
         - routing.instrument_unavailable
+        - routing.adapter_protocol_outdated
+        - routing.position_unknown
         - routing.expired
         - execution.command_requested
         - execution.command_sent
@@ -269,16 +271,50 @@ components:
         - trades.manual_changed
         - trades.manual_deleted
         - trades.reconcile_mismatch
+        - execution.unbound_activity
+        - execution.undelivered
+        - connection.account_kind_changed
+        - sync.flagged
+        - sync.reason_resolved
+        - sync.cleared
+        - sync.restored
       description: |
         Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
         auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
-        `sync.*` (S11), `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
+        `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
         Category by code family (the `category` of each entry): `ingress.*` → ingress; `routing.*` →
         routing, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →
         execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →
         connection (a plugin restart is a `connection.status_changed` with `previous_status`);
         `security.*` → security; `sources.*`, `connections.*`, `accounts.*`, `profiles.*`, `presets.*`
-        and `trades.manual_*` → config; `trades.reconcile_mismatch` → execution.
+        and `trades.manual_*` → config; `trades.reconcile_mismatch` → execution; `sync.*` (S11, 5.3.0) →
+        connection, for every `sync.*` code, including reasons that are not about the connection (a
+        rejection, external activity, a fill correction). This is accepted for V1 (Esquadro): a new
+        category is also a protocol 1.3 notification field, so it is a protocol minor. It is revisited
+        in the next protocol minor that is opened for another reason.
+        `sync.*` (ADR-0004 §6, `DetailsSync`), each with its actor and outcome:
+        - `sync.flagged`: one per added reason (system, `info`);
+        - `sync.reason_resolved`: the Core removed a reason, and the account stays out of sync (system, `info`);
+        - `sync.cleared`: the user cleared the flag (user, `info`), with `cleared_reasons`;
+        - `execution.unbound_activity` (category execution; system, `info`; Esquadro): activity on a platform
+          account that is visible on a connection but bound to no All Win account. It is not a sync reason,
+          since there is no account to flag (`DetailsUnboundActivity`). Occurrence (Crivo R1): one entry per
+          (connection, platform account, instrument) when a snapshot first shows a position there, or the
+          position changes. Fills are not audited one by one; they show through the next snapshot's
+          position. The notification is grouped per connection and trading day;
+        - `execution.undelivered` (category execution; system, outcome `unknown`; Bigorna, ADR-0004 §4,
+          Esquadro C-a): a command not acked within the retransmission horizon. Its result is unknown: it
+          may have run on the platform, so the outcome is never `expired`. It is never retransmitted. The account also gets
+          `sync.command_undelivered`, which is notified through `sync.flagged`, so this entry is audit only
+          (`DetailsUndelivered`);
+        - `connection.account_kind_changed` (category connection; system, `info`; Bigorna, ADR-0005 N11): the
+          plugin reported another platform account kind for a bound account, e.g. `simulation` → `live`
+          (`DetailsAccountKindChanged`). It is audit only; the binding's `kind` shows the current value;
+        - `sync.restored`: a disconnect while flat with nothing in flight, whose reconnect snapshot matched,
+          so the account was not flagged and is back to normal (system, `info`; ADR-0004 §6 row 3).
+        The automatic orphan cancels and the orphan flatten stay execution entries (`execution.cancelled`
+        + `order.orphan_cancelled`, `execution.command_sent` kind `flatten`); `sync.flagged` carries the
+        summary in `reason.core_action`.
     AuditEntry:
       type: object
       additionalProperties: false
@@ -496,6 +532,14 @@ components:
       type: object
       additionalProperties: false
       description: |
+        `routing.adapter_protocol_outdated` (5.3.0, ADR-0004 r5 §7.1 / U13; outcome `skipped`, with
+        `protocol_version`): the account's session is too old for the action. It covers a `reduce` on a
+        session below 1.2 (no position guard), and every ENTRY of an account with a drawdown rule on a
+        session below 1.4. In the second case the Core sends that session no drawdown, so without the local
+        barrier it fails closed. Exits continue, and the user is told to update the plugin.
+        `routing.position_unknown` (5.3.0, U13 A; outcome `skipped`): a `reduce` while the Core holds no
+        All Win identity for the position, e.g. one opened externally on a TradingView-only destination.
+        It is never sent.
         `routing.instrument_unavailable` (5.2.0, Esquadro): the instrument is in the catalog but has no active
         contract at the decision instant. Outcome `skipped` (a configuration rule), with `instrument_symbol`.
         It applies only at the decision; an instrument outside the catalog stays `ingress.unsupported_instrument`.
@@ -558,13 +602,15 @@ components:
         ttl_ms: { type: integer, minimum: 1 }
         expiry_base: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$', description: 'The instruction''s instrument (required with `routing.instrument_unavailable`).' }
+        protocol_version: { type: string, pattern: '^1\.(0|[1-9][0-9]*)$', description: 'With `routing.adapter_protocol_outdated`: the version the session negotiated.' }
         gates_unknown:
           type: boolean
           description: |
             5.2.0 (Esquadro, S7 N1). True when the TTL ran out before the account gates 6–9 (out of sync,
             risk, limits, bracket profile) answered. It applies only to entries, since only entries have a
-            TTL. The decision then uses only what is known: the action rules that do not depend on those
-            gates (`routing.position_conflict`, `routing.nothing_to_reduce`), or else `routing.expired`. It
+            TTL. The decision then uses only what is known: the action rule that does not depend on those
+            gates (`routing.position_conflict`), or else `routing.expired`. (`routing.nothing_to_reduce`
+            belongs to an exit, which is decided without gates 6–9 and never expires.) It
             never names a gate that did not answer; the S10 text says "os gates de conta não responderam a
             tempo". `routing.nothing_to_close` is never decided with `gates_unknown` (see the close rule).
             Absent otherwise.
@@ -585,6 +631,15 @@ components:
         step: { type: string, maxLength: 64 }
         kind: { type: string, enum: [place, modify, cancel, flatten] }
         expires_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        late_ms:
+          type: integer
+          minimum: 1
+          description: |
+            5.3.0, ADR-0004 §5 r5 ("audited as late"; T1). Present only on an exit command sent after
+            `expiry_base` + the account's command TTL. Exits are `flatten` (close, reverse close leg), a
+            `place` reduce, `cancel`, and a protective `modify`. The value is `sent_at` − (`expiry_base` +
+            TTL) in milliseconds. Absent when the command was sent in time. Never on an entry: a late
+            entry expires and is not sent.
     DetailsBracketCalculated:
       type: object
       additionalProperties: false
@@ -609,7 +664,7 @@ components:
       description: Every `execution.order_*`, `execution.filled` … `execution.state_unknown` and `execution.fill_corrected` code.
       properties:
         origin: { type: string, enum: [all_win, local_enforcement, external] }
-        child_role: { type: string, enum: [entry, stop, target] }
+        child_role: { type: string, enum: [entry, stop, target, exit, flatten], description: 'The protocol''s child roles (1.3): `exit` for a `place` reduce, `flatten` for a flatten (5.3.0, Bigorna).' }
         platform_order_id: { type: string, maxLength: 128 }
         quantity: { type: integer, minimum: 1, maximum: 10000 }
         fill_qty: { type: integer, minimum: 1 }
@@ -621,6 +676,56 @@ components:
         platform_reason: { $ref: '../openapi.yaml#/components/schemas/ErrorCode' }
         platform_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         latency_ms: { type: integer, minimum: 0, description: Instruction receipt → this report (S19 AC-4 for followers). }
+    DetailsSync:
+      type: object
+      additionalProperties: false
+      required: [sync_version]
+      description: '`sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored`.'
+      properties:
+        sync_version: { type: integer, minimum: 1, description: '`AccountSync.version` after the change.' }
+        reason: { $ref: 'accounts.yaml#/components/schemas/SyncReason' }
+        cleared_reasons:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          description: 'With `sync.cleared`: the distinct codes that were cleared (active and resolved). Instruments and commands are not repeated here, because the earlier `sync.flagged` entries carry them.'
+          items: { $ref: 'accounts.yaml#/components/schemas/SyncReasonCode' }
+        cleared_count: { type: integer, minimum: 1, description: 'With `sync.cleared`: how many reasons were cleared in total.' }
+        connection_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+    DetailsUnboundActivity:
+      type: object
+      additionalProperties: false
+      required: [connection_id, platform_account, kind]
+      description: '`execution.unbound_activity` (5.3.0): activity on a platform account that no All Win account binds.'
+      properties:
+        connection_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        connection_name: { $ref: '../openapi.yaml#/components/schemas/DisplayName' }
+        platform_account: { type: string, maxLength: 128 }
+        kind: { type: string, enum: [fill, snapshot] }
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$', description: As reported on the wire. }
+        contract_month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$', description: As reported on the wire. }
+        position: { type: integer, minimum: -10000, maximum: 10000, description: 'With `snapshot`: the signed position reported.' }
+        fill_qty: { type: integer, minimum: 1, maximum: 10000, description: With `fill`. }
+        side: { type: string, enum: [buy, sell], description: With `fill`. }
+    DetailsUndelivered:
+      type: object
+      additionalProperties: false
+      required: [command_id, created_at, horizon_h]
+      properties:
+        command_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        created_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        horizon_h: { type: integer, minimum: 1, maximum: 720, description: The retransmission horizon in hours (72 in V1). }
+    DetailsAccountKindChanged:
+      type: object
+      additionalProperties: false
+      required: [account_id, platform_account, previous_kind, kind]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        connection_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        platform_account: { type: string, maxLength: 128, description: 'The venue account as the plugin names it (`AccountBinding.platform_account`).' }
+        previous_kind: { type: string, enum: [simulation, playback, live, unknown] }
+        kind: { type: string, enum: [simulation, playback, live, unknown] }
     DetailsConnectionStatus:
       type: object
       additionalProperties: false
@@ -983,6 +1088,8 @@ components:
         routing.nothing_to_reduce: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.no_correlated_order: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.instrument_unavailable: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.adapter_protocol_outdated: { $ref: '#/components/schemas/DetailsRoutingDecision' }
+        routing.position_unknown: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         routing.expired: { $ref: '#/components/schemas/DetailsRoutingDecision' }
         execution.command_requested: { $ref: '#/components/schemas/DetailsCommandSent' }
         execution.command_sent: { $ref: '#/components/schemas/DetailsCommandSent' }
@@ -997,6 +1104,13 @@ components:
         execution.state_unknown: { $ref: '#/components/schemas/DetailsExecution' }
         execution.fill_corrected: { $ref: '#/components/schemas/DetailsExecution' }
         connection.status_changed: { $ref: '#/components/schemas/DetailsConnectionStatus' }
+        execution.unbound_activity: { $ref: '#/components/schemas/DetailsUnboundActivity' }
+        execution.undelivered: { $ref: '#/components/schemas/DetailsUndelivered' }
+        connection.account_kind_changed: { $ref: '#/components/schemas/DetailsAccountKindChanged' }
+        sync.flagged: { $ref: '#/components/schemas/DetailsSync' }
+        sync.reason_resolved: { $ref: '#/components/schemas/DetailsSync' }
+        sync.cleared: { $ref: '#/components/schemas/DetailsSync' }
+        sync.restored: { $ref: '#/components/schemas/DetailsSync' }
         sources.created: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
         sources.renamed: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
         sources.rotated: { $ref: '#/components/schemas/DetailsSourceLifecycle' }
