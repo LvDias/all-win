@@ -422,3 +422,73 @@ async fn a_batch_of_one_consumer_commits_each_event_on_its_own() {
         1
     );
 }
+
+/// Esquadro L4: a consumer may wait without a retry count (an exit waits until its own 72 h
+/// horizon), with a short backoff cap, and sees how many times it already failed.
+struct Patient {
+    seen_attempts: Mutex<Vec<i32>>,
+}
+
+#[async_trait::async_trait]
+impl EventConsumer for Patient {
+    fn name(&self) -> &'static str {
+        "t.patient"
+    }
+
+    fn retry(&self) -> app::outbox::RetryPolicy {
+        app::outbox::RetryPolicy {
+            max_attempts: None,
+            max_backoff_secs: 30,
+        }
+    }
+
+    async fn handle(&self, e: &OutboxEvent) -> Result<(), String> {
+        self.seen_attempts.lock().unwrap().push(e.attempts);
+        Err("waiting".into())
+    }
+}
+
+#[tokio::test]
+async fn a_consumer_without_a_retry_count_is_never_dead_lettered() {
+    let Some(db) = fresh_db().await else { return };
+    let patient = Arc::new(Patient {
+        seen_attempts: Mutex::new(Vec::new()),
+    });
+    let mut consumers = Consumers::default();
+    consumers.register(TYPE, patient.clone());
+    let d = OutboxDispatcher::new(
+        db.worker.clone(),
+        consumers,
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    d.register().await.unwrap();
+    let id = append(&db).await;
+    d.dispatch_batch(patient.as_ref()).await.unwrap();
+    // Far past the default count: still retried, never dead-lettered, backoff capped at 30 s.
+    sqlx::query(
+        "UPDATE app.outbox_delivery SET attempts = $2, next_attempt_at = now() WHERE event_id = $1",
+    )
+    .bind(id)
+    .bind(MAX_ATTEMPTS + 5)
+    .execute(&db.worker)
+    .await
+    .unwrap();
+    d.dispatch_batch(patient.as_ref()).await.unwrap();
+    let (attempts, _, _, delivered, dead) = delivery(&db, "t.patient", id).await.unwrap();
+    assert_eq!(
+        (attempts, delivered, dead),
+        (MAX_ATTEMPTS + 6, false, false)
+    );
+    let capped: bool = sqlx::query_scalar(
+        "SELECT next_attempt_at <= now() + interval '31 seconds' FROM app.outbox_delivery WHERE event_id = $1",
+    )
+    .bind(id)
+    .fetch_one(&db.worker)
+    .await
+    .unwrap();
+    assert!(capped, "backoff capped at 30 s");
+    assert_eq!(
+        *patient.seen_attempts.lock().unwrap(),
+        [0, MAX_ATTEMPTS + 5]
+    );
+}

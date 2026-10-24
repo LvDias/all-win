@@ -66,6 +66,28 @@ pub struct OutboxEvent {
     /// `app.outbox.seq`: the producer's causal order (audit `event_seq`).
     pub seq: i64,
     pub payload: Value,
+    /// Failed deliveries of this event to this consumer so far (0 on the first try). With
+    /// `occurred_at` it tells a consumer how long the event has been waiting.
+    pub attempts: i32,
+}
+
+/// How a consumer's failed deliveries are retried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetryPolicy {
+    /// Dead-letter after this many failed attempts; `None` never dead-letters by count (the
+    /// consumer ends the wait itself, e.g. an exit's 72 h horizon; Esquadro L4).
+    pub max_attempts: Option<i32>,
+    /// Cap of the exponential backoff (2, 4, 8 … s).
+    pub max_backoff_secs: i64,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: Some(MAX_ATTEMPTS),
+            max_backoff_secs: MAX_BACKOFF_SECS,
+        }
+    }
 }
 
 /// Where a consumer starts reading an event type when it is first registered (§6.4 rule 3).
@@ -99,6 +121,9 @@ pub trait EventConsumer: Send + Sync {
     /// Events per transaction; 1 for consumers with external side effects (see the module docs).
     fn batch(&self) -> i64 {
         BATCH
+    }
+    fn retry(&self) -> RetryPolicy {
+        RetryPolicy::default()
     }
     async fn handle(&self, event: &OutboxEvent) -> Result<(), String>;
 }
@@ -413,8 +438,10 @@ impl OutboxDispatcher {
                 occurred_at: row.occurred_at,
                 seq: row.seq,
                 payload: row.payload,
+                attempts: row.attempts,
             };
             let attempts = row.attempts.saturating_add(1);
+            let policy = consumer.retry();
             match consumer.handle(&event).await {
                 Ok(()) => {
                     sqlx::query!(
@@ -434,7 +461,7 @@ impl OutboxDispatcher {
                 }
                 Err(e) => {
                     tracing::error!(event_id = %event.id, consumer = name, error = %e, "outbox consumer failed");
-                    let dead = attempts >= MAX_ATTEMPTS;
+                    let dead = policy.max_attempts.is_some_and(|max| attempts >= max);
                     if dead {
                         // The consumer's error says what is stuck (e.g. a close waiting for sync).
                         tracing::error!(event_id = %event.id, event_type = %event.event_type, consumer = name, attempts, error = %e, "ALERT outbox event dead-lettered");
@@ -452,7 +479,8 @@ impl OutboxDispatcher {
                         name,
                         event.id,
                         attempts,
-                        i32::try_from(backoff_secs(attempts)).unwrap_or(i32::MAX),
+                        i32::try_from(backoff_secs(attempts).min(policy.max_backoff_secs))
+                            .unwrap_or(i32::MAX),
                         truncate(redact_tokens(&e), MAX_ERROR_LEN),
                         dead,
                     )
