@@ -48,7 +48,7 @@ These are checked in QA for every slice that touches the relevant surface, inste
 | ID | Slice | Surfaces | Depends on | Status |
 |---|---|---|---|---|
 | V1-S1 | Webhook ingest: authenticated, validated, idempotent, logged | TradingView Input, Core | S0, ADR-0003 (JSON v1 + ids), adapter-sim | ready |
-| V1-S2 | NinjaTrader plugin: connect to Core and execute a routed entry on a sim account | NT plugin, Core | S0, ADR-0004 (Core↔plugin protocol v1), NT8 spike, manual verification rounds by the user over RDP (Q15, [Decision 2026-10-24]) | ready |
+| V1-S2 | NinjaTrader plugin: connect to Core and execute a routed entry on a sim account | NT plugin, Core | S0, ADR-0004 (Core↔plugin protocol v1), NT8 spike, manual verification rounds by the user over RDP (Q15, [Decision 2026-10-24]). **Priority within S2 [Decision 2026-10-24]: the minimal working plugin (first delivery, MVP)**: a fake Core command opens a market entry on Sim101 with an OCO stop and target at the profile's distances and reports the fill and the bracket; polish and the other functions come in the following rounds. | ready |
 | **V1-M1** | **First end-to-end demo**: TradingView alert → Core → one NinjaTrader sim account, result back to Core | all | S1 + S2 | milestone |
 | V1-S3 | Passwordless sign-up/login by e-mail code, per-user isolation, source keys and plugin pairing | Web, Core, NT plugin | S0 | ready |
 | V1-S3b | WhatsApp as a second code channel (sign-up, login, step-up, channel change) | Web, Core | S3, Meta business verification (user, started 2026-10-23) | blocked |
@@ -289,6 +289,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 - **AC-2** When a destination disconnects mid-trade and reconnects, the user is alerted and the platform **waits for the user's decision**; it never reopens or resyncs positions automatically. (§8 [Decision])
 - **AC-3** The user can acknowledge and clear the flag after resolving it; clearing is audited.
 - **AC-3b** **Clearing the flag (Q83 a, Q84 a, [Decision 2026-10-24]):** (i) it is **not offered while the account cannot be observed** (bracket integrity unknown, session down), with the reason shown, until the reconnect check has reported; (ii) with a position open per the last data it **is** allowed after a confirmation that lists the position and whether it is protected; clearing needs the **step-up code** (Q95 yes, [Decision 2026-10-24]); clearing never closes anything (AC-2).
+- **AC-3c** **What "protected" means (Q98 b, [Decision 2026-10-24]):** at the clear, and in the Web, a position counts as protected when **any active stop covers it**, including a stop the user placed by hand in NinjaTrader, which is shown as **"externo"** (en: "external"). The working stops on the **opposite side**, on the **same account and contract**, **together** cover the absolute position (protection **full**); **partial** or **none** keeps the block on new entries. The state is **re-evaluated on every snapshot**. Clearing stays allowed (Q84); new automated entries stay blocked while the protection is not full. Exits are never blocked (P1).
 - **AC-4** Decided: an out-of-sync account **receives no new entries until the user clears the flag**; each skip is audited (Q14 [Decision 2026-10-23]). Exits are never blocked by this gate (P1, S7 AC-8, AC-8b).
 
 - **AC-5** **Reconnect check (local OCO):** after a reconnection, before any new command is accepted, the plugin reports each mapped account's position and working orders. Then:
@@ -665,7 +666,7 @@ Enforcement flattens positions and blocks accounts: nothing below is applied unt
 | Q75 | A `close` (or the closing leg of a barred `reverse`) reaches an out-of-sync account where All Win believes the position is flat. Send it or trust All Win's position? | (a) Trust All Win, send nothing; (b) always send a flatten, the plugin checks the real position and reports `already_flat` | **(b)** — **DECIDED (b), 2026-10-23**: extension of P1; S7 AC-8b — **Side effects confirmed 2026-10-24: Q75-1 yes (cancels every working order on the contract, manual ones included, user notified); Q75-2 yes (a reverse to X on a believed-flat account really holding X closes X and opens nothing); S7 AC-8b** |
 | Q76 | A **reduce** reaches that same account (believed flat)? (split from Q75) | (a) Not sent; `routing.nothing_to_reduce`, audited, user notified; (b) send a flatten anyway | **(a)** — **DECIDED (a), 2026-10-23**: a reduce never becomes a flatten; S7 AC-8b |
 
-### Questions for the user — next-wave gaps (Q77–Q97, all decided 2026-10-24 except Q78 withdrawn)
+### Questions for the user — next-wave gaps (Q77–Q98, all decided 2026-10-24 except Q78 withdrawn)
 
 | # | Question | Options | Recommendation |
 |---|---|---|---|
@@ -690,6 +691,7 @@ Enforcement flattens positions and blocks accounts: nothing below is applied unt
 | Q95 | Clearing an out-of-sync flag: should it need the step-up code? | yes / no | **DECIDED yes, 2026-10-24**: added to the Q35 set; S3 AC-10, S11 AC-3b |
 | Q96 | "Restart today's count" (Q92 c): should it need the step-up code? | yes / no | **DECIDED yes, 2026-10-24**: added to the Q35 set; S3 AC-10, S13 AC-15 |
 | Q97 | Apex Performance Accounts (PA, funded phase) have a maximum position and a daily loss limit by profit tier, which do not fit one maximum per account in V1 | (a) Apex presets cover the evaluations only; PAs registered by hand; (b) add the PAs with the top tier as the max and the scale as text; (c) wait for a format with tiers | **DECIDED (a), 2026-10-24**: same principle as Q94; S16 AC-15 |
+| Q98 | When the user clears an out-of-sync flag (Q84), what counts as a position being "protected"? | (a) Only stops All Win placed; (b) any active stop that covers the position, including one placed by hand in NinjaTrader (shown as "external"); (c) no block, alert only | **DECIDED (b), 2026-10-24**: the working stops on the opposite side, same account and contract, together cover the absolute position (protection full); re-evaluated on every snapshot; partial or none keeps the block on new entries; S11 AC-3c |
 
 ## 8. Architect inputs requested
 
