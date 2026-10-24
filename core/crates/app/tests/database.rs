@@ -256,19 +256,6 @@ async fn decimals_round_trip_at_maximum_scale() {
     assert_eq!(tick.to_string(), "0.2500000000");
 }
 
-struct FailingConsumer;
-
-#[async_trait::async_trait]
-impl app::outbox::EventConsumer for FailingConsumer {
-    fn name(&self) -> &'static str {
-        "failing"
-    }
-
-    async fn handle(&self, _: &app::outbox::OutboxEvent) -> Result<(), String> {
-        Err("consumer unavailable".into())
-    }
-}
-
 async fn append_event(db: &TestDb, user: uuid::Uuid, event_type: &str) -> uuid::Uuid {
     let id = uuid::Uuid::now_v7();
     let mut tx = db.app.begin().await.unwrap();
@@ -315,8 +302,9 @@ async fn events_without_a_consumer_are_never_published_and_never_block() {
     )
     .await;
     assert_eq!(status, 200);
+    app.dispatcher.register().await.unwrap();
     for _ in 0..50 {
-        app.dispatcher.dispatch_batch().await.unwrap();
+        app.dispatcher.dispatch_all().await.unwrap();
         let delivered: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM app.outbox WHERE user_id = $1 AND event_type = 'ingress.received' AND published_at IS NOT NULL",
         )
@@ -347,43 +335,4 @@ async fn events_without_a_consumer_are_never_published_and_never_block() {
         .parse()
         .unwrap();
     assert!(unconsumed >= 1, "{text}");
-}
-
-#[tokio::test]
-async fn failed_deliveries_back_off_and_dead_letter_after_max_attempts() {
-    let Some(db) = db().await else { return };
-    let db = &db;
-    let s = seed(db).await;
-    let mut consumers = app::outbox::Consumers::default();
-    consumers.register("ingress.test_failure", std::sync::Arc::new(FailingConsumer));
-    let dispatcher = app::outbox::OutboxDispatcher::new(
-        db.worker.clone(),
-        consumers,
-        std::sync::Arc::new(tokio::sync::Notify::new()),
-    );
-    let id = append_event(db, s.user_id, "ingress.test_failure").await;
-    dispatcher.dispatch_batch().await.unwrap();
-    let (published, attempts, error, later, dead) = outbox_row(db, id).await;
-    assert_eq!((published, attempts, dead), (false, 1, false));
-    assert!(
-        later,
-        "next attempt is in the future, so the row no longer blocks the queue"
-    );
-    assert_eq!(error.as_deref(), Some("failing: consumer unavailable"));
-    // Not due yet: skipped.
-    dispatcher.dispatch_batch().await.unwrap();
-    assert_eq!(outbox_row(db, id).await.1, 1);
-    // Last attempt: dead-lettered and never fetched again.
-    sqlx::query("UPDATE app.outbox SET attempts = $2, next_attempt_at = now() WHERE id = $1")
-        .bind(id)
-        .bind(app::outbox::MAX_ATTEMPTS - 1)
-        .execute(&db.worker)
-        .await
-        .unwrap();
-    dispatcher.dispatch_batch().await.unwrap();
-    let (published, attempts, _, _, dead) = outbox_row(db, id).await;
-    assert_eq!(
-        (published, attempts, dead),
-        (false, app::outbox::MAX_ATTEMPTS, true)
-    );
 }

@@ -98,6 +98,17 @@ pub async fn db() -> Option<TestDb> {
             .unwrap()
         })
         .as_ref()?;
+    Some(pools(admin, name).await)
+}
+
+/// Pools on a database of its own, for tests that register their own outbox consumers (the
+/// registration refuses consumers another test left in a shared database).
+pub async fn fresh_db() -> Option<TestDb> {
+    let (admin, name) = create_database().await?;
+    Some(pools(&admin, &name).await)
+}
+
+async fn pools(admin: &str, name: &str) -> TestDb {
     let pool = |user: &str, password: &str, max: u32| {
         let url = with_credentials(admin, user, password, name);
         async move {
@@ -110,12 +121,12 @@ pub async fn db() -> Option<TestDb> {
                 .unwrap()
         }
     };
-    Some(TestDb {
+    TestDb {
         owner: pool("allwin_owner", "owner-test-only", 2).await,
         app: pool("allwin_app", "app-test-only", 8).await,
         worker: pool("allwin_worker", "worker-test-only", 2).await,
         maint: pool("allwin_maint", "maint-test-only", 1).await,
-    })
+    }
 }
 
 async fn create_database() -> Option<(String, String)> {
@@ -130,8 +141,13 @@ async fn create_database() -> Option<(String, String)> {
     let mut conn = PgConnection::connect(&admin)
         .await
         .expect("admin connection");
+    // Roles are cluster-wide and shared by concurrent test binaries and databases: one writer at a
+    // time (the identity harness takes the same lock), else "tuple concurrently updated".
+    sqlx::query("SELECT pg_advisory_lock(7320301)")
+        .execute(&mut conn)
+        .await
+        .unwrap();
     for (role, password, rls) in ROLES {
-        // Roles are cluster-wide and shared by concurrent test binaries.
         let exists: bool =
             sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)")
                 .bind(role)
@@ -145,6 +161,10 @@ async fn create_database() -> Option<(String, String)> {
             assert!(e.to_string().contains("already exists"), "{e}");
         }
     }
+    sqlx::query("SELECT pg_advisory_unlock(7320301)")
+        .execute(&mut conn)
+        .await
+        .unwrap();
     let name = format!("allwin_test_{}", uuid::Uuid::now_v7().simple());
     conn.execute(sqlx::AssertSqlSafe(format!(
         "CREATE DATABASE {name} OWNER allwin_owner"
@@ -281,11 +301,12 @@ pub async fn as_user<T>(
     out
 }
 
-/// Delivers the outbox until `user` has no undelivered event. Other tests' dispatchers
-/// may hold rows (`SKIP LOCKED`), so "no row seen" alone is not "delivered".
+/// Delivers the outbox until `user` has no undelivered event. Other tests' dispatchers may hold
+/// a consumer's lock, so "no row seen" alone is not "delivered".
 pub async fn drain(app: &App, db: &TestDb, user: uuid::Uuid) {
+    app.dispatcher.register().await.unwrap();
     for _ in 0..200 {
-        app.dispatcher.dispatch_batch().await.unwrap();
+        app.dispatcher.dispatch_all().await.unwrap();
         let pending: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM app.outbox WHERE user_id = $1 AND published_at IS NULL AND dead_lettered_at IS NULL",
         )

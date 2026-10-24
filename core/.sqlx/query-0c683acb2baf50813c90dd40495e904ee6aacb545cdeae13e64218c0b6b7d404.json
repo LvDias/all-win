@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE app.outbox o SET published_at = now()\n               WHERE o.published_at IS NULL AND o.dead_lettered_at IS NULL\n                 AND EXISTS (SELECT 1 FROM app.outbox_consumer c\n                             WHERE c.event_type = o.event_type AND c.retired_at IS NULL)\n                 AND NOT EXISTS (\n                   SELECT 1 FROM app.outbox_consumer c\n                   WHERE c.event_type = o.event_type AND c.retired_at IS NULL\n                     AND NOT (c.start_policy = 'from_now' AND o.seq < c.start_seq)\n                     AND NOT EXISTS (SELECT 1 FROM app.outbox_delivery d\n                                     WHERE d.consumer = c.consumer AND d.event_id = o.id\n                                       AND d.delivered_at IS NOT NULL))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "0c683acb2baf50813c90dd40495e904ee6aacb545cdeae13e64218c0b6b7d404"
+}

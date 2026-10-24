@@ -64,11 +64,24 @@ async fn serve() -> anyhow::Result<()> {
         );
     }
     let app = App::connect(&config).await?;
+    // Outbox consumers record their start cursors before any startup reconciliation (#14 order
+    // rule): a from_now consumer never misses an effect its reconciliation does not read.
+    app.dispatcher.register().await?;
     // Startup reset of live connections runs before the listener accepts adapters.
     if let Some(identity) = app.identity {
         identity.start().await?;
     }
     tokio::spawn(app.dispatcher.run());
+    match &config.maint_database_url {
+        Some(url) => {
+            let maint = app::connect(url, 1).await.context("MAINT_DATABASE_URL")?;
+            tokio::spawn(app::purge::run(
+                maint,
+                app::unconsumed::types(app::unconsumed::UNCONSUMED),
+            ));
+        }
+        None => tracing::warn!("MAINT_DATABASE_URL is not set: the outbox is never purged"),
+    }
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .with_context(|| format!("bind {}", config.bind))?;

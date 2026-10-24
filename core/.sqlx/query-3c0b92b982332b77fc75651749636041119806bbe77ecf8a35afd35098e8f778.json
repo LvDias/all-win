@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM app.outbox\n               WHERE id IN (SELECT id FROM app.outbox\n                             WHERE dead_lettered_at IS NULL\n                               AND occurred_at < now() - interval '7 days'\n                               AND (published_at IS NOT NULL OR event_type = ANY($1))\n                             ORDER BY seq LIMIT $2\n                             FOR UPDATE SKIP LOCKED)\n                 AND dead_lettered_at IS NULL\n                 AND (published_at IS NOT NULL OR event_type = ANY($1))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3c0b92b982332b77fc75651749636041119806bbe77ecf8a35afd35098e8f778"
+}
