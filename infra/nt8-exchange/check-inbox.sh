@@ -8,7 +8,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 base="${ALLWIN_NT8_EXCHANGE:-/srv/www/allwin.worktrees/.nt8-exchange}"
 for d in inbox clean quarantine; do [ -d "$base/$d" ] || { echo "missing $base/$d (run setup-exchange.sh)" >&2; exit 1; }; done
 max_bytes=$((200 * 1024 * 1024)); max_entries=2000
-max_unzipped=$((500 * 1024 * 1024)); max_ratio=200   # zip bomb limits (uncompressed total, ratio)
+max_unzipped=${ALLWIN_NT8_MAX_UNZIPPED:-$((500 * 1024 * 1024))}; max_ratio=200   # zip bomb limits (uncompressed total, ratio)
 stamp="$(date +%Y%m%d-%H%M%S)"
 shopt -s nullglob
 
@@ -68,7 +68,36 @@ for f in "$base"/inbox/*; do
       if [ -z "$total" ] || [ "$un" -gt "$max_unzipped" ] || [ "$un" -gt $(( (co + 1) * max_ratio )) ]; then
         rm -rf "$work"; quarantine "$f" "zip too large when uncompressed or too high a compression ratio"; continue
       fi
-      ( ulimit -f $(( max_unzipped / 1024 + 1024 )); unzip -qq -o -d "$work" "$f" >/dev/null 2>&1 ) || { rm -rf "$work"; quarantine "$f" "unzip failed"; continue; }
+      # Extract counting the bytes really written (not the sizes the zip declares); stop at the total cap.
+      python3 -I - "$f" "$work" "$max_unzipped" "$max_entries" <<'PY' || { rm -rf "$work"; quarantine "$f" "extraction failed or over the total size cap"; continue; }
+import os, sys, zipfile
+src, dest, cap, max_entries = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+total = 0
+with zipfile.ZipFile(src) as z:
+    infos = z.infolist()
+    if len(infos) > max_entries:
+        sys.exit(1)
+    for zi in infos:
+        name = zi.filename
+        if name.startswith("/") or ".." in name.split("/"):
+            sys.exit(1)
+        target = os.path.realpath(os.path.join(dest, name))
+        if not target.startswith(os.path.realpath(dest) + os.sep):
+            sys.exit(1)
+        if name.endswith("/"):
+            os.makedirs(target, mode=0o700, exist_ok=True)
+            continue
+        os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
+        with z.open(zi) as r, open(target, "xb") as w:
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > cap:
+                    sys.exit(1)
+                w.write(chunk)
+PY
       ;;
     *) cp -- "$f" "$work/$name" ;;
   esac
