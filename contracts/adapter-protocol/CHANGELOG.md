@@ -1,5 +1,9 @@
 # Adapter protocol — changelog
 
+## 1.4.3 — 2026-10-24 (documentation only; no schema shape change, no version bump on the wire)
+- `limits.accounts[].daily_loss_limit` covers both `hard` and `soft_pause`, enforced the same way by the plugin (flatten, cancel, block until the reset). The kind is not added to the wire: it changes what the firm does to the account, not what All Win does (Malha's question; this makes her mapping final, not provisional).
+- `sync_reasons` on sessions below 1.4 (maxItems 20, 21 codes): the Core sends the 20 most severe in the ADR-0004 §6 order; only the least severe is left out, and the account stays out of sync (Sonda L-S2-1).
+
 ## 1.4.2 — 2026-10-24 (documentation only; no schema shape change, no version bump on the wire)
 - A `limits` frame that carries a new `day_reanchor` version also bumps that account's limits `version`, so a new re-anchor never travels under a version the plugin already saw (Pêndulo n3, decided by Esquadro).
 - The plugin still evaluates `day_reanchor.version` on its own, independent of the limits version (Elo; test T7j).
