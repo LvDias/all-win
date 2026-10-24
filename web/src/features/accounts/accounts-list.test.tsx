@@ -25,6 +25,19 @@ describe("AccountsList", () => {
     expect(screen.getAllByText("Sem vínculo")).toHaveLength(2);
   });
 
+  it("adds the page's extra column (header + one cell per account) only when the slot is given", async () => {
+    server.use(...accountHandlers([realAccount({ display_name: "Zeta" }), propAccount({ display_name: "Alfa" })]).handlers);
+    const { unmount } = renderAccounts(<AccountsList riskColumn={{ header: "Risco hoje", cell: (account) => <span>{`cel-${account.display_name}`}</span> }} />);
+    await screen.findAllByRole("link", { name: /Alfa|Zeta/ });
+    expect(screen.getAllByText(/Risco hoje/).length).toBeGreaterThan(0);
+    expect(screen.getByText("cel-Alfa")).toBeInTheDocument();
+    expect(screen.getByText("cel-Zeta")).toBeInTheDocument();
+    unmount();
+    renderAccounts(<AccountsList />);
+    await screen.findAllByRole("link", { name: /Alfa|Zeta/ });
+    expect(screen.queryByText(/Risco hoje/)).not.toBeInTheDocument();
+  });
+
   it("shows the empty state with a create action", async () => {
     server.use(...accountHandlers([]).handlers);
     renderAccounts(<AccountsList />);

@@ -49,6 +49,19 @@ describe("AccountDetail", () => {
     expect(paths).not.toContain("/api/v1/me/me");
   });
 
+  it("renders the alert and risk slots from the page, and nothing when they are empty", async () => {
+    server.use(...ruleHandlers(), ...accountHandlers([propAccount()]).handlers);
+    const { unmount } = renderAccounts(<AccountDetail accountId={ids.acc1} alertSlot={<p>alerta de risco</p>} riskSection={<p>resumo de risco</p>} />);
+    expect(await screen.findByText("alerta de risco")).toBeInTheDocument();
+    expect(screen.getByText("resumo de risco")).toBeInTheDocument();
+    unmount();
+    const { container } = renderAccounts(<AccountDetail accountId={ids.acc1} alertSlot={null} riskSection={false} />);
+    await screen.findByRole("heading", { name: /./, level: 1 });
+    expect(screen.queryByText("alerta de risco")).not.toBeInTheDocument();
+    // No empty wrapper for an absent alert: nothing between the header and the first card.
+    expect(container.querySelectorAll(":scope > div > div:empty")).toHaveLength(0);
+  });
+
   it("shows no opt-in card for a real account", async () => {
     server.use(...accountHandlers([realAccount()]).handlers);
     renderAccounts(<AccountDetail accountId={ids.acc2} />);

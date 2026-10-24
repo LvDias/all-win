@@ -1,6 +1,7 @@
 "use client";
 
 import { Landmark, Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -39,7 +40,10 @@ export function filterAccounts(accounts: Account[], f: Filters): Account[] {
   });
 }
 
-export function AccountsList() {
+/** An extra column composed by the page (features do not import each other): the header text and one cell per account. Absent = no column. */
+export type AccountListColumn = { header: string; cell: (account: Account) => ReactNode };
+
+export function AccountsList({ riskColumn }: { riskColumn?: AccountListColumn }) {
   const t = useTranslations("accounts");
   const tAll = useTranslations();
   const raw = useLocale();
@@ -132,6 +136,7 @@ export function AccountsList() {
               <TableHead>{t("list.columns.platformAccount")}</TableHead>
               <TableHead>{t("list.columns.multiplier")}</TableHead>
               <TableHead>{t("list.columns.maxPosition")}</TableHead>
+              {riskColumn ? <TableHead>{riskColumn.header}</TableHead> : null}
               <TableHead>{t("list.columns.state")}</TableHead>
               <TableHead><span className="sr-only">{t("list.columns.actions")}</span></TableHead>
             </TableRow>
@@ -145,6 +150,7 @@ export function AccountsList() {
                 <TableCell><PlatformAccountText account={a} /></TableCell>
                 <TableCell>{`${a.multiplier}×`}</TableCell>
                 <TableCell>{t("list.contracts", { count: a.max_position_qty })}</TableCell>
+                {riskColumn ? <TableCell>{riskColumn.cell(a)}</TableCell> : null}
                 <TableCell><AccountStateBadges account={a} /></TableCell>
                 <TableCell><AccountActions account={a} /></TableCell>
               </TableRow>
@@ -163,6 +169,7 @@ export function AccountsList() {
                 <p className="text-sm text-muted-foreground">{`${t(`type.${a.kind}`)} · ${summary(a)}`}</p>
                 <p className="text-sm"><PlatformAccountText account={a} /></p>
                 <p className="text-sm">{`${a.multiplier}× · ${t("list.contracts", { count: a.max_position_qty })}`}</p>
+                {riskColumn ? <div className="text-sm"><span className="text-muted-foreground">{`${riskColumn.header}: `}</span>{riskColumn.cell(a)}</div> : null}
                 <AccountStateBadges account={a} />
               </Card>
             </li>
