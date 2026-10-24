@@ -10,6 +10,11 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 wt="${1:-}"; tag="${2:-}"; shift 2 || true
 [ -d "$wt/core" ] && [[ "$tag" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$ ]] || { echo "usage: $0 <repo worktree> <image:tag> [-- <cargo args>]" >&2; exit 2; }
 [ "${1:-}" = "--" ] && shift
+# A build with the dev-stubs test feature (ADR-0006 rule 8) must carry a tag ending in -dev-stubs, and that tag is only for such a build:
+# the test stand-ins never travel under a normal tag toward staging or a release.
+has_stubs=0; for a in "$@"; do case "$a" in *dev-stubs*) has_stubs=1 ;; esac; done
+case "$tag" in *-dev-stubs) tag_stubs=1 ;; *) tag_stubs=0 ;; esac
+[ "$has_stubs" = "$tag_stubs" ] || { echo "refusing: --features dev-stubs and a tag ending in -dev-stubs go together (feature=$has_stubs, tag=$tag_stubs)" >&2; exit 2; }
 pkg="${ALLWIN_BUILD_PACKAGE:-app}"; bin="${ALLWIN_BUILD_BIN:-allwin-core}"; dockerfile="${ALLWIN_RUNTIME_DOCKERFILE:-core.runtime.Dockerfile}"
 [[ "$pkg" =~ ^[a-z0-9_-]+$ && "$bin" =~ ^[a-z0-9_-]+$ && "$dockerfile" =~ ^[a-z.]+\.Dockerfile$ ]] || { echo "invalid package, binary or Dockerfile name" >&2; exit 2; }
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT

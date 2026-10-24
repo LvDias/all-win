@@ -67,3 +67,7 @@ exactly **one** trusted proxy in front of the Core (this Caddy), and that proxy 
 append to a value sent by the client. Caddy's `reverse_proxy` does that by default when no `trusted_proxies` is configured (checked with a real
 Caddy: a forged `X-Forwarded-For: 1.2.3.4, 5.6.7.8` reached the backend as the peer address only), and the `/adapter/*` route sets it explicitly
 with `header_up X-Forwarded-For {remote_host}`. Do not add a second proxy or CDN in front, and do not set `trusted_proxies`, without revisiting this.
+
+**Mailpit authentication.** The host is shared, so Mailpit's UI and API (`127.0.0.1:8025`) need basic auth: an htpasswd file on the host (mode 600, outside
+the repository, path in `ALLWIN_MAILPIT_AUTH_FILE`), mounted read-only as `MP_UI_AUTH_FILE`. SMTP (`127.0.0.1:1025`) stays unauthenticated and loopback only.
+Readers use the credential through a file, never on a command line or in a message: `curl -K <credential.curlrc> http://127.0.0.1:8025/api/v1/messages`.

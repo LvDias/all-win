@@ -8,6 +8,11 @@ services:
     restart: unless-stopped
     environment:
       MP_MAX_MESSAGES: "500"
+      # The host is shared: the UI and the API need basic auth (htpasswd file on the host, mode 600, outside the repository; see infra/README.md).
+      # SMTP stays unauthenticated, loopback only.
+      MP_UI_AUTH_FILE: /run/secrets/mailpit-auth
+    volumes:
+      - ${ALLWIN_MAILPIT_AUTH_FILE:?set ALLWIN_MAILPIT_AUTH_FILE to the Mailpit htpasswd file on the host (see infra/README.md)}:/run/secrets/mailpit-auth:ro
     ports:
       - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
       - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
@@ -47,6 +52,9 @@ services:
   sim:
     image: ${ALLWIN_SIM_IMAGE:-allwin-sim:dev}
     restart: "no"
+    # Runs as the owner of the token file (export ALLWIN_SIM_UID=$(id -u) ALLWIN_SIM_GID=$(id -g) as that user): the token file stays mode 600.
+    # With another uid the file is unreadable and the sim exits (fails closed).
+    user: "${ALLWIN_SIM_UID:-10002}:${ALLWIN_SIM_GID:-10002}"
     depends_on:
       - core
     command:
