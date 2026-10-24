@@ -5,10 +5,9 @@
 # merge gate removes its own operations.
 not_implemented:
   - applyPresetVersion
+  - clearAccountSync
   - createManualTrade
-  - createRoute
   - deleteManualTrade
-  - deleteRoute
   - getAccountPreset
   - getAccountPresetDiff
   - getAccountRisk
@@ -27,8 +26,6 @@ not_implemented:
   - listFirms
   - listNotifications
   - listRiskSummaries
-  - listRouteCandidates
-  - listRoutes
   - listTrades
   - markNotificationRead
   - markNotificationsRead
@@ -37,7 +34,6 @@ not_implemented:
   - putAccountRiskRules
   - restorePresetValue
   - updateManualTrade
-  - updateRoute
 
 # Differences utoipa cannot express: {operationId, pointer (in the canonical operation), reason}.
 # `const: X` and the single-value `enum: [X]` are equivalent in JSON Schema; the check normalizes
@@ -53,6 +49,53 @@ entries:
   - operationId: verifyChannelChangeCode
     pointer: /responses/200/content/application~1json/schema/allOf
     reason: "the Core generator (utoipa) cannot express if/then; the handler always sends hold_until with status on_hold (tested in identity-infra http handlers: on_hold_changes_always_carry_hold_until). Remove when the generator can emit allOf if/then."
+  # S11 (HTTP 5.3.0): Account.sync, temporary until the S11 merge.
+  - operationId: createAccount
+    pointer: /responses/200/content/application~1json/schema/properties/sync
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: createAccount
+    pointer: /responses/200/content/application~1json/schema/required
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: createAccount
+    pointer: /responses/201/content/application~1json/schema/properties/sync
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: createAccount
+    pointer: /responses/201/content/application~1json/schema/required
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: getAccount
+    pointer: /responses/200/content/application~1json/schema/properties/sync
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: getAccount
+    pointer: /responses/200/content/application~1json/schema/required
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: listAccounts
+    pointer: /responses/200/content/application~1json/schema/properties/accounts/items/properties/sync
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: listAccounts
+    pointer: /responses/200/content/application~1json/schema/properties/accounts/items/required
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: restartEvaluation
+    pointer: /responses/200/content/application~1json/schema/properties/sync
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: restartEvaluation
+    pointer: /responses/200/content/application~1json/schema/required
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: setAccountLifecycle
+    pointer: /responses/200/content/application~1json/schema/properties/sync
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: setAccountLifecycle
+    pointer: /responses/200/content/application~1json/schema/required
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: updateAccount
+    pointer: /responses/200/content/application~1json/schema/properties/sync
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  - operationId: updateAccount
+    pointer: /responses/200/content/application~1json/schema/required
+    reason: "S11 not implemented: the accounts DTO does not project the gateway sync state (AccountSync) yet, so sync is absent and not required in the generated Account; the web treats an absent sync as unknown, never in_sync. Remove with the S11 merge; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
+  # Step-up actions of Q95/Q96 (HTTP 6.0.0), temporary until S11/S13.
+  - operationId: requestStepUp
+    pointer: /requestBody/content/application~1json/schema/properties/action/enum
+    reason: "Q95/Q96 not implemented: the Core enum lacks account_sync_clear (S11) and trading_day_restart (S13), so a request for them is refused by the Core schema (the fail-closed side). Remove when S11 and S13 add the actions; the drift check fails on a stale entry (Esquadro, 2026-10-24, temporary)."
   # Not a schema difference, so not an entry (the check rejects entries without a difference):
   # Connection.disconnect_reason (createConnection, listConnections, renameConnection; SSE
   # connection.status_changed) is omitted for status disconnected, against "present when
