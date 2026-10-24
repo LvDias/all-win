@@ -42,7 +42,11 @@ fn map<T, U>(p: &Provenance<T>, f: impl Fn(&T) -> U) -> Provenance<U> {
             value: f(value),
             sources: sources.clone(),
         },
-        Provenance::NotConfirmed { published_values } => Provenance::NotConfirmed {
+        Provenance::NotConfirmed {
+            published_values,
+            reason,
+        } => Provenance::NotConfirmed {
+            reason: *reason,
             published_values: published_values
                 .iter()
                 .map(|pv| super::Published {
@@ -88,15 +92,16 @@ pub fn preset_field(rules: &PresetRules, field: RuleField) -> Option<PresetField
 }
 
 /// The preset's maximum position: `(verified value, cap, published values)`; the cap is the
-/// highest published value when not confirmed (S16 §2.10).
-pub fn preset_max(rules: &PresetRules) -> (Option<u32>, u32, Vec<u32>) {
+/// highest published value when not confirmed (S16 §2.10), and none when nothing is published
+/// (presets 1.2 partial / not_published: the user's own value, uncapped by the preset).
+pub fn preset_max(rules: &PresetRules) -> (Option<u32>, Option<u32>, Vec<u32>) {
     let values: Vec<u32> = rules
         .max_position_qty
         .values()
         .iter()
         .map(|m| m.contracts)
         .collect();
-    let cap = values.iter().copied().max().unwrap_or(0);
+    let cap = values.iter().copied().max();
     (
         rules.max_position_qty.verified().map(|m| m.contracts),
         cap,
@@ -234,7 +239,9 @@ fn row_for(
 ) -> Option<AccountRuleValue> {
     let (origin, chose) = match preset {
         Some(Provenance::Verified { value: v, .. }) if *v == value => return None,
-        Some(Provenance::NotConfirmed { published_values }) => {
+        Some(Provenance::NotConfirmed {
+            published_values, ..
+        }) => {
             let chose = if published_values.iter().any(|p| p.value == value) {
                 Chose::PublishedValue
             } else {
@@ -262,7 +269,7 @@ pub fn max_position_row(
     now: DateTime<Utc>,
 ) -> Result<Option<AccountRuleValue>, PresetValueError> {
     let (verified, cap, published) = preset_max(rules);
-    if max > cap {
+    if cap.is_some_and(|cap| max > cap) {
         return Err(PresetValueError::MaxPositionExceedsPreset);
     }
     let (origin, chose) = match verified {
@@ -370,7 +377,7 @@ pub fn diff(
             let (_, cur_cap, cur) = preset_max(current);
             let (new_verified, new_cap, new) = preset_max(target);
             let changed = cur != new || cur_cap != new_cap;
-            let cap_conflict = max_position_qty > new_cap;
+            let cap_conflict = new_cap.is_some_and(|cap| max_position_qty > cap);
             if changed || cap_conflict {
                 rows.push(DiffRow {
                     field,
@@ -581,6 +588,66 @@ mod tests {
 
     fn money(s: &str) -> MoneyAmount {
         super::super::money(s, "test").unwrap()
+    }
+
+    fn partial() -> Value {
+        json!({"status": "not_confirmed", "not_confirmed_reason": "partial",
+               "quotes": [{"text": "Drawdown: see the dashboard.", "language": "en",
+                           "url": "https://firm.example/rules", "accessed_at": "2026-10-20", "page_title": "Rules"}],
+               "research": {"searched_on": "2026-10-20", "sources": src()}})
+    }
+
+    fn not_published() -> Value {
+        json!({"status": "not_confirmed", "not_confirmed_reason": "not_published",
+               "research": {"searched_on": "2026-10-20", "sources": src()}})
+    }
+
+    /// Presets 1.2: a partial or missing publication behaves like a conflict (never prefilled, a
+    /// required field needs the user's value, chosen as `other_value`), and puts no cap on the maximum.
+    #[test]
+    fn partial_and_unpublished_fields_need_the_users_value_and_cap_nothing() {
+        let mut v = base();
+        v["drawdown"] = partial();
+        v["max_position_qty"] = not_published();
+        let r = rules(v);
+        assert_eq!(
+            r.drawdown,
+            Provenance::NotConfirmed {
+                published_values: vec![],
+                reason: super::super::NotConfirmedReason::Partial
+            }
+        );
+        assert_eq!(
+            fill_from_preset(&r, &[], 40, now()),
+            Err(PresetValueError::RequiredFieldUnresolved(
+                RuleField::Drawdown
+            ))
+        );
+        let rows = fill_from_preset(&r, &[dd("1800.00")], 9000, now()).unwrap();
+        for field in [RuleField::MaxPositionQty, RuleField::Drawdown] {
+            let row = rows.iter().find(|x| x.field == field).unwrap();
+            assert_eq!(row.origin, RuleOrigin::ChosenFromConflict, "{field:?}");
+            assert_eq!(
+                row.chose.map(|(c, _)| c),
+                Some(Chose::OtherValue),
+                "{field:?}"
+            );
+        }
+        assert_eq!(preset_max(&r).1, None, "no published value, no cap");
+        let views = field_views(&r, &[], 40);
+        let view = views
+            .iter()
+            .find(|x| x.field == RuleField::Drawdown)
+            .unwrap();
+        assert_eq!(
+            (view.origin, view.account_value.clone()),
+            (FieldOrigin::Unresolved, None)
+        );
+        // Restore needs a confirmed preset value.
+        assert_eq!(
+            restore(&r, &rows, RuleField::Drawdown),
+            Err(PresetValueError::ValueNotConfirmed)
+        );
     }
 
     #[test]

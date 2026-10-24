@@ -15,6 +15,11 @@ use accounts_enterprise::{
 
 use crate::ports::{RouteRef, RuleSource};
 
+/// `FieldChange.old` / `.new` maxLength (HTTP 6.3.0, Compasso): compact JSON with sorted keys,
+/// non-ASCII as is, only the escapes JSON requires. Values are never truncated: a rule whose
+/// largest value does not fit is a contract change (tested per rule).
+pub const FIELD_CHANGE_MAX_LEN: usize = 16_000;
+
 /// One changed field (`FieldChange`); `None` stands for "absent". `field` is one of
 /// `AUDITED_FIELDS`.
 #[derive(Debug, Clone, PartialEq, Eq)]

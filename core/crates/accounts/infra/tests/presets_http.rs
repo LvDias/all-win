@@ -536,3 +536,74 @@ async fn a_save_with_rule_values_requires_the_limits_version_it_read() {
             .any(|r| r.field == RuleField::Drawdown && r.origin == RuleOrigin::Edited)
     );
 }
+
+static ACCOUNT_AUDIT_DETAILS: &str = include_str!("audit_details.json");
+
+/// Audit (b) A, condition 4: each audited rule field the user sends on create is one
+/// `FieldChange` of `accounts.created` (contract details, `AUDITED_FIELDS` names), and only the
+/// user's own outbox has it.
+#[tokio::test]
+async fn create_audits_each_rule_value_sent_and_only_for_its_user() {
+    let Some(env) = env().await else { return };
+    let (me, other) = (support::user(&env.db).await, support::user(&env.db).await);
+    let sent = json!({
+        "drawdown": {"type": "trailing_eod", "amount": "1500.00"},
+        "daily_loss_limit": {"kind": "hard", "amount": "700.00"},
+        "daily_profit_target": {"amount": "900.00"},
+        "trading_day_reset": {"local_time": "18:00", "time_zone": "America/New_York"},
+        "consistency_rule": {"text": "Best day ≤ 40% — \"wording\"", "threshold_pct": "40"},
+        "evaluation_profit_target": {"amount": "3000.00"},
+    });
+    let (status, a) = send(
+        &env,
+        "POST",
+        "/api/v1/accounts",
+        me,
+        Some(
+            json!({"kind": "prop", "display_name": "Combine", "preset_version_id": env.v1.as_uuid(),
+                    "max_position_qty": 50, "rule_values": sent}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{a}");
+    assert!(
+        a["evaluation_start"].is_string(),
+        "a sent target gets its start: {a}"
+    );
+
+    let schemas: Value = serde_json::from_str(ACCOUNT_AUDIT_DETAILS).unwrap();
+    let created: Vec<Value> = sqlx::query_scalar(
+        "SELECT payload FROM app.outbox WHERE user_id = $1 AND event_type = 'accounts.created'",
+    )
+    .bind(me)
+    .fetch_all(&env.db.admin)
+    .await
+    .unwrap();
+    assert_eq!(created.len(), 1);
+    let details = &created[0]["details"];
+    let validator = jsonschema::validator_for(&schemas["accounts.created"]).unwrap();
+    assert!(validator.is_valid(details), "{details:#}");
+    for (field, value) in sent.as_object().unwrap() {
+        let change = details["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["field"] == field.as_str())
+            .unwrap_or_else(|| panic!("{field} not audited: {details:#}"));
+        assert!(accounts_application::AUDITED_FIELDS.contains(&field.as_str()));
+        let audited: Value = serde_json::from_str(change["new"].as_str().unwrap()).unwrap();
+        assert_eq!(&audited, value, "{field}");
+        assert!(change.get("old").is_none());
+    }
+    // Non-ASCII stays as is (no \u escapes): Compasso, HTTP 6.3.0.
+    assert!(details.to_string().contains("≤ 40% —"));
+
+    let others: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM app.outbox WHERE user_id = $1 AND event_type LIKE 'accounts.%'",
+    )
+    .bind(other)
+    .fetch_one(&env.db.admin)
+    .await
+    .unwrap();
+    assert_eq!(others, 0, "another user's outbox has none of it");
+}

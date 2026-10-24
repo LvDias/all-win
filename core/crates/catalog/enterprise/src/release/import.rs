@@ -79,7 +79,7 @@ pub struct ImportPolicy {
 /// Why a file is refused. Every problem found is reported (the import never stops at the first).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ImportProblem {
-    #[error("schema_version {0} is not one this Core reads (1.0, 1.1)")]
+    #[error("schema_version {0} is not one this Core reads (1.0, 1.1, 1.2)")]
     UnsupportedSchemaVersion(String),
     #[error("version_number {got}: expected {expected}")]
     VersionNotNext { expected: i32, got: i32 },
@@ -212,16 +212,16 @@ pub fn plan_import(
         };
     }
     let mut p = Vec::new();
-    // This Core reads 1.0 and 1.1 (1.1 adds drawdown trailing_lock, Q90) and refuses a newer minor
-    // (README, "Versioning"). A 1.0 file cannot use a 1.1 field.
+    // This Core reads 1.0, 1.1 (trailing_lock, title_note, quotes without page_title) and 1.2
+    // (not_confirmed_reason, with the rule fields' quotes and research) and refuses a newer minor
+    // (README, "Versioning"). Check 12: a file cannot use a field of a later minor.
     match file.schema_version.as_str() {
-        "1.1" => {}
-        "1.0" if has_key(raw, "trailing_lock") => {
-            p.push(ImportProblem::Invalid(
-                "trailing_lock needs schema_version 1.1".into(),
-            ));
+        "1.2" => {}
+        "1.1" => check_fields_1_2(raw, &mut p),
+        "1.0" => {
+            check_fields_1_1(raw, &mut p);
+            check_fields_1_2(raw, &mut p);
         }
-        "1.0" => {}
         other => p.push(ImportProblem::UnsupportedSchemaVersion(other.to_owned())),
     }
     // 1–2. A new slug is a new firm at version 1; otherwise exactly the stored one + 1.
@@ -434,6 +434,67 @@ fn check_domains(file: &ReleaseFile, raw: &Value, p: &mut Vec<ImportProblem>) {
     }
 }
 
+/// Check 12, 1.1 fields in a 1.0 file: `trailing_lock`, `title_note`, a quote without `page_title`.
+fn check_fields_1_1(raw: &Value, p: &mut Vec<ImportProblem>) {
+    for key in ["trailing_lock", "title_note"] {
+        if has_key(raw, key) {
+            p.push(ImportProblem::Invalid(format!(
+                "{key} needs schema_version 1.1"
+            )));
+        }
+    }
+    if any_object(raw, &|m| {
+        m.contains_key("text") && m.contains_key("language") && !m.contains_key("page_title")
+    }) {
+        p.push(ImportProblem::Invalid(
+            "a quote without page_title needs schema_version 1.1".into(),
+        ));
+    }
+}
+
+/// Check 12, 1.2 fields in a 1.0 / 1.1 file: `not_confirmed_reason`, and `quotes` / `research` on a
+/// rule field (the stances had them before 1.2, so only the rule fields are looked at).
+fn check_fields_1_2(raw: &Value, p: &mut Vec<ImportProblem>) {
+    let fields = rule_fields(raw);
+    for key in ["not_confirmed_reason", "quotes", "research"] {
+        if fields.iter().any(|f| f.get(key).is_some()) {
+            p.push(ImportProblem::Invalid(format!(
+                "{key} on a rule field needs schema_version 1.2"
+            )));
+        }
+    }
+}
+
+/// Every rule field object: `plans[].phases[].sizes[].rule_sets[].rules.*` and `stored_only.*`.
+fn rule_fields(raw: &Value) -> Vec<&Value> {
+    fn items<'a>(v: &'a Value, k: &str) -> impl Iterator<Item = &'a Value> {
+        v.get(k).and_then(Value::as_array).into_iter().flatten()
+    }
+    let mut out = Vec::new();
+    for plan in items(raw, "plans") {
+        for phase in items(plan, "phases") {
+            for size in items(phase, "sizes") {
+                for set in items(size, "rule_sets") {
+                    for key in ["rules", "stored_only"] {
+                        if let Some(m) = set.get(key).and_then(Value::as_object) {
+                            out.extend(m.values().filter(|v| v.is_object()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn any_object(v: &Value, pred: &dyn Fn(&Map<String, Value>) -> bool) -> bool {
+    match v {
+        Value::Object(m) => pred(m) || m.values().any(|c| any_object(c, pred)),
+        Value::Array(items) => items.iter().any(|c| any_object(c, pred)),
+        _ => false,
+    }
+}
+
 fn has_key(v: &Value, key: &str) -> bool {
     match v {
         Value::Object(m) => m.contains_key(key) || m.values().any(|c| has_key(c, key)),
@@ -615,13 +676,30 @@ fn rule_texts(
     out
 }
 
-/// A rule field compared without its sources: a new access date or page is not a value change.
+/// A rule field compared without where it was read: its `sources`, the 1.2 `research`, and the
+/// quotes' page metadata (url, access date, title). A new access date or page is not a value change;
+/// the status, the `not_confirmed_reason`, the values and the quoted texts are (presets 1.2, check 9).
 fn without_sources(v: &Value) -> Value {
     match v {
         Value::Object(m) => Value::Object(
             m.iter()
-                .filter(|(k, _)| k.as_str() != "sources")
-                .map(|(k, child)| (k.clone(), without_sources(child)))
+                .filter(|(k, _)| !matches!(k.as_str(), "sources" | "research"))
+                .map(|(k, child)| {
+                    match (k.as_str(), child) {
+                    ("quotes", Value::Array(items)) => (
+                        k.clone(),
+                        Value::Array(
+                            items
+                                .iter()
+                                .map(|q| {
+                                    json!({"text": q.get("text"), "language": q.get("language")})
+                                })
+                                .collect(),
+                        ),
+                    ),
+                    _ => (k.clone(), without_sources(child)),
+                }
+                })
                 .collect(),
         ),
         Value::Array(items) => Value::Array(items.iter().map(without_sources).collect()),

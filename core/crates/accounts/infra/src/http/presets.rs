@@ -513,7 +513,8 @@ async fn get_account_preset_diff(
     };
     match s
         .diff
-        .handle(&caller, id, PresetVersionId::from_uuid(target))
+        // `firm_platform` query: HTTP 6.2.0 (in review); until it is approved, the account's own.
+        .handle(&caller, id, PresetVersionId::from_uuid(target), None)
         .await
     {
         Ok(v) => Json(PresetDiffDto::from(&v)).into_response(),

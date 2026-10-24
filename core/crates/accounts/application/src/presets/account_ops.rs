@@ -302,13 +302,87 @@ pub(crate) fn leave_preset_writes(current: &[AccountRuleValue]) -> Vec<RuleValue
 
 /// An account value as the audit shows it (`FieldChange`): the contracts as a number, a rule value
 /// as compact JSON with sorted keys and string amounts.
-fn audit_text(value: &AccountValue) -> String {
+pub(crate) fn audit_text(value: &AccountValue) -> String {
     match value {
         AccountValue::MaxPosition(n) => n.to_string(),
         AccountValue::Rule(v) => serde_json::to_value(v.to_wire())
             .map(|j| j.to_string())
             .unwrap_or_default(),
     }
+}
+
+/// The rule fields `accounts.created` / `accounts.updated` audit next to the account's own
+/// fields (Esquadro, audit (b) A); the maximum and the commission are account fields already.
+pub const AUDITED_RULE_FIELDS: [RuleField; 6] = [
+    RuleField::Drawdown,
+    RuleField::DailyLossLimit,
+    RuleField::DailyProfitTarget,
+    RuleField::TradingDayReset,
+    RuleField::ConsistencyRule,
+    RuleField::EvaluationProfitTarget,
+];
+
+/// The writes give the account its own evaluation target (then it needs a start, Q46).
+pub(crate) fn writes_target(writes: &[RuleValueWrite]) -> bool {
+    writes.iter().any(|w| {
+        w.field == RuleField::EvaluationProfitTarget
+            && w.row
+                .as_ref()
+                .is_some_and(|r| !r.is_unset && r.value.is_some())
+    })
+}
+
+/// The preset rules a selection uses (`None`: no preset, or no rule set for its platform).
+pub(crate) fn preset_rules<'a>(
+    facts: Option<&'a PresetFacts>,
+    selection: &Option<PropSelection>,
+) -> Option<&'a PresetRules> {
+    let Some(PropSelection::Preset { firm_platform, .. }) = selection else {
+        return None;
+    };
+    rule_set(facts?, firm_platform.as_ref())
+        .ok()
+        .map(|s| &s.rules)
+}
+
+/// The account's effective value of a rule field as the audit shows it: its own row, else the
+/// preset's verified value; `None` = no limit (a tombstone, or nothing confirmed).
+fn effective_text(
+    rules: Option<&PresetRules>,
+    rows: &[AccountRuleValue],
+    field: RuleField,
+) -> Option<String> {
+    match rows.iter().find(|r| r.field == field) {
+        Some(r) if r.is_unset => None,
+        Some(r) => r.value.clone().map(|v| audit_text(&AccountValue::Rule(v))),
+        None => rules
+            .and_then(|r| rules::preset_field(r, field))
+            .and_then(|p| p.verified().cloned())
+            .map(|v| audit_text(&AccountValue::Rule(v))),
+    }
+}
+
+/// The audit's rule-field changes of a create/update: only the fields whose rows this write
+/// changes (Malha, (b) condition 3), with the effective value before and after.
+pub(crate) fn rule_write_changes(
+    before: (Option<&PresetRules>, &[AccountRuleValue]),
+    after_rules: Option<&PresetRules>,
+    writes: &[RuleValueWrite],
+) -> Vec<FieldChange> {
+    let rows_after = after_writes(before.1, writes);
+    AUDITED_RULE_FIELDS
+        .into_iter()
+        .filter(|f| writes.iter().any(|w| w.field == *f))
+        .filter_map(|field| {
+            let old = effective_text(before.0, before.1, field);
+            let new = effective_text(after_rules, &rows_after, field);
+            (old != new).then(|| FieldChange {
+                field: field.as_str(),
+                old,
+                new,
+            })
+        })
+        .collect()
 }
 
 /// The audit's changed fields between two states of the account's preset fields.
@@ -480,11 +554,19 @@ impl GetAccountPresetDiff {
         Self { deps }
     }
 
+    /// `firm_platform`: the platform to compute the rows for (HTTP 6.2.0 optional query; `None`:
+    /// the account's own, when the target offers it). Rules (Compasso, 6.1.0/6.2.0):
+    /// - a named platform the target does not offer → 422 `accounts.firm_platform_unknown`;
+    /// - rows for the named (or the account's) platform; `firm_platform_required` while that
+    ///   platform differs from the account's;
+    /// - none to use (the target has platforms and the account none it offers) → `rows = []`,
+    ///   `firm_platform_required` with the target's `firm_platforms`.
     pub async fn handle(
         &self,
         caller: &Caller,
         account_id: AccountId,
         target_id: PresetVersionId,
+        firm_platform: Option<FirmPlatform>,
     ) -> Result<PresetDiffView, AccountsError> {
         let d = &self.deps;
         let l = load(d, caller.user_id, account_id).await?;
@@ -505,9 +587,21 @@ impl GetAccountPresetDiff {
             opt_in_changes: [None, None],
         };
         // The rows depend on the platform's rules: without one, the user names it first.
-        let Ok(platform) = target_platform(&target, l.firm_platform.as_ref()) else {
-            view.firm_platform_required = true;
-            return Ok(view);
+        let platform = match firm_platform {
+            Some(p) if !target.firm_platforms.contains(&p) => {
+                return Err(AccountsError::FirmPlatformUnknownInQuery);
+            }
+            Some(p) => {
+                view.firm_platform_required = l.firm_platform.as_ref() != Some(&p);
+                Some(p)
+            }
+            None => match target_platform(&target, l.firm_platform.as_ref()) {
+                Ok(p) => p,
+                Err(()) => {
+                    view.firm_platform_required = true;
+                    return Ok(view);
+                }
+            },
         };
         let rows = d
             .store

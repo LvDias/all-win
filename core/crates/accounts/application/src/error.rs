@@ -43,6 +43,10 @@ pub enum AccountsError {
     FirmPlatformRequired,
     #[error("accounts.firm_platform_unknown")]
     FirmPlatformUnknown,
+    /// 422 `accounts.firm_platform_unknown` for the `firm_platform` query of
+    /// `getAccountPresetDiff` (HTTP 6.2.0, `/query/firm_platform`).
+    #[error("accounts.firm_platform_unknown")]
+    FirmPlatformUnknownInQuery,
     #[error("accounts.platform_account_unknown")]
     PlatformAccountUnknown,
     #[error("accounts.platform_account_kind_not_allowed")]
@@ -107,7 +111,9 @@ impl AccountsError {
             Self::MaxPositionExceedsPreset => "accounts.max_position_exceeds_preset",
             Self::PresetVersionUnknown => "accounts.preset_version_unknown",
             Self::FirmPlatformRequired => "accounts.firm_platform_required",
-            Self::FirmPlatformUnknown => "accounts.firm_platform_unknown",
+            Self::FirmPlatformUnknown | Self::FirmPlatformUnknownInQuery => {
+                "accounts.firm_platform_unknown"
+            }
             Self::PlatformAccountUnknown => "accounts.platform_account_unknown",
             Self::PlatformAccountKindNotAllowed => "accounts.platform_account_kind_not_allowed",
             Self::ProfileSizeRequired => "accounts.profile_size_required",
@@ -166,6 +172,7 @@ impl AccountsError {
             Self::EvaluationStartInvalid => "/evaluation_start",
             Self::EvaluationNotApplicable { field: Some(f) } => f,
             Self::VersionNotNewer { pointer } => pointer,
+            Self::FirmPlatformUnknownInQuery => "/query/firm_platform",
             Self::ChoiceRequired { field } => return Some(format!("/choices/{}", field.as_str())),
             Self::RequiredFieldUnresolved { field } => {
                 return Some(format!("/rule_values/{}", field.as_str()));
@@ -190,7 +197,7 @@ impl AccountsError {
             Self::MaxPositionExceedsPreset => 12,
             Self::PresetVersionUnknown => 13,
             Self::FirmPlatformRequired => 14,
-            Self::FirmPlatformUnknown => 15,
+            Self::FirmPlatformUnknown | Self::FirmPlatformUnknownInQuery => 15,
             Self::PlatformAccountUnknown => 16,
             Self::PlatformAccountKindNotAllowed => 17,
             Self::ProfileSizeRequired => 18,

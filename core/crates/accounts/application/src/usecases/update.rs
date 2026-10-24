@@ -12,7 +12,10 @@ use crate::deps::AccountsDeps;
 use crate::error::{AccountsError, Refusals};
 use crate::events::AccountsEvent;
 use crate::ports::{AccountWrite, CommissionWrite};
-use crate::presets::account_ops::{fill_writes, leave_preset_writes, max_position_writes};
+use crate::presets::account_ops::{
+    fill_writes, leave_preset_writes, max_position_writes, preset_rules, rule_write_changes,
+    writes_target,
+};
 use crate::usecases::audit;
 use crate::usecases::support::{
     OptInPlan, bound_platform_account, current_rules, local_date, plan_opt_ins, port_err,
@@ -208,7 +211,9 @@ impl UpdateAccountUseCase {
 
         let mut next = stored.clone();
         next.display_name = cmd.display_name.clone();
-        if resolved.has_evaluation_target && next.evaluation_start.is_none() {
+        if (resolved.has_evaluation_target || writes_target(&rule_writes))
+            && next.evaluation_start.is_none()
+        {
             // Invariant: an evaluation target has a start. Gained later, it defaults to the
             // account's registration date in the user's zone (Q46), never the change date.
             next.evaluation_start = Some(local_date(d, caller.user_id, stored.created_at).await?);
@@ -244,7 +249,16 @@ impl UpdateAccountUseCase {
         } else {
             before_binding.clone()
         };
-        let changes = audit::changes(&stored, before_binding, &next, after_binding);
+        let mut changes = audit::changes(&stored, before_binding, &next, after_binding);
+        // The rule fields whose rows this update changes (S16 audit (b) A).
+        changes.extend(rule_write_changes(
+            (
+                preset_rules(stored_preset.as_ref(), &stored.selection),
+                &rows,
+            ),
+            preset_rules(resolved.preset.as_ref(), &next.selection),
+            &rule_writes,
+        ));
         let opt_in_changed = next.automation != stored.automation || next.copy != stored.copy;
         if changes.is_empty() && !opt_in_changed && rule_writes.is_empty() {
             // A request that changes nothing is not audited.

@@ -14,7 +14,7 @@ use crate::deps::AccountsDeps;
 use crate::error::{AccountsError, Refusals};
 use crate::events::AccountsEvent;
 use crate::ports::{CreateKeyRecord, InitialProfileError, NewAccount, StoreError};
-use crate::presets::account_ops::fill_writes;
+use crate::presets::account_ops::{fill_writes, preset_rules, rule_write_changes, writes_target};
 use crate::usecases::audit;
 use crate::usecases::support::{
     applicable, current_rules, kind_index, resolve_binding, resolve_selection, store_err, today,
@@ -204,7 +204,9 @@ impl CreateAccountUseCase {
             return Err(AccountsError::Internal("unresolved selection".into()));
         };
 
-        let evaluation_start = match (resolved.has_evaluation_target, cmd.evaluation_start) {
+        // A target the user sent as a rule value counts too (S16).
+        let has_target = resolved.has_evaluation_target || writes_target(&rule_values);
+        let evaluation_start = match (has_target, cmd.evaluation_start) {
             (_, Some(date)) => Some(date),
             // Default: the registration date in the user's time zone (S13b, data model §5.2).
             (true, None) => Some(today(d, user).await?),
@@ -237,11 +239,18 @@ impl CreateAccountUseCase {
         };
 
         let binding_audit = cmd.binding.as_ref().map(|b| b.platform_account.clone());
+        let mut fields = audit::created(&account, binding_audit);
+        // The rule values the user sent as deviations from the preset (S16 audit (b) A).
+        fields.extend(rule_write_changes(
+            (None, &[]),
+            preset_rules(resolved.preset.as_ref(), &account.selection),
+            &rule_values,
+        ));
         let mut events = vec![AccountsEvent::Created {
             account_id: account.id,
             account_name: account.display_name.clone(),
             at: now,
-            fields: audit::created(&account, binding_audit),
+            fields,
         }];
         for (kind, choice, rule) in chosen_rules {
             events.push(AccountsEvent::OptInChosen {

@@ -48,10 +48,24 @@ pub enum Provenance<T> {
         value: T,
         sources: Vec<SourceRef>,
     },
-    /// The firm's official pages disagree: the user picks one or types their own (never prefilled).
+    /// Not confirmed by the firm's official pages (never prefilled; a required field needs the
+    /// user's value). `published_values`: the conflicting values (>= 2), empty for a partial or a
+    /// missing publication (presets 1.2, whose quotes and research are shown from the wire only).
     NotConfirmed {
         published_values: Vec<Published<T>>,
+        reason: NotConfirmedReason,
     },
+}
+
+/// Why a field is not confirmed (presets 1.2 / HTTP 6.3.0 `not_confirmed_reason`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotConfirmedReason {
+    /// The pages disagree: the user picks a published value or types their own.
+    Conflicting,
+    /// The firm publishes only part of it (verbatim quotes): the user types the value.
+    Partial,
+    /// The firm does not publish it: the user types the value.
+    NotPublished,
 }
 
 impl<T> Provenance<T> {
@@ -70,9 +84,9 @@ impl<T> Provenance<T> {
     pub fn values(&self) -> Vec<&T> {
         match self {
             Self::Verified { value, .. } => vec![value],
-            Self::NotConfirmed { published_values } => {
-                published_values.iter().map(|p| &p.value).collect()
-            }
+            Self::NotConfirmed {
+                published_values, ..
+            } => published_values.iter().map(|p| &p.value).collect(),
         }
     }
 }
@@ -232,6 +246,14 @@ pub struct RawField<T> {
     pub sources: Option<Vec<RawSource>>,
     #[serde(default)]
     pub published_values: Option<Vec<RawPublished<T>>>,
+    /// Presets 1.2: `conflicting` (absent = conflicting) | `partial` | `not_published`.
+    #[serde(default)]
+    pub not_confirmed_reason: Option<String>,
+    /// Presets 1.2 (partial): shown from the wire; only their presence is checked here.
+    #[serde(default)]
+    pub quotes: Option<serde::de::IgnoredAny>,
+    #[serde(default)]
+    pub research: Option<serde::de::IgnoredAny>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -360,15 +382,42 @@ fn field<R, T>(
     what: &str,
     convert: impl Fn(R) -> Result<T, PresetRulesError>,
 ) -> Result<Provenance<T>, PresetRulesError> {
+    let (quotes, research) = (raw.quotes.is_some(), raw.research.is_some());
+    let reason = match raw.not_confirmed_reason.as_deref() {
+        None | Some("conflicting") => NotConfirmedReason::Conflicting,
+        Some("partial") => NotConfirmedReason::Partial,
+        Some("not_published") => NotConfirmedReason::NotPublished,
+        Some(_) => return Err(bad(format!("{what} not_confirmed_reason"))),
+    };
+    let bare = raw.sources.is_none();
     match (raw.status.as_str(), raw.value, raw.published_values) {
-        ("verified", Some(value), None) => Ok(Provenance::Verified {
-            value: convert(value)?,
-            sources: sources(raw.sources.unwrap_or_default(), what)?,
-        }),
-        ("not_confirmed", None, Some(published))
-            if published.len() >= 2 && raw.sources.is_none() =>
+        ("verified", Some(value), None)
+            if raw.not_confirmed_reason.is_none() && !quotes && !research =>
+        {
+            Ok(Provenance::Verified {
+                value: convert(value)?,
+                sources: sources(raw.sources.unwrap_or_default(), what)?,
+            })
+        }
+        ("not_confirmed", None, None)
+            if bare
+                && ((reason == NotConfirmedReason::Partial && quotes && research)
+                    || (reason == NotConfirmedReason::NotPublished && !quotes && research)) =>
         {
             Ok(Provenance::NotConfirmed {
+                published_values: Vec::new(),
+                reason,
+            })
+        }
+        ("not_confirmed", None, Some(published))
+            if reason == NotConfirmedReason::Conflicting
+                && published.len() >= 2
+                && bare
+                && !quotes
+                && !research =>
+        {
+            Ok(Provenance::NotConfirmed {
+                reason,
                 published_values: published
                     .into_iter()
                     .map(|p| {
@@ -887,6 +936,66 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Presets 1.2 shapes: the reason decides what must and must not be there.
+    #[test]
+    fn not_confirmed_reasons() {
+        let quotes = json!([{"text": "6PM", "language": "en", "url": "https://firm.example/rules",
+                             "accessed_at": "2026-10-20", "page_title": "Rules"}]);
+        let research = json!({"searched_on": "2026-10-20", "sources": src()});
+        let nc = |extra: Value| {
+            let mut f = json!({"status": "not_confirmed"});
+            for (k, v) in extra.as_object().unwrap() {
+                f[k] = v.clone();
+            }
+            let mut v = base();
+            v["trading_day_reset"] = f;
+            parse(v)
+        };
+        let ok =
+            nc(json!({"not_confirmed_reason": "partial", "quotes": quotes, "research": research}))
+                .unwrap();
+        assert_eq!(
+            ok.trading_day_reset,
+            Provenance::NotConfirmed {
+                published_values: vec![],
+                reason: NotConfirmedReason::Partial
+            }
+        );
+        assert!(nc(json!({"not_confirmed_reason": "not_published", "research": research})).is_ok());
+        for (name, bad_field) in [
+            (
+                "partial without research",
+                json!({"not_confirmed_reason": "partial", "quotes": quotes}),
+            ),
+            (
+                "partial without quotes",
+                json!({"not_confirmed_reason": "partial", "research": research}),
+            ),
+            (
+                "not_published with quotes",
+                json!({"not_confirmed_reason": "not_published", "quotes": quotes, "research": research}),
+            ),
+            (
+                "unknown reason",
+                json!({"not_confirmed_reason": "maybe", "research": research}),
+            ),
+            (
+                "conflicting with nothing",
+                json!({"not_confirmed_reason": "conflicting"}),
+            ),
+        ] {
+            assert!(nc(bad_field).is_err(), "{name}");
+        }
+        let mut v = base();
+        v["drawdown"]["not_confirmed_reason"] = json!("conflicting");
+        assert!(parse(v.clone()).is_ok(), "explicit conflicting = absent");
+        v["drawdown"]["research"] = research.clone();
+        assert!(parse(v).is_err(), "conflicting with research");
+        let mut v = base();
+        v["max_position_qty"]["not_confirmed_reason"] = json!("partial");
+        assert!(parse(v).is_err(), "verified with a reason");
     }
 
     #[test]

@@ -1622,7 +1622,7 @@ mod preset_ops {
         let a = edited(&f).await;
         f.publish_v2();
         let diff = GetAccountPresetDiff::new(f.w.deps.clone());
-        let d = diff.handle(&f.w.me, a.id, f.v2).await.unwrap();
+        let d = diff.handle(&f.w.me, a.id, f.v2, None).await.unwrap();
         let rows: Vec<(RuleField, bool, bool)> = d
             .rows
             .iter()
@@ -1635,16 +1635,74 @@ mod preset_ops {
             "2500.00"
         );
 
-        let e = diff.handle(&f.w.me, a.id, f.v1).await.unwrap_err();
+        let e = diff.handle(&f.w.me, a.id, f.v1, None).await.unwrap_err();
         assert_eq!(e.code(), "presets.version_not_newer");
         assert_eq!(
             e.pointer().as_deref(),
             Some("/query/target_preset_version_id")
         );
         assert_eq!(
-            diff.handle(&f.w.other, a.id, f.v2).await.unwrap_err(),
+            diff.handle(&f.w.other, a.id, f.v2, None).await.unwrap_err(),
             AccountsError::NotFound
         );
+    }
+
+    #[tokio::test]
+    async fn diff_rows_follow_the_platform_of_a_target_with_platform_rules() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        f.publish_v2();
+        // v2 has its own rules per platform; the account (on v1) has no platform.
+        {
+            let mut c = f.catalog.0.lock().unwrap();
+            let v2 = c.get_mut(&f.v2).unwrap();
+            let set = |name: &str, amount: &str| {
+                let wire = rules(verified(static_dd(amount)));
+                PresetRuleSet {
+                    firm_platform: Some(FirmPlatform::parse(name).unwrap()),
+                    rules: PresetRules::from_wire(&wire).unwrap(),
+                    wire,
+                }
+            };
+            v2.rule_sets = vec![set("rithmic", "2500.00"), set("tradovate", "3000.00")];
+            v2.firm_platforms = v2
+                .rule_sets
+                .iter()
+                .filter_map(|s| s.firm_platform.clone())
+                .collect();
+        }
+        let diff = GetAccountPresetDiff::new(f.w.deps.clone());
+
+        // No platform to use: no rows, the target's platforms to choose from.
+        let d = diff.handle(&f.w.me, a.id, f.v2, None).await.unwrap();
+        assert!(d.rows.is_empty() && d.firm_platform_required);
+        let names: Vec<&str> = d.firm_platforms.iter().map(|p| p.as_str()).collect();
+        assert_eq!(names, ["rithmic", "tradovate"]);
+
+        // A named platform: its rows; still required (it is not the account's yet).
+        let tradovate = FirmPlatform::parse("tradovate").unwrap();
+        let d = diff
+            .handle(&f.w.me, a.id, f.v2, Some(tradovate))
+            .await
+            .unwrap();
+        assert!(d.firm_platform_required);
+        assert_eq!(
+            d.rows[0].new_preset_value.as_ref().unwrap()["value"]["amount"],
+            "3000.00"
+        );
+
+        // A platform the target does not offer: 422 on the query.
+        let e = diff
+            .handle(
+                &f.w.me,
+                a.id,
+                f.v2,
+                Some(FirmPlatform::parse("cqg").unwrap()),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(e.code(), "accounts.firm_platform_unknown");
+        assert_eq!(e.pointer().as_deref(), Some("/query/firm_platform"));
     }
 
     #[tokio::test]
@@ -1773,7 +1831,7 @@ mod preset_ops {
             .unwrap()
             .insert(f.v2, (new_rule, FirmStance::Conditional));
         let d = GetAccountPresetDiff::new(f.w.deps.clone())
-            .handle(&f.w.me, a.id, f.v2)
+            .handle(&f.w.me, a.id, f.v2, None)
             .await
             .unwrap();
         assert_eq!(d.opt_in_changes, [Some(new_rule), None]);
@@ -1847,6 +1905,106 @@ mod preset_ops {
         assert_eq!(
             f.restore(&a, RuleField::Drawdown).await.unwrap_err(),
             AccountsError::VersionConflict
+        );
+    }
+
+    /// Audit (b) A, condition 3: the largest value of each audited rule, with control characters
+    /// (the worst escaping case), fits `FieldChange` without truncation.
+    #[test]
+    fn the_largest_value_of_each_audited_rule_fits_a_field_change() {
+        let ctl = |n: usize| "\u{1}".repeat(n);
+        let money = "99999999999999.9999";
+        let largest = [
+            (
+                RuleField::Drawdown,
+                json!({"type": "trailing_intraday", "amount": money, "stops_trailing_at": ctl(300),
+                       "description": ctl(500),
+                       "trailing_lock": {"mode": "floor_reaches_start", "offset": money}}),
+            ),
+            (
+                RuleField::DailyLossLimit,
+                json!({"kind": "soft_pause", "amount": money}),
+            ),
+            (RuleField::DailyProfitTarget, json!({"amount": money})),
+            (
+                RuleField::TradingDayReset,
+                json!({"local_time": "23:59", "time_zone": "America/Argentina/ComodRivadavia",
+                       "published_text": ctl(100)}),
+            ),
+            (
+                RuleField::ConsistencyRule,
+                json!({"text": ctl(2000), "threshold_pct": "100.0"}),
+            ),
+            (RuleField::EvaluationProfitTarget, json!({"amount": money})),
+        ];
+        assert_eq!(
+            largest.iter().map(|(f, _)| *f).collect::<Vec<_>>(),
+            crate::presets::account_ops::AUDITED_RULE_FIELDS
+        );
+        for (field, v) in largest {
+            let value = preset_values::RuleValue::deserialize(field, &v).unwrap();
+            let text = crate::presets::account_ops::audit_text(
+                &preset_values::account::AccountValue::Rule(value),
+            );
+            assert!(
+                text.chars().count() <= crate::events::FIELD_CHANGE_MAX_LEN,
+                "{field:?}: {} chars",
+                text.chars().count()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn create_and_update_audit_the_rule_values_they_change() {
+        let f = fixture(verified(static_dd("2000.00")));
+        edited(&f).await;
+        let created_fields = match &f.events()[0] {
+            AccountsEvent::Created { fields, .. } => fields.clone(),
+            e => panic!("{e:?}"),
+        };
+        let dd = created_fields
+            .iter()
+            .find(|c| c.field == "drawdown")
+            .unwrap();
+        assert_eq!(
+            (dd.old.as_deref(), dd.new.as_deref()),
+            (None, Some("{\"amount\":\"1500.00\",\"type\":\"static\"}"))
+        );
+        // Only the deviations: the preset's own values are not listed.
+        assert!(created_fields.iter().all(|c| c.field != "daily_loss_limit"));
+
+        // A manual account that selects the preset with its own drawdown.
+        let manual = created(&f.w, prop("Manual", Some(Choice::Declined))).await;
+        let before = f.events().len();
+        let mut u = update_of(&manual);
+        u.selection = SelectionInput::Preset {
+            preset_version_id: f.v1,
+            firm_platform: None,
+        };
+        u.size_amount = None;
+        u.sent = PropFieldsSent {
+            preset_version_id: true,
+            ..PropFieldsSent::default()
+        };
+        u.rule_values = Some(json!({"drawdown": static_dd("1800.00")}));
+        update(&f.w, u).await.unwrap();
+        let changes = f.events()[before..]
+            .iter()
+            .find_map(|e| match e {
+                AccountsEvent::Updated { changes, .. } => Some(changes.clone()),
+                _ => None,
+            })
+            .unwrap();
+        let dd = changes.iter().find(|c| c.field == "drawdown").unwrap();
+        assert_eq!(dd.old, None, "a manual account had no preset drawdown");
+        assert_eq!(
+            dd.new.as_deref(),
+            Some("{\"amount\":\"1800.00\",\"type\":\"static\"}")
+        );
+        assert!(
+            changes
+                .iter()
+                .all(|c| crate::AUDITED_FIELDS.contains(&c.field))
         );
     }
 

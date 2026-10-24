@@ -426,18 +426,99 @@ fn not_material_waits_for_the_accounts_path() {
 }
 
 #[test]
-fn schema_versions_1_0_and_1_1() {
-    let mut v = parse(V1);
-    v["schema_version"] = json!("1.1");
-    v["plans"][0]["phases"][0]["sizes"][0]["rule_sets"][0]["rules"]["drawdown"]["value"]["trailing_lock"] =
-        json!({"mode": "floor_reaches_start"});
-    assert!(run(&v, None, POLICY).is_ok(), "{:?}", run(&v, None, POLICY));
-    v["schema_version"] = json!("1.0");
-    assert!(
-        problems(&v, None)
+fn schema_versions_1_0_1_1_and_1_2() {
+    let invalid = |v: &Value, needle: &str| {
+        problems(v, None)
             .iter()
-            .any(|p| matches!(p, ImportProblem::Invalid(m) if m.contains("trailing_lock")))
-    );
+            .any(|p| matches!(p, ImportProblem::Invalid(m) if m.contains(needle)))
+    };
+    let drawdown = "/plans/0/phases/0/sizes/0/rule_sets/0/rules/drawdown";
+
+    // 1.1 fields (trailing_lock, title_note, a quote without page_title): read in 1.1 / 1.2,
+    // refused in 1.0 (check 12).
+    let mut v = parse(V1);
+    v.pointer_mut(drawdown).unwrap()["value"]["trailing_lock"] =
+        json!({"mode": "floor_reaches_start"});
+    let q = &mut v["stances"]["automation"][0]["quotes"][0];
+    q.as_object_mut().unwrap().remove("page_title");
+    q["title_note"] = json!("title not retrieved");
+    for version in ["1.1", "1.2"] {
+        v["schema_version"] = json!(version);
+        assert!(
+            run(&v, None, POLICY).is_ok(),
+            "{version}: {:?}",
+            run(&v, None, POLICY)
+        );
+    }
+    v["schema_version"] = json!("1.0");
+    assert!(invalid(&v, "trailing_lock"));
+    assert!(invalid(&v, "title_note"));
+    assert!(invalid(&v, "a quote without page_title"));
+
+    // 1.2 fields on a rule field (not_confirmed_reason, quotes, research): read in 1.2 only.
+    let mut v = parse(V1);
+    *v.pointer_mut(drawdown).unwrap() = json!({
+        "status": "not_confirmed", "not_confirmed_reason": "partial",
+        "quotes": [{"text": "Drawdown: see the dashboard.", "language": "en", "url": "https://example-firm.com/rules",
+                    "accessed_at": "2026-10-20", "page_title": "Rules"}],
+        "research": {"searched_on": "2026-10-20",
+                     "sources": [{"url": "https://example-firm.com/rules", "accessed_at": "2026-10-20", "page_title": "Rules"}]},
+    });
     v["schema_version"] = json!("1.2");
-    assert!(problems(&v, None).contains(&ImportProblem::UnsupportedSchemaVersion("1.2".into())));
+    assert!(run(&v, None, POLICY).is_ok(), "{:?}", run(&v, None, POLICY));
+    for version in ["1.1", "1.0"] {
+        v["schema_version"] = json!(version);
+        for key in ["not_confirmed_reason", "quotes", "research"] {
+            assert!(
+                invalid(&v, &format!("{key} on a rule field")),
+                "{version} {key}"
+            );
+        }
+    }
+    // The stances' quotes and research are not 1.2 fields: a plain 1.0 file passes.
+    assert!(run(&parse(V1), None, POLICY).is_ok());
+
+    v["schema_version"] = json!("1.3");
+    assert!(problems(&v, None).contains(&ImportProblem::UnsupportedSchemaVersion("1.3".into())));
+}
+
+/// Check 9 (presets 1.2): where a field was read (sources, research, the quotes' page metadata) is
+/// not a value change; the status, the reason and the quoted texts are.
+#[test]
+fn the_diff_sees_reasons_and_quoted_texts_not_where_they_were_read() {
+    let drawdown = "/plans/0/phases/0/sizes/0/rule_sets/0/rules/drawdown";
+    let partial = |text: &str, date: &str| {
+        json!({
+            "status": "not_confirmed", "not_confirmed_reason": "partial",
+            "quotes": [{"text": text, "language": "en", "url": "https://example-firm.com/rules",
+                        "accessed_at": date, "page_title": "Rules"}],
+            "research": {"searched_on": date,
+                         "sources": [{"url": "https://example-firm.com/rules", "accessed_at": date, "page_title": "Rules"}]},
+        })
+    };
+    let mut v1 = parse(V1);
+    v1["schema_version"] = json!("1.2");
+    *v1.pointer_mut(drawdown).unwrap() = partial("Drawdown: 2,000.", "2026-10-20");
+    let stored = stored_after(&plan(&v1, None), &v1, None);
+    let changes = |v: &Value| {
+        let file: ReleaseFile = serde_json::from_value(v.clone()).unwrap();
+        diff(&file, &stored.latest)
+            .into_iter()
+            .filter(|c| c["kind"] == "rule_value_changed")
+            .count()
+    };
+    let mut v2 = v1.clone();
+    *v2.pointer_mut(drawdown).unwrap() = partial("Drawdown: 2,000.", "2026-11-02");
+    assert_eq!(
+        changes(&v2),
+        0,
+        "a re-reading on another date is not a change"
+    );
+    *v2.pointer_mut(drawdown).unwrap() = partial("Drawdown: 2,500.", "2026-11-02");
+    assert_eq!(changes(&v2), 1, "a changed quoted text is");
+    let mut np = partial("x", "2026-11-02");
+    np["not_confirmed_reason"] = json!("not_published");
+    np.as_object_mut().unwrap().remove("quotes");
+    *v2.pointer_mut(drawdown).unwrap() = np;
+    assert_eq!(changes(&v2), 1, "a changed reason is");
 }

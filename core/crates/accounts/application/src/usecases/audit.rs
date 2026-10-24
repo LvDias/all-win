@@ -6,8 +6,33 @@ use accounts_enterprise::{Account, PropSelection};
 use crate::events::FieldChange;
 
 /// The only fields a `FieldChange` may name (Esquadro, `safe_to_display`): the account form's
-/// fields. A new field is added here only after deciding it is safe to show in the audit log.
-pub const AUDITED_FIELDS: [&str; 14] = [
+/// fields, then the preset rule fields (S16 audit (b) A, the names of `PRESET_AUDITED_FIELDS`).
+/// A new field is added here only after deciding it is safe to show in the audit log.
+pub const AUDITED_FIELDS: [&str; 20] = [
+    "kind",
+    "display_name",
+    "preset_version_id",
+    "firm_platform",
+    "firm_name",
+    "plan_name",
+    "phase",
+    "size_amount",
+    "multiplier",
+    "max_position_qty",
+    "commission_per_contract_side",
+    "evaluation_start",
+    "evaluation_earned_before",
+    "binding",
+    "drawdown",
+    "daily_loss_limit",
+    "daily_profit_target",
+    "trading_day_reset",
+    "consistency_rule",
+    "evaluation_profit_target",
+];
+
+/// The account's own audited fields, in `fields` order.
+const ACCOUNT_FIELDS: [&str; 14] = [
     "kind",
     "display_name",
     "preset_version_id",
@@ -24,7 +49,7 @@ pub const AUDITED_FIELDS: [&str; 14] = [
     "binding",
 ];
 
-/// Audited fields of an account, in `AUDITED_FIELDS` order. `binding`: the platform account
+/// Audited fields of an account, in `ACCOUNT_FIELDS` order. `binding`: the platform account
 /// name as the user knows it (`None` when unbound).
 pub(crate) fn fields(account: &Account, binding: Option<String>) -> [Option<String>; 14] {
     let (firm_name, plan_name, phase, preset, platform) = match &account.selection {
@@ -71,7 +96,7 @@ pub(crate) fn fields(account: &Account, binding: Option<String>) -> [Option<Stri
 }
 
 pub(crate) fn created(account: &Account, binding: Option<String>) -> Vec<FieldChange> {
-    AUDITED_FIELDS
+    ACCOUNT_FIELDS
         .into_iter()
         .zip(fields(account, binding))
         .filter_map(|(field, new)| {
@@ -90,7 +115,7 @@ pub(crate) fn changes(
     after: &Account,
     after_binding: Option<String>,
 ) -> Vec<FieldChange> {
-    AUDITED_FIELDS
+    ACCOUNT_FIELDS
         .into_iter()
         .zip(
             fields(before, before_binding)
@@ -100,4 +125,17 @@ pub(crate) fn changes(
         .filter(|(_, (old, new))| old != new)
         .map(|(field, (old, new))| FieldChange { field, old, new })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::presets::account_ops::AUDITED_RULE_FIELDS;
+
+    #[test]
+    fn audited_fields_are_the_account_fields_then_the_rule_field_names() {
+        let rules: Vec<&str> = AUDITED_RULE_FIELDS.iter().map(|f| f.as_str()).collect();
+        assert_eq!(&AUDITED_FIELDS[..14], &ACCOUNT_FIELDS[..]);
+        assert_eq!(&AUDITED_FIELDS[14..], &rules[..]);
+    }
 }
