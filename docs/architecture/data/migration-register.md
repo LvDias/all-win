@@ -1,6 +1,6 @@
 # Migration register — Wave 1
 
-Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.21.
+Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.22.
 
 This is the single list of migration versions: who owns each one, which hash was approved, where it is committed and whether it deletes data. The DDL lives in [wave1-data-model.md](wave1-data-model.md); the rules are in its §8 "Conventions".
 
@@ -35,8 +35,8 @@ Versions are `20261023` + the number shown. "Train" = `s/v1-sunday-integration--
 | 061050 | 5b | `accounts_create_rule_values` | Malha | approved before copies were kept; file `af3368409395` | 3cc10f2 (S5) | in train | no |
 | 061100 | 5c | `accounts_create_bracket_profiles` | Torno | approved before copies were kept; file `f7308d986ecc` | e924bf0 (S6) | in train | no |
 | 061200 | 6b | `routing_create_decision_subscription` | Ferro | patches `52a97bd140fa` (leg) + `6f3a77829e95` (outcome); file `b4ce6e393484` | eea31cf (`s/v1-s7-routing--core`) | in train | no |
-| 061250 | 6d | `routing_message_receipt_body_hash` | Ferro | `16f104b00fd0` | d61d2d7 (`s/v1-ingress-duplicate-conflict--core`, WIP) | **not in train**, see "Merge order" | no (expand only) |
-| 061300 | 6c | `routing_message_id_no_token_check` | Ferro | patch `44c5cb522587`, file `324e4fb70c3e`; Crivo and Brasa approvals pending | 3ebf247 (`s/v1-routing-message-id-no-token--core`, on 061250) | **not in train**, see "Merge order" | no (CHECK only; authorized by the user 2026-10-24) |
+| 061250 | 6d | `routing_message_receipt_body_hash` | Ferro | `16f104b00fd0` | d61d2d7 (`s/v1-ingress-duplicate-conflict--core`, WIP) | joins the train before `main` (Maestro, 2026-10-24) | no (expand only) |
+| 061300 | 6c | `routing_message_id_no_token_check` | Ferro | patch `44c5cb522587` (Lastro, Crivo, Brasa), file `324e4fb70c3e` | 3ebf247 (`s/v1-routing-message-id-no-token--core`, on 061250; `git diff d61d2d7 3ebf247` = the approved patch) | joins the train before `main` (Maestro, 2026-10-24) | no (CHECK only; authorized by the user 2026-10-24) |
 | 061310 | 2d | `identity_source_name_check` | Brasa | `d7e419e49d1a` | c1fce6c (S3) | in train | no (CHECK only; authorized by the user 2026-10-24) |
 | 061400 | 14 | `app_create_outbox_consumer_tracking` | Brasa | `51a75e5bd003` | 4e1be59 (`s/v1-outbox-consumer-tracking--core`) | in train | no (drops `outbox_due_idx`, an index) |
 | 061500 | 10 | `risk_create_account_limits` | Malha | patch `bbe2b9a2828e`, file `d7821ed786de` | 68d907a (`s/v1-s13-risk--core`) | committed, not in train | no |
@@ -56,9 +56,7 @@ Versions are `20261023` + the number shown. "Train" = `s/v1-sunday-integration--
 ## Merge order
 
 1. **Train** (`s/v1-sunday-integration--core`, 9878402): 060610 → 061200, 061310, 061400, 061600, 061610. These are in numeric order and apply cleanly on top of `main` (≤ 060600).
-2. **061250 + 061300 (Ferro):** they sort **below** 061310/061400/061600, which are already in the train.
-   - If they join the train before it merges to `main`, they keep their numbers. QA databases built from the train are recreated, not migrated forward.
-   - If they merge after the train, the DBA re-stamps them before their merge, in the same order: 061250 → **061900** `routing_message_receipt_body_hash`, 061300 → **061910** `routing_message_id_no_token_check`. These two numbers are reserved for that case. 061300 stays on top of 061250.
+2. **061250 + 061300 (Ferro)** join the train in its step 4, before the train merges to `main`, and keep their numbers (Maestro decision 2026-10-24, on Esmeril's recommendation). QA databases built from the earlier train are recreated, not migrated forward. The rev. 16.21 reservation of 061900/061910 for a re-stamp is released; if they still miss the train, the DBA assigns re-stamp numbers before their merge.
 3. **061500, 061510** (S13, Malha): after the train; no re-stamp needed.
 4. **061620** (Bigorna): after 061610; no re-stamp needed if it merges after the train.
 5. **061700–061730** (S16, Torno): after the `allwin_publisher` infra (78b60d7) is merged and the role exists in every environment, and after Malha approves 061730.
