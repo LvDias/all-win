@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.16 (d7ae7cf); **rev. 16.17 proposed** (Esmeril L1–L3 on 16.16, Crivo via Esquadro): a dead-letter re-process keeps the original `received_at`; a discard needs a reason; decisions are final (trigger); "never purged" yields to Q13-b erasure (§6.3).
+- **Status:** Accepted (2026-10-24), rev. 16.17 (c78563c); **rev. 16.18 proposed** (Q95/Q96): forward migration #2f `…061810` widens the `one_time_code` action and target `CHECK`s for `account_sync_clear` and `trading_day_restart` (§4, §8).
+- Rev. 16.17 (c78563c) (Esmeril L1–L3 on 16.16, Crivo via Esquadro): a dead-letter re-process keeps the original `received_at`; a discard needs a reason; decisions are final (trigger); "never purged" yields to Q13-b erasure (§6.3).
 - Rev. 16.16 (d7ae7cf): `gateway.intake_dead_letter` (#9c `…061620`, Bigorna; ADR-0004 r5 §4, Esquadro): the only copy of a frame, never purged before an operator decision, recovery by Core re-process (§6.3, §6.5, §8); 061300 and 061310 authorized by the user on 2026-10-24 (§8).
 - Rev. 16.15 (187f218) (Ferro; Esmeril nits on 16.14): the `instruction_purge_receipt_hash` statement trigger clears the receipt hash on every instruction delete (§6.1, §6.5, §8); a duplicated sentence removed.
 - Rev. 16.14 (3452f0f) (Esquadro FINAL, duplicate after the purge): `body_sha256` lives only as long as the content; the Q13-b purge clears it and stamps `content_purged_at` in the same batch; a re-send after the purge is `ingress.duplicate_ignored` with `content_not_retained: true`; no HMAC, no per-field hashes (§6.1, §8); the `presets.version_available` UUIDv5 namespace and test vector (§5.7).
@@ -381,6 +382,14 @@ CREATE TABLE identity.one_time_code (                    -- login, step-up and c
   --                WHEN 'step_up' THEN (session_id IS NULL) = (action = 'admin_recovery')
   --                ELSE (session_id IS NOT NULL OR code_role = 'new_value') END
   -- Tests: an admin_recovery step-up without a session passes, with a session fails; another action without a session fails.
+  -- rev. 16.18, forward migration #2f `…061810` identity_step_up_account_actions (Q95/Q96; expand-only, no data
+  -- deleted): two new StepUpAction values, both with target_id = the account id and a session (user step-ups).
+  -- It recreates the two CHECKs from #2e's lists (never from 060800's, which would drop 'admin_recovery'):
+  --   one_time_code_action_check: the #2e list + 'account_sync_clear', 'trading_day_restart';
+  --   one_time_code_step_up_check: the #2e target-required list + 'account_sync_clear', 'trading_day_restart'.
+  -- one_time_code_session_check is unchanged (only admin_recovery has no session). Both new lists are supersets,
+  -- so existing rows stay valid. Tests: each new action with a target and a session passes; without a target fails;
+  -- without a session fails; every pre-existing action still passes.
   CONSTRAINT one_time_code_whatsapp_check CHECK (channel <> 'whatsapp' OR destination ~ '^\+[1-9][0-9]{7,14}$'),
   FOREIGN KEY (user_id, session_id) REFERENCES identity.session (user_id, id),
   FOREIGN KEY (user_id, channel_change_id) REFERENCES identity.channel_change (user_id, id)
@@ -2046,6 +2055,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 | 11 | `catalog_create_presets` (`…061700`, rev. 10/16.8): the §5.7 catalog tables, `publish_seq`, `allwin_publisher` grants; #11b `catalog_opt_in_rule_version_release` (`…061710`) is the forward change on `opt_in_rule_version` | S16 (Torno); after S5 (#5a) |
 | 11c | `accounts_create_catalog_release_cursor` (`…061720`, rev. 16.8): `accounts.catalog_release_cursor` (§5.7) | S16 (Torno); after #11 |
 | 11d | `accounts_worker_find_release_affected` (`…061730`, rev. 16.12): the worker's column `SELECT` on `accounts.account` (§5.7) | S16 (Torno), Malha reviews; after #11c |
+| 2f | `identity_step_up_account_actions` (`…061810`, rev. 16.18): `one_time_code` action and target `CHECK`s widened for `account_sync_clear`, `trading_day_restart` (§4) | Brasa (identity); after #2e |
 | 2e | `identity_admin_channel_recovery` (`…061800`, rev. 16.8): `channel_change` kind / admin fields, `one_time_code` session `CHECK` widened (§4) | S3 AC-12 (Cinzel); expand-only |
 | 13 | `trades_create_trade` (rev. 14/15.2): `CREATE SCHEMA trades` + its grants, `trades.trade`, `trades.trade_fill`, indexes, RLS, immutability triggers | S21; version stamped after the latest merged migration |
 | — | `routing_create_order_correlation` | S19 (V1.1) |
@@ -2058,7 +2068,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); rev. 16.18: `…061810` #2f (Brasa); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
