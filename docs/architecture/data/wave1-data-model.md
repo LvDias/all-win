@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.21 (21c4274); **rev. 16.22 proposed**: 061250 #6d and 061300 #6c join the Sunday train before `main` and keep their numbers (Maestro, on Esmeril's recommendation); the 061900/061910 reservation is released (§8, [migration register](migration-register.md)).
+- **Status:** Accepted (2026-10-24), rev. 16.22 (90a600a); **rev. 16.23 proposed** (S13 realized P&L per fill; Malha gap, Esquadro decision A–D): `risk.position` #10c `…061520`, cost-basis columns on `risk.applied_fill` #10d `…061530`, the platform's cost basis and position first (a missing row is never read as flat; Esmeril M1), the unknown-basis fail-closed rule, and per-fill `gross` rounded half away from zero (§5.6, §6.5, §8, [migration register](migration-register.md)).
+- Rev. 16.22 (90a600a): 061250 #6d and 061300 #6c join the Sunday train before `main` and keep their numbers (Maestro, on Esmeril's recommendation); the 061900/061910 reservation is released (§8).
 - Rev. 16.21 (21c4274): the [migration register](migration-register.md) (every Wave 1 version with owner, approved hash, commit, state and data deletion, plus the merge order); the `copied_from_size` comment and the Q60 tie rule cover every account kind since Q73 b (Torno L-S6-1) (§5.4).
 - Rev. 16.20 (afd92aa) (#14 review): the outbox purge needs a maint column `UPDATE` on `app.outbox` for `FOR UPDATE SKIP LOCKED`; keep or replace it if the #1b columns or the legacy grant go (§6.4).
 - Rev. 16.19 (3237b6c): `routing_decision.outcome` narrowed to the HTTP 5.2.0 terms (no `rejected`) in the unmerged `…061200` (Ferro, patch 6f3a77829e95) (§6.2).
@@ -1005,12 +1006,61 @@ CREATE TABLE risk.applied_fill (
 CREATE INDEX applied_fill_trading_date_idx ON risk.applied_fill (trading_date);   -- retention purge
 ```
 
+```sql
+-- rev. 16.23, migration #10c `…061520` (Malha; Esquadro decision A–D on the S13 realized-P&L gap):
+-- the position and its cost basis per account and contract, kept by risk at each applied fill.
+CREATE TABLE risk.position (
+  user_id           uuid NOT NULL,
+  account_id        uuid NOT NULL,
+  instrument_symbol text NOT NULL CHECK (instrument_symbol ~ '^[A-Z0-9]{1,10}$'),   -- wire form, as gateway G3
+  contract_month    date NOT NULL CHECK (extract(day FROM contract_month) = 1),
+  qty               integer NOT NULL,                  -- signed; 0 = flat (the row stays)
+  avg_price         NUMERIC(22,10) CHECK (avg_price > 0),   -- NULL when flat or when the basis is unknown
+  basis_known       boolean NOT NULL DEFAULT true,     -- false: open position whose cost basis is unknown
+  last_fill_id      text CHECK (char_length(last_fill_id) BETWEEN 1 AND 128),
+  last_event_id     uuid,                              -- gateway execution_report.event_id applied last (trace)
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, instrument_symbol, contract_month),
+  CONSTRAINT position_flat_check  CHECK (qty <> 0 OR (avg_price IS NULL AND basis_known)),
+  CONSTRAINT position_basis_check CHECK (qty = 0 OR (avg_price IS NOT NULL) = basis_known),
+  FOREIGN KEY (user_id, account_id) REFERENCES risk.account_limits (user_id, account_id)
+);
+
+-- rev. 16.23, migration #10d `…061530` (Malha): the inputs of each fill's gross, so an amend recomputes
+-- it without today's catalog or position. NOT NULL without a default: the table only has rows in
+-- throwaway S13 test databases (not in any shared environment); such a database fails this file
+-- inside its transaction and is recreated.
+ALTER TABLE risk.applied_fill
+  ADD COLUMN instrument_symbol text NOT NULL CHECK (instrument_symbol ~ '^[A-Z0-9]{1,10}$'),
+  ADD COLUMN contract_month    date NOT NULL CHECK (extract(day FROM contract_month) = 1),
+  ADD COLUMN side              text NOT NULL CHECK (side IN ('buy','sell')),
+  ADD COLUMN price             NUMERIC(22,10) NOT NULL CHECK (price > 0),   -- fill price as applied now
+  ADD COLUMN position_before   integer,                  -- signed position before this fill; NULL = unknown (M1)
+  ADD COLUMN avg_price_before  NUMERIC(22,10) CHECK (avg_price_before > 0),   -- NULL: flat before, or basis unknown
+  ADD COLUMN point_value       NUMERIC(18,4) NOT NULL CHECK (point_value > 0),   -- snapshot at the first application
+  ADD CONSTRAINT applied_fill_before_check   -- a realized gross needs a known open position and its basis
+      CHECK (gross = 0 OR (position_before IS NOT NULL AND position_before <> 0 AND avg_price_before IS NOT NULL));
+```
+
 - **Applied fills (rev. 16.6; Esquadro decision, Malha #10b):**
   - **Never count twice:** `add` → `INSERT … ON CONFLICT (account_id, fill_id) DO NOTHING`; only an inserted row adds its values to `trading_day` (same risk transaction). `amend` → the difference between the new values and the stored ones is applied to the row's own `trading_date`, and the row takes the new values, so a redelivered amend applies 0. `remove` → the stored values are subtracted, the row is zeroed and gets `removed_at`; a redelivered remove is a no-op. A correction for an unknown or purged fill changes nothing and alerts (code from the S13 contract).
   - The `trading_day` FK fixes the day: a late correction updates the day it was first counted in, never today's.
   - **Retention:** `allwin_maint` deletes rows with `trading_date` older than **30 days**, in batches. That is longer than the adapter's 7-day dedupe record (ADR-0004 §4) and covers month-end corrections. `trading_day` is not purged.
   - Consumer `from_now`, plus the startup reconciliation through `PlatformPnl::fills_since(account_id, trading_day_start)`, which goes through the same `ON CONFLICT` path.
   - Tests: the same `add` twice counts once; an amend redelivered applies once; a remove zeroes the row and restores the sums; a correction after midnight updates the original day; a purge older than 30 days leaves `trading_day` intact; a cross-user read returns 0 rows.
+- **Realized P&L per fill (rev. 16.23; Malha gap, Esquadro decision 1–6 with A–D and the rounding rule):**
+  - **Cost basis = the platform's whenever it exists (A).** Each applied report with `avg_price_after` (E1 payload, Bigorna, additive) sets `risk.position.avg_price` to it and `basis_known = true`. When the report has none, risk computes the average cost itself. A fill's `avg_price_before` is the position's `avg_price` before it. The computed average is compared with the platform's when both exist; a difference above 1 tick is logged and counted in a metric, the platform's value wins, and it is not a sync reason (B).
+  - **Unknown basis:** a reducing fill whose `position_before` or basis is unknown (see "Position before the fill"), or that arrives with `basis_known = false`, or an amend or remove whose report has no `avg_price_after`, leaves the basis unknown. Its gross is 0 (`applied_fill_before_check`), and the account's P&L is stale (`stale_reason` `no_recent_data`), so routing skips entries (fail closed) while exits continue. The next report with `avg_price_after`, or a flat position, restores `basis_known`.
+  - **Position before the fill (rev. 16.23, Esmeril M1; the platform wins):** the account may already hold a position that `risk.position` does not know, for example one opened before All Win, opened manually, or filled while the risk consumer was down or behind. A missing row is therefore never read as flat.
+    - When the report has `position_after`: `position_before = position_after − signed fill qty` (buy +, sell −). When the row's `qty` equals that value, its basis is used, including for a fill that closes to flat (the platform's `avg_price_after` is then null or 0). If there is no `risk.position` row, or its `qty` differs from that value, the stored basis is not used. `avg_price_before` is then known only when the fill reduces the position without reaching flat or reversing: under average cost a reduction does not change the average, so `avg_price_before = avg_price_after`. Otherwise the basis is unknown.
+    - When the report has no `position_after` (the column is nullable in `gateway.execution_report`): the stored row is used if there is one. Without a row, `position_before` is NULL (unknown), not 0.
+    - An unknown `position_before` or basis on a fill that may reduce the position takes the unknown-basis path below: `gross = 0`, the account is stale, and entries are skipped. After the fill, `risk.position` takes the report's `position_after` / `avg_price_after` when present.
+  - **Formula:** `gross = closed_qty × (price − avg_price_before) × direction × point_value`, where `closed_qty = min(|fill qty|, |position_before|)` when the fill is opposite to the position, otherwise 0. A fill that reverses the position closes `closed_qty`, and the rest opens at the fill price (C). `direction` is +1 for closing a long and −1 for closing a short.
+  - **Rounding (Esquadro):** the arithmetic is exact (`NUMERIC` / `rust_decimal`, no intermediate rounding), and only each fill's `gross` is rounded to 4 decimals **half away from zero**. That is the rule for 4-decimal money (ADR-0004 commission split, Crivo F1). The defaults of `rust_decimal::round_dp` and C# `Math.Round` are half-even, so the code names the mode (`RoundingStrategy::MidpointAwayFromZero` / `MidpointRounding.AwayFromZero`). `trading_day` sums the rounded per-fill `gross` values, so the day total equals the sum of the audited rows.
+  - **Amend / remove (4):** recompute that fill's `gross` from its own stored `position_before`, `avg_price_before` and `point_value` with the new qty and price (remove → 0), apply the difference to its `trading_day`, then set `risk.position` to the report's `position_after` / `avg_price_after`. The effect on later fills' `gross` is not recomputed: this is a documented limitation that corrects itself when the position is flat. A `point_value` change in the catalog never recomputes applied fills (D). The first application reads `point_value` through the consumer-owned `InstrumentPoints` port; an unknown symbol is a port error, so the fill is not applied, it is retried, and the account is stale meanwhile.
+  - **Method:** average cost in `risk`; FIFO stays in `trades` (S21) for per-trade figures (6).
+  - **`risk.position` grants:** RLS owner policy; `allwin_app` `SELECT, INSERT, UPDATE` (no `DELETE`: a flat position keeps its row with `qty = 0`); `allwin_maint` `SELECT, DELETE` (Q13-b erasure); nothing for `allwin_worker`. It is not purged (one row per account and contract).
+  - Tests: a fill that closes to flat with a matching stored row → the basis comes from the row and `gross` ≠ 0 (Esquadro); the first fill with no position row and `position_after` ≠ the fill qty (no silent gross 0 with a known basis); a stored `qty` that differs from the platform's (the platform wins, the basis is unknown unless derivable); no row and no `position_after` → `position_before` NULL and the account stale; the platform's `avg_price_after` overrides the computed one; a divergence of more than 1 tick is counted, not synced; a reducing fill with an unknown basis gives `gross = 0` and a stale account; long → short in one fill; 0.0078125 × 31.25 → `0.2441`; an exact half rounds away from zero, negative included; an amend recomputes from the stored inputs after a catalog `point_value` change; a cross-user read of `risk.position` returns 0 rows.
 - **Grants (rev. 16.6, DBA review of #10):**
   - `allwin_app` keeps `DELETE` only on `scheduled_limit` (reset step 2). `REVOKE DELETE` on `account_limits`, `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block` and `applied_fill`: no runtime path deletes them, and a block row never vanishes (no early unlock). Erasure (Q13-b) and the `applied_fill` purge run as `allwin_maint`; #10b grants it `SELECT, DELETE` on `applied_fill`, and the erasure grant on the other tables comes in a later migration that the DBA numbers.
   - `allwin_worker` finds due work with column grants only: `SELECT (user_id, account_id, effective_from)` on `scheduled_limit`, `SELECT (user_id, account_id, until, ended_at)` on `account_block`, and `SELECT (user_id, account_id, effective_as_of, reset_source, reset_local_time, reset_time_zone)` on `account_limits` (stuck-reset alert). Each item's work then runs on the `allwin_app` pool with `app.user_id` set (§2 roles). A test asserts that the worker can read those columns and nothing else.
@@ -1861,6 +1911,7 @@ CREATE INDEX audit_entry_user_account_idx     ON audit.audit_entry (user_id, acc
 | `routing.order_correlation` | — | no | deleted 30 days after its position closes (S19) |
 | `app.outbox` (done for every registered consumer, or of an allowlisted no-consumer type; §6.4), `gateway.inbound_receipt`, `gateway.outbound_message` (acked) | — | no | 7 days (by `occurred_at`) / 48 h / 7 days |
 | `risk.applied_fill` (rev. 16.6) | `(account_id, fill_id)` | no | 30 days after its `trading_date` (`allwin_maint`) |
+| `risk.position` (rev. 16.23) | `(account_id, instrument_symbol, contract_month)` | no | **kept** (one row per contract) until the user is erased (`allwin_maint`) |
 | `gateway.intake_dead_letter` (rev. 16.16) | `(connection_id, msg_id)` | no | `pending`: **never purged** until an operator decision; decided: 90 days after `decided_at` |
 | `gateway.deferred_inbound` (processed; rev. 16.10) | `(connection_id, msg_id)` | no | 7 days after `processed_at`; unprocessed rows are kept |
 | `identity.pairing_code` (used, expired or invalidated) | `code_hmac` | no | 30 days |
@@ -2054,6 +2105,8 @@ The [migration register](migration-register.md) lists each version's owner, appr
 | 8 | `identity_create_adapter_connections`: `adapter_connection`, `pairing_code`, `device_token`, `resolve_device_token`, `resolve_pairing_code` | S3 (Brasa); S2 builds on it |
 | 10 | `risk_create_account_limits` (`…061500`, rev. 13/16.6): `account_limits`, `scheduled_limit` (derived), `trading_day`, `evaluation_progress`, `drawdown_tracker`, `account_block`, with RLS; the rev. 16.6 grants (§5.6) | S13 (Malha) |
 | 10b | `risk_create_applied_fill` (`…061510`, rev. 16.6): `risk.applied_fill` + maint grants (§5.6) | S13 (Malha); after #10 |
+| 10c | `risk_create_position` (`…061520`, rev. 16.23): `risk.position` with RLS and grants (§5.6) | S13 (Malha); after #10b |
+| 10d | `risk_applied_fill_cost_basis` (`…061530`, rev. 16.23): the cost-basis columns and `applied_fill_before_check` on `risk.applied_fill` (§5.6) | S13 (Malha); after #10c |
 | 6d | `routing_message_receipt_body_hash` (`…061250`, rev. 16.8/16.14): `body_sha256` + `content_purged_at` + `NOT VALID` hash-or-purged `CHECK`, maint column `UPDATE`, the `instruction_purge_receipt_hash` statement trigger (rev. 16.15) (§6.1) | Ferro; expand-only |
 | 9c | `gateway_create_intake_dead_letter` (`…061620`, rev. 16.16): `gateway.intake_dead_letter` (§6.3) | Bigorna; after #9b |
 | 9b | `gateway_create_deferred_inbound` (`…061610`, rev. 16.10): `gateway.deferred_inbound` (§6.3) | Bigorna; after #9 |
@@ -2074,7 +2127,7 @@ The [migration register](migration-register.md) lists each version's owner, appr
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); rev. 16.18: `…061810` #2f (Brasa); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own. Rev. 16.22: 061250 #6d and 061300 #6c join the Sunday train (which carries 061310–061610) before `main` and keep their numbers; `…061900` is free again.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); rev. 16.18: `…061810` #2f (Brasa); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own. Rev. 16.23: `…061520` #10c and `…061530` #10d (Malha, S13). Rev. 16.22: 061250 #6d and 061300 #6c join the Sunday train (which carries 061310–061610) before `main` and keep their numbers; `…061900` is free again.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
