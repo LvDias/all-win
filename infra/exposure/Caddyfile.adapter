@@ -32,6 +32,9 @@ https://:8443 {
 			max_size 64KB
 		}
 		reverse_proxy core:{$CORE_PORT:8080} {
+			# L-W2: the Core trusts the LAST X-Forwarded-For hop, which is only right with exactly ONE trusted proxy in front of it (this Caddy).
+			# The client address is OVERWRITTEN with the real peer, never appended to a value the client sent.
+			header_up X-Forwarded-For {remote_host}
 			# Idle WebSocket sessions are the Core's business (heartbeats); drop dead upstreams fast.
 			transport http {
 				dial_timeout 5s

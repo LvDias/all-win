@@ -24,6 +24,7 @@ and `<DEV_SERVER_PUBLIC_IP>`.
 | Logging | URI and all request headers deleted from the access log (the Bearer device token is in a header); no request body is logged |
 | Body cap | 64 KB at the edge |
 | Auth | the Core's own device-token check on `/adapter/v1` (token hashed at rest, per-token and per-IP limits in the Core) |
+| Client address (L-W2) | the Core's gateway trusts the **last** hop of `X-Forwarded-For`, correct only with exactly **one** trusted proxy in front: `caddy-adapter` **overwrites** the header with the real peer (`header_up X-Forwarded-For {remote_host}`), never appends a value sent by the client. Checked with a real Caddy: a forged `X-Forwarded-For: 1.2.3.4, 5.6.7.8` reached the backend as the peer address only (Caddy's default with no `trusted_proxies`). No second proxy or CDN in front, and no `trusted_proxies`, without revisiting this |
 | Not reachable | the main dev Caddy (stays on `127.0.0.1`, moved to 8444 while the gateway uses 8443), postgres, the Core's own port, the web |
 
 ## TLS: how the plugin trusts the certificate without a public domain
