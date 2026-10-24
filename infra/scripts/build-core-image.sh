@@ -36,9 +36,10 @@ SQLX_OFFLINE=true "$here/allwin-heavy" bash -c '
 ' _ "$wt" "$stage" "$pkg" "$bin" "$@"
 cp "$here/../docker/$dockerfile" "$stage/Dockerfile"
 echo "binary sha256: $(sha256sum "$stage/$bin" | cut -d' ' -f1)"
-echo "marker 'allwin-dev-stub:routing-entry-gate' occurrences in the binary: $(grep -c -a -- 'allwin-dev-stub:routing-entry-gate' "$stage/$bin" || true)"
-# ADR-0006 rule 8, enforced on the BINARY (not only on the arguments): the stand-in marker present means a -dev-stubs tag, and a -dev-stubs tag means the marker is present.
-markers="$(grep -c -a -- 'allwin-dev-stub:routing-entry-gate' "$stage/$bin" || true)"
+echo "dev-stub markers ('allwin-dev-stub:' prefix: routing-entry-gate, gateway-risk, ...) in the binary: $(grep -c -a -- 'allwin-dev-stub:' "$stage/$bin" || true)"
+# ADR-0006 rule 8, enforced on the BINARY (not only on the arguments): ANY test stand-in marker (every one starts with 'allwin-dev-stub:', for example
+# routing-entry-gate in routing-application and gateway-risk in the app gateway) means a -dev-stubs tag, and a -dev-stubs tag means a marker is present.
+markers="$(grep -c -a -- 'allwin-dev-stub:' "$stage/$bin" || true)"
 if [ "$pkg" = app ]; then
   case "$tag" in
     *-dev-stubs) [ "$markers" -gt 0 ] || { echo "refusing: tag $tag claims dev-stubs but the binary has no stand-in marker" >&2; exit 2; } ;;
