@@ -60,21 +60,6 @@ const wideOffenders = (page: Page) =>
     }
     return out.slice(0, 6);
   });
-/** Every element wider than the viewport, with the overflow of its ancestors, to see which container really leaks. */
-const widestChain = (page: Page) =>
-  page.evaluate(() => {
-    const limit = document.documentElement.clientWidth + 1;
-    const out: string[] = [];
-    for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.right <= limit) continue;
-      const chain: string[] = []; let p: HTMLElement | null = el;
-      while (p && p !== document.documentElement) { const cs = getComputedStyle(p); chain.push(`${p.tagName.toLowerCase()}[ox=${cs.overflowX},pos=${cs.position},w=${Math.round(p.getBoundingClientRect().width)}]`); p = p.parentElement; }
-      out.push(`${el.tagName.toLowerCase()} right=${Math.round(r.right)} :: ${chain.slice(0, 7).join(" < ")}`);
-      if (out.length >= 3) break;
-    }
-    return out;
-  });
 /** Bisect: hide each element in turn; the ones whose removal shrinks the document's scrollWidth are what makes the page scroll sideways. */
 const culprits = (page: Page) =>
   page.evaluate(() => {
