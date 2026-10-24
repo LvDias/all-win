@@ -744,3 +744,63 @@ async fn source_names_are_shape_checked_in_the_database() {
     rename("é".repeat(60)).await.unwrap();
     db.teardown().await;
 }
+
+/// 061810 (Q95/Q96): the two account step-up actions are stored with a target and a session;
+/// without a target or without a session they are refused; every older action still fits.
+#[tokio::test(flavor = "multi_thread")]
+async fn account_step_up_actions_fit_the_code_checks() {
+    let Some(db) = setup().await else { return };
+    let (deps, _store, delivery) = deps(&db);
+    seed_user(&deps, "ana@example.com", false).await;
+    let (_, a) = sign_in(&db, &deps, &delivery, "ana@example.com", None).await;
+    step_up(&db, &deps, &delivery, &a, StepUpAction::SourceCreate, None).await;
+    // A copy of that real step-up row with another action, target and session.
+    let insert = |action: &'static str, target: bool, session: bool| {
+        let pool = db.inspect.clone();
+        async move {
+            sqlx::query(
+                "INSERT INTO identity.one_time_code
+                   (id, user_id, channel_change_id, purpose, channel, destination, action, target_id, session_id,
+                    code_role, code_hmac, pepper_version, failed_attempts, created_at, sent_at, expires_at,
+                    request_ip, delivery_state)
+                 SELECT gen_random_uuid(), user_id, channel_change_id, purpose, channel, destination, $1,
+                        CASE WHEN $2 THEN gen_random_uuid() END, CASE WHEN $3 THEN session_id END,
+                        code_role, sha256(gen_random_uuid()::text::bytea), pepper_version, 0, created_at,
+                        sent_at, expires_at, request_ip, delivery_state
+                   FROM identity.one_time_code WHERE purpose = 'step_up' LIMIT 1",
+            )
+            .bind(action)
+            .bind(target)
+            .bind(session)
+            .execute(&pool)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+        }
+    };
+    for action in ["account_sync_clear", "trading_day_restart"] {
+        insert(action, true, true).await.unwrap();
+        let e = insert(action, false, true).await.unwrap_err();
+        assert!(
+            e.contains("one_time_code_step_up_check"),
+            "{action} without target: {e}"
+        );
+        let e = insert(action, true, false).await.unwrap_err();
+        assert!(
+            e.contains("one_time_code_session_check"),
+            "{action} without session: {e}"
+        );
+    }
+    for a in StepUpAction::ALL {
+        if matches!(
+            a,
+            StepUpAction::AccountSyncClear | StepUpAction::TradingDayRestart
+        ) {
+            continue;
+        }
+        insert(a.as_str(), a.requires_target(), true)
+            .await
+            .unwrap_or_else(|e| panic!("{a:?}: {e}"));
+    }
+    db.teardown().await;
+}

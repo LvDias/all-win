@@ -308,6 +308,20 @@ fn action_text(action: StepUpAction, locale: Locale) -> &'static str {
                 "change the bound account"
             }
         }
+        StepUpAction::AccountSyncClear => {
+            if pt {
+                "limpar o \"fora de sincronia\" de uma conta"
+            } else {
+                "clear an account's out-of-sync state"
+            }
+        }
+        StepUpAction::TradingDayRestart => {
+            if pt {
+                "reiniciar a contagem do dia de uma conta"
+            } else {
+                "restart an account's count for today"
+            }
+        }
     }
 }
 

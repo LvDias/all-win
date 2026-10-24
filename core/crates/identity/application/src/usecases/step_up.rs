@@ -150,7 +150,9 @@ impl RequestStepUp {
                 .is_some_and(|c| c.connection.ensure_not_unpaired().is_ok()),
             StepUpAction::AccountOptInAccept
             | StepUpAction::RouteEnable
-            | StepUpAction::AccountBindingChange => deps
+            | StepUpAction::AccountBindingChange
+            | StepUpAction::AccountSyncClear
+            | StepUpAction::TradingDayRestart => deps
                 .account_targets
                 .owned_by(user, target)
                 .await

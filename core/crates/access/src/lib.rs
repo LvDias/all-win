@@ -51,10 +51,14 @@ pub enum StepUpAction {
     AdminInvitationCreate,
     RouteEnable,
     AccountBindingChange,
+    /// Q95: "clear out of sync" on an account.
+    AccountSyncClear,
+    /// Q96: "restart today's count" on an account.
+    TradingDayRestart,
 }
 
 impl StepUpAction {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::SourceCreate,
         Self::SourceRotate,
         Self::ConnectionCreate,
@@ -65,6 +69,8 @@ impl StepUpAction {
         Self::AdminInvitationCreate,
         Self::RouteEnable,
         Self::AccountBindingChange,
+        Self::AccountSyncClear,
+        Self::TradingDayRestart,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -79,6 +85,8 @@ impl StepUpAction {
             Self::AdminInvitationCreate => "admin_invitation_create",
             Self::RouteEnable => "route_enable",
             Self::AccountBindingChange => "account_binding_change",
+            Self::AccountSyncClear => "account_sync_clear",
+            Self::TradingDayRestart => "trading_day_restart",
         }
     }
 
@@ -96,6 +104,8 @@ impl StepUpAction {
                 | Self::AccountOptInAccept
                 | Self::RouteEnable
                 | Self::AccountBindingChange
+                | Self::AccountSyncClear
+                | Self::TradingDayRestart
         )
     }
 
@@ -111,6 +121,8 @@ impl StepUpAction {
                 | Self::AdminInvitationCreate
                 | Self::RouteEnable
                 | Self::AccountBindingChange
+                | Self::AccountSyncClear
+                | Self::TradingDayRestart
         )
     }
 
@@ -282,6 +294,12 @@ mod tests {
         }
         assert!(!StepUpAction::AccountOptInAccept.is_q35_conditional());
         assert!(StepUpAction::AccountBindingChange.requires_target());
+        for a in [
+            StepUpAction::AccountSyncClear,
+            StepUpAction::TradingDayRestart,
+        ] {
+            assert!(a.requires_target() && a.is_q35_conditional() && !a.is_persistence());
+        }
         assert_eq!(AccessError::Unavailable.http_status(), 500);
         assert_eq!(AccessError::CodeInvalid.http_status(), 403);
         let p = StepUpProof {
