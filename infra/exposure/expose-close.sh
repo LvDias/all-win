@@ -16,7 +16,7 @@ fail=0
 [ -z "$(dk ps -aq --filter name=caddy-adapter 2>/dev/null)" ] || { echo "still present: caddy-adapter container" >&2; fail=1; }
 [ ! -e "$gate/OPEN" ] || { echo "still present: gate marker" >&2; fail=1; }
 { [ -e "$cert/e2e.key" ] || [ -e "$cert/e2e.crt" ]; } && { echo "still present: certificate or key" >&2; fail=1; }
-sudo iptables -S DOCKER-USER 2>/dev/null | grep -q -- "-j ALLWIN-ADAPTER" && { echo "still present: firewall hook" >&2; fail=1; }
+sudo iptables -S DOCKER-USER 2>/dev/null | grep -qE -- "-j ALLWIN-ADAPTER|allwin-adapter-bridge" && { echo "still present: firewall hook or bridge drop" >&2; fail=1; }
 sudo iptables -S ALLWIN-ADAPTER >/dev/null 2>&1 && { echo "still present: firewall chain" >&2; fail=1; }
 ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE ':8443$' && { echo "still listening on 8443" >&2; fail=1; }
 [ "$fail" = 0 ] || { echo "NOT CLOSED" >&2; exit 1; }

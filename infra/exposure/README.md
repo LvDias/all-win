@@ -51,8 +51,11 @@ Docker-published ports **bypass ufw**, so the control is the `DOCKER-USER` chain
 * the hook matches only packets that **enter from the external interface** (the one of the default route), in the **original direction**
   (`--ctdir ORIGINAL`), to a published port 8443; replies from the container and a container's own outbound connections to some host:8443 never
   match;
-* chain `ALLWIN-ADAPTER`: from the allowed IP at most **4 concurrent** connections (`connlimit`), at most **12 new connections per minute, burst 6**
-  (`hashlimit`), then ACCEPT; **every other source is dropped**; IPv6 on 8443 is dropped on the external interface;
+* chain `ALLWIN-ADAPTER`: from the allowed IP at most **4 concurrent** connections (`connlimit`, applied to NEW packets only, so established connections keep
+  working), at most **12 new connections per minute, burst 6** (`hashlimit`), then ACCEPT; **every other source is dropped**; IPv6 on 8443 is dropped on the external interface;
+* **other Docker networks:** a container on a bridge other than the gateway's own can reach `<host>:8443` (Docker DNATs it to the gateway), so two more
+  rules drop DNAT-ed 8443 traffic that does not come from the external interface, with a RETURN above them for the gateway's own bridge (found from
+  the running `core` container by `expose-open.sh`; the script passes it as `--gw-bridge`). "Only the VPS" therefore holds on this host too;
 * the script refuses private, loopback, CGNAT, link-local, multicast/reserved (224/3) and documentation addresses, octets with leading zeros, and any
   address of this host; it has `--dry-run`; it **verifies** the hook, the accept and the final drop with `iptables -C` and fails otherwise;
 * the rules are in memory only, so a reboot removes them. `restart: "no"` keeps the container down, and the container **refuses to start** unless the
@@ -62,19 +65,21 @@ Docker-published ports **bypass ufw**, so the control is the `DOCKER-USER` chain
 `ufw` itself is unchanged (only OpenSSH is allowed in). The requested `ufw allow from <VPS_PUBLIC_IP> to any port 8443 proto tcp` alone would not
 restrict a Docker-published port, which is why the restriction is in `DOCKER-USER`.
 
-Tested functionally with `test-firewall.sh` in throwaway network namespaces (client with an allowed and another source, a DNAT/FORWARD/`DOCKER-USER`
+Tested functionally with `test-firewall.sh` (needs sudo; its full output is attached to the review record) in throwaway network namespaces (client with an allowed and another source, a DNAT/FORWARD/`DOCKER-USER`
 setup like Docker's, a web server as the "container"; the host firewall is not touched): before the rules both sources reach the container (the bypass);
 after `firewall-open.sh` the allowed source connects **and receives data**, the other source times out, the connection limit holds, a second open is
-idempotent, and `firewall-close.sh` removes everything.
+idempotent, a container on another Docker network is dropped, a container's own outbound connection to some host:8443 still works, and `firewall-close.sh`
+removes everything.
 
 ## Open (when the gates are met; needs sudo)
 
 ```bash
 infra/exposure/gen-e2e-cert.sh <DEV_SERVER_PUBLIC_IP>   # prints the fingerprint; send it to the user and the plugin owner via the Maestro
-infra/exposure/expose-open.sh <VPS_PUBLIC_IP>           # firewall (verified) -> gate marker -> caddy-adapter -> checks
+infra/exposure/expose-open.sh <VPS_PUBLIC_IP>           # EXACTLY one argument: firewall (verified) -> gate marker -> caddy-adapter -> checks
 ```
 
-`expose-open.sh` moves the dev edge from 8443 to 8444 (`CADDY_HTTPS_PORT=8444`) so 8443 is free for the gateway, and closes everything again if any step
+`expose-open.sh` accepts exactly one argument and refuses any other (no `--dry-run`, no `--test-source`; the test-only variable is unset). To see the rules without
+applying anything, run `infra/exposure/expose-dry-run.sh <VPS_PUBLIC_IP>`, which never touches a rule, a container or the marker. `expose-open.sh` moves the dev edge from 8443 to 8444 (`CADDY_HTTPS_PORT=8444`) so 8443 is free for the gateway, and closes everything again if any step
 fails. The WebSocket frame size limit after the upgrade is the Core's (the 64 KB cap above applies to HTTP request bodies, not to WebSocket frames).
 
 ## Verify (from outside the server, not from the server)
