@@ -48,8 +48,9 @@
   - plugin delta acc038806e60 (Elo; Code Review approved, QA Plugins re-check pending) and protocol 1.3 next;
   - outbox purge + per-consumer tracking (Brasa, after S3).
 - VPS Phase 2: 86df87c APPROVED; guide sent; the user is running it (RDP tailnet-only; allwin-agent and NT8 installed). Dev server joins at step 7 (Forja relays the login URL to the user only).
-- Waiting for the user: apply the tailnet policy text (note "Pendências do usuário"). M1 deferred, option B (no port; staging later). All Q75–Q98 DECIDED.
+- Waiting for the user: nothing. Windows access is the user's own (no dependency). Plugin → Core path decided with staging at M1 (option B). All Q75–Q98 DECIDED.
 - Re-plan S2 / M1 for manual NT8 rounds (2026-10-24): Elo (package + log paths), Pêndulo (round scripts), Forja (exchange channel, park Phase 2), Esquadro (spike plan rev. 5), Rumo (slice plan). Maestro reports the schedule impact.
+- Blocker for the S2 plugin merge (Crivo n3, spike rev. 7): the plugin 1.3 contract tests are red on main (19); fixed on the S2 branch before its merge (negotiated 1.2–1.4). Plugin S2 order (Elo): R0 probe package → net48 host + packaging + NT stubs → protocol 1.3/1.4.
 - Presets release files: path data/presets/releases/<firm>.json (Maestro decision 2026-10-24); writer Torno (format/generator), content approval Rumo per file, commit Rebite on hash match. Topstep: content APPROVED c186f6041d14a47e, delta pending (consistency day-lock NC note + real page titles via Aquarela).
 - Rollout order (Crivo m3 / Vigia L3, ADR-0004 r5): plugin with protocol 1.4 FIRST, then a Core speaking 1.4 — otherwise entries on accounts with a drawdown rule served by a < 1.4 plugin are skipped. Nothing in production yet; applies to the first release plan (Forja/Maestro). Consequence (Pêndulo I1): the shipped plugin speaks 1.0–1.2, so the plugin 1.4 slice gates every E2E with a drawdown rule (prop accounts).
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.

@@ -210,3 +210,7 @@
 - **Decision:** agents never access the VPS. The team focuses on finishing the NinjaTrader 8 plugin; the user tests manually over RDP. Each round delivers a NinjaScript import .zip (version in the name) and a numbered step-by-step test script (QA [Plugins]).
 - **M1 / port 8443:** deferred. Option **(B)** for now: no port is opened on the dev server; the end-to-end M1 waits for a staging host (decided later). Rejected for now: (A) gateway port 8443 on the tailnet interface.
 - **Consequences:** S2 rounds R0–R2 run against AllWin.FakeCore started by the user on the VPS (loopback only). The return path for logs is Forja's .nt8-exchange over the user's existing dev2 SSH (scp). The package hash is sent by the Maestro in the round message.
+
+## 2026-10-24 — Windows access is the user's; minimal working plugin first
+- **Windows access:** how the user connects to the Windows VPS is the user's decision; the team does not depend on it and drops it from the pending items. The plugin → Core path is decided together with the staging host, at M1.
+- **Priority:** as soon as possible, a minimal version WORKING inside NT8: a fake-Core command opens a market entry on Sim101 with stop/target (OCO) at the profile distances and reports the fill and the bracket. Finish and the other functions come in the following rounds.
