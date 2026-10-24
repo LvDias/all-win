@@ -52,7 +52,7 @@ export function FirmRuleQuote({ firm, pageTitle, titleNote, accessedAt, url, tex
         </div>
       ) : null}
       <figcaption className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-        <span>{t("caption", { firm, page: pageTitle ?? url, date: formatDate(accessedAt, locale, timeZone) })}</span>
+        <span>{t("caption", { firm, page: pageTitle || url, date: formatDate(accessedAt, locale, timeZone) })}</span>
         {!pageTitle && titleNote ? <span>{titleNote}</span> : null}
         {safeUrl(url) ? (
           <a href={safeUrl(url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline underline-offset-4">

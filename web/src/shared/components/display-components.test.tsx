@@ -69,6 +69,12 @@ describe("FirmRuleQuote", () => {
     expect(screen.getByRole("link", { name: /Ver página oficial/ })).toHaveAttribute("href", "https://firm.example/rules");
   });
 
+  it("treats an empty page title like a missing one: the URL and the note, never an empty title", () => {
+    renderApp(<FirmRuleQuote firm="Apex" pageTitle="" accessedAt="2026-10-20T12:00:00Z" url="https://firm.example/rules" lang="en" text="Rule." titleNote="Page has no title" />);
+    expect(screen.getByText(/Apex · https:\/\/firm\.example\/rules · acessado em 20\/10\/2026/)).toBeInTheDocument();
+    expect(screen.getByText("Page has no title")).toBeInTheDocument();
+  });
+
   it("ignores a note when the page does have a title", () => {
     renderApp(<FirmRuleQuote {...props} titleNote="should not show" text="Rule." />);
     expect(screen.queryByText("should not show")).not.toBeInTheDocument();
