@@ -46,3 +46,18 @@ describe("StanceBadge", () => {
     expect(screen.getByText("Não confirmado")).toBeInTheDocument();
   });
 });
+
+describe("ConflictPicker sources without a title", () => {
+  it("falls back to the URL for a missing or empty title and shows the note beside it", () => {
+    renderApp(
+      <ConflictPicker
+        legend="Drawdown"
+        options={[{ id: "a", label: "US$ 2.500,00", sources: [{ url: "https://firm.example/x", accessed_at: "2026-10-18", page_title: "", title_note: "Página sem título" }] }]}
+        value=""
+        onValueChange={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /https:\/\/firm\.example\/x · acessado em 18\/10\/2026/ })).toBeInTheDocument();
+    expect(screen.getByText(/Página sem título/)).toBeInTheDocument();
+  });
+});

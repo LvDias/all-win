@@ -174,3 +174,60 @@ test.describe("english", () => {
     await expect(page.getByRole("dialog", { name: /Changes in version 4/ })).toBeVisible();
   });
 });
+
+test("Nova conta: picks a firm preset, must resolve the not-confirmed value, and creates the account without manual firm fields", async ({ page, api }) => {
+  await api.signedIn();
+  const firmId = "00000000-0000-4000-8000-000000000001";
+  const planId = "00000000-0000-4000-8000-000000000010";
+  const ruleId = "1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b";
+  const created: Record<string, unknown>[] = [];
+  const summary = { id: firmId, slug: "apex", name: "Apex", plan_names: ["Plan A"], stances: { automation: "unknown", copy: "unknown", vps: "unknown", personal_device: "unknown" }, not_confirmed_count: 1, release: release4 };
+  await page.route("**/api/v1/connections", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/firms", (route) => route.fulfill({ json: { firms: [summary] } }));
+  await page.route(`**/api/v1/firms/${firmId}`, (route) => route.fulfill({ json: {
+    summary, platforms: [], excluded_plans: [],
+    stances: { automation: [], copy: [], vps: { value: "unknown", quotes: [] }, personal_device: { value: "unknown", quotes: [] } },
+    plans: [{ plan_id: planId, name: "Plan A", phases: [{ phase: "evaluation", sizes: [{ preset_id: "00000000-0000-4000-8000-000000000040", preset_version_id: newVersion, size_amount: "50000.00", size_label: "50K", platform_specific: false, not_confirmed_count: 1 }] }] }],
+  } }));
+  await page.route("**/api/v1/preset-versions/*", (route) => route.fulfill({ json: presetVersion(newVersion, release4, conflicting) }));
+  await page.route("**/api/v1/opt-in-rules*", (route) => route.fulfill({ json: {
+    automation: { id: ruleId, kind: "automation", firm_stance: "unknown", is_generic: false, firm_name: "Apex", version_number: 1, published_at: "2026-10-01T00:00:00Z", quotes: [] },
+    copy: { id: "3b4c5d6e-7f8a-4b9c-8d1e-2f3a4b5c6d7e", kind: "copy", firm_stance: "unknown", is_generic: false, firm_name: "Apex", version_number: 1, published_at: "2026-10-01T00:00:00Z", quotes: [] },
+  } }));
+  await page.route(/\/api\/v1\/accounts(\?.*)?$/, async (route) => {
+    if (route.request().method() === "POST") {
+      created.push(route.request().postDataJSON() as Record<string, unknown>);
+      return route.fulfill({ status: 201, json: { ...account, id: accountId } });
+    }
+    return route.fulfill({ json: { accounts: [] } });
+  });
+  await page.route(`**/api/v1/accounts/${accountId}`, (route) => route.fulfill({ json: account }));
+  await page.route(`**/api/v1/accounts/${accountId}/preset`, (route) => route.fulfill({ status: 404, json: { error: { code: "common.not_found" } } }));
+
+  await page.goto("/pt-BR/accounts/new");
+  await page.getByRole("radio", { name: "Conta de prop firm" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("combobox", { name: /^Firma/ }).click();
+  await page.getByRole("option", { name: /Apex/ }).click();
+  await page.getByRole("combobox", { name: "Plano" }).click();
+  await page.getByRole("option", { name: "Plan A" }).click();
+  await page.getByRole("combobox", { name: "Fase" }).click();
+  await page.getByRole("option", { name: "Avaliação" }).click();
+  await page.getByRole("combobox", { name: "Tamanho" }).click();
+  await page.getByRole("option", { name: "50K" }).click();
+
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(page.getByText("Resolva este valor para salvar.").first()).toBeVisible();
+  expect(created).toHaveLength(0);
+  await page.getByRole("radio", { name: /Estático/ }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByLabel("Nome", { exact: true }).fill("Apex 1");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("radio", { name: /Não aceitar ordens automatizadas/ }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("button", { name: "Salvar conta" }).click();
+  await expect(page).toHaveURL(new RegExp(`/pt-BR/accounts/${accountId}$`));
+  expect(created[0]).toMatchObject({ kind: "prop", preset_version_id: newVersion, rule_values: { drawdown: { type: "static", amount: "2000.00" } }, opt_ins: { automation: { choice: "declined" } } });
+  for (const manual of ["firm_name", "plan_name", "phase", "size_amount"]) expect(created[0]).not.toHaveProperty(manual);
+});

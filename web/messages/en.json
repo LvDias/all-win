@@ -298,7 +298,9 @@
         "maxPositionHelp": "Contract limit All Win sends to this account. Instructions above it are cut and logged.",
         "maxPositionShrink": "Open positions are not changed.",
         "multiplier": "Multiplier",
-        "multiplierHelp": "Executed quantity = instruction quantity × multiplier."
+        "multiplierHelp": "Executed quantity = instruction quantity × multiplier.",
+        "sizeFromPreset": "Taken from the preset.",
+        "maxPositionPresetCap": "At most {n} contracts, the preset's limit."
       },
       "binding": {
         "label": "NinjaTrader account",
@@ -325,7 +327,9 @@
         "optInRequired": "Choose whether this account accepts automated orders.",
         "ackRequired": "Confirm that you read the rule to accept.",
         "summary": "Fix the highlighted fields.",
-        "sizeAmbiguous": "Type the decimal part explicitly, for example 25000.00 or 2.5."
+        "sizeAmbiguous": "Type the decimal part explicitly, for example 25000.00 or 2.5.",
+        "maxPositionAbovePreset": "Can't exceed the preset's maximum.",
+        "presetRequired": "Choose a preset and resolve the required values."
       },
       "success": {
         "created": "Account created.",
@@ -342,7 +346,10 @@
         "label": "Starting profile",
         "help": "The account size is exactly between two standard sizes. Choose which one to copy stops and targets from; balance and limits use the account size."
       },
-      "stepUpDescriptionBinding": "change the platform account linked to this account"
+      "stepUpDescriptionBinding": "change the platform account linked to this account",
+      "preset": {
+        "choose": "Choose a firm preset"
+      }
     },
     "optIn": {
       "automation": {
@@ -1166,6 +1173,27 @@
       "time": "Time (HH:MM)",
       "zone": "Time zone",
       "text": "Rule text"
+    },
+    "picker": {
+      "firm": "Firm",
+      "plan": "Plan",
+      "phase": "Phase",
+      "size": "Size",
+      "platform": "Account platform at the firm",
+      "afterPlan": "Choose the plan first.",
+      "afterPhase": "Choose the phase first.",
+      "notFound": "Can't find your firm or plan? Plans outside the presets can be registered manually.",
+      "manual": "Register without a preset",
+      "previewTitle": "Rules of this preset",
+      "previewHeader": "{label} · version {n} · verified on {date}",
+      "officialRules": "See the firm's official rules",
+      "unconfirmedNotice": "Some values are not confirmed: the firm's official pages disagree. Resolve the required ones to save; nothing was chosen for you.",
+      "resolveToSave": "Resolve this value to save.",
+      "edit": "Edit",
+      "usePresetValue": "Use the preset value",
+      "replaceTitle": "Replace your choices?",
+      "replaceText": "Changing the selection replaces {count, plural, one {# value you chose or edited} other {# values you chose or edited}}. Continue?",
+      "continue": "Continue"
     }
   }
 }

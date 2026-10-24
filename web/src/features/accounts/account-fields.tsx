@@ -95,15 +95,24 @@ export function ProfileSizeField({ form, formId, candidates }: { form: Form; for
   );
 }
 
-export function DataFields({ form, formId, editing, withFirm, profileSizeCandidates }: { form: Form; formId: string; editing: boolean; withFirm: boolean; profileSizeCandidates?: string[] }) {
+/** `preset`: size comes from the chosen preset (read-only) and the maximum position is capped by it (S5 AC-3). */
+export function DataFields({ form, formId, editing, withFirm, profileSizeCandidates, preset }: { form: Form; formId: string; editing: boolean; withFirm: boolean; profileSizeCandidates?: string[]; preset?: { sizeText: string; maxPositionCap: number | null } }) {
   const t = useTranslations("accounts.form.fields");
   return (
     <>
       <TextField form={form} formId={formId} name="displayName" label={t("name")} maxLength={80} />
       {withFirm ? <FirmFields form={form} formId={formId} /> : null}
-      <TextField form={form} formId={formId} name="size" label={t("size")} inputMode="decimal" />
+      {preset ? (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">{t("size")}</p>
+          <p className="text-sm">{preset.sizeText}</p>
+          <p className="text-sm text-muted-foreground">{t("sizeFromPreset")}</p>
+        </div>
+      ) : (
+        <TextField form={form} formId={formId} name="size" label={t("size")} inputMode="decimal" />
+      )}
       {profileSizeCandidates ? <ProfileSizeField form={form} formId={formId} candidates={profileSizeCandidates} /> : null}
-      <TextField form={form} formId={formId} name="maxPosition" label={t("maxPosition")} help={t("maxPositionHelp")} inputMode="numeric" trailing={editing ? <p className="text-sm text-muted-foreground">{t("maxPositionShrink")}</p> : undefined} />
+      <TextField form={form} formId={formId} name="maxPosition" label={t("maxPosition")} help={preset?.maxPositionCap != null ? `${t("maxPositionHelp")} ${t("maxPositionPresetCap", { n: preset.maxPositionCap })}` : t("maxPositionHelp")} inputMode="numeric" trailing={editing ? <p className="text-sm text-muted-foreground">{t("maxPositionShrink")}</p> : undefined} />
       <TextField form={form} formId={formId} name="multiplier" label={t("multiplier")} help={t("multiplierHelp")} inputMode="numeric" />
     </>
   );

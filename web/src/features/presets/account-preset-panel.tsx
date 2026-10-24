@@ -10,6 +10,7 @@ import { defaultLocale, isLocale } from "@/shared/i18n/config";
 import { Alert } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { ErrorState } from "@/shared/ui/error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { useAccountPreset, useRestorePresetValue, type AccountPresetState } from "./api/account-preset";
@@ -68,13 +69,16 @@ function FieldRow({ field, rowVersion, accountId }: { field: Field; rowVersion: 
 /** What the account stores from its preset, with each value's origin (S16-04), and the new-version notice (S16-05). */
 export function AccountPresetPanel({ accountId, renderOptIn }: { accountId: string; renderOptIn: ComponentProps<typeof VersionDiffDialog>["renderOptIn"] }) {
   const t = useTranslations("presets.account");
+  const tc = useTranslations();
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
   const preset = useAccountPreset(accountId);
   const current = usePresetVersion(preset.data?.preset_version_id);
   const firm = current.data?.firm_name ?? "";
   const [review, setReview] = useState(false);
-  // No preset (404): free-text prop or real account. Other failures say nothing here: the account itself still works.
+  // No preset (404): free-text prop or real account, nothing to show. Another failure is shown with a retry; the account itself still works.
+  if (preset.isError && !(preset.error instanceof ApiError && preset.error.status === 404))
+    return <ErrorState title={errorMessage(tc, preset.error).message} code={errorMessage(tc, preset.error).code} onRetry={() => void preset.refetch()} />;
   if (!preset.data) return null;
   const state = preset.data;
   return (
@@ -96,7 +100,7 @@ export function AccountPresetPanel({ accountId, renderOptIn }: { accountId: stri
         </dl>
       </CardContent>
       {review && state.newer_version ? (
-        <VersionDiffDialog accountId={accountId} firm={firm} targetId={state.newer_version.preset_version_id} rowVersion={state.row_version} renderOptIn={renderOptIn} onClose={() => setReview(false)} />
+        <VersionDiffDialog accountId={accountId} firm={firm} targetId={state.newer_version.preset_version_id} rowVersion={state.row_version} accountPlatform={state.firm_platform ?? ""} renderOptIn={renderOptIn} onClose={() => setReview(false)} />
       ) : null}
     </Card>
   );

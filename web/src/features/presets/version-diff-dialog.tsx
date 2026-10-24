@@ -31,6 +31,8 @@ type Choice = "keep_mine" | "use_preset";
 
 export type RenderOptIn = (props: {
   kind: Kind;
+  /** The firm the preset belongs to, for the opt-in sentences. */
+  firm: string;
   ruleVersionId: string;
   value: OptInDraft;
   onChange: (value: OptInDraft) => void;
@@ -49,7 +51,8 @@ const publishedOf = (rules: unknown, field: RuleField): Published => {
  * "Mudanças da versão n" (S16-05): only the fields that differ. Every edited field and every field that is not confirmed
  * in the new version is answered by the user — nothing is preselected — then one apply, with step-up when an opt-in is accepted.
  */
-export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, renderOptIn, onClose }: { accountId: string; firm: string; targetId: string; rowVersion: number; renderOptIn: RenderOptIn; onClose: () => void }) {
+/** `accountPlatform`: the account's firm platform ("" if none). With per-platform rules it decides which rule set the choices are offered from. */
+export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accountPlatform, renderOptIn, onClose }: { accountId: string; firm: string; targetId: string; rowVersion: number; accountPlatform: string; renderOptIn: RenderOptIn; onClose: () => void }) {
   const t = useTranslations("presets.diff");
   const tf = useTranslations("presets.account.fields");
   const tc = useTranslations();
@@ -64,7 +67,7 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, rende
 
   const [choices, setChoices] = useState<Partial<Record<RuleField, Choice>>>({});
   const [picks, setPicks] = useState<Partial<Record<RuleField, Pick>>>({});
-  const [platform, setPlatform] = useState("");
+  const [platform, setPlatform] = useState(accountPlatform);
   const [capInput, setCapInput] = useState("");
   const [optIns, setOptIns] = useState<Record<Kind, OptInDraft>>({ automation: { choice: "", ack: false }, copy: { choice: "", ack: false } });
   const [optInRequired, setOptInRequired] = useState<Record<Kind, boolean>>({ automation: true, copy: true });
@@ -73,7 +76,14 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, rende
   const [failure, setFailure] = useState<string | null>(null);
 
   const data = diff.data;
-  const rules = target.data?.rule_sets.find((set) => (set.firm_platform ?? "") === platform)?.rules ?? target.data?.rule_sets[0]?.rules;
+  // Never another platform's rules: a known platform picks its own set (or none); without one only a single or platform-less set applies.
+  const sets = target.data?.rule_sets ?? [];
+  const rules = (platform !== "" ? sets.find((set) => set.firm_platform === platform) : (sets.find((set) => set.firm_platform === undefined) ?? (sets.length === 1 ? sets[0] : undefined)))?.rules;
+  // The answers are keyed by position in the platform's published values: another platform means another list.
+  const changePlatform = (next: string) => {
+    setPlatform(next);
+    setPicks({});
+  };
   const pick = (field: RuleField): Pick => picks[field] ?? { selected: "", other: emptyDraft };
   const setPick = (field: RuleField, next: Partial<Pick>) => setPicks((all) => ({ ...all, [field]: { ...pick(field), ...next } }));
   const kinds = (["automation", "copy"] as const).filter((kind) => data?.opt_in_changes[kind]);
@@ -143,11 +153,10 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, rende
     if (Object.keys(bodyChoices).length > 0) body.choices = bodyChoices;
     if (Object.keys(ruleValues).length > 0) body.rule_values = ruleValues as ApplyPresetVersionRequest["rule_values"];
     if (Object.keys(optInBody).length > 0) body.opt_ins = optInBody;
-    const accepting = Object.values(optInBody).some((entry) => entry.choice === "accepted");
     const send = (proof?: { challenge_id: string; code: string }) => apply.mutateAsync(proof ? { ...body, step_up: proof } : body);
     try {
-      if (accepting) await stepUp.run({ action: "account_opt_in_accept", targetId: accountId, description: t("stepUp") }, send);
-      else await send();
+      // Every apply goes through the runner (as the S5 edit does): it asks for a code only if the Core says so, never on our guess.
+      await stepUp.run({ action: "account_opt_in_accept", targetId: accountId, description: t("stepUp") }, send);
       toast.success(t("applied", { n: target.data.release.version_number }));
       onClose();
     } catch (error) {
@@ -155,6 +164,10 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, rende
       if (error instanceof ApiError && error.code === "presets.version_superseded") return reload(t("superseded"));
       if (error instanceof ApiError && error.code === "accounts.rule_version_changed") return reload(t("ruleChanged"));
       if (error instanceof ApiError && error.code === "common.version_conflict") return reload(t("conflict"));
+      // A 422 that names a field is shown at that field (the same places the checks above use).
+      const pointer = error instanceof ApiError && error.status === 422 ? error.pointer : undefined;
+      const field = pointer?.match(/^\/(?:choices|rule_values)\/([a-z_]+)$/)?.[1] ?? (pointer === "/max_position_qty" ? "max_position_qty" : undefined);
+      if (field) return setErrors({ [field]: errorMessage(tc, error).message });
       setFailure(errorMessage(tc, error).message);
     }
   }
@@ -206,7 +219,7 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, rende
             {data.firm_platform_required ? (
               <div className="grid gap-1.5">
                 <Label htmlFor={`${base}-platform`}>{t("platform")}</Label>
-                <Select value={platform} onValueChange={setPlatform}>
+                <Select value={platform} onValueChange={changePlatform}>
                   <SelectTrigger id={`${base}-platform`} aria-invalid={errors.platform ? true : undefined}><SelectValue placeholder={t("choose")} /></SelectTrigger>
                   <SelectContent>{(data.firm_platforms ?? []).map((code) => <SelectItem key={code} value={code}>{code}</SelectItem>)}</SelectContent>
                 </Select>
@@ -261,6 +274,7 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, rende
                 <div key={kind}>
                   {renderOptIn({
                     kind,
+                    firm,
                     ruleVersionId,
                     value: optIns[kind],
                     onChange: (value) => setOptIns((all) => ({ ...all, [kind]: value })),

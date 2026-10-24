@@ -7,7 +7,8 @@ import { StanceBadge, type StanceValues } from "@/shared/components/stance-badge
 import { formatDate } from "@/shared/format";
 import { useDisplay } from "@/shared/session/display";
 
-export type StanceQuote = { text: string; language: string; page_title: string; url: string; accessed_at: string };
+/** `page_title` may be absent (presets 1.1); `title_note` then says why. FirmRuleQuote (S22 line) shows the URL and the note. */
+export type StanceQuote = { text: string; language: string; page_title?: string; title_note?: string; url: string; accessed_at: string };
 
 /** A block shows one concrete position: `varies_by_platform` is expanded into one block per platform before it gets here. */
 type BlockValues = { [S in keyof StanceValues]: Exclude<StanceValues[S], "varies_by_platform"> };
@@ -48,7 +49,7 @@ export function StanceBlock({ firm, quotes, searchedOn, platformLabel, verifiedO
       </p>
       {value === "not_confirmed" ? <p className="text-sm font-medium">{t("diverge")}</p> : null}
       {value === "unknown" && searchedOn ? <p className="text-sm">{t("unknownSearched", { date: formatDate(`${searchedOn}T12:00:00Z`, locale, "UTC") })}</p> : null}
-      {quoted ? quotes.map((q, index) => <FirmRuleQuote key={`${index}|${q.url}`} firm={firm} pageTitle={q.page_title} accessedAt={`${q.accessed_at}T12:00:00Z`} url={q.url} text={q.text} lang={q.language} />) : null}
+      {quoted ? quotes.map((q, index) => <FirmRuleQuote key={`${index}|${q.url}`} firm={firm} pageTitle={q.page_title ?? ""} accessedAt={`${q.accessed_at}T12:00:00Z`} url={q.url} text={q.text} lang={q.language} />) : null}
       {children}
       {verifiedOn ? <p className="text-xs text-muted-foreground">{t("verifiedOn", { date: formatDate(`${verifiedOn}T12:00:00Z`, locale, "UTC") })}</p> : null}
     </section>

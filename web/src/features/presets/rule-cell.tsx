@@ -19,7 +19,8 @@ export type Provenance<V> = {
 /** Only https links from preset data reach an `href`. */
 const safeUrl = (url: string) => (/^https:\/\//i.test(url) ? url : undefined);
 
-export function SourceList({ sources }: { sources: SourceRef[] }) {
+/** `title_note` (presets 1.1) says why a source has no title; it is shown beside the URL that replaces the title. */
+export function SourceList({ sources }: { sources: (SourceRef & { title_note?: string })[] }) {
   const t = useTranslations("presets.rule");
   const raw = useLocale();
   const locale = isLocale(raw) ? raw : defaultLocale;
@@ -27,7 +28,7 @@ export function SourceList({ sources }: { sources: SourceRef[] }) {
     <ul className="space-y-1 text-xs">
       {sources.map((source, index) => {
         const href = safeUrl(source.url);
-        const text = t("source", { page: source.page_title ?? source.url, date: formatCalendarDate(source.accessed_at, locale) });
+        const text = t("source", { page: source.page_title || source.url, date: formatCalendarDate(source.accessed_at, locale) });
         return (
           <li key={`${index}|${source.url}`}>
             {href ? (
@@ -38,6 +39,7 @@ export function SourceList({ sources }: { sources: SourceRef[] }) {
             ) : (
               text
             )}
+            {!source.page_title && source.title_note ? <span>{` — ${source.title_note}`}</span> : null}
           </li>
         );
       })}

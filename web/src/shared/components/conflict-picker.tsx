@@ -8,7 +8,8 @@ import { useDisplay } from "@/shared/session/display";
 import { Label } from "@/shared/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 
-export type ConflictSource = { url: string; accessed_at: string; page_title?: string };
+/** `title_note` explains a source whose page has no title (presets 1.1): shown next to the URL that stands in for the title. */
+export type ConflictSource = { url: string; accessed_at: string; page_title?: string; title_note?: string };
 export type ConflictOption = { id: string; label: string; sources: ConflictSource[] };
 
 /** The sentinel `value` for "another value"; option ids come from the caller and never equal it. */
@@ -50,7 +51,7 @@ export function ConflictPicker({ legend, options, value, onValueChange, otherInp
             <ul className="space-y-0.5 pl-3 text-xs text-muted-foreground">
               {option.sources.map((source, index) => {
                 const href = safeUrl(source.url);
-                const text = t("source", { page: source.page_title ?? source.url, date: formatDate(`${source.accessed_at}T12:00:00Z`, locale, "UTC") });
+                const text = t("source", { page: source.page_title || source.url, date: formatDate(`${source.accessed_at}T12:00:00Z`, locale, "UTC") });
                 return (
                   <li key={`${index}|${source.url}`}>
                     {href ? (
@@ -62,6 +63,7 @@ export function ConflictPicker({ legend, options, value, onValueChange, otherInp
                     ) : (
                       text
                     )}
+                    {!source.page_title && source.title_note ? <span> {`— ${source.title_note}`}</span> : null}
                   </li>
                 );
               })}
