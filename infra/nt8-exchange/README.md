@@ -24,11 +24,11 @@ Agents never read `inbox/` or `quarantine/`.
 
 ## Commands for the user (on the Mac)
 
-`<USER>` is the user's account on the dev server and `<HOST>` the SSH address already used for it.
+The account on the dev server is `dev2` (the Mac key already logs in as it); `<HOST>` is the SSH address already used for the server.
 
 ```bash
 # 1. fetch the package, its checksum and the test script
-scp "<USER>@<HOST>:/srv/www/allwin.worktrees/.nt8-exchange/outbox/AllWin-NT8-<version>-<sha7>.*" ~/Downloads/
+scp "dev2@<HOST>:/srv/www/allwin.worktrees/.nt8-exchange/outbox/AllWin-NT8-<version>-<sha7>.*" ~/Downloads/
 cd ~/Downloads && shasum -a 256 -c AllWin-NT8-<version>-<sha7>.zip.sha256
 
 # 2. copy the .zip into the RDP session (drive redirection), import it in NinjaTrader 8, follow the numbered script
@@ -37,7 +37,7 @@ cd ~/Downloads && shasum -a 256 -c AllWin-NT8-<version>-<sha7>.zip.sha256
 #    redact-nt8-logs.sh and redact.pl are in this folder; copy both to the Mac once
 ./redact-nt8-logs.sh ~/Downloads/nt8-logs          # creates nt8-logs-<date>.zip (+ .sha256) here
 # skim the zip (REDACTION-REPORT.txt lists what was replaced and which files were skipped), then:
-scp nt8-logs-<date>.zip "<USER>@<HOST>:/srv/www/allwin.worktrees/.nt8-exchange/inbox/"
+scp nt8-logs-<date>.zip "dev2@<HOST>:/srv/www/allwin.worktrees/.nt8-exchange/inbox/"
 ```
 
 Tell the team (through the Maestro) that an upload is in; DevOps runs `check-inbox.sh`.
