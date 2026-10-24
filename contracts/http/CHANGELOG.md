@@ -1,5 +1,11 @@
 # HTTP API — changelog
 
+## 6.2.0 — 2026-10-24 (additive; S16 preset diff by platform, enforcement episode text; on top of 6.1.0)
+- **`getAccountPresetDiff` gains the optional query `firm_platform` (Torno, S16):** rows for that platform, so the web shows the rows of the platform the user picks before the apply. Without it, an account with no platform the target offers gets `rows` empty, `firm_platform_required` true and `firm_platforms` (now always present then; schema `if`/`then`). A platform the target does not offer → 422 `accounts.firm_platform_unknown` (`/query/firm_platform`). New `PresetDiff.firm_platform` names the platform used.
+- **`enforcement_id` episode (text; Esquadro, Crivo nit, Vigia I1):** opened on the first enforcement `risk_event` recorded with no episode open (a `while_disconnected` flatten may come before `blocked`), closed on `unblocked`; minted by the Core as UUIDv5(account_id, event_id of that first event), never read from a frame. Same rule in ADR-0006 (Esquadro).
+- **`execution.exit_sent_late` requires `late_ms`** in its details (Esmeril note on 6.1.0).
+- Owners to notify: Core (Torno: preset diff; Brasa / gateway: episode id), Web (Vitral, Mosaico: S16 diff dialog; S18 grouping).
+
 ## 6.1.0 — 2026-10-24 (additive; S11 clear protection rules; on top of 6.0.0)
 - **"Covers", strictly (Vigia L1; ADR-0004 §6.4):** only working stop and stop-limit orders on the opposite side, same account and same contract, count, with total working quantity ≥ |position| for `full`. A same-side stop, a limit or market order, or another contract never counts. `AccountSync.positions[].protection` states the four values exactly.
 - **What a clear keeps (Q98 b, Q100 a; Esmeril, fail closed):** `partial`, `none` AND `unknown` keep (or raise) `sync.bracket_incomplete` per instrument; only `full` releases. 6.0.0 named only `none` / `partial`.

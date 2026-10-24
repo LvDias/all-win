@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 6.1.0
+  version: 6.2.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -3356,15 +3356,18 @@ paths:
       - presets
       operationId: getAccountPresetDiff
       summary: What applying a newer version of the account's preset would change (comparison dialog)
-      description: 'Only fields that differ between the account, its current preset version and the target version.
-
-        `requires_choice` marks rows the apply request must answer (an edited field, or a field that is
-
-        not confirmed in the target). The target must be a newer version of the same preset (422
-
-        `presets.version_not_newer`).
-
-        '
+      description: "Only fields that differ between the account, its current preset version and the target version.\n`requires_choice`\
+        \ marks rows the apply request must answer (an edited field, or a field that is\nnot confirmed in the target). The\
+        \ target must be a newer version of the same preset (422\n`presets.version_not_newer`).\n**Firm platform (6.2.0; Torno,\
+        \ S16):** which platform's rules the rows compare:\n- the target has no platform-specific rules: `firm_platform` is\
+        \ ignored, rows as usual,\n  `firm_platform_required` false;\n- with `firm_platform` (one the target offers): rows\
+        \ for that platform. `firm_platform_required`\n  is true when it differs from the account's platform (the apply must\
+        \ then send it);\n- without it, and the account's platform is one the target offers: rows for the account's\n  platform,\
+        \ `firm_platform_required` false;\n- without it, and the account has no platform or one the target does not offer:\
+        \ `rows` is empty,\n  `firm_platform_required` true and `firm_platforms` lists the target's platforms. The web asks\n\
+        \  the user and calls again with `firm_platform` to show the rows before the apply.\nA `firm_platform` the target\
+        \ does not offer → 422 `accounts.firm_platform_unknown`\n(`/query/firm_platform`). Every case returns `opt_in_changes`\
+        \ for the platform used (none when\nthe rows are empty).\n"
       parameters:
       - $ref: '#/components/parameters/AccountId'
       - name: target_preset_version_id
@@ -3372,6 +3375,12 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/Uuid'
+      - name: firm_platform
+        in: query
+        required: false
+        description: 6.2.0. The platform whose rules the rows compare (see above).
+        schema:
+          $ref: '#/components/schemas/FirmPlatform'
       responses:
         '200':
           description: The diff.
@@ -3386,7 +3395,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          description: '`presets.version_not_newer` (pointer `/query/target_preset_version_id`).'
+          description: '`presets.version_not_newer` (pointer `/query/target_preset_version_id`); `accounts.firm_platform_unknown`
+            (pointer `/query/firm_platform`, 6.2.0).'
           content:
             application/json:
               schema:
@@ -8663,7 +8673,12 @@ components:
           description: 'The Core''s id of one enforcement episode: one block until the reset of one account. The same value
             on the `risk.blocked` and every `risk.flatten` of that episode (the 2–3 entries of one limit breach), and on its
             `risk.reactive_block_action` and `risk.unblocked` entries, so S18 groups them without heuristics (Nanquim). A
-            new block, even on the same day, gets a new id.'
+            new block, even on the same day, gets a new id. Episode (6.2.0; Esquadro, Crivo, Vigia I1): the Core opens it
+            when it records the FIRST enforcement `risk_event` of the account (`limit_reached`, `orders_cancelled`, `flattened`
+            or `blocked`) with no episode open, which may be a `while_disconnected` flatten reported before the `blocked`
+            (the plugin acts cancel → flatten → block, ADR-0004 §7, and offline actions arrive in a batch). It closes on `unblocked`
+            (the reset). The Core mints the id as UUIDv5(account_id, event_id of that first event), so reprocessing (dead
+            letter, replay) gives the same id; it is never read from an adapter frame, so a plugin cannot merge or split episodes.'
           $ref: '#/components/schemas/Uuid'
         kind:
           $ref: '#/components/schemas/RiskRuleKind'
@@ -8841,7 +8856,11 @@ components:
         execution.undelivered:
           $ref: '#/components/schemas/DetailsUndelivered'
         execution.exit_sent_late:
-          $ref: '#/components/schemas/DetailsCommandSent'
+          allOf:
+          - $ref: '#/components/schemas/DetailsCommandSent'
+          required:
+          - late_ms
+          description: '6.2.0 (Esmeril): `late_ms` is always present.'
         connection.account_kind_changed:
           $ref: '#/components/schemas/DetailsAccountKindChanged'
         sync.flagged:
@@ -11090,7 +11109,22 @@ components:
       - rows
       - opt_in_changes
       - firm_platform_required
+      allOf:
+      - if:
+          properties:
+            firm_platform_required:
+              const: true
+        then:
+          required:
+          - firm_platforms
+          properties:
+            firm_platforms:
+              minItems: 1
       properties:
+        firm_platform:
+          description: '6.2.0: the platform whose rules the rows compare; absent when the target has no platform-specific
+            rules or the rows are empty.'
+          $ref: '#/components/schemas/FirmPlatform'
         account_id:
           $ref: '#/components/schemas/Uuid'
         from_preset_version_id:
@@ -11103,11 +11137,11 @@ components:
             $ref: '#/components/schemas/PresetDiffRow'
         firm_platform_required:
           type: boolean
-          description: True when the target has platform-specific rules and the account must name (or confirm) its `firm_platform`
-            in the apply request.
+          description: 'True when the target has platform-specific rules and the apply request must carry `firm_platform`:
+            the account has no platform the target offers, or the query chose another one (6.2.0, `getAccountPresetDiff`).'
         firm_platforms:
           type: array
-          description: The target's firm platforms (with `firm_platform_required`).
+          description: The target's firm platforms. Always present when `firm_platform_required` is true.
           items:
             $ref: '#/components/schemas/FirmPlatform'
         opt_in_changes:

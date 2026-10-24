@@ -180,12 +180,30 @@ paths:
         `requires_choice` marks rows the apply request must answer (an edited field, or a field that is
         not confirmed in the target). The target must be a newer version of the same preset (422
         `presets.version_not_newer`).
+        **Firm platform (6.2.0; Torno, S16):** which platform's rules the rows compare:
+        - the target has no platform-specific rules: `firm_platform` is ignored, rows as usual,
+          `firm_platform_required` false;
+        - with `firm_platform` (one the target offers): rows for that platform. `firm_platform_required`
+          is true when it differs from the account's platform (the apply must then send it);
+        - without it, and the account's platform is one the target offers: rows for the account's
+          platform, `firm_platform_required` false;
+        - without it, and the account has no platform or one the target does not offer: `rows` is empty,
+          `firm_platform_required` true and `firm_platforms` lists the target's platforms. The web asks
+          the user and calls again with `firm_platform` to show the rows before the apply.
+        A `firm_platform` the target does not offer → 422 `accounts.firm_platform_unknown`
+        (`/query/firm_platform`). Every case returns `opt_in_changes` for the platform used (none when
+        the rows are empty).
       parameters:
         - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
         - name: target_preset_version_id
           in: query
           required: true
           schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        - name: firm_platform
+          in: query
+          required: false
+          description: 6.2.0. The platform whose rules the rows compare (see above).
+          schema: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
       responses:
         '200':
           description: The diff.
@@ -196,7 +214,7 @@ paths:
         '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
         '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
         '422':
-          description: '`presets.version_not_newer` (pointer `/query/target_preset_version_id`).'
+          description: '`presets.version_not_newer` (pointer `/query/target_preset_version_id`); `accounts.firm_platform_unknown` (pointer `/query/firm_platform`, 6.2.0).'
           content:
             application/json:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
@@ -1046,17 +1064,21 @@ components:
       type: object
       additionalProperties: false
       required: [account_id, from_preset_version_id, to_preset_version_id, rows, opt_in_changes, firm_platform_required]
+      allOf:
+        - if: { properties: { firm_platform_required: { const: true } } }
+          then: { required: [firm_platforms], properties: { firm_platforms: { minItems: 1 } } }
       properties:
+        firm_platform: { description: '6.2.0: the platform whose rules the rows compare; absent when the target has no platform-specific rules or the rows are empty.', $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
         account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         from_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         to_preset_version_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         rows: { type: array, items: { $ref: '#/components/schemas/PresetDiffRow' } }
         firm_platform_required:
           type: boolean
-          description: True when the target has platform-specific rules and the account must name (or confirm) its `firm_platform` in the apply request.
+          description: 'True when the target has platform-specific rules and the apply request must carry `firm_platform`: the account has no platform the target offers, or the query chose another one (6.2.0, `getAccountPresetDiff`).'
         firm_platforms:
           type: array
-          description: The target's firm platforms (with `firm_platform_required`).
+          description: The target's firm platforms. Always present when `firm_platform_required` is true.
           items: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
         opt_in_changes:
           type: object

@@ -170,7 +170,7 @@
       "description": "`risk.blocked` (+ `trigger`) and `risk.flatten` (+ `action`), 6.1.0 (S15). `kind` / `limit` / `used` are those of the rule that triggered the block (S15 AC-5).",
       "properties": {
         "enforcement_id": {
-          "description": "The Core's id of one enforcement episode: one block until the reset of one account. The same value on the `risk.blocked` and every `risk.flatten` of that episode (the 2–3 entries of one limit breach), and on its `risk.reactive_block_action` and `risk.unblocked` entries, so S18 groups them without heuristics (Nanquim). A new block, even on the same day, gets a new id.",
+          "description": "The Core's id of one enforcement episode: one block until the reset of one account. The same value on the `risk.blocked` and every `risk.flatten` of that episode (the 2–3 entries of one limit breach), and on its `risk.reactive_block_action` and `risk.unblocked` entries, so S18 groups them without heuristics (Nanquim). A new block, even on the same day, gets a new id. Episode (6.2.0; Esquadro, Crivo, Vigia I1): the Core opens it when it records the FIRST enforcement `risk_event` of the account (`limit_reached`, `orders_cancelled`, `flattened` or `blocked`) with no episode open, which may be a `while_disconnected` flatten reported before the `blocked` (the plugin acts cancel → flatten → block, ADR-0004 §7, and offline actions arrive in a batch). It closes on `unblocked` (the reset). The Core mints the id as UUIDv5(account_id, event_id of that first event), so reprocessing (dead letter, replay) gives the same id; it is never read from an adapter frame, so a plugin cannot merge or split episodes.",
           "$ref": "#/$defs/Uuid"
         },
         "kind": {
