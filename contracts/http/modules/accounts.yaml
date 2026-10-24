@@ -351,15 +351,40 @@ paths:
            - the body is compared without `step_up`, so a retry with a new code still matches;
            - the same key with a different body gets 409 `common.idempotency_key_reused`;
            - the store is keyed by (user_id, operation, account_id, key), never by the key alone (Vigia L1);
+           - a key is kept 24 h after the clear it recorded, as in `createAccount` (6.1.0, Crivo q2). After
+             that it is unknown and the request runs as new: step-up, then 409 (`expected_version` is
+             stale or the account is `not_out_of_sync`), so an expired key never repeats a clear;
            - without a known key, the step-up applies as normal;
         3. step-up;
         4. 409.
         **Live protection (Vigia L2; Q98 b, user):** the confirmation lists each open position from the last
         evaluated snapshot with its live stop protection (`AccountSync.positions`). ANY working stop that
-        covers the position counts, a manual one in the platform included (shown as `external`). Only a
-        position that is not fully covered by any stop (`none` or `partial`) keeps its
-        `sync.bracket_incomplete`, or raises it if absent. The account then stays `out_of_sync` with that
-        reason only, the entry block remains, and the 200 response shows it. The plugin has no clear (Q-P3).
+        covers the position counts, a manual one in the platform included (shown as `external`).
+        **"Covers" (6.1.0, Vigia L1; ADR-0004 §6.4):** working stop and stop-limit orders on the OPPOSITE
+        side of the position, in the same account and the same contract (symbol + contract month), whose
+        total working quantity is ≥ |position|. A stop on the same side, a limit or market order, or an
+        order on another contract never counts.
+        **What the clear keeps (6.1.0; Q98 b, Q100 a; ADR-0004 §6.4 r6.1; fail closed):** every position whose protection is
+        not `full` (`partial`, `none` or `unknown`) keeps its `sync.bracket_incomplete`, or raises it if
+        absent, one per instrument. Each kept reason carries `held_at_clear`. All other reasons are
+        cleared. The account stays `out_of_sync` with those reasons only, entries stay refused
+        (`routing.out_of_sync`; exits pass), and the 200 response shows it. The web shows such an account
+        as "blocked for new entries: position without full stop protection", not as a new alert, and says
+        that the block ends by itself once a stop covers the position or it is closed (Vigia I2).
+        **Re-evaluation and release (6.1.0, Vigia L1; Q101; ADR-0004 §6.4 r6.1):** after the clear, the Core re-evaluates the
+        protection of every position listed at the clear on each evaluated snapshot and each order report,
+        until that position is flat:
+        - a held reason is resolved when its position is `full` or flat. When every active reason is a
+          held one and the last is resolved, the account returns to `in_sync` by itself (the user already
+          confirmed at the clear), audited as `sync.restored` with that reason (Q101 yes, user
+          2026-10-24);
+        - a reason added after the clear has no `held_at_clear`, so it is sticky as usual and needs a new
+          clear;
+        - a position covered at the clear (`full`) that later loses that cover (the user cancels the
+          external stop, or it fills while the position stays open) raises `sync.bracket_incomplete` again,
+          without `held_at_clear`. The account goes back to `out_of_sync` and entries are blocked again
+          at once; it needs a new clear (Q101 user addition; Q14).
+        The plugin has no clear (Q-P3).
         Audited as `sync.cleared` (actor user; the reasons that were active and resolved).
       x-step-up: conditional
       x-step-up-when: always (Q95), with the Q35 setting on
@@ -768,9 +793,12 @@ components:
               instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$' }
               contract_month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }
               position: { type: integer, minimum: -10000, maximum: 10000, not: { const: 0 }, description: Signed contracts. }
-              protection: { type: string, enum: [full, partial, none, unknown], description: 'Live stop protection of the position, from ANY working stop that covers it, All Win or manual (Q98 b, user 2026-10-24): `full` = every contract covered by a working stop; `partial` = some; `none`; `unknown` = orders in an unknown state.' }
-              protection_source: { type: string, enum: [all_win, external, mixed], description: 'With `full` / `partial`: who placed the covering stops. `external` = placed outside All Win (e.g. a manual NT8 stop), shown as such; `mixed` = both.' }
+              protection: { type: string, enum: [full, partial, none, unknown], description: 'Live stop protection of the position, from ANY working stop that covers it, All Win or manual (Q98 b, user 2026-10-24), counting only stop and stop-limit orders on the opposite side, same account and same contract (6.1.0, Vigia L1; see `clearAccountSync`): `full` = their total working quantity is ≥ |position|; `partial` = at least one, with less than |position|; `none` = none; `unknown` = an order of this account and contract is in an unknown state, so the Core cannot tell. Only `full` lets a clear release the position.' }
+              protection_source: { type: string, enum: [all_win, external, mixed], description: 'Only with `full` / `partial` (6.1.0, Crivo q1; absent otherwise): who placed the covering stops. `external` = placed outside All Win (e.g. a manual NT8 stop), shown as such; `mixed` = both.' }
               as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            allOf:
+              - if: { properties: { protection: { enum: [none, unknown] } } }
+                then: { not: { required: [protection_source] } }
         resolved_total: { type: integer, minimum: 0, description: 'All resolved reasons; greater than the length of `resolved_reasons` only on overflow.' }
         resolved_reasons:
           type: array
@@ -849,6 +877,7 @@ components:
         code: { $ref: '#/components/schemas/SyncReasonCode' }
         detected_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         resolved_at: { description: Only in `resolved_reasons`., $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        held_at_clear: { description: 'Only on `sync.bracket_incomplete` (6.1.0): the time of the user''s clear that kept this reason because its position was not fully covered (`clearAccountSync`). The account is then blocked for new entries only by protection, and returns to `in_sync` by itself once every held reason is resolved (Q101).', $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         instrument_symbol:
           type: string
           pattern: '^[A-Z0-9]{1,10}$'

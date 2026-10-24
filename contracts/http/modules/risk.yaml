@@ -52,7 +52,9 @@ paths:
            so a retry carrying a new code still gets the recorded 202 (Esmeril L1). The same key with a
            different body (other than `step_up`) gets 409 `common.idempotency_key_reused`. The replay store is
            keyed by (user_id, operation, account_id, key), never by the key alone, so another user's or
-           another account's request never matches (Vigia L1);
+           another account's request never matches (Vigia L1). A key is kept 24 h after the request it
+           recorded, as in `createAccount` (6.1.0, Crivo q2); after that it is unknown and the request runs
+           as new (step-up, then 409 `risk.day_not_unknown` once the day is known, or the pending request);
         3. step-up;
         4. 409.
         Without a known key the step-up applies as normal. On a session below 1.4: 409

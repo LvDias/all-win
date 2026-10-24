@@ -268,6 +268,10 @@ components:
         - risk.consistency_warning
         - risk.evaluation_target_reached
         - risk.day_restarted
+        - risk.blocked
+        - risk.flatten
+        - risk.unblocked
+        - risk.reactive_block_action
         - accounts.evaluation_restarted
         - accounts.evaluation_corrected
         - trades.captured
@@ -277,6 +281,7 @@ components:
         - trades.reconcile_mismatch
         - execution.unbound_activity
         - execution.undelivered
+        - execution.exit_sent_late
         - connection.account_kind_changed
         - sync.flagged
         - sync.reason_resolved
@@ -285,7 +290,31 @@ components:
       description: |
         Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
         auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
-        `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
+        `notifications.*` (S18).
+        S15 local enforcement (6.1.0; Rumo's S18 review; ADR-0004 `risk_event`; category risk, actor system).
+        The plugin acts and reports; the Core records what it reports, one entry per `risk_event`:
+        - `risk.blocked` (outcome `info`): the account was blocked until the trading-day reset (S15 AC-2,
+          AC-8), from `risk_event` `blocked` (`DetailsRiskEnforcement`, `trigger`);
+        - `risk.flatten` (outcome `executed`): the enforcement closed the position (`flattened`) or
+          cancelled the working orders (`orders_cancelled`), one entry per `risk_event` (S15 AC-2, AC-5);
+        - `risk.unblocked` (outcome `info`): the reset ended the block, with reason `trading_day_reset`
+          (S15 AC-9, Q62 a). There is no early unlock (AC-3), so it is the only reason;
+        - `risk.reactive_block_action` (outcome `executed`): while blocked, the plugin cancelled an order
+          the user placed by hand, from `risk_event` `blocked_order_cancelled` (S15 AC-6). One entry per
+          action; the notification groups them per account and trading day. A position that results from
+          such an order and is flattened while blocked is reported as `risk_event` `flattened` and recorded
+          as `risk.flatten` (ADR-0004 §7 r6.1, Esquadro).
+        Each carries the rule and the value that triggered the block (S15 AC-5, X-5). `risk_event`
+        `blocked` / `flattened` / `orders_cancelled` do not carry `metric` / `value` / `limit`, so the Core
+        takes them from the `limit_reached` of the same account and `limits_version`. With trigger
+        `enabled_over_limit` (S15 AC-8) the plugin may send no `limit_reached`; the Core then takes them
+        from its own risk state at that `limits_version`, at the instant of the event (Crivo n1, Esquadro).
+        `execution.exit_sent_late` (6.1.0, T1; category execution, actor system, outcome `info`; audit
+        only, no notification): an exit command sent after its `expiry_base` + the account's command TTL
+        (ADR-0004 §5 r5, "audited as late"). It is written with the same command's
+        `execution.command_sent`, so the late send can be filtered on its own; `late_ms` is always
+        present. Instructions lost in a disconnect need no code of their own: they are
+        `routing.expired` and the account gets `sync.flagged` (Rumo).
         Category by code family (the `category` of each entry): `ingress.*` → ingress; `routing.*` →
         routing, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →
         execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →
@@ -315,7 +344,10 @@ components:
           plugin reported another platform account kind for a bound account, e.g. `simulation` → `live`
           (`DetailsAccountKindChanged`). It is audit only; the binding's `kind` shows the current value;
         - `sync.restored`: a disconnect while flat with nothing in flight, whose reconnect snapshot matched,
-          so the account was not flagged and is back to normal (system, `info`; ADR-0004 §6 row 3).
+          so the account was not flagged and is back to normal (system, `info`; ADR-0004 §6 row 3). Also
+          (6.1.0) the automatic return to `in_sync` after a clear, when the last `sync.bracket_incomplete`
+          the clear held (`held_at_clear`) is resolved because its position is fully covered or flat;
+          `reason` is that reason (Q101).
         The automatic orphan cancels and the orphan flatten stay execution entries (`execution.cancelled`
         + `order.orphan_cancelled`, `execution.command_sent` kind `flatten`); `sync.flagged` carries the
         summary in `reason.core_action`.
@@ -724,7 +756,7 @@ components:
       type: object
       additionalProperties: false
       required: [sync_version]
-      description: '`sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored`.'
+      description: '`sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored` after a disconnect, `reason` with `sync.restored` after a held reason is resolved (6.1.0).'
       properties:
         sync_version: { type: integer, minimum: 1, description: '`AccountSync.version` after the change.' }
         reason: { $ref: 'accounts.yaml#/components/schemas/SyncReason' }
@@ -1157,6 +1189,42 @@ components:
         last_fill_id: { type: string, maxLength: 128, description: 'The watermark; absent = no fill today.' }
         reanchor_version: { type: integer, minimum: 1 }
         day_unknown_reason: { type: string, enum: [late_anchor, journal_lost, playback_rewind, account_reset] }
+    DetailsRiskEnforcement:
+      type: object
+      additionalProperties: false
+      required: [enforcement_id, kind, limit, used, limits_version]
+      description: '`risk.blocked` (+ `trigger`) and `risk.flatten` (+ `action`), 6.1.0 (S15). `kind` / `limit` / `used` are those of the rule that triggered the block (S15 AC-5).'
+      properties:
+        enforcement_id: { description: 'The Core''s id of one enforcement episode: one block until the reset of one account. The same value on the `risk.blocked` and every `risk.flatten` of that episode (the 2–3 entries of one limit breach), and on its `risk.reactive_block_action` and `risk.unblocked` entries, so S18 groups them without heuristics (Nanquim). A new block, even on the same day, gets a new id.', $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        kind: { $ref: 'risk.yaml#/components/schemas/RiskRuleKind' }
+        limit: { $ref: '#/components/schemas/Money' }
+        used: { $ref: '#/components/schemas/Money' }
+        limits_version: { type: integer, minimum: 1 }
+        trigger: { type: string, enum: [limit_reached, enabled_over_limit], description: 'With `risk.blocked`: `enabled_over_limit` = the user turned enforcement on while the limit was already exceeded today (S15 AC-8, Q61 a).' }
+        action: { type: string, enum: [flattened, orders_cancelled], description: With `risk.flatten`. }
+        while_disconnected: { type: boolean, description: 'The plugin acted while the Core was unreachable, on its cached limits (S15 AC-4).' }
+        platform_time: { description: 'The connection''s clock (Playback, S15 AC-7).', $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    DetailsRiskUnblocked:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      description: '`risk.unblocked` (6.1.0, S15 AC-9).'
+      properties:
+        enforcement_id: { description: 'The ended block''s `enforcement_id`; absent only when the Core never recorded that block.', $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        reason: { const: trading_day_reset }
+        blocked_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        limits_version: { type: integer, minimum: 1 }
+    DetailsReactiveBlockAction:
+      type: object
+      additionalProperties: false
+      required: [action]
+      description: '`risk.reactive_block_action` (6.1.0, S15 AC-6): the cancel of a manual order while blocked (`risk_event` `blocked_order_cancelled`). A resulting position flattened while blocked is reported as `flattened` and recorded as `risk.flatten` (ADR-0004 §7 r6.1).'
+      properties:
+        enforcement_id: { description: 'The current block''s `enforcement_id`; absent only when the Core never recorded that block.', $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        action: { const: order_cancelled }
+        kind: { description: 'The rule behind the block.', $ref: 'risk.yaml#/components/schemas/RiskRuleKind' }
+        while_disconnected: { type: boolean }
+        platform_time: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
     DetailsSecurityInvitation:
       type: object
       additionalProperties: false
@@ -1216,6 +1284,7 @@ components:
         connection.status_changed: { $ref: '#/components/schemas/DetailsConnectionStatus' }
         execution.unbound_activity: { $ref: '#/components/schemas/DetailsUnboundActivity' }
         execution.undelivered: { $ref: '#/components/schemas/DetailsUndelivered' }
+        execution.exit_sent_late: { $ref: '#/components/schemas/DetailsCommandSent' }
         connection.account_kind_changed: { $ref: '#/components/schemas/DetailsAccountKindChanged' }
         sync.flagged: { $ref: '#/components/schemas/DetailsSync' }
         sync.reason_resolved: { $ref: '#/components/schemas/DetailsSync' }
@@ -1267,6 +1336,10 @@ components:
         risk.consistency_warning: { $ref: '#/components/schemas/DetailsRiskState' }
         risk.evaluation_target_reached: { $ref: '#/components/schemas/DetailsEvaluation' }
         risk.day_restarted: { $ref: '#/components/schemas/DetailsDayRestarted' }
+        risk.blocked: { $ref: '#/components/schemas/DetailsRiskEnforcement' }
+        risk.flatten: { $ref: '#/components/schemas/DetailsRiskEnforcement' }
+        risk.unblocked: { $ref: '#/components/schemas/DetailsRiskUnblocked' }
+        risk.reactive_block_action: { $ref: '#/components/schemas/DetailsReactiveBlockAction' }
         accounts.evaluation_restarted: { $ref: '#/components/schemas/DetailsEvaluationRestarted' }
         accounts.evaluation_corrected: { $ref: '#/components/schemas/DetailsEvaluationCorrected' }
         trades.captured: { $ref: '#/components/schemas/DetailsTrade' }

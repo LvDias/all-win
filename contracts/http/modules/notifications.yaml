@@ -74,7 +74,8 @@ paths:
         item unchanged. Reading never changes or hides the state it reports (a block, a risk level, an out-
         of-sync flag stays visible in banners and badges). A later occurrence of a grouped item makes it
         unread again only when its registry code has `reopen_on_occurrence: true` (Q68 b: the
-        `danger` routing codes); otherwise only `count` and `updated_at` change. Emits `notification.read`.
+        `danger` routing codes; Q99 yes, user 2026-10-24: also `sync.flagged`, whose every occurrence is
+        a NEW reason); otherwise only `count` and `updated_at` change. Emits `notification.read`.
       parameters:
         - { $ref: '#/components/parameters/NotificationId' }
       responses:
@@ -306,8 +307,9 @@ components:
       additionalProperties: false
       description: |
         Type map, not a payload: `params` of a notification with code `<code>` matches property `<code>`.
-        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S15 (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
-        are added with those contracts.
+        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). The S15 codes
+        (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`) are in from 6.1.0
+        (registry 1.6.0).
       properties:
         routing.quantity_capped: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
         routing.max_position_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRoutingDecision' }
@@ -327,6 +329,10 @@ components:
         risk.target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.consistency_warning: { $ref: 'audit.yaml#/components/schemas/DetailsRiskState' }
         risk.evaluation_target_reached: { $ref: 'audit.yaml#/components/schemas/DetailsEvaluation' }
+        risk.blocked: { $ref: 'audit.yaml#/components/schemas/DetailsRiskEnforcement' }
+        risk.flatten: { $ref: 'audit.yaml#/components/schemas/DetailsRiskEnforcement' }
+        risk.unblocked: { $ref: 'audit.yaml#/components/schemas/DetailsRiskUnblocked' }
+        risk.reactive_block_action: { $ref: 'audit.yaml#/components/schemas/DetailsReactiveBlockAction' }
         connection.status_changed: { $ref: 'audit.yaml#/components/schemas/DetailsConnectionStatus' }
         accounts.opt_in_suspended: { $ref: '#/components/schemas/ParamsOptInSuspendedByFirm' }
         presets.new_version: { $ref: '#/components/schemas/ParamsPresetNewVersion' }
