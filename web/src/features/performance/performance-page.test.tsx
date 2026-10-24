@@ -65,6 +65,37 @@ async function stream() {
 }
 
 describe("PerformancePage", () => {
+
+  it("asks for archived accounts only when the switch is on (URL ?archived=1)", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get("*/api/v1/performance", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(performance());
+      }),
+    );
+    renderApp(<PerformancePage />);
+    const toggle = await screen.findByRole("switch", { name: "Incluir contas arquivadas" });
+    expect(toggle).not.toBeChecked();
+    expect(urls.every((url) => !url.includes("include_archived"))).toBe(true);
+    await userEvent.setup().click(toggle);
+    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived=1"));
+  });
+
+  it("sends include_archived=true when the URL asks for archived accounts", async () => {
+    navigation.search = "archived=1";
+    const urls: string[] = [];
+    server.use(
+      http.get("*/api/v1/performance", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(performance());
+      }),
+    );
+    renderApp(<PerformancePage />);
+    expect(await screen.findByRole("switch", { name: "Incluir contas arquivadas" })).toBeChecked();
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    expect(urls.every((url) => url.includes("include_archived=true"))).toBe(true);
+  });
   it("shows the Core's figures: net first, gross and commissions beside it, win/loss/zero counts, no invented zero", async () => {
     serve(performance());
     renderApp(<PerformancePage />);

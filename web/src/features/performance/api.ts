@@ -9,13 +9,14 @@ export const performanceQueryKey = ["performance"] as const;
 export type GroupBy = "source_signal" | "source" | "signal_type";
 export type PerformanceSort = "total_pnl" | "trade_count" | "avg_pnl" | "win_rate";
 
-export type PerformanceQuery = { from?: string; to?: string; accountIds: string[]; groupBy: GroupBy; sort: PerformanceSort; order: "asc" | "desc" };
+export type PerformanceQuery = { from?: string; to?: string; accountIds: string[]; archived: boolean; groupBy: GroupBy; sort: PerformanceSort; order: "asc" | "desc" };
 
 function params(query: PerformanceQuery): URLSearchParams {
   const p = new URLSearchParams({ group_by: query.groupBy, sort: query.sort, order: query.order });
   if (query.from) p.set("from", query.from);
   if (query.to) p.set("to", query.to);
   for (const id of query.accountIds) p.append("account_id", id);
+  if (query.archived) p.set("include_archived", "true");
   return p;
 }
 

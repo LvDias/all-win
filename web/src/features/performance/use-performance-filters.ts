@@ -9,7 +9,7 @@ import type { GroupBy, PerformanceQuery, PerformanceSort } from "./api";
 const groups: readonly GroupBy[] = ["source_signal", "source", "signal_type"];
 const sorts: readonly PerformanceSort[] = ["total_pnl", "trade_count", "avg_pnl", "win_rate"];
 
-export type UiFilters = { period: Period; fromDate: string; toDate: string; accounts: string[] };
+export type UiFilters = { period: Period; fromDate: string; toDate: string; accounts: string[]; archived: boolean };
 
 /** The same URL parameters and the same exit-time window as the trade list (S21), so a filter selects the same trades on both. */
 export function usePerformanceFilters() {
@@ -35,15 +35,16 @@ export function usePerformanceFilters() {
       fromDate: isDateText(fromParam) ? fromParam : "",
       toDate: isDateText(toParam) ? toParam : "",
       accounts: p.getAll("account"),
+      archived: p.get("archived") === "1",
     };
   }, [search]);
-  const { period, groupBy, sort, order, fromDate, toDate, accounts } = parsed;
-  const ui: UiFilters = { period, fromDate, toDate, accounts };
+  const { period, groupBy, sort, order, fromDate, toDate, accounts, archived } = parsed;
+  const ui: UiFilters = { period, fromDate, toDate, accounts, archived };
 
   const query = useMemo<PerformanceQuery>(() => {
     const { from, to } = periodWindow(period, fromDate, toDate, now, timeZone);
-    return { from, to, accountIds: accounts, groupBy, sort, order };
-  }, [period, fromDate, toDate, accounts, groupBy, sort, order, now, timeZone]);
+    return { from, to, accountIds: accounts, archived, groupBy, sort, order };
+  }, [period, fromDate, toDate, accounts, archived, groupBy, sort, order, now, timeZone]);
 
   const update = useCallback(
     (patch: Partial<UiFilters> & { groupBy?: GroupBy; sort?: PerformanceSort; order?: "asc" | "desc" }) => {
@@ -66,6 +67,10 @@ export function usePerformanceFilters() {
         next.delete("account");
         for (const id of patch.accounts) next.append("account", id);
       }
+      if (patch.archived !== undefined) {
+        if (patch.archived) next.set("archived", "1");
+        else next.delete("archived");
+      }
       setOrDelete("group", patch.groupBy, patch.groupBy === "source_signal");
       setOrDelete("sort", patch.sort, patch.sort === "total_pnl");
       setOrDelete("order", patch.order, patch.order === "desc");
@@ -75,8 +80,8 @@ export function usePerformanceFilters() {
     [search, pathname, router],
   );
 
-  const clear = useCallback(() => update({ period: "30d", accounts: [] }), [update]);
-  const activeCount = (accounts.length > 0 ? 1 : 0) + (period !== "30d" ? 1 : 0);
+  const clear = useCallback(() => update({ period: "30d", accounts: [], archived: false }), [update]);
+  const activeCount = (accounts.length > 0 ? 1 : 0) + (archived ? 1 : 0) + (period !== "30d" ? 1 : 0);
   /** The filter as the trade list reads it: `?period=…&from=…&to=…&account=…`. */
   const tradesQuery = useMemo(() => {
     const p = new URLSearchParams();
@@ -84,8 +89,9 @@ export function usePerformanceFilters() {
     if (fromDate) p.set("from", fromDate);
     if (toDate) p.set("to", toDate);
     for (const id of accounts) p.append("account", id);
+    if (archived) p.set("archived", "1");
     return p;
-  }, [period, fromDate, toDate, accounts]);
+  }, [period, fromDate, toDate, accounts, archived]);
 
   return { ui, query, groupBy, sort, order, update, clear, activeCount, tradesQuery };
 }

@@ -20,6 +20,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { ErrorState } from "@/shared/ui/error-state";
+import { ArchivedSwitch } from "@/shared/components/archived-switch";
 import { MultiSelect } from "@/shared/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -93,6 +94,7 @@ export function PerformancePage() {
       ) : null}
       <div className="flex flex-wrap gap-2">
         <MultiSelect label={t("filters.accounts")} options={accountOptions} selected={ui.accounts} onChange={(value) => update({ accounts: value })} />
+        <ArchivedSwitch checked={ui.archived} onChange={(archived) => update({ archived })} />
         {activeCount > 0 ? (
           <Button type="button" variant="ghost" onClick={clear}>
             {t("filters.clear")}
