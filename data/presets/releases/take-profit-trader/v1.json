@@ -1,0 +1,1454 @@
+{
+  "schema_version": "1.1",
+  "firm": {
+    "slug": "take-profit-trader",
+    "name": "Take Profit Trader",
+    "domains": [
+      "takeprofittrader.com",
+      "takeprofittraderhelp.zendesk.com"
+    ]
+  },
+  "release": {
+    "version_number": 1,
+    "verified_on": "2026-10-23",
+    "research_file": "docs/product/presets/research/take-profit-trader.md",
+    "changes": []
+  },
+  "platforms": [
+    {
+      "code": "cqg",
+      "label": "CQG"
+    },
+    {
+      "code": "rithmic",
+      "label": "Rithmic"
+    }
+  ],
+  "stances": {
+    "automation": [
+      {
+        "kind": "automation",
+        "version": 1,
+        "firm_stance": "forbidden",
+        "quotes": [
+          {
+            "text": "#1: No Trading Bots or Algos. Automated trading systems, bots, or algorithmic execution tools are not permitted.",
+            "language": "en",
+            "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/34431153546397-TakeProfitTrader-Universal-Trading-Policies-UTP",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          }
+        ]
+      }
+    ],
+    "copy": [
+      {
+        "kind": "copy",
+        "version": 1,
+        "firm_stance": "conditional",
+        "quotes": [
+          {
+            "text": "TakeProfitTrader permits the use of trade copiers solely for managing accounts owned and controlled by you.",
+            "language": "en",
+            "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/34431176505245-Trade-Copier-Policy",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          }
+        ]
+      }
+    ],
+    "vps": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-23",
+        "sources": [
+          {
+            "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/34431153546397-TakeProfitTrader-Universal-Trading-Policies-UTP",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          },
+          {
+            "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/37085469996573-Registration-Denial-FAQ",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          },
+          {
+            "url": "https://takeprofittrader.com/terms",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          }
+        ]
+      }
+    },
+    "personal_device": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-23",
+        "sources": [
+          {
+            "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/34431153546397-TakeProfitTrader-Universal-Trading-Policies-UTP",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          },
+          {
+            "url": "https://takeprofittrader.com/terms",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          }
+        ]
+      }
+    }
+  },
+  "plans": [
+    {
+      "key": "test",
+      "name": "Test",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "25K",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 30,
+                        "published_text": "3 Contracts / 30 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "1500.00",
+                        "stops_trailing_at": "The drawdown across all three account types will STOP trailing once it has reached the initial account balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170265979165-Rule-3-Do-Not-Hit-End-Of-Day-EOD-Maximum-Trailing-Drawdown",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "text": "Highest profit day / Net P/L = Consistency Percentage. This percentage must be below 50% to qualify for a PRO account.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "text": "Your biggest trading day cannot be more than 50% of your total profit.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169070804125-Rule-1-Hit-Your-Profit-Target",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 3
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 Contracts / 60 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "2000.00",
+                        "stops_trailing_at": "The drawdown across all three account types will STOP trailing once it has reached the initial account balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170265979165-Rule-3-Do-Not-Hit-End-Of-Day-EOD-Maximum-Trailing-Drawdown",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "text": "Highest profit day / Net P/L = Consistency Percentage. This percentage must be below 50% to qualify for a PRO account.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "text": "Your biggest trading day cannot be more than 50% of your total profit.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169070804125-Rule-1-Hit-Your-Profit-Target",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 3
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "75k",
+              "size_label": "75K",
+              "size_amount": "75000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 90,
+                        "published_text": "9 Contracts / 90 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "2500.00",
+                        "stops_trailing_at": "The drawdown across all three account types will STOP trailing once it has reached the initial account balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170265979165-Rule-3-Do-Not-Hit-End-Of-Day-EOD-Maximum-Trailing-Drawdown",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "text": "Highest profit day / Net P/L = Consistency Percentage. This percentage must be below 50% to qualify for a PRO account.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "text": "Your biggest trading day cannot be more than 50% of your total profit.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "4500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169070804125-Rule-1-Hit-Your-Profit-Target",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 3
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 Contracts / 120 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "3000.00",
+                        "stops_trailing_at": "The drawdown across all three account types will STOP trailing once it has reached the initial account balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170265979165-Rule-3-Do-Not-Hit-End-Of-Day-EOD-Maximum-Trailing-Drawdown",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "text": "Highest profit day / Net P/L = Consistency Percentage. This percentage must be below 50% to qualify for a PRO account.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "text": "Your biggest trading day cannot be more than 50% of your total profit.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169070804125-Rule-1-Hit-Your-Profit-Target",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 3
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 150,
+                        "published_text": "15 Contracts / 150 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "4500.00",
+                        "stops_trailing_at": "The drawdown across all three account types will STOP trailing once it has reached the initial account balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170265979165-Rule-3-Do-Not-Hit-End-Of-Day-EOD-Maximum-Trailing-Drawdown",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "consistency_rule": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "text": "Highest profit day / Net P/L = Consistency Percentage. This percentage must be below 50% to qualify for a PRO account.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "text": "Your biggest trading day cannot be more than 50% of your total profit.",
+                            "threshold_pct": "50"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169070804125-Rule-1-Hit-Your-Profit-Target",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 3
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170316538013-Rule-5-Be-Consistent",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "pro",
+      "name": "PRO",
+      "phases": [
+        {
+          "phase": "funded",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "25K",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 30,
+                        "published_text": "3 Contracts / 30 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "1500.00",
+                        "stops_trailing_at": "The drawdown continues to trail profits until it reaches your starting balance; once it reaches that level, it no longer moves.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 Contracts / 60 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "2000.00",
+                        "stops_trailing_at": "The drawdown continues to trail profits until it reaches your starting balance; once it reaches that level, it no longer moves.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "75k",
+              "size_label": "75K",
+              "size_amount": "75000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 90,
+                        "published_text": "9 Contracts / 90 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "2500.00",
+                        "stops_trailing_at": "The drawdown continues to trail profits until it reaches your starting balance; once it reaches that level, it no longer moves.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 Contracts / 120 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "3000.00",
+                        "stops_trailing_at": "The drawdown continues to trail profits until it reaches your starting balance; once it reaches that level, it no longer moves.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 150,
+                        "published_text": "15 Contracts / 150 Micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15169066911133-Rule-2-Do-Not-Exceed-Maximum-Position-Size",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "4500.00",
+                        "stops_trailing_at": "The drawdown continues to trail profits until it reaches your starting balance; once it reaches that level, it no longer moves.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://takeprofittrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We Fund Futures Traders"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "America/New_York",
+                            "published_text": "Trading window: 6 PM Eastern – 5 PM Eastern"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittraderhelp.zendesk.com/hc/en-us/articles/15170347090461-Rule-4-Trade-Approved-Products-During-Approved-Hours",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "local_time": "18:00",
+                            "time_zone": "Etc/GMT+5",
+                            "published_text": "the end of the trading day (5PM EST)"
+                          },
+                          "sources": [
+                            {
+                              "url": "https://takeprofittrader.com/",
+                              "accessed_at": "2026-10-23",
+                              "page_title": "We Fund Futures Traders"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "excluded_plans": [
+    {
+      "name": "PRO+",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S-4, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S-4, 2026-10-23); register it manually."
+      }
+    },
+    {
+      "name": "PRO+ Development",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S-4, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S-4, 2026-10-23); register it manually."
+      }
+    }
+  ]
+}

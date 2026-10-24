@@ -1,0 +1,2821 @@
+{
+  "schema_version": "1.1",
+  "firm": {
+    "slug": "apex-trader-funding",
+    "name": "Apex Trader Funding",
+    "domains": [
+      "apextraderfunding.com"
+    ]
+  },
+  "release": {
+    "version_number": 1,
+    "verified_on": "2026-10-23",
+    "research_file": "docs/product/presets/research/apex-trader-funding.md",
+    "changes": []
+  },
+  "platforms": [
+    {
+      "code": "rithmic",
+      "label": "Rithmic"
+    },
+    {
+      "code": "tradovate",
+      "label": "Tradovate"
+    },
+    {
+      "code": "wealthcharts",
+      "label": "WealthCharts",
+      "manual_only": {
+        "reason": {
+          "pt-BR": "Esta plataforma não é alcançada por nenhuma saída da V1 (o NinjaTrader 8 alcança a Apex pela Rithmic ou pela Tradovate). A conta fica só em acompanhamento manual.",
+          "en": "No V1 output reaches this platform (NinjaTrader 8 reaches Apex through Rithmic or Tradovate). The account is tracked manually only."
+        }
+      }
+    }
+  ],
+  "stances": {
+    "automation": [
+      {
+        "kind": "automation",
+        "version": 1,
+        "firm_stance": "forbidden",
+        "quotes": [
+          {
+            "text": "No Automation or Algorithm Usage allowed: Rewards are intended to recognize human traders actively participating in the learning process, not to reward automated systems executing preprogrammed logic. Please see the user agreement for more details, and we encourage you to reach out if you have further questions.",
+            "language": "en",
+            "url": "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          }
+        ]
+      }
+    ],
+    "copy": [
+      {
+        "kind": "copy",
+        "version": 1,
+        "firm_stance": "not_confirmed",
+        "quotes": [
+          {
+            "text": "Copy trading across PA accounts under your personal name and business name is allowed. However, the hedging rule still applies; all PAs must trade in the same direction and not hedge against correlated assets.",
+            "language": "en",
+            "url": "https://apextraderfunding.com/help-center/performance-accounts-pa/how-many-paid-funded-accounts-am-i-allowed-to-have/",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          },
+          {
+            "text": "Copy or Trading Services Operations or Participation — Performance Accounts (PA) and Live Prop Accounts must be traded exclusively by the individual listed on the account. Under no circumstances can these accounts be managed or influenced by any other party, person, system, automated trading bot, copy trading service, or trade mirroring software.",
+            "language": "en",
+            "url": "https://apextraderfunding.com/help-center/performance-accounts-pa/legacy-performance-account-pa-compliance/",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          }
+        ]
+      }
+    ],
+    "vps": {
+      "value": "conditional",
+      "quotes": [
+        {
+          "text": "You may not use VPNs, proxy servers, cloud servers, anonymizing tools, or other methods or tools for the purpose of misrepresenting, concealing, or disguising your identity, device, or location in an attempt: (a) to evade or circumvent any rules, security measures, access controls, or geographic restrictions; (b) to hide prior violations or detection of violations of this Agreement, the Trading Rules, or Company policies; or (c) to engage in or facilitate any illegal, fraudulent, deceptive, or abusive conduct.",
+          "language": "en",
+          "url": "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/",
+          "accessed_at": "2026-10-23",
+          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+        }
+      ]
+    },
+    "personal_device": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-23",
+        "sources": [
+          {
+            "url": "https://apextraderfunding.com/help-center/getting-started/prohibited-activities/",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          },
+          {
+            "url": "https://apextraderfunding.com/help-center/getting-started/apex-live-prop-trading-program-faq/",
+            "accessed_at": "2026-10-23",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+          }
+        ]
+      }
+    }
+  },
+  "plans": [
+    {
+      "key": "eod-trailing-drawdown",
+      "name": "EOD Trailing Drawdown",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "25K",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 40,
+                        "published_text": "4 mini / 40 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "1000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "1500.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 40,
+                        "published_text": "4 mini / 40 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "1000.00",
+                        "stops_trailing_at": "EOD Drawdown trails indefinitely with the peak EOD account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 40,
+                        "published_text": "4 mini / 40 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "1000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "1500.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 mini / 60 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "2000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "3000.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "1000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 mini / 60 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "2000.00",
+                        "stops_trailing_at": "EOD Drawdown trails indefinitely with the peak EOD account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "1000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 mini / 60 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "2000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "3000.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "1000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 80,
+                        "published_text": "8 mini / 80 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "3000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "6000.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 80,
+                        "published_text": "8 mini / 80 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "3000.00",
+                        "stops_trailing_at": "EOD Drawdown trails indefinitely with the peak EOD account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 80,
+                        "published_text": "8 mini / 80 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "3000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "6000.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 mini / 120 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "4000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "9000.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "2000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 mini / 120 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "4000.00",
+                        "stops_trailing_at": "EOD Drawdown trails indefinitely with the peak EOD account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "2000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 mini / 120 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_eod",
+                        "amount": "4000.00",
+                        "stops_trailing_at": "EOD Threshold stops trailing and becomes fixed when it reaches an amount equal to the Target Profit balance.",
+                        "trailing_lock": {
+                          "mode": "floor_reaches_start",
+                          "offset": "9000.00"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "soft_pause",
+                        "amount": "2000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "intraday-trailing-drawdown",
+      "name": "Intraday Trailing Drawdown",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "25K",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 40,
+                        "published_text": "4 mini / 40 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "1000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "1500.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "1000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 40,
+                        "published_text": "4 mini / 40 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "1000.00",
+                        "stops_trailing_at": "Intraday Drawdown trails indefinitely with the peak account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 40,
+                        "published_text": "4 mini / 40 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "1000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "1500.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "1000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 mini / 60 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "2000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "3000.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "2000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 mini / 60 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "2000.00",
+                        "stops_trailing_at": "Intraday Drawdown trails indefinitely with the peak account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 60,
+                        "published_text": "6 mini / 60 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "2000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "3000.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "2000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 80,
+                        "published_text": "8 mini / 80 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "3000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "6000.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "3000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 80,
+                        "published_text": "8 mini / 80 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "3000.00",
+                        "stops_trailing_at": "Intraday Drawdown trails indefinitely with the peak account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 80,
+                        "published_text": "8 mini / 80 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "3000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "6000.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "3000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "firm_platform": "rithmic",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 mini / 120 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "4000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "9000.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "4000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "tradovate",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 mini / 120 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "verified",
+                      "value": {
+                        "type": "trailing_intraday",
+                        "amount": "4000.00",
+                        "stops_trailing_at": "Intraday Drawdown trails indefinitely with the peak account balance.",
+                        "trailing_lock": {
+                          "mode": "never"
+                        }
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "firm_platform": "wealthcharts",
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 mini / 120 micro"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "published_values": [
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "4000.00",
+                            "stops_trailing_at": "Once the Intraday Threshold reaches Target Profit Balance, it stops increasing.",
+                            "trailing_lock": {
+                              "mode": "floor_reaches_start",
+                              "offset": "9000.00"
+                            }
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        },
+                        {
+                          "value": {
+                            "type": "trailing_intraday",
+                            "amount": "4000.00",
+                            "stops_trailing_at": "In Rithmic and Wealthcharts Evaluations, trailing stops once the Intraday Threshold reaches Profit Target Balance + $2,000."
+                          },
+                          "sources": [
+                            {
+                              "url": "https://apextraderfunding.com/help-center/intraday-trailing-drawdown-accounts/intraday-trailing-drawdown-explained/",
+                              "accessed_at": "2026-10-23",
+                              "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/help-center/additional-helpful-items/daily-loss-limit-explained/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "verified",
+                      "value": {
+                        "local_time": "18:00",
+                        "time_zone": "America/New_York",
+                        "published_text": "6 PM ET"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/getting-started/futures-trading-times/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://apextraderfunding.com/help-center/evaluation-accounts-ea/intraday-trailing-drawdown-evaluations/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        },
+                        {
+                          "url": "https://apextraderfunding.com/",
+                          "accessed_at": "2026-10-23",
+                          "title_note": "title not retrieved: site blocks automated access, 2026-10-24"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "excluded_plans": [
+    {
+      "name": "Apex Legacy",
+      "reason": {
+        "pt-BR": "Excluído dos presets da V1 por decisão do usuário (S16 AC-9, 2026-10-23); cadastre manualmente.",
+        "en": "Excluded from V1 presets by the user's decision (S16 AC-9, 2026-10-23); register it manually."
+      }
+    }
+  ]
+}

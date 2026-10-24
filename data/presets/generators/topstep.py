@@ -1,6 +1,17 @@
 """Topstep release (Trading Combine only) from docs/product/presets/research/topstep.md (R2, 2026-10-23).
-Page titles are derived from the help-center URL slugs (research does not list them): PO to confirm."""
+Page titles are the pages' h1 (Aquarela, 2026-10-24). Content approved by the PO (Rumo) per file.
+
+Usage: topstep.py v1|v2 OUT.json. One immutable file per published version
+(data/presets/releases/topstep/v<N>.json); v1 must regenerate byte for byte.
+- v1 (presets 1.0): as first published.
+- v2 (presets 1.1, Q90 a): the drawdown gets trailing_lock {floor_reaches_start} ("Once it reaches your
+  starting balance, it locks permanently."); nothing else changes, so changes = rule_value_changed
+  drawdown on the three presets (the Core's own diff, import check 9)."""
 import json, sys
+VERSION = sys.argv[1]
+if VERSION not in ("v1", "v2"):
+    sys.exit("usage: topstep.py v1|v2 OUT.json")
+V2 = VERSION == "v2"
 D = "2026-10-23"
 def src(url):
     s = {"url": url, "accessed_at": D}
@@ -23,8 +34,6 @@ S12 = "https://help.topstep.com/en/articles/11187768-topstepx-api-access"
 S17 = "https://help.topstep.com/en/articles/8284199-new-to-topstep-start-here"
 S22 = "https://www.topstep.com/topstep-prop"
 S25 = "https://www.topstep.com/terms-of-use"
-S19 = "https://help.topstep.com/en/articles/15520357-topstep-labs"
-S20 = "https://help.topstep.com/en/articles/14645398-what-is-a-pro-account"
 
 # page_title = the page's h1, without the <title> suffix (Maestro rule; titles from Aquarela, 2026-10-24).
 TITLES = {
@@ -47,8 +56,9 @@ def tc(size_key, label, amount, mll, dll, target, minis):
         "key": size_key, "size_label": label, "size_amount": amount,
         "rule_sets": [{"rules": {
             "max_position_qty": verified({"contracts": minis * 10, "published_text": f"{minis} mini / {minis*10} micro"}, S1, S22),
-            "drawdown": verified({"type": "trailing_eod", "amount": mll,
-                                  "stops_trailing_at": "Once it reaches your starting balance, it locks permanently."}, S2, S22),
+            "drawdown": verified(dict({"type": "trailing_eod", "amount": mll,
+                                       "stops_trailing_at": "Once it reaches your starting balance, it locks permanently."},
+                                      **({"trailing_lock": {"mode": "floor_reaches_start"}} if V2 else {})), S2, S22),
             # Optional at checkout (the trader chooses): not a conflict between pages. Interim: the user
             # picks one of the two published options (never prefilled). PO question Q-TS-1.
             "daily_loss_limit": {"status": "not_confirmed", "published_values": [
@@ -62,13 +72,16 @@ def tc(size_key, label, amount, mll, dll, target, minis):
         }}]}
 
 release = {
-    "schema_version": "1.0",
+    "schema_version": "1.1" if V2 else "1.0",
     "firm": {
         "slug": "topstep", "name": "Topstep", "domains": ["topstep.com"],
         # S16 AC-7: TopstepX only; orders must originate from the personal device.
         "manual_only": {"reason": quote("TopstepX™ is the only available trading platform.", S17, "New to Topstep? Start here.")},
     },
-    "release": {"version_number": 1, "verified_on": D, "research_file": "docs/product/presets/research/topstep.md", "changes": []},
+    "release": {"version_number": 2 if V2 else 1, "verified_on": D, "research_file": "docs/product/presets/research/topstep.md",
+                "changes": [{"kind": "rule_value_changed", "field": "drawdown",
+                             "preset": {"plan": "trading-combine", "phase": "evaluation", "size": size}}
+                            for size in ("50k", "100k", "150k")] if V2 else []},
     "platforms": [{"code": "topstepx", "label": "TopstepX"}],
     "stances": {
         # Stance differs by phase (TC/XFA conditional, LFA not possible): the format has one text per
@@ -98,4 +111,4 @@ release = {
                   "Topstep Labs $50K Static Trading Combine", "Topstep Labs $250K Freedom Trading Combine", "Pro Account"]
     ],
 }
-json.dump(release, open(sys.argv[1], "w"), indent=2, ensure_ascii=False)
+json.dump(release, open(sys.argv[2], "w"), indent=2, ensure_ascii=False)
