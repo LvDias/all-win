@@ -355,7 +355,13 @@
       },
       "stepUpDescriptionBinding": "alterar a conta da plataforma vinculada a esta conta",
       "preset": {
-        "choose": "Escolher um preset da firma"
+        "choose": "Escolher um preset da firma",
+        "current": "Preset atual: {label}",
+        "change": "Trocar o preset",
+        "manual": "Cadastrar sem preset",
+        "cancelChange": "Manter como está",
+        "backToCurrent": "Voltar ao preset da conta",
+        "attachNotice": "Anexar um preset coloca esta conta em revisão: as ordens automatizadas ficam suspensas até você ler a regra da firma e escolher de novo."
       }
     },
     "optIn": {
