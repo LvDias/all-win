@@ -25,17 +25,32 @@ chmod 2770 -- "$LOCK_DIR" 2>/dev/null || true
 
 # Take any free slot; poll every 5 seconds. The slot is held by this shell's fd until the command ends
 # (the child inherits it too, so the slot stays taken even if this wrapper is killed).
-waited=0 announced=0 paused_said=0 held=""
+waited=0 announced=0 paused_said=0 stale_said=0 pause_last=0 held=""
 while [ -z "$held" ]; do
-  # Planned quiet window (SRE perf measurement): while LOCK_DIR/PAUSE exists, NEW jobs wait; running jobs finish.
+  # Planned quiet window (SRE perf measurement): while LOCK_DIR/PAUSE is in force, NEW jobs wait; running jobs finish.
   # Waiting under a pause does not count against the wait limit. Only ALLWIN_HEAVY_IGNORE_PAUSE=1 (the measuring
-  # account's own run) goes through.
+  # account's own run) goes through. A PAUSE expires on its own: it is ignored once the end time in its first line
+  # ("until HH:MM") has passed, or once the file is older than 2 hours, so a forgotten one cannot stall the queue.
   if [ -e "$LOCK_DIR/PAUSE" ] && [ "${ALLWIN_HEAVY_IGNORE_PAUSE:-0}" != 1 ]; then
-    if [ "$paused_said" = 0 ]; then
-      note="$(head -c 200 "$LOCK_DIR/PAUSE" 2>/dev/null | tr -d '\000-\037')"
-      echo "allwin-heavy: paused for SRE quiet window${note:+ ($note)}; waiting for it to end..." >&2; paused_said=1
+    now="$(date +%s)"; mt="$(stat -c %Y "$LOCK_DIR/PAUSE" 2>/dev/null || echo "$now")"; pause_age=$(( now - mt ))
+    pause_note="$(head -n 1 "$LOCK_DIR/PAUSE" 2>/dev/null | head -c 200 | tr -d '\000-\037')"
+    pause_owner="$(stat -c %U "$LOCK_DIR/PAUSE" 2>/dev/null || echo '?')"
+    pause_expired=0
+    [ "$pause_age" -gt 7200 ] && pause_expired=1
+    if [[ "$pause_note" =~ until[[:space:]]+([0-2][0-9]):([0-5][0-9]) ]]; then
+      pause_end="$(date -d "${BASH_REMATCH[1]}:${BASH_REMATCH[2]}" +%s 2>/dev/null || echo 0)"
+      [ "$pause_end" -gt 0 ] && [ "$pause_end" -lt "$mt" ] && pause_end=$(( pause_end + 86400 ))   # end time after midnight
+      [ "$pause_end" -gt 0 ] && [ "$now" -gt "$pause_end" ] && pause_expired=1
     fi
-    sleep 5; continue
+    if [ "$pause_expired" = 1 ]; then
+      [ "$stale_said" = 1 ] || { echo "allwin-heavy: ignoring an expired PAUSE (owner $pause_owner, age $(( pause_age / 60 )) min${pause_note:+, $pause_note})" >&2; stale_said=1; }
+    else
+      if [ "$paused_said" = 0 ] || [ $(( now - pause_last )) -ge "${ALLWIN_HEAVY_PAUSE_MSG_S:-300}" ]; then
+        echo "allwin-heavy: paused for SRE quiet window (owner $pause_owner, age $(( pause_age / 60 )) min${pause_note:+, $pause_note}); waiting for it to end..." >&2
+        paused_said=1; pause_last="$now"
+      fi
+      sleep 5; continue
+    fi
   fi
   for i in $(seq 1 "$SLOTS"); do
     f="$LOCK_DIR/slot.$i"
