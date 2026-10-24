@@ -101,6 +101,44 @@ describe("S13 AC-3 states and live announcements", () => {
   });
 });
 
+describe("S13-1 daily profit target reached, in words (a11y)", () => {
+  const reached = (o: Record<string, unknown> = {}) => base({ meters: [{ kind: "daily_profit_target", state: "target_reached", limit: "600.00", used: "640.00", percent: 106 }], ...o });
+  it("the state is said in visible text twice - badge on the meter row AND a success banner - not only by the green bar", async () => {
+    serve(reached()); renderApp(<RiskTab accountId={id} />);
+    const meter = await screen.findByRole("meter", { name: "Meta de lucro diária" });
+    const row = meter.parentElement as HTMLElement;
+    expect(within(row).getByText("Meta atingida")).toBeVisible();
+    expect(screen.getAllByText("Meta atingida").length).toBeGreaterThanOrEqual(2);
+    expect(meter.getAttribute("aria-valuetext")).toMatch(/meta atingida/i); // the meter's own spoken value carries it too
+  });
+  it("the banner is a polite status (role=status), never an alert; a loss limit reached stays an alert path (danger tone), and the success banner has an icon that is hidden from AT", async () => {
+    serve(reached()); renderApp(<RiskTab accountId={id} />);
+    await screen.findByRole("meter", { name: "Meta de lucro diária" });
+    const status = screen.getAllByRole("status").find((n) => /Meta atingida/.test(n.textContent ?? ""))!;
+    expect(status).toBeDefined();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // no block: nothing assertive on the page
+    expect(status.querySelector("svg[aria-hidden='true']")).not.toBeNull();
+  });
+  it("with 'flatten and block' the block alert (reason in text) and the target banner coexist, and the block keeps its words 'meta de lucro diária atingida'", async () => {
+    serve(reached({ blocked: { until: "2026-10-23T21:00:00Z", cause: "daily_profit_target" } })); renderApp(<RiskTab accountId={id} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/motivo: meta de lucro diária atingida/);
+    expect(screen.getAllByText("Meta atingida").length).toBeGreaterThanOrEqual(2);
+  });
+  it("a state change to target_reached from the stream is announced once, in a polite region", async () => {
+    let calls = 0;
+    server.use(http.get(`*/api/v1/accounts/${id}/risk`, () => HttpResponse.json(++calls > 1 ? reached() : base())));
+    renderApp(<RiskTab accountId={id} />);
+    await screen.findByRole("meter", { name: "Perda diária" });
+    await emit({ state: "target_reached", reason: "state" });
+    await waitFor(() => expect(screen.getAllByRole("status").some((n) => n.textContent === "Meta de lucro diária atingida.")).toBe(true));
+  });
+  it("a warning/normal meter never shows the 'Meta atingida' wording", async () => {
+    serve(base()); renderApp(<RiskTab accountId={id} />);
+    await screen.findByRole("meter", { name: "Perda diária" });
+    expect(screen.queryByText("Meta atingida")).not.toBeInTheDocument();
+  });
+});
+
 describe("S13 AC-11 commission notices", () => {
   it.each(["platform", "manual"])("%s: no commission warning", async (commission_source) => {
     serve(base({ commission_source }));
