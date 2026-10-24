@@ -91,10 +91,10 @@ Control above the table: `ToggleGroup` "Agrupar por" with three options: `Fonte`
   | P&L líquido médio: menor primeiro | Avg net P&L: lowest first | `avg_pnl`, `asc` |
   | Taxa de acerto: maior primeiro | Win rate: highest first | `win_rate`, `desc` |
   | Taxa de acerto: menor primeiro | Win rate: lowest first | `win_rate`, `asc` |
-  | Trades: mais primeiro | Trades: most first | `trade_count`, `desc` |
-  | Trades: menos primeiro | Trades: fewest first | `trade_count`, `asc` |
+  | Trades: maior quantidade primeiro | Trades: most first | `trade_count`, `desc` |
+  | Trades: menor quantidade primeiro | Trades: fewest first | `trade_count`, `asc` |
 
-  Behavior as C§4 "Sorting below `md` (cards)": the visible label "Ordenar por" / "Sort by"; desktop and mobile share one sort state and send the same request (the browser does not sort money); changing it refetches the groups from the Core, as a header click does. **On change, focus stays on the `Select` and a polite live region says "Ordenado por {campo}, {direção}" / "Sorted by {field}, {direction}"** (for example "Ordenado por Taxa de acerto, maior primeiro" / "Sorted by Win rate, highest first"). The header buttons are not rendered below `md`.
+  Behavior as C§4 "Sorting below `md` (cards)": the visible label "Ordenar por" / "Sort by"; desktop and mobile share one sort state and send the same request (the browser does not sort money); changing it refetches the groups from the Core, as a header click does. **On change, focus stays on the `Select` and a polite live region says "Ordenado por {campo}, {direção}" / "Sorted by {field}, {direction}"** (for example "Ordenado por Taxa de acerto, maior primeiro" / "Sorted by Win rate, highest first"; "Ordenado por Trades, maior quantidade primeiro" / "Sorted by Trades, most first"). The header buttons are not rendered below `md`.
 
 ### 3.4 Definitions (popovers; text from the PO's AC-1, no invented formulas)
 
