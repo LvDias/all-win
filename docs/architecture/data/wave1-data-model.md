@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.27 (716d4c1); **rev. 16.28 proposed** (text only, Esmeril L1 + N1 on 16.27; no new migration): the rev. 16.26 snapshot-ordering sentence now compares with both seqs; a late opening or increasing report has a derived gross 0 and does not make the day incomplete (§5.6).
+- **Status:** Accepted (2026-10-24), rev. 16.28 (8393008); **rev. 16.29 proposed** (S16 Sonar L6, Torno; plan agreed 2026-10-24, after Sunday): #11e `…061740` adds the `preset_version` indexes on `firm_id` and `release_id` and the `opt_in_rule_version` lineage FK (same firm, kind and platform) on generated columns (§5.7, §8, §9).
+- Rev. 16.28 (8393008) (text only, Esmeril L1 + N1 on 16.27; no new migration): the rev. 16.26 snapshot-ordering sentence now compares with both seqs; a late opening or increasing report has a derived gross 0 and does not make the day incomplete (§5.6).
 - Rev. 16.27 (716d4c1) (Esmeril C1, Esquadro decision (ii)): `risk.position.last_snapshot_seq` in #10e `…061540` (before its commit); position fields are overwritten only by an event newer than both `last_report_seq` and `last_snapshot_seq`; a late report books its fill with a gross from its own data only (§5.6, §8).
 - Rev. 16.26 (23e654c) (Bigorna, Malha, Esquadro decisions): #9d `…061630` `gateway.inbound_receipt.receipt_seq` (receive order); `risk.position.last_report_seq` in #10e `…061540` (before its commit) as the snapshot-ordering key, `last_report_at` kept as trace; the rule-3 window = the `E_start` window; `gateway.positions_observed` on the §6.4 allowlist (§5.6, §6.3, §6.4, §8, [migration register](migration-register.md)).
 - Rev. 16.25 (f6a0e19) (Esmeril M1 + Esquadro on 16.24): the connected position snapshot clears an unknown position (absent → flat), only when received after the contract's latest applied report on the Core clock (`risk.position.last_report_at`), and a quantity mismatch on a known row makes the day incomplete; `risk.trading_day.realized_incomplete_since` in #10e `…061540` keeps the day stale after a reducing fill with an unknown basis, and the next day is `day_unknown` until the Q92 c re-anchor (§5.6, §8).
@@ -1264,6 +1265,10 @@ CREATE TABLE catalog.preset_version (                    -- one per preset per r
   FOREIGN KEY (firm_id, release_id) REFERENCES catalog.firm_release (firm_id, id)   -- same firm, by construction
 );
 -- superseded_by is derived (the same preset's version in a later release), not stored, so rows stay immutable.
+-- rev. 16.29, #11e `…061740` (Torno; Sonar L6): read paths of the Core catalog store. (preset_id, release_id) is
+-- already indexed by the UNIQUE above (superseded feed: all earlier versions of a preset_id); not duplicated.
+CREATE INDEX preset_version_firm_idx    ON catalog.preset_version (firm_id);     -- all versions of a firm, no release
+CREATE INDEX preset_version_release_idx ON catalog.preset_version (release_id);  -- the versions of one release
 
 CREATE TABLE catalog.preset_rule_set (                   -- PresetVersion.rule_sets
   preset_version_id uuid NOT NULL REFERENCES catalog.preset_version(id),
@@ -1295,6 +1300,22 @@ CREATE TABLE accounts.catalog_release_cursor (           -- system table: one ro
   - `firm_platform` (already there) stays NULL for generic rows and for firms whose rules do not vary by platform.
   - Non-generic uniqueness: `CREATE UNIQUE INDEX … (release_id, firm_platform, kind) NULLS NOT DISTINCT WHERE NOT is_generic` (PG ≥ 15). `version_number` keeps counting per `(firm_id, kind, firm_platform)`.
   - The existing rows are the 2 generic ones, so the new constraints validate trivially.
+  - **Lineage in the database (rev. 16.29, #11e `…061740`, Torno; Sonar L6):** `previous_id` points to the same rule-text slot: same firm, same `kind`, same `firm_platform`. So far only the Core enforces this (the import refuses a change in the slot split with `StanceSplitChanged`; a firm's first version has `previous_id` NULL). #11e adds:
+
+    ```sql
+    ALTER TABLE catalog.opt_in_rule_version
+      ADD COLUMN lineage_firm     uuid GENERATED ALWAYS AS (coalesce(firm_id, '00000000-0000-0000-0000-000000000000')) STORED,
+      ADD COLUMN lineage_platform text GENERATED ALWAYS AS (coalesce(firm_platform, '')) STORED,
+      ADD CONSTRAINT opt_in_rule_version_lineage_key UNIQUE (id, kind, lineage_firm, lineage_platform),
+      ADD CONSTRAINT opt_in_rule_version_previous_lineage_fkey
+          FOREIGN KEY (previous_id, kind, lineage_firm, lineage_platform)
+          REFERENCES catalog.opt_in_rule_version (id, kind, lineage_firm, lineage_platform);
+    ```
+
+    - Why generated columns: a plain composite FK on `(previous_id, kind, firm_id, firm_platform)` is skipped by `MATCH SIMPLE` whenever `firm_platform` is NULL, which is the normal case; `MATCH FULL` would reject those rows. The `coalesce` keys make NULL comparable; a generic chain stays generic (nil uuid, `''`).
+    - Release order (`previous_id` in an earlier release, `version_number` = previous + 1) stays in the Core, under the publish advisory lock: an insert-only table written by one serialized CLI does not need a trigger.
+    - Cost: the stored columns rewrite the table (tiny; brief `ACCESS EXCLUSIVE` bounded by `lock_timeout`) and add one unique index. The publisher's `INSERT` does not name generated columns, so its grant and code do not change.
+    - No data is deleted: the 2 generic rows have `previous_id` NULL and validate.
 - **Accounts keep plain ids:** `account.firm_id`, `account.preset_version_id` and `*_rule_version_id` are plain `uuid` (§1, rule 1). The catalog query port resolves them and checks existence and coherence:
   - the version belongs to the firm;
   - the platform is offered by the release;
@@ -2193,6 +2214,7 @@ The [migration register](migration-register.md) lists each version's owner, appr
 | 11 | `catalog_create_presets` (`…061700`, rev. 10/16.8): the §5.7 catalog tables, `publish_seq`, `allwin_publisher` grants; #11b `catalog_opt_in_rule_version_release` (`…061710`) is the forward change on `opt_in_rule_version` | S16 (Torno); after S5 (#5a) |
 | 11c | `accounts_create_catalog_release_cursor` (`…061720`, rev. 16.8): `accounts.catalog_release_cursor` (§5.7) | S16 (Torno); after #11 |
 | 11d | `accounts_worker_find_release_affected` (`…061730`, rev. 16.12): the worker's column `SELECT` on `accounts.account` (§5.7) | S16 (Torno), Malha reviews; after #11c |
+| 11e | `catalog_preset_lineage_and_indexes` (`…061740`, rev. 16.29): `preset_version` indexes on `firm_id` and `release_id`; `opt_in_rule_version` lineage FK on generated columns (§5.7) | S16 (Torno), after Sunday; after #11d |
 | 2f | `identity_step_up_account_actions` (`…061810`, rev. 16.18): `one_time_code` action and target `CHECK`s widened for `account_sync_clear`, `trading_day_restart` (§4) | Brasa (identity); after #2e |
 | 2e | `identity_admin_channel_recovery` (`…061800`, rev. 16.8): `channel_change` kind / admin fields, `one_time_code` session `CHECK` widened (§4) | S3 AC-12 (Cinzel); expand-only |
 | 13 | `trades_create_trade` (rev. 14/15.2): `CREATE SCHEMA trades` + its grants, `trades.trade`, `trades.trade_fill`, indexes, RLS, immutability triggers | S21; version stamped after the latest merged migration |
@@ -2206,7 +2228,7 @@ The [migration register](migration-register.md) lists each version's owner, appr
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); rev. 16.18: `…061810` #2f (Brasa); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own. Rev. 16.23: `…061520` #10c and `…061530` #10d (Malha, S13); rev. 16.24: `…061540` #10e; rev. 16.26: `…061630` #9d (Bigorna). Rev. 16.22: 061250 #6d and 061300 #6c join the Sunday train (which carries 061310–061610) before `main` and keep their numbers; `…061900` is free again.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); rev. 16.18: `…061810` #2f (Brasa); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own. Rev. 16.23: `…061520` #10c and `…061530` #10d (Malha, S13); rev. 16.24: `…061540` #10e; rev. 16.26: `…061630` #9d (Bigorna); rev. 16.29: `…061740` #11e (Torno). Rev. 16.22: 061250 #6d and 061300 #6c join the Sunday train (which carries 061310–061610) before `main` and keep their numbers; `…061900` is free again.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
@@ -2303,6 +2325,7 @@ The [migration register](migration-register.md) lists each version's owner, appr
      - a rule set missing `drawdown`, and one with a JSON-number `amount`, fail;
      - a second rule set with the same `(version, platform)` fails;
      - a `preset_version` whose release belongs to another firm fails (composite FK);
+     - rev. 16.29 (#11e): an `opt_in_rule_version` whose `previous_id` has another `firm_platform` (including NULL ↔ a platform), another `kind`, another firm, or is generic while the row is not, fails; a link within the same slot passes; the publisher inserts without naming the generated columns; `EXPLAIN` of the store's firm, release and superseded queries uses `preset_version_firm_idx`, `preset_version_release_idx` and the `(preset_id, release_id)` unique index on seeded rows;
      - a `personal_device` stance `allowed` fails;
      - `allwin_app` cannot `UPDATE`/`DELETE` releases, versions or rule sets;
    - rev. 10, coherence (Core): an account with a preset whose `size_amount` differs from the preset's, whose `firm_id` is not the version's firm, or whose `firm_platform` the release does not offer, is refused;

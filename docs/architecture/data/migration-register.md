@@ -1,6 +1,6 @@
 # Migration register — Wave 1
 
-Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.28.
+Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.29.
 
 This is the single list of migration versions: who owns each one, which hash was approved, where it is committed and whether it deletes data. The DDL lives in [wave1-data-model.md](wave1-data-model.md); the rules are in its §8 "Conventions".
 
@@ -53,6 +53,7 @@ Versions are `20261023` + the number shown. "Train" = `s/v1-sunday-integration--
 | 061710 | 11b | `catalog_opt_in_rule_version_release` | Torno | same concatenation; file `0a3d739abdb6` | 4190c09 | committed, not in train | no |
 | 061720 | 11c | `accounts_create_catalog_release_cursor` | Torno | same concatenation; file `6bc4b3b6b7c9` | 4190c09 | committed, not in train | no |
 | 061730 | 11d | `accounts_worker_find_release_affected` | Torno | `8a427fb2a7bc`; Malha's review pending | a2c797c | committed, not in train | no |
+| 061740 | 11e | `catalog_preset_lineage_and_indexes` | Torno | — | — | assigned (rev. 16.29), not written; after Sunday | no (adds indexes, generated columns and an FK; rewrites `opt_in_rule_version`, a tiny table) |
 | 061800 | 2e | `identity_admin_channel_recovery` | Cinzel | `9607bc9b8afc` | 3d34bb7 (`s/v1-s3-admin-recovery--core`) | committed, not in train | no (CHECKs dropped and re-added wider) |
 | 061810 | 2f | `identity_step_up_account_actions` | Brasa | `684054624429` | 2ead509 (`s/v1-identity-step-up-account-actions--core`, on 061800) | committed, not in train | no (CHECKs dropped and re-added wider) |
 | 061900+ | 13 … | `trades_create_trade` and later | on request | — | — | not assigned | — |
@@ -63,6 +64,6 @@ Versions are `20261023` + the number shown. "Train" = `s/v1-sunday-integration--
 2. **061250 + 061300 (Ferro)** join the train in its step 4, before the train merges to `main`, and keep their numbers (Maestro decision 2026-10-24, on Esmeril's recommendation). QA databases built from the earlier train are recreated, not migrated forward. The rev. 16.21 reservation of 061900/061910 for a re-stamp is released; if they still miss the train, the DBA assigns re-stamp numbers before their merge.
 3. **061500 → 061540** (S13, Malha): after the train; no re-stamp needed.
 4. **061620, then 061630** (Bigorna): after 061610; no re-stamp needed if they merge after the train.
-5. **061700–061730** (S16, Torno): after the `allwin_publisher` infra (78b60d7) is merged and the role exists in every environment, and after Malha approves 061730.
+5. **061700–061740** (S16, Torno): after the `allwin_publisher` infra (78b60d7) is merged and the role exists in every environment, and after Malha approves 061730.
 6. **061800, then 061810** (Cinzel, then Brasa): 061810's branch already contains 061800. Board merge-train notes: rename the consumer `identity-operator` → `identity.operator` when AC-12 meets 061400; the step-up DB test loop sets `session = (action != AdminRecovery)`.
 7. Groups 3–6 may land in any order. When a group lands while a lower-numbered group is still unmerged, the DBA re-stamps the lower group before its own merge, as in step 2.
