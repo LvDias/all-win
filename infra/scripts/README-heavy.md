@@ -89,7 +89,7 @@ The wrapper limits how many heavy jobs run, not how wide each one is. Keep each 
 `dotnet test -m:1`, `pnpm exec vitest run --maxWorkers=2`, `pnpm exec playwright test --workers=2`,
 `cargo test -- --test-threads=2` (`CARGO_BUILD_JOBS=2` and `RUST_TEST_THREADS=2` are already the defaults).
 
-## Shared compile cache (sccache) — OFF by default
+## Shared compile cache (sccache) — OFF by default, opt-in
 
 The cache is **disabled by default** (a first version let one account's server run another account's compiles). It
 is enabled with `ALLWIN_HEAVY_SCCACHE_ENABLE=1` only after QA has verified the per-job server as `dev2` and `dev3`.
@@ -105,10 +105,17 @@ cache directory. The wrapper also
 points every account at the same toolchain (`RUSTUP_HOME=/opt/rust/rustup`, `CARGO_HOME=/opt/rust/cargo`, rustc 1.99.1)
 and runs with `umask 002`, so cache keys match across `dev2` and `dev3` and files stay group-writable.
 
-- **Known limit (SRE, sccache 0.18):** the cache key includes the absolute target-directory path. A build hits only when
-  the same path built the same input before, so with per-worktree or per-SHA (`--fresh-target`, unique path) targets
-  it does not hit across worktrees or accounts. It stays off until the targets have stable paths (a proposal: one
-  target path per slot, emptied at the start of the job); do not count on it for speed.
+- **The key includes the absolute target-directory path** (sccache 0.18). With a per-worktree or per-pid target it never
+  hits across worktrees. So when the cache is enabled the wrapper uses ONE fixed target per (account, slot):
+  `$HOME/.cache/allwin/cargo-target/slot-<n>`, identical for every worktree and every job of the account, and **emptied
+  when the job starts**. The slot gives exclusivity, the empty directory gives a clean build (nothing from another
+  worktree or SHA can mix in, so it also serves as the fresh target of a verdict run: `--fresh-target` uses it too),
+  and third-party crates come back from the cache by content. Our own workspace crates are keyed by source path and
+  miss once per worktree. Hits cross worktrees of the same account only (the target path differs between accounts).
+  Measured (`cargo check -p shared-kernel -p contracts`, two worktrees, empty cache): worktree 1: 0 hits / 73 misses
+  (66 s); worktree 2: 71 hits / 2 misses (35 s).
+- Cost of the slot target: every job starts from an empty target, so without the cache hits each job is a cold build.
+  That is why the slot target is used only when the cache is enabled.
 - `ALLWIN_HEAVY_NO_SCCACHE=1` forces the cache off even when enabled;
   `allwin-heavy bash -c 'cargo build && sccache --show-stats'` shows hits and misses of that job's server (the stats
   die with it).
