@@ -1,6 +1,6 @@
 # Migration register — Wave 1
 
-Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.25.
+Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.26.
 
 This is the single list of migration versions: who owns each one, which hash was approved, where it is committed and whether it deletes data. The DDL lives in [wave1-data-model.md](wave1-data-model.md); the rules are in its §8 "Conventions".
 
@@ -43,10 +43,11 @@ Versions are `20261023` + the number shown. "Train" = `s/v1-sunday-integration--
 | 061510 | 10b | `risk_create_applied_fill` | Malha | patch `476fdeb64f1b`, file `5ee737c8d89a` | 712846c (`s/v1-s13-risk--core`) | committed, not in train | no |
 | 061520 | 10c | `risk_create_position` | Malha | patch `a0fbf81db57a` (both files), file diff `d79ab5259a19`; Esmeril and Prisma pending | 3f77c95 (`s/v1-s13-risk--core`) | committed, not in train | no |
 | 061530 | 10d | `risk_applied_fill_cost_basis` | Malha | same patch, file diff `ad02ac740de1` | 3f77c95 | committed, not in train | no (adds columns; S13 test databases with rows are recreated) |
-| 061540 | 10e | `risk_derivation_inputs_unknown_position` | Malha | — | — | assigned (rev. 16.24/16.25), not written | no (adds columns, drops a NOT NULL; S13 test databases with rows are recreated) |
+| 061540 | 10e | `risk_derivation_inputs_unknown_position` | Malha | `a0cf11cbc6f5` superseded by rev. 16.26 (`last_report_seq` added before commit); new patch pending | — | written, not committed | no (adds columns, drops a NOT NULL; S13 test databases with rows are recreated) |
 | 061600 | 9 | `gateway_create_delivery` | Bigorna | patch `e859c35d4212`, file `2fcbf535ff2a` | 1debc53 (`s/v1-s2-gateway--core`) | in train | no |
 | 061610 | 9b | `gateway_create_deferred_inbound` | Bigorna | patch `b1b2301bd1ec`, file `5941cb1a5515` | ecf44f6 (`s/v1-s2-gateway--core`) | in train | no |
 | 061620 | 9c | `gateway_create_intake_dead_letter` | Bigorna | — | — | assigned (rev. 16.16), not received | — |
+| 061630 | 9d | `gateway_inbound_receipt_seq` | Bigorna | — | — | assigned (rev. 16.26), not written; delta B | no (adds a column; rewrites `inbound_receipt`, ≤ 48 h of rows) |
 | 061650 | — | — | — | — | — | withdrawn (Esquadro chose (B)); do not reuse | — |
 | 061700 | 11 | `catalog_create_presets` | Torno | concatenation `4f4fe7029dff`; file `4e685699f65a` | 60b40d0 (`s/v1-s16-presets--core`) | committed, not in train; needs the `allwin_publisher` role (infra 78b60d7) in every environment | no |
 | 061710 | 11b | `catalog_opt_in_rule_version_release` | Torno | same concatenation; file `0a3d739abdb6` | 4190c09 | committed, not in train | no |
@@ -61,7 +62,7 @@ Versions are `20261023` + the number shown. "Train" = `s/v1-sunday-integration--
 1. **Train** (`s/v1-sunday-integration--core`, 9878402): 060610 → 061200, 061310, 061400, 061600, 061610. These are in numeric order and apply cleanly on top of `main` (≤ 060600).
 2. **061250 + 061300 (Ferro)** join the train in its step 4, before the train merges to `main`, and keep their numbers (Maestro decision 2026-10-24, on Esmeril's recommendation). QA databases built from the earlier train are recreated, not migrated forward. The rev. 16.21 reservation of 061900/061910 for a re-stamp is released; if they still miss the train, the DBA assigns re-stamp numbers before their merge.
 3. **061500 → 061540** (S13, Malha): after the train; no re-stamp needed.
-4. **061620** (Bigorna): after 061610; no re-stamp needed if it merges after the train.
+4. **061620, then 061630** (Bigorna): after 061610; no re-stamp needed if they merge after the train.
 5. **061700–061730** (S16, Torno): after the `allwin_publisher` infra (78b60d7) is merged and the role exists in every environment, and after Malha approves 061730.
 6. **061800, then 061810** (Cinzel, then Brasa): 061810's branch already contains 061800. Board merge-train notes: rename the consumer `identity-operator` → `identity.operator` when AC-12 meets 061400; the step-up DB test loop sets `session = (action != AdminRecovery)`.
 7. Groups 3–6 may land in any order. When a group lands while a lower-numbered group is still unmerged, the DBA re-stamps the lower group before its own merge, as in step 2.
