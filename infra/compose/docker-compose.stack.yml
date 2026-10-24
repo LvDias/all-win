@@ -1,0 +1,73 @@
+# Overlay for the "Sunday" stack (loopback only, simulation only): identity routes, a local mail catcher (Mailpit) and the web.
+#   docker compose -p allwin-sunday -f docker-compose.dev.yml -f docker-compose.stack.yml --env-file .env --profile core up -d
+# Nothing here publishes a port beyond 127.0.0.1. The Core image and the web image are built by infra/scripts/build-core-image.sh and
+# infra/scripts/build-web-image.sh (the compile runs on the host through allwin-heavy, not inside Docker).
+services:
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+    profiles: ["core"]
+
+  core:
+    image: ${ALLWIN_CORE_IMAGE:-allwin-core:dev}
+    build: !reset null
+    depends_on:
+      mailpit:
+        condition: service_started
+    environment:
+      # `dev_smtp` is refused in production: the stack is a development environment.
+      APP_ENV: development
+      # The /api/v1 Origin check and the passkey/cookie origin: the real local edge.
+      APP_PUBLIC_ORIGIN: https://localhost:${CADDY_HTTPS_PORT:-8443}
+      # Versioned server pepper(s), VERSION:BASE64URL (at least 32 bytes). A secret: only in .env (mode 600), never committed.
+      IDENTITY_PEPPERS: ${IDENTITY_PEPPERS:?set IDENTITY_PEPPERS in infra/compose/.env (see .env.example)}
+      CODE_SENDER: dev_smtp
+      DEV_SMTP_ADDR: mailpit:1025
+      DEV_SMTP_FROM: core@allwin.local
+
+  web:
+    image: ${ALLWIN_WEB_IMAGE:-allwin-web:dev}
+    restart: unless-stopped
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      NODE_ENV: production
+    profiles: ["core"]
+
+  # adapter-sim INSIDE the compose network (no TLS needed: ws://core:8080/adapter/v1), in its own profile. It starts only when the gateway is wired
+  # into the Core image. The device token is mounted READ-ONLY from a file on the host (the pairing helper's state dir); its value is never in the
+  # repository, the compose file or the environment.
+  #   ALLWIN_SIM_TOKEN_FILE=/path/to/device-token.txt docker compose ... --profile sim up -d sim
+  # (Without the variable the mount is /dev/null, so the sim exits with an empty token instead of the stack failing to parse.)
+  sim:
+    image: ${ALLWIN_SIM_IMAGE:-allwin-sim:dev}
+    restart: "no"
+    depends_on:
+      - core
+    command:
+      - --url
+      - ws://core:8080/adapter/v1
+      - --token-file
+      - /run/secrets/device-token
+      - --account
+      - ${ALLWIN_SIM_ACCOUNT:-Sim101}
+    volumes:
+      - ${ALLWIN_SIM_TOKEN_FILE:-/dev/null}:/run/secrets/device-token:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    profiles: ["sim"]
+
+  caddy:
+    depends_on:
+      - web
+    volumes:
+      - ../caddy/Caddyfile.stack:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
