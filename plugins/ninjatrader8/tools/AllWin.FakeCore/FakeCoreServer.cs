@@ -62,6 +62,7 @@ namespace AllWin.FakeCore
         private WebApplication? _app;
         private Session? _session;
         private int _sessionCount;
+        private readonly Dictionary<string, AccountKind> _helloKinds = new Dictionary<string, AccountKind>(StringComparer.Ordinal);
 
         public FakeCoreServer(IReadOnlyList<FakeAccount> accounts, string token, Action<string>? trace = null)
         {
@@ -81,6 +82,12 @@ namespace AllWin.FakeCore
         public bool DropAcks { get; set; }
 
         public int SessionCount { get { lock (_gate) return _sessionCount; } }
+
+        /// <summary>The account kind the adapter declared in its last hello (null when the account was not listed).</summary>
+        public AccountKind? HelloKind(string platformAccount)
+        {
+            lock (_gate) return _helloKinds.TryGetValue(platformAccount, out var kind) ? kind : (AccountKind?)null;
+        }
 
         /// <summary>The adapter sent its mandatory reconnect snapshot in the current session.</summary>
         public bool SessionReady { get { lock (_gate) return _session?.SnapshotReceived == true; } }
@@ -236,7 +243,13 @@ namespace AllWin.FakeCore
                     if (session.HelloReceived) { lock (_gate) _violations.Add("second hello in a session"); return; }
                     session.HelloReceived = true;
                     // ADR-0004 §3 step 4: the highest version both sides support.
-                    var offered = envelope.PayloadAs<HelloPayload>().SupportedProtocolVersions;
+                    var hello = envelope.PayloadAs<HelloPayload>();
+                    lock (_gate)
+                    {
+                        _helloKinds.Clear();
+                        foreach (var account in hello.Accounts) _helloKinds[account.PlatformAccount] = account.Kind;
+                    }
+                    var offered = hello.SupportedProtocolVersions;
                     session.Version = ProtocolCodec.SupportedVersions.Where(offered.Contains).Last();
                     _ = SendHandshakeAsync(session);
                     return;

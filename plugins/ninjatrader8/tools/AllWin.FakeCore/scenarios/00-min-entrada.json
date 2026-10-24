@@ -1,0 +1,25 @@
+{
+  "name": "min-entrada",
+  "description": "Minimal NT8 round (user priority 2026-10-24): one market buy of 1 MNQ on Sim101 with an OCO stop 40 / target 80 ticks from the fill price, reports back, then flatten. Pauses for Enter before each command. NT8-compatible.",
+  "requires_sim": false,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "instrument": { "symbol": "MNQ", "contract_month": "2026-12" },
+  "sim": { "tick_size": { "MNQ": "0.25" }, "price": { "MNQ": "21034.50" } },
+  "steps": [
+    { "do": "wait_ready", "timeout_ms": 600000 },
+    { "do": "expect_snapshot", "trigger": "reconnect" },
+    { "do": "pause", "text": "Plugin conectado. Pressione Enter para enviar a ENTRADA: compra 1 MNQ 12-26 a mercado em Sim101, stop 40 ticks (10,00 pontos) e alvo 80 ticks (20,00 pontos) a partir do preço do fill. / Plugin connected. Press Enter to send the ENTRY: buy 1 MNQ 12-26 market on Sim101, stop 40 ticks (10.00 points), target 80 ticks (20.00 points) from the fill price." },
+    { "do": "command", "id": "E1", "kind": "place", "ttl_ms": 5000,
+      "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open",
+                 "protection": { "mode": "individual", "stop_ticks": 40, "target_ticks": 80 } } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "received", "child_role": "entry" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "filled", "child_role": "entry", "position_after": { "quantity": 1 } }, "timeout_ms": 30000 },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "stop", "order": { "type": "stop" } }, "timeout_ms": 30000 },
+    { "do": "expect_report", "command": "E1", "match": { "status": "working", "child_role": "target", "order": { "type": "limit" } }, "timeout_ms": 30000 },
+    { "do": "pause", "text": "Entrada executada e stop/alvo ativos. Confira a aba Orders do NT8 e pressione Enter para enviar o FLATTEN (zerar). / Entry filled, stop and target working. Check the NT8 Orders tab, then press Enter to send the FLATTEN." },
+    { "do": "command", "id": "X1", "kind": "flatten", "flatten": { "reason": "close" } },
+    { "do": "expect_report", "command": "X1", "match": { "status": "filled", "child_role": "flatten", "position_after": { "quantity": 0 } }, "timeout_ms": 30000 },
+    { "do": "expect_report", "command": "E1", "match": { "status": "cancelled", "child_role": "stop" }, "timeout_ms": 30000 },
+    { "do": "expect_report", "command": "E1", "match": { "status": "cancelled", "child_role": "target" }, "timeout_ms": 30000 }
+  ]
+}

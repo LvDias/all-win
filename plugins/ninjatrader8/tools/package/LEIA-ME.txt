@@ -1,0 +1,48 @@
+All Win para NinjaTrader 8 — versão mínima / minimal version {version}
+
+Siga o roteiro do QA (Pêndulo). Este arquivo só descreve o conteúdo.
+Follow the QA script (Pêndulo). This file only lists the contents.
+
+AllWin-NT8-{version}.zip
+  pt: Importar no NT8: Tools > Import > NinjaScript Add-On. Depois reinicie o NT8.
+      Janela: Control Center > New > All Win (a versão aparece no título).
+      Build de desenvolvimento: conecta sozinho ao núcleo falso local (ws://127.0.0.1:8765) com o token de teste
+      criado pelo start-fakecore.cmd. Nunca pede nem mostra token. Nunca executa em conta real (live).
+  en: Import in NT8: Tools > Import > NinjaScript Add-On, then restart NT8.
+      Window: Control Center > New > All Win (version in the title).
+      Development build: connects by itself to the local fake Core (ws://127.0.0.1:8765) with the test token that
+      start-fakecore.cmd creates. Never asks for or shows a token. Never executes on a live account.
+
+start-fakecore.cmd + AllWin.FakeCore.exe + scenarios\
+  pt: Núcleo falso local (só desenvolvimento), escuta só em 127.0.0.1:8765. Se o Firewall do Windows perguntar,
+      clique em Cancelar: não precisa de regra.
+      Sem argumentos (dois cliques) roda o cenário mínimo scenarios\00-min-entrada.json.
+      Ele espera o plugin conectar, pede Enter, envia a ENTRADA (compra 1 MNQ 12-26 a mercado em Sim101, stop 40 ticks,
+      alvo 80 ticks a partir do fill), confere os relatórios, pede Enter e envia o FLATTEN. No fim mostra PASS ou FAIL.
+      Só envia para contas que o plugin declarou como simulação/playback.
+  en: Local fake Core (development only), listens on 127.0.0.1:8765 only. If Windows Firewall asks, click Cancel.
+      Without arguments (double-click) it runs the minimal scenario scenarios\00-min-entrada.json.
+      It waits for the plugin, asks for Enter, sends the ENTRY (buy 1 MNQ 12-26 market on Sim101, stop 40 ticks,
+      target 80 ticks from the fill), checks the reports, asks for Enter and sends the FLATTEN. Ends with PASS or FAIL.
+      Only commands accounts the plugin declared as simulation/playback.
+
+AllWin-NT8-CoreSource-{version}.zip  (OPCIONAL / OPTIONAL, último passo / last step)
+  pt: Teste de compilação do núcleo como código-fonte. Se o NT8 mostrar erro de compilação,
+      apague Documentos\NinjaTrader 8\bin\Custom\AddOns\AllWinCoreSource e reinicie o NT8.
+  en: Compile test of the core as source. On a compile error, delete
+      Documents\NinjaTrader 8\bin\Custom\AddOns\AllWinCoreSource and restart NT8.
+
+Se a importação falhar com erro de compilação / If the import fails with a compile error:
+  pt: apague Documentos\NinjaTrader 8\bin\Custom\AddOns\AllWin, reinicie o NT8 e rode collect-allwin.cmd.
+  en: delete Documents\NinjaTrader 8\bin\Custom\AddOns\AllWin, restart NT8 and run collect-allwin.cmd.
+
+collect-allwin.cmd
+  pt: Coleta de diagnóstico de reserva (quando a janela All Win não abrir). Gera AllWin-diag-collect-<hora>.zip na
+      Área de Trabalho. Só copia %LOCALAPPDATA%\AllWin\logs e \journal; nunca token, consentimento nem o log/trace do
+      NT8 (esses são um passo separado do roteiro, filtrado para Sim101/Playback).
+  en: Fallback diagnostics (when the All Win window does not open). Writes AllWin-diag-collect-<time>.zip to the
+      Desktop. Only copies %LOCALAPPDATA%\AllWin\logs and \journal; never token, consent or NT8's log/trace (those
+      are a separate script step, filtered to Sim101/Playback).
+
+SHA256SUMS: hashes de todos os arquivos / hashes of every file.
+Pastas / folders: %LOCALAPPDATA%\AllWin\logs (allwin-*.log, events-*.log, fakecore-*.log), %LOCALAPPDATA%\AllWin\journal.

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Linux compile check of the NinjaScript sources (probe and, later, the host) against hand-written NT API
+    stubs (NtApiStubs.cs), as net48 with C# 7.3 (ADR-0005 N9: host source in conservative C# 7.3). A pass here is necessary, not sufficient: the real check is the import in NT8.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="NtApiStubs.cs" />
+    <Compile Include="..\..\src\AllWin.NinjaTrader8\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The host references the engine DLL exactly as NT8 will (AdditionalReferences.txt). -->
+    <ProjectReference Include="..\..\src\AllWin.Adapter.Core\AllWin.Adapter.Core.csproj" SetTargetFramework="TargetFramework=net48" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+</Project>
