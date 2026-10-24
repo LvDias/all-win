@@ -113,3 +113,10 @@ and runs with `umask 002`, so cache keys match across `dev2` and `dev3` and file
   `allwin-heavy bash -c 'cargo build && sccache --show-stats'` shows hits and misses of that job's server (the stats
   die with it).
 - Outside the wrapper nothing changes: plain `cargo` keeps your own `CARGO_HOME` and no cache.
+
+## Quiet window (PAUSE)
+
+For a planned performance measurement the SRE creates the file `/srv/www/allwin.worktrees/.heavy-locks/PAUSE` (its first line
+is shown to waiting jobs, for example the end time). While it exists, **new** jobs wait with `paused for SRE quiet window` and
+the wait does not count against `ALLWIN_HEAVY_WAIT_S`; running jobs are never killed and finish normally. Deleting the file
+releases the queue. `ALLWIN_HEAVY_IGNORE_PAUSE=1` makes a job ignore the pause; only the account doing the measurement uses it.
