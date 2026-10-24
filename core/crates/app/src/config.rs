@@ -14,7 +14,7 @@
 //! | `INGRESS_IP_TOKEN_FAILURES_PER_MIN` | `30` | step 2: token failures per IP before the identical 429 |
 //! | `INGRESS_RATE_PER_KEY_PER_MIN` | `60` | step 3: per authenticated key |
 //! | `INGRESS_UNKNOWN_KEY_CACHE_TTL_S` | `60` | step 2: negative cache of unknown `key_id`s (0 disables) |
-//! | `APP_PUBLIC_ORIGIN` | unset | exact origin of the web app (`https://host[:port]`) for the `/api/v1` CSRF `Origin` check; required with `IDENTITY_PEPPERS` |
+//! | `APP_PUBLIC_ORIGIN` | unset | exact origin of the web app (`https://host[:port]`) for the `/api/v1` CSRF `Origin` check; required with `IDENTITY_PEPPERS`; https with `APP_ENV=production` |
 //! | `APP_ENV` | `production` | `development`, `test` or `production` |
 //! | `IDENTITY_PEPPERS` | unset | versioned server peppers, `VERSION:BASE64URL[,…]` (each at least 32 bytes); unset = the identity routes are not mounted |
 //! | `IDENTITY_PEPPER_CURRENT` | highest version | pepper version for new codes and tokens |
@@ -255,6 +255,16 @@ impl Config {
                 "IDENTITY_PEPPERS requires APP_PUBLIC_ORIGIN (the /api/v1 Origin check)",
             ));
         }
+        // Session cookies are `__Host-` (Secure): production is served over https only.
+        if app_env.is_production()
+            && public_origin
+                .as_deref()
+                .is_some_and(|o| !o.starts_with("https://"))
+        {
+            return Err(ConfigError::Conflict(
+                "APP_PUBLIC_ORIGIN must be https with APP_ENV=production",
+            ));
+        }
         Ok(Self {
             database_url: SecretString::new(database_url),
             worker_database_url: SecretString::new(worker_database_url),
@@ -368,10 +378,28 @@ mod tests {
     }
 
     #[test]
+    fn production_needs_an_https_public_origin() {
+        let with = |origin: &'static str| {
+            Config::from_lookup(move |k| match k {
+                "DATABASE_URL" => Some("postgres://x".into()),
+                "APP_ENV" => Some("production".into()),
+                "APP_PUBLIC_ORIGIN" => Some(origin.into()),
+                _ => None,
+            })
+        };
+        assert!(with("https://app.allwin.example").is_ok());
+        assert!(matches!(
+            with("http://app.allwin.example"),
+            Err(ConfigError::Conflict(_))
+        ));
+    }
+
+    #[test]
     fn public_origin_must_be_a_bare_origin() {
         let with = |origin: &'static str| {
             Config::from_lookup(move |k| match k {
                 "DATABASE_URL" => Some("postgres://x".into()),
+                "APP_ENV" => Some("development".into()),
                 "APP_PUBLIC_ORIGIN" => Some(origin.into()),
                 _ => None,
             })

@@ -15,7 +15,7 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use http_body_util::Channel;
-use identity_application::auth::{Activity, AuthenticateSession};
+use identity_application::auth::{AuthenticateSession, StreamCheck};
 use identity_application::deps::IdentityDeps;
 use identity_enterprise::connection::ConnectionStatus;
 use identity_enterprise::ids::{DeviceId, SessionId};
@@ -211,10 +211,14 @@ pub fn open(
                     Err(_) => return,
                 },
                 _ = beat.tick() => {
-                    if auth.handle(Some(&cookie), Activity::Background).await.is_err() {
-                        let data = json!({ "type": "session.ended", "at": at(deps.clock.now()), "reason": "expired" }).to_string();
-                        let _ = tx.send_data(frame("session.ended", &data)).await;
-                        return;
+                    match auth.stream_check(&cookie).await {
+                        StreamCheck::Live => {}
+                        StreamCheck::Ended(reason) => {
+                            let data = json!({ "type": "session.ended", "at": at(deps.clock.now()), "reason": reason.as_str() }).to_string();
+                            let _ = tx.send_data(frame("session.ended", &data)).await;
+                            return;
+                        }
+                        StreamCheck::Close => return,
                     }
                     if tx.send_data(Bytes::from_static(b": ping\n\n")).await.is_err() {
                         return;

@@ -879,25 +879,6 @@ impl IdentityStore for PgIdentityStore {
         rows.into_iter().map(OneTimeRow::into_code).collect()
     }
 
-    async fn signed_in_sends_since(
-        &self,
-        user_id: UserId,
-        since: DateTime<Utc>,
-    ) -> Result<i64, StoreError> {
-        let mut tx = self.scoped(user_id).await?;
-        let n = sqlx::query_scalar!(
-            r#"SELECT count(*) AS "n!" FROM identity.one_time_code
-                WHERE user_id = $1 AND purpose IN ('step_up', 'channel_change') AND created_at >= $2"#,
-            user_id.as_uuid(),
-            since
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(db)?;
-        tx.commit().await.map_err(db)?;
-        Ok(n)
-    }
-
     async fn channel_change(
         &self,
         user_id: UserId,
@@ -982,71 +963,47 @@ impl IdentityStore for PgIdentityStore {
             .collect())
     }
 
-    async fn count_send(
+    async fn count_sends_within(
         &self,
         identifier: &CodeHmac,
         class: DeviceClass,
-        windows: &[i32],
+        limits: &[(i32, i32)],
+        sends: i32,
         now: DateTime<Utc>,
-    ) -> Result<Vec<WindowCount>, StoreError> {
+    ) -> Result<Option<WindowCount>, StoreError> {
+        // The upsert locks each counter row until the end of the transaction, so concurrent
+        // sends for the same identifier are decided one after the other.
         let mut tx = self.app.begin().await.map_err(db)?;
-        let mut out = Vec::with_capacity(windows.len());
-        for w in windows {
+        for (w, limit) in limits {
             let start = window_start(now, *w);
-            let sends = sqlx::query_scalar!(
+            let after = sqlx::query_scalar!(
                 r#"INSERT INTO identity.code_send_counter
                      (identifier_hmac, pepper_version, device_class, window_seconds, window_start, sends)
-                   VALUES ($1, $2, $3, $4, $5, 1)
+                   VALUES ($1, $2, $3, $4, $5, $6)
                    ON CONFLICT (identifier_hmac, pepper_version, device_class, window_seconds, window_start)
-                   DO UPDATE SET sends = identity.code_send_counter.sends + 1
+                   DO UPDATE SET sends = identity.code_send_counter.sends + EXCLUDED.sends
                    RETURNING sends"#,
                 &identifier.bytes[..],
                 identifier.pepper_version,
                 device_class(class),
                 w,
-                start
+                start,
+                sends
             )
             .fetch_one(&mut *tx)
             .await
             .map_err(db)?;
-            out.push(WindowCount {
-                window_seconds: *w,
-                window_start: start,
-                sends,
-            });
+            if after > *limit {
+                tx.rollback().await.map_err(db)?;
+                return Ok(Some(WindowCount {
+                    window_seconds: *w,
+                    window_start: start,
+                    sends: after,
+                }));
+            }
         }
         tx.commit().await.map_err(db)?;
-        Ok(out)
-    }
-
-    async fn send_counts(
-        &self,
-        identifier: &CodeHmac,
-        class: DeviceClass,
-        windows: &[i32],
-        now: DateTime<Utc>,
-    ) -> Result<Vec<WindowCount>, StoreError> {
-        let mut out = Vec::with_capacity(windows.len());
-        for w in windows {
-            let start = window_start(now, *w);
-            let sends = sqlx::query_scalar!(
-                r#"SELECT COALESCE(sum(sends), 0)::int AS "sends!" FROM identity.code_send_counter
-                    WHERE identifier_hmac = $1 AND device_class = $2 AND window_seconds = $3 AND window_start = $4"#,
-                &identifier.bytes[..],
-                device_class(class),
-                w,
-                start
-            )
-            .fetch_one(&self.app)
-            .await
-            .map_err(db)?;
-            out.push(WindowCount {
-                window_seconds: *w,
-                window_start: start,
-                sends,
-            });
-        }
-        Ok(out)
+        Ok(None)
     }
 
     async fn login_code_placeholder(&self) -> Result<(), StoreError> {

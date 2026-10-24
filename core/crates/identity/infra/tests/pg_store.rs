@@ -350,14 +350,49 @@ async fn login_devices_and_sign_out_everywhere() {
     .unwrap();
     assert_eq!(rows.len(), 3);
     let ident = deps.hasher.identifier_hmac("nobody@example.com");
-    let counts = store
-        .send_counts(&ident, DeviceClass::Unknown, &[86_400], Utc::now())
+    let now = Utc::now();
+    let send = || store.count_sends_within(&ident, DeviceClass::Unknown, &[(60, 1)], 1, now);
+    assert_eq!(
+        send().await.unwrap(),
+        None,
+        "unknown identifiers are counted like any"
+    );
+    // Over the limit: refused and not counted (the transaction is rolled back).
+    assert_eq!(send().await.unwrap().map(|w| w.sends), Some(2));
+    assert_eq!(send().await.unwrap().map(|w| w.sends), Some(2));
+    drop((deps, store));
+    db.teardown().await;
+}
+
+/// Crivo M2: concurrent sends for one identifier never pass the limit together, and refused
+/// sends are not counted.
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_sends_never_pass_the_limit() {
+    let Some(db) = setup().await else { return };
+    let (deps, store, _delivery) = deps(&db);
+    let ident = deps.hasher.identifier_hmac("race@example.com");
+    let now = Utc::now();
+    let tries = (0..10).map(|_| {
+        let store = store.clone();
+        tokio::spawn(async move {
+            store
+                .count_sends_within(&ident, DeviceClass::Known, &[(3600, 5)], 1, now)
+                .await
+                .unwrap()
+        })
+    });
+    let mut admitted = 0;
+    for t in tries {
+        if t.await.unwrap().is_none() {
+            admitted += 1;
+        }
+    }
+    assert_eq!(admitted, 5);
+    let sends: i32 = sqlx::query_scalar("SELECT sends FROM identity.code_send_counter")
+        .fetch_one(&db.inspect)
         .await
         .unwrap();
-    assert_eq!(
-        counts[0].sends, 0,
-        "counters were reset above; unknown identifiers are counted like any"
-    );
+    assert_eq!(sends, 5, "refused sends are rolled back");
     drop((deps, store));
     db.teardown().await;
 }
@@ -664,5 +699,48 @@ async fn channel_change_expiry_hold_and_worker() {
             .is_err()
     );
     drop((deps, store));
+    db.teardown().await;
+}
+
+/// 061310 (Crivo L1, user-authorized): identity.source.name holds only what the Core's
+/// DisplayName accepts — 1..60 characters, not blank, no token shape — even on paths that bypass
+/// the API (here an UPDATE as the superuser, which bypasses RLS but not CHECKs).
+#[tokio::test(flavor = "multi_thread")]
+async fn source_names_are_shape_checked_in_the_database() {
+    let Some(db) = setup().await else { return };
+    let (deps, _store, delivery) = deps(&db);
+    seed_user(&deps, "ana@example.com", false).await;
+    let (_, a) = sign_in(&db, &deps, &delivery, "ana@example.com", None).await;
+    let p = step_up(&db, &deps, &delivery, &a, StepUpAction::SourceCreate, None).await;
+    let created = CreateSource::new(deps.clone())
+        .handle(&a, "Main", SourceType::TradingView, Some(&p), &meta())
+        .await
+        .unwrap();
+    let id = created.source.source.id.as_uuid();
+    let rename = |name: String| {
+        let pool = db.inspect.clone();
+        async move {
+            sqlx::query("UPDATE identity.source SET name = $1 WHERE id = $2")
+                .bind(name)
+                .bind(id)
+                .execute(&pool)
+                .await
+        }
+    };
+    let token = format!("awk_Abc123Def456_{}", "s".repeat(43));
+    for bad in [
+        String::new(),
+        "   ".to_owned(),
+        "a".repeat(61),
+        token.clone(),
+        format!("feed {token}"),
+    ] {
+        let e = rename(bad.clone()).await.unwrap_err();
+        assert!(
+            e.to_string().contains("source_name_shape_check"),
+            "{bad:?}: {e}"
+        );
+    }
+    rename("é".repeat(60)).await.unwrap();
     db.teardown().await;
 }

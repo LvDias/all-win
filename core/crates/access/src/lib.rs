@@ -120,6 +120,7 @@ impl StepUpAction {
             self,
             Self::SourceCreate
                 | Self::SourceRotate
+                | Self::ConnectionCreate
                 | Self::PairingCodeNew
                 | Self::AccountOptInAccept
                 | Self::AccountCreateOptInAccept

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use identity_enterprise::channel::{Channel, Destination, PhoneNumber};
 use identity_enterprise::channel_change::{ChangeStatus, ChannelChange, HOLD};
 use identity_enterprise::email::EmailAddress;
-use identity_enterprise::ids::{ChannelChangeId, CodeId};
+use identity_enterprise::ids::{ChannelChangeId, CodeId, DeviceId};
 use identity_enterprise::otp::{
     CodeRole, CodeState, DeviceClass, InvalidReason, OneTimeCode, Purpose,
 };
@@ -170,7 +170,7 @@ impl StartChannelChange {
         if let Some(other) = other {
             targets.push((CodeRole::OtherChannel, other));
         }
-        let sends = i64::try_from(targets.len()).unwrap_or(i64::MAX);
+        let sends = i32::try_from(targets.len()).unwrap_or(i32::MAX);
         let limits = async {
             codes::admit_user_sends(deps, user.id, sends, now).await?;
             for (_, d) in &targets {
@@ -437,6 +437,7 @@ fn complete_now(
     let user = &ctx.user;
     let old = user.destination(change.channel());
     let (rotated, cookie) = rotate_session(deps, &ctx.session, now);
+    let rotated_id = rotated.id;
     let mut set = ChangeSet::new(user.id)
         .write(Write::CompleteChannelChange {
             change_id: change.id,
@@ -478,7 +479,9 @@ fn complete_now(
         ))
         .event(IdentityEvent::SessionsEnded {
             user_id: user.id,
-            sessions: EndedSessions::AllExcept(vec![ctx.session.id]),
+            // Both ids of the caller's tab: a stream still open on the old one, and one the tab
+            // reopens with the new cookie before this event is dispatched (QA M1).
+            sessions: EndedSessions::AllExcept(vec![ctx.session.id, rotated_id]),
             reason: EndReason::ChannelChanged,
             at: now,
         });
@@ -490,6 +493,88 @@ fn complete_now(
         set = set.event(e);
     }
     (set, cookie)
+}
+
+/// Which pending change a session-ending action cancels (user decision Q88 (a)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CancelScope {
+    /// "Sair de todos os dispositivos": the pending change, whoever requested it.
+    Any,
+    /// "Esquecer dispositivo": only a change requested from that device.
+    RequestedFrom(DeviceId),
+}
+
+/// Q88 (a): adds the cancellation of the user's pending channel change to `changes` (the same
+/// transaction as the session end), with its audit and the notices to every channel. No 24-h
+/// freeze follows. Nothing is added when there is no open change or the scope does not match.
+pub(crate) async fn cancel_pending_with(
+    deps: &IdentityDeps,
+    ctx: &AuthContext,
+    scope: CancelScope,
+    mut changes: ChangeSet,
+    meta: &RequestMeta,
+) -> Result<ChangeSet, IdentityError> {
+    let now = deps.clock.now();
+    let user = &ctx.user;
+    let Some(change) = deps.store.open_channel_change(user.id).await? else {
+        return Ok(changes);
+    };
+    if !matches!(
+        change.status_at(now),
+        ChangeStatus::AwaitingCodes | ChangeStatus::OnHold
+    ) {
+        return Ok(changes);
+    }
+    if let CancelScope::RequestedFrom(device) = scope {
+        let from_device = deps
+            .store
+            .session(user.id, change.requested_session_id)
+            .await?
+            .is_some_and(|s| s.device_id == device);
+        if !from_device {
+            return Ok(changes);
+        }
+    }
+    changes = changes
+        .write(Write::CancelChannelChange {
+            change_id: change.id,
+            by_session: Some(ctx.session.id),
+            at: now,
+        })
+        .audit(user_audit(
+            user.id,
+            Actor::User(user.id),
+            AuditAction::ChannelChangeCancelled {
+                change_id: change.id,
+                channel: change.channel(),
+                by_user: true,
+            },
+            now,
+            Some(meta.ip),
+        ));
+    for e in notice_to_all(user, now, |to| Notice::ChannelChangeCancelled {
+        to,
+        channel: change.channel(),
+    }) {
+        changes = changes.event(e);
+    }
+    Ok(changes)
+}
+
+/// Commits a session-ending change set that may also cancel the pending channel change; if the
+/// change closed meanwhile (applied or cancelled by another request), the session end still
+/// happens without it.
+pub(crate) async fn commit_with_cancel(
+    deps: &IdentityDeps,
+    with_cancel: ChangeSet,
+    without: ChangeSet,
+) -> Result<(), IdentityError> {
+    match deps.store.commit(with_cancel).await {
+        Err(StoreError::Conflict(StoreConflict::ChannelChangeGone)) => {
+            deps.store.commit(without).await.map_err(Into::into)
+        }
+        other => other.map_err(Into::into),
+    }
 }
 
 /// "Cancelar troca": from any session of the user, while awaiting codes or on hold.

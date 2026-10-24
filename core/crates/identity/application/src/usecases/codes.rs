@@ -27,7 +27,8 @@ use crate::views::ChallengeIssued;
 /// one send per 60 s, 5 per 15 min, 20 per 24 h.
 pub(crate) const SEND_WINDOWS: [(i32, i32); 3] = [(60, 1), (900, 5), (86_400, 20)];
 /// Step-up and channel-change sends per signed-in user per hour.
-pub(crate) const USER_SENDS_PER_HOUR: i64 = 10;
+pub(crate) const USER_SENDS_PER_HOUR: i32 = 10;
+const USER_SEND_WINDOW: i32 = 3600;
 
 /// A fresh code: the plaintext for the delivery and its HMAC for the row.
 pub(crate) struct FreshCode {
@@ -80,22 +81,15 @@ fn retry_after(seconds: i64) -> StdDuration {
     StdDuration::from_secs(u64::try_from(seconds.max(1)).unwrap_or(1))
 }
 
-fn limited_window(counts: &[WindowCount], now: DateTime<Utc>) -> Option<StdDuration> {
-    counts.iter().find_map(|c| {
-        let limit = SEND_WINDOWS
-            .iter()
-            .find(|(w, _)| *w == c.window_seconds)
-            .map_or(i32::MAX, |(_, l)| *l);
-        (c.sends >= limit).then(|| {
-            let end = c.window_start + Duration::seconds(i64::from(c.window_seconds));
-            retry_after((end - now).num_seconds())
-        })
-    })
+/// `Retry-After` for a window over its limit: until the window ends.
+fn retry_after_window(c: &WindowCount, now: DateTime<Utc>) -> StdDuration {
+    let end = c.window_start + Duration::seconds(i64::from(c.window_seconds));
+    retry_after((end - now).num_seconds())
 }
 
 /// One send against every limit that applies to it: per IP and prefix (memory), then per
 /// identifier and device class (durable, identical for unknown identifiers). Counts the send
-/// when it is allowed.
+/// only when it is allowed, atomically with the decision.
 pub(crate) async fn admit_send(
     deps: &IdentityDeps,
     ip: IpAddr,
@@ -107,37 +101,44 @@ pub(crate) async fn admit_send(
     {
         return Err(IdentityError::RateLimited { retry_after });
     }
-    let windows: Vec<i32> = SEND_WINDOWS.iter().map(|(w, _)| *w).collect();
-    let counts = deps
+    match deps
         .store
-        .send_counts(identifier, class, &windows, now)
-        .await?;
-    if let Some(retry_after) = limited_window(&counts, now) {
-        return Err(IdentityError::RateLimited { retry_after });
+        .count_sends_within(identifier, class, &SEND_WINDOWS, 1, now)
+        .await?
+    {
+        Some(over) => Err(IdentityError::RateLimited {
+            retry_after: retry_after_window(&over, now),
+        }),
+        None => Ok(()),
     }
-    deps.store
-        .count_send(identifier, class, &windows, now)
-        .await?;
-    Ok(())
 }
 
-/// Per-user hourly limit of step-up and channel-change sends (`needed` sends at once).
+/// Per-user hourly limit of step-up and channel-change sends (`needed` sends at once), counted
+/// like the per-identifier limits under a key no identifier can produce (a NUL never appears in
+/// a normalized e-mail or phone number). Fixed hourly windows, as the per-identifier ones.
 pub(crate) async fn admit_user_sends(
     deps: &IdentityDeps,
     user: UserId,
-    needed: i64,
+    needed: i32,
     now: DateTime<Utc>,
 ) -> Result<(), IdentityError> {
-    let sent = deps
+    let key = identifier(deps, &format!("\0user\0{}", user.as_uuid()));
+    match deps
         .store
-        .signed_in_sends_since(user, now - Duration::hours(1))
-        .await?;
-    if sent + needed > USER_SENDS_PER_HOUR {
-        return Err(IdentityError::RateLimited {
-            retry_after: retry_after(Duration::hours(1).num_seconds()),
-        });
+        .count_sends_within(
+            &key,
+            DeviceClass::Known,
+            &[(USER_SEND_WINDOW, USER_SENDS_PER_HOUR)],
+            needed,
+            now,
+        )
+        .await?
+    {
+        Some(over) => Err(IdentityError::RateLimited {
+            retry_after: retry_after_window(&over, now),
+        }),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /// Audits a rate-limited code request of a registered user (policy §11 audit tests).
@@ -255,27 +256,11 @@ mod tests {
     fn retry_after_comes_from_the_full_window() {
         let now = Utc.with_ymd_and_hms(2026, 10, 23, 9, 0, 30).unwrap();
         let start = Utc.with_ymd_and_hms(2026, 10, 23, 9, 0, 0).unwrap();
-        let counts = [
-            WindowCount {
-                window_seconds: 60,
-                window_start: start,
-                sends: 1,
-            },
-            WindowCount {
-                window_seconds: 900,
-                window_start: start,
-                sends: 1,
-            },
-        ];
-        assert_eq!(
-            limited_window(&counts, now),
-            Some(StdDuration::from_secs(30))
-        );
-        let ok = [WindowCount {
-            window_seconds: 900,
+        let over = WindowCount {
+            window_seconds: 60,
             window_start: start,
-            sends: 4,
-        }];
-        assert_eq!(limited_window(&ok, now), None);
+            sends: 2,
+        };
+        assert_eq!(retry_after_window(&over, now), StdDuration::from_secs(30));
     }
 }
