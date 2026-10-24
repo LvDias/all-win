@@ -40,6 +40,7 @@ export function RiskMeter({ label, value, percent, state, detail, tone = "limit"
           <span className="tabular-nums text-muted-foreground">{t("percent", { percent })}</span>
           {state === "warning" ? <StatusBadge kind="riskWarning" /> : null}
           {state === "reached" ? <StatusBadge kind="riskReached" /> : null}
+          {state === "target_reached" ? <StatusBadge kind="targetReached" /> : null}
         </span>
       </div>
       <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={clamped} aria-valuetext={`${label}: ${value}, ${t("percent", { percent })}${stateText}`} className="relative h-2.5 overflow-hidden rounded-full bg-muted">

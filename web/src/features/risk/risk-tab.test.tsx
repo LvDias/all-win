@@ -72,6 +72,15 @@ describe("RiskTab", () => {
     expect(screen.getAllByText(/Não há desbloqueio antecipado/).length).toBeGreaterThan(0);
   });
 
+  it("says in words that the daily profit target was reached, not only with the green bar", async () => {
+    serve(risk({ meters: [{ kind: "daily_profit_target", state: "target_reached", limit: "600.00", used: "640.00", percent: 106 }], unset_rules: [] }));
+    renderApp(<RiskTab accountId={accountId} />);
+    const meter = await screen.findByRole("meter");
+    const row = meter.parentElement as HTMLElement;
+    expect(within(row).getByText("Meta atingida")).toBeVisible();
+    expect(screen.getAllByText("Meta atingida").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("shows the empty state when no rule exists", async () => {
     serve(risk({ meters: [], unset_rules: ["daily_loss", "drawdown", "daily_profit_target", "consistency"] }));
     renderApp(<RiskTab accountId={accountId} />);

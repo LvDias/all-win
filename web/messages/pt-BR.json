@@ -934,7 +934,8 @@
     "noAutomation": "Sem automação",
     "choicePending": "Escolha pendente",
     "riskWarning": "Alerta (80 %)",
-    "riskReached": "Limite atingido"
+    "riskReached": "Limite atingido",
+    "targetReached": "Meta atingida"
   },
   "firmRule": {
     "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",

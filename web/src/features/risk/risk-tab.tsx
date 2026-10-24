@@ -95,7 +95,7 @@ function RiskBody({ accountId, risk, editHref }: { accountId: string; risk: Acco
   const empty = risk.meters.length === 0 && risk.untracked_rules.length === 0;
   const dimmed = risk.stale;
 
-  const banners = risk.meters.filter((meter) => meter.state === "warning" || meter.state === "reached").sort((a, b) => severity[b.state] - severity[a.state]);
+  const banners = risk.meters.filter((meter) => meter.state === "warning" || meter.state === "reached" || meter.state === "target_reached").sort((a, b) => severity[b.state] - severity[a.state]);
 
   return (
     <>
@@ -130,10 +130,10 @@ function RiskBody({ accountId, risk, editHref }: { accountId: string; risk: Acco
       ) : null}
 
       {banners.map((meter) => (
-        <Alert key={meter.kind} tone={meter.state === "reached" ? "danger" : "warning"}>
+        <Alert key={meter.kind} tone={meter.state === "reached" ? "danger" : meter.state === "target_reached" ? "success" : "warning"} role={meter.state === "target_reached" ? "status" : undefined}>
           <div className="grid gap-1">
             <p className="flex flex-wrap items-center gap-2 font-medium">
-              <StatusBadge kind={meter.state === "reached" ? "riskReached" : "riskWarning"} />
+              <StatusBadge kind={meter.state === "reached" ? "riskReached" : meter.state === "target_reached" ? "targetReached" : "riskWarning"} />
               <span>{label(t, meter)}</span>
             </p>
             <p>{valueText(t, meter, locale)}</p>

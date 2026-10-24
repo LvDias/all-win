@@ -22,6 +22,7 @@ const kinds = {
   choicePending: { tone: "warning", icon: CircleHelp },
   riskWarning: { tone: "warning", icon: TriangleAlert },
   riskReached: { tone: "danger", icon: OctagonX },
+  targetReached: { tone: "success", icon: CircleCheck },
 } satisfies Record<string, { tone: Tone; icon: LucideIcon }>;
 
 export type StatusKind = keyof typeof kinds;
