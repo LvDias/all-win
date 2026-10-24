@@ -26,6 +26,76 @@ paths:
         '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
         '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
 
+  /api/v1/accounts/{account_id}/risk/day-restart:
+    post:
+      tags: [risk]
+      operationId: restartTradingDayCount
+      summary: Restart today's count of an account whose trading day is unknown (Q92 c; S13/S15)
+      description: |
+        The user's explicit "recomeçar a contagem de hoje" (Q92 c, 2026-10-24). It is never automatic.
+        Allowed only while `AccountRisk.day_state` is `unknown`; otherwise 409 `risk.day_not_unknown`.
+        The dialog warns that losses All Win did not see may be left out of today's count, and the body
+        must carry `acknowledge_unseen_losses: true`. The Core then sends the account a `day_reanchor`
+        in `limits` (protocol 1.4: today's net realized P&L from the fills it received, with the
+        last-fill watermark). The plugin applies it, and entries resume; exits were never blocked. The
+        response is 202: the day is known only when the plugin confirms (`day_state` back to `known`,
+        through `account.changed`). A repeat with the same `Idempotency-Key` returns the recorded 202. A
+        NEW request (a new key or none, with a valid step-up) while one is pending returns 202 with the
+        pending request and sends nothing new (Crivo L2). Audited as `risk.day_restarted` (actor user).
+        Step-up (user decision Q96, 2026-10-24; in the Q35 set, setting on): the body carries `step_up`
+        for action `trading_day_restart`, target = this account. Missing → 403 `auth.step_up_required`;
+        wrong → 403 `auth.code_invalid` (`StepUpFailed`).
+        Check order after authentication and Origin (Esquadro):
+        1. 404;
+        2. the REPLAY by `Idempotency-Key`: the same key and the same body as a completed request return
+           the recorded 202 without checking or consuming a code. The body is compared WITHOUT `step_up`,
+           so a retry carrying a new code still gets the recorded 202 (Esmeril L1). The same key with a
+           different body (other than `step_up`) gets 409 `common.idempotency_key_reused`. The replay store is
+           keyed by (user_id, operation, account_id, key), never by the key alone, so another user's or
+           another account's request never matches (Vigia L1);
+        3. step-up;
+        4. 409.
+        Without a known key the step-up applies as normal. On a session below 1.4: 409
+        `risk.adapter_protocol_outdated`.
+      x-step-up: conditional
+      x-step-up-when: always (Q96), with the Q35 setting on
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: UUID the client generates once per confirmation and reuses on retries (not a secret). It makes a double submit return the first answer.
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [acknowledge_unseen_losses]
+              properties:
+                acknowledge_unseen_losses: { const: true }
+                step_up:
+                  description: Action `trading_day_restart`, target = this account (Q96).
+                  $ref: '../openapi.yaml#/components/schemas/StepUpProof'
+      responses:
+        '202':
+          description: Requested (or already pending); the account's risk state shows it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountRisk' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/StepUpFailed' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`risk.day_not_unknown` (the day is known; nothing to restart), `risk.adapter_protocol_outdated` (the plugin is below 1.4: update it) or `common.idempotency_key_reused` (same key, different body); nothing sent.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
   /api/v1/risk-summaries:
     get:
       tags: [risk]
@@ -72,7 +142,11 @@ paths:
         `pending_changes` until it applies. The latest save of a rule wins over an earlier pending value
         (ADR-0006 §3.7). Any write of the account's limits (this operation, `applyPresetVersion`,
         `restorePresetValue`, a preset re-selection in `updateAccount`) bumps the version, so a form
-        opened before it gets 409 `common.version_conflict`.
+        opened before it gets 409 `common.version_conflict`. This operation bumps ONLY the limits
+        `version`, never `Account.row_version` (5.4.0, Grosa): the account form's concurrency is separate.
+        A screen that saves the rules and the commission floor together calls this operation first, then
+        `setAccountCommission` with the `row_version` it holds. The commission write bumps both versions,
+        so the reverse order gets 409 here.
         When the new rules would already be reached today, the body must carry `acknowledge_reached: true`
         (the dialog of the edit form; `previewAccountRiskRules` tells beforehand), else 409
         `risk.reached_not_acknowledged` and nothing is saved. The rule values belong to the account
@@ -194,7 +268,7 @@ components:
         consistency_threshold_pct:
           type: string
           pattern: '^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$'
-          description: Prop with a consistency rule only; the tracked threshold, 0–100 with at most one decimal (Q-S13-7). Never enforced (S13 AC-6).
+          description: 'Prop with a consistency rule only; the tracked threshold, greater than 0 and at most 100, with at most one decimal (Q-S13-7). `0` / `0.0` → 422 `risk.amount_invalid` (no divisor for the meter; Malha / Agulha, 5.4.0). Never enforced (S13 AC-6).'
         trading_day_reset:
           description: Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the CME session close.
           $ref: 'presets.yaml#/components/schemas/TradingDayResetValue'
@@ -271,6 +345,9 @@ components:
       type: object
       additionalProperties: false
       required: [account_id, as_of, stale, state, trading_day, meters, unset_rules, untracked_rules, enforcement_enabled, limits_pending, pending_changes, pnl_basis, commission_source]
+      dependentRequired:
+        net_pnl_today: [gross_pnl_today, commissions_today]
+        gross_pnl_today: [net_pnl_today, commissions_today]
       properties:
         account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
@@ -321,6 +398,12 @@ components:
           description: How today's commissions were obtained (`none` → the UI shows "comissão não informada; os limites podem estar folgados demais", a notice, not a block).
           $ref: 'trades.yaml#/components/schemas/CommissionSource'
         commissions_today: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        net_pnl_today:
+          description: '5.4.0 (PO, S13 AC-11, Q54 exception): the trading day''s net P&L (realized, after commissions) for the summary line "P&L do dia: líquido X · bruto Y · comissões Z". Present together with `gross_pnl_today` and `commissions_today`. The browser never derives one from the others.'
+          $ref: 'audit.yaml#/components/schemas/Money'
+        gross_pnl_today:
+          description: 'The same day''s gross P&L, shown beside the net figure ONLY in the summary line. The limit meters (daily loss, drawdown, profit target, floor) and the S13b evaluation card stay net only, labelled "líquido". The plugin shows no gross in V1.'
+          $ref: 'audit.yaml#/components/schemas/Money'
         pending_commission_change:
           type: object
           additionalProperties: false
@@ -335,6 +418,29 @@ components:
               description: The new floor; absent when the floor is being removed.
               $ref: 'presets.yaml#/components/schemas/MoneyAmount'
             change: { type: string, enum: [commission_floor_lowered, commission_floor_removed] }
+        day_state:
+          type: string
+          enum: [known, unknown]
+          description: |
+            5.4.0 (protocol 1.4 `risk_state.day_state`; Q92 c). `unknown`: the plugin cannot vouch for
+            today's start (`day_unknown_reason`), so new entries are blocked: the plugin refuses them with
+            `risk.day_unknown`, and the Core skips them with `routing.risk_blocked`, detail `day_unknown`.
+            Exits continue. The web offers `restartTradingDayCount`. Absent while the account has no 1.4
+            session.
+        day_unknown_reason: { type: string, enum: [late_anchor, journal_lost, playback_rewind, account_reset], description: With `day_state` unknown. }
+        day_restart_pending: { type: boolean, description: True after `restartTradingDayCount` until the plugin confirms. }
+        evaluation_target_status:
+          type: string
+          enum: [set, not_confirmed, absent]
+          description: |
+            5.4.0 (S13 §12.1, AC-3). Present for an account with an evaluation target, or whose preset
+            phase is `evaluation`; absent otherwise. A manual prop account has a free-text phase, so it
+            has the field only when it has a target.
+            - `set`: the account has a target, so `evaluation` is present.
+            - `not_confirmed`: the preset's target is not confirmed and the account has not resolved it
+              (S16 AC-6). There is no `evaluation`; the card asks the user to choose or type the target.
+            - `absent`: an evaluation phase whose preset publishes no target. There is no `evaluation`;
+              the card says the firm publishes none, and the user may type one.
         evaluation:
           type: object
           additionalProperties: false
@@ -375,9 +481,10 @@ components:
                 description: The new limit (money as a decimal string; a percent for consistency). Absent when the change removes the rule or changes only a kind or `profit_target_on_reach`.
               change:
                 type: string
-                enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened, drawdown_type_changed, daily_loss_changed]
+                enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened, drawdown_type_changed, daily_loss_changed, drawdown_lock_changed]
                 description: |
-                  What is pending. `drawdown_type_changed` (a change of type is not comparable, so it waits
+                  What is pending. `drawdown_lock_changed` (5.4.0, Q90: a lock added or its offset lowered
+                  loosens, so it waits; carries `new_drawdown`). `drawdown_type_changed` (a change of type is not comparable, so it waits
                   for the next trading day), `daily_loss_softened` and `daily_loss_changed` (a mixed change
                   that is stricter in one part and looser in another, e.g. `soft_pause` → `hard` with a
                   higher amount: treated as looser, so it waits) carry the new value in `new_drawdown` /
@@ -385,7 +492,7 @@ components:
               new_drawdown: { $ref: 'presets.yaml#/components/schemas/DrawdownValue' }
               new_daily_loss: { $ref: 'presets.yaml#/components/schemas/DailyLossValue' }
             allOf:
-              - if: { properties: { change: { const: drawdown_type_changed } }, required: [change] }
+              - if: { properties: { change: { enum: [drawdown_type_changed, drawdown_lock_changed] } }, required: [change] }
                 then: { required: [new_drawdown], properties: { kind: { const: drawdown } } }
               - if: { properties: { change: { enum: [daily_loss_softened, daily_loss_changed] } }, required: [change] }
                 then: { required: [new_daily_loss], properties: { kind: { const: daily_loss } } }

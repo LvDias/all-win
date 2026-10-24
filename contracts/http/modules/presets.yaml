@@ -220,6 +220,10 @@ paths:
         Choices made in `opt_ins` are audited as `accounts.opt_in_chosen` as well. A not-confirmed
         maximum position is resolved by the top-level `max_position_qty` (any value up to the highest
         published value; the Core records whether it equals a published one).
+        **`cap_conflict` row (5.4.0, Mosaico):** the top-level `max_position_qty`, at or below the new cap,
+        IS the answer, also when the row is `edited` / `requires_choice`. `choices.max_position_qty` must be
+        absent for that row (400, pointer `/choices/max_position_qty`), because `keep_mine` would break the
+        cap. The value counts as `edited` unless it equals the new preset value.
         Check order after authentication, Origin and schema: 404 → step-up → 409 → 422.
       x-step-up: conditional
       x-step-up-when: any opt_ins.*.choice == accepted that changes the stored state
@@ -270,6 +274,10 @@ paths:
         Audited as an account edit (`presets.value_restored`, old and new value). The preset is never
         modified. A field whose preset value is not confirmed cannot be restored (422
         `presets.value_not_confirmed`); a field that is not edited is a no-op (200, not audited).
+        `max_position_qty` (the account's top-level field) can be restored like the others (5.4.0,
+        Mosaico). It takes the preset's contracts, bumps `row_version` and the limits version, and never
+        touches open positions or orders; a value below an open position is allowed, as in
+        `updateAccount`.
       parameters:
         - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
         - name: field
@@ -333,15 +341,20 @@ components:
     RuleQuote:
       type: object
       additionalProperties: false
-      required: [text, language, page_title, url, accessed_at]
-      description: A verbatim quote of the firm's official text, in the firm's language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2).
+      required: [text, language, url, accessed_at]
+      description: 'A verbatim quote of the firm''s official text, in the firm''s language (never translated). Plain text — clients render it as text, never as HTML or Markdown (QA Security I2). `page_title` is absent when the firm''s site blocks automated access (e.g. Apex, TPT; user decision 2026-10-24): then `title_note` explains it and clients show the URL as the link. The title is never derived.'
       properties:
         text: { type: string, minLength: 1, maxLength: 20000 }
         language: { type: string, pattern: '^[a-z]{2,3}(-[A-Z]{2})?$', description: "BCP 47, e.g. 'en'." }
-        page_title: { type: string, maxLength: 300 }
+        page_title: { type: string, minLength: 1, maxLength: 300 }
+        title_note: { type: string, minLength: 1, maxLength: 200, description: 'Only without `page_title` (and then required): the publisher''s note, e.g. "title not retrieved: site blocks automated access, 2026-10-24". Plain text.' }
         section: { type: string, maxLength: 300, description: 'Heading of the quoted part of the page, if any.' }
         url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
         accessed_at: { type: string, format: date, description: Date the page was read (YYYY-MM-DD). }
+      allOf:
+        - if: { required: [page_title] }
+          then: { not: { required: [title_note] } }
+          else: { required: [title_note] }
     RuleVersion:
       type: object
       additionalProperties: false
@@ -375,13 +388,8 @@ components:
             searched_on: { type: string, format: date }
             sources:
               type: array
-              items:
-                type: object
-                additionalProperties: false
-                required: [page_title, url]
-                properties:
-                  page_title: { type: string, maxLength: 300 }
-                  url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
+              description: 5.4.0 (Torno) — the same `SourceRef` as `StanceInfo.research` and the release file (`page_title` optional, `accessed_at` required).
+              items: { $ref: '#/components/schemas/SourceRef' }
         change:
           type: object
           additionalProperties: false
@@ -421,7 +429,11 @@ components:
       properties:
         url: { type: string, format: uri, maxLength: 2048, pattern: '^https://' }
         accessed_at: { type: string, format: date }
-        page_title: { type: string, maxLength: 300 }
+        page_title: { type: string, minLength: 1, maxLength: 300 }
+        title_note: { type: string, minLength: 1, maxLength: 200, description: 'Optional, only without `page_title`: why the title is missing (the site blocks automated access). The title is never derived.' }
+      allOf:
+        - if: { required: [page_title] }
+          then: { not: { required: [title_note] } }
     MoneyAmount:
       type: string
       pattern: '^[0-9]{1,14}(\.[0-9]{1,4})?$'
@@ -440,11 +452,41 @@ components:
       properties:
         type: { type: string, enum: [trailing_intraday, trailing_eod, static, other] }
         amount: { $ref: '#/components/schemas/MoneyAmount' }
-        stops_trailing_at: { type: string, maxLength: 300, description: 'When it stops trailing, as published.' }
+        stops_trailing_at: { type: string, maxLength: 300, description: 'When it stops trailing, as published (the firm''s text; the Core never interprets it).' }
+        trailing_lock:
+          type: object
+          additionalProperties: false
+          required: [mode]
+          description: |
+            5.4.0 (Q90 a, user; Esquadro, Torno, Malha). Where a TRAILING drawdown stops trailing:
+            - `floor_reaches_start`: while floor < size_amount + `offset`, the floor trails as before. When it
+              reaches that value it locks there for the life of the evaluation. The base is the account's real
+              size (`size_amount`, Q73), not the nearest standard size.
+            - `never`: the floor never stops trailing.
+            Absent = the Q90 interim: the floor keeps trailing and the UI shows "regra de trava não
+            modelada". The publisher fills it from the research; ambiguous text makes the whole drawdown
+            `not_confirmed`, never a guessed lock. Side effects such as "and the daily loss limit is removed"
+            are out of scope (published text only). Allowed only for `trailing_intraday` / `trailing_eod`.
+            A `restartEvaluation` with a new start resets the lock with the evaluation (Malha). Changes follow
+            Q48:
+            - adding a lock or lowering `offset` loosens, so it applies from the next trading day
+              (`pending_changes` `drawdown_lock_changed`);
+            - removing it (`never`, or absent) or raising `offset` tightens, so it applies at once.
+            Removing a lock that already locked makes the floor trail again from the current high water.
+          properties:
+            mode: { type: string, enum: [floor_reaches_start, never] }
+            offset:
+              description: 'With `floor_reaches_start` only; absent = `0.00`, so the floor locks at `size_amount` (Crivo n2).'
+              $ref: '#/components/schemas/MoneyAmount'
+          allOf:
+            - if: { properties: { mode: { const: never } } }
+              then: { not: { required: [offset] } }
         description: { type: string, maxLength: 500, description: Required for `other`. }
       allOf:
         - if: { properties: { type: { const: other } } }
           then: { required: [description] }
+        - if: { properties: { type: { enum: [static, other] } } }
+          then: { not: { required: [trailing_lock] } }
     DailyLossValue:
       type: object
       additionalProperties: false
@@ -730,7 +772,8 @@ components:
         `automation` / `copy` are the rule versions of the opt-ins: one entry without `firm_platform` when
         the stance is the same on every platform, otherwise one entry per firm platform. `vps` ∈ allowed /
         forbidden / conditional / unknown / not_confirmed; `personal_device` ∈ required / not_required /
-        unknown (Q-S16-2).
+        unknown / not_confirmed (Q-S16-2; `not_confirmed` from 5.4.0, S16 AC-5, Q-S16-7: the firm's pages
+        disagree, so at least 2 quotes and nothing is prefilled).
       properties:
         automation: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
         copy: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RuleVersion' } }
@@ -741,7 +784,7 @@ components:
         personal_device:
           allOf:
             - $ref: '#/components/schemas/StanceInfo'
-            - properties: { value: { enum: [required, not_required, unknown] } }
+            - properties: { value: { enum: [required, not_required, unknown, not_confirmed] } }
     ManualOnly:
       type: object
       additionalProperties: false
@@ -767,8 +810,8 @@ components:
             automation: { $ref: '#/components/schemas/StanceSummary' }
             copy: { $ref: '#/components/schemas/StanceSummary' }
             vps: { type: string, enum: [allowed, forbidden, conditional, unknown, not_confirmed] }
-            personal_device: { type: string, enum: [required, not_required, unknown] }
-        not_confirmed_count: { type: integer, minimum: 0 }
+            personal_device: { type: string, enum: [required, not_required, unknown, not_confirmed] }
+        not_confirmed_count: { type: integer, minimum: 0, description: 'The sum of `PresetOption.not_confirmed_count` over the presets of the current release. Stances are shown separately and are not counted.' }
         release: { $ref: '#/components/schemas/FirmReleaseRef' }
     StanceSummary:
       type: string
@@ -799,7 +842,7 @@ components:
         size_amount: { $ref: 'accounts.yaml#/components/schemas/SizeAmount' }
         size_label: { type: string, maxLength: 32, description: 'As published, e.g. "50K".' }
         platform_specific: { type: boolean, description: True → the account must choose `firm_platform`. }
-        not_confirmed_count: { type: integer, minimum: 0 }
+        not_confirmed_count: { type: integer, minimum: 0, description: 'The number of DISTINCT rule fields (`RuleField`) with status `not_confirmed` in any of the preset''s rule sets. A field that is not confirmed on two platforms counts once. `stored_only` data and stances are not counted (5.4.0, Torno).' }
     FirmDetail:
       type: object
       additionalProperties: false
@@ -816,8 +859,12 @@ components:
             properties:
               code: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
               label: { type: string, maxLength: 60, description: 'Product name, e.g. "Rithmic" (not translated).' }
+              manual_only:
+                description: '5.4.0 (S-R3-2/S-R3-4, data from the preset release): this firm platform cannot be reached by any V1 output. An account with this `firm_platform` is manual only (routing `routing.account_manual_only`, listed in `listRouteCandidates.manual_only`), like a firm-level `manual_only`.'
+                $ref: '#/components/schemas/ManualOnly'
         plans:
           type: array
+          description: 'Plans and their phases in the release file''s order; sizes inside a phase ascending by `size_amount` (5.4.0, Torno).'
           items:
             type: object
             additionalProperties: false
@@ -857,6 +904,9 @@ components:
         reason: { $ref: '#/components/schemas/LocalizedText' }
         field: { $ref: '#/components/schemas/RuleField' }
         preset_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        firm_platform:
+          description: '5.4.0 (preset release diff, Torno): set when the change concerns one firm platform. For `rule_value_changed` of a preset with per-platform rules there is one entry per platform; for a per-platform automation/copy text it names the platform.'
+          $ref: 'accounts.yaml#/components/schemas/FirmPlatform'
       allOf:
         - if: { properties: { kind: { enum: [stance_changed, stance_text_changed] } } }
           then: { required: [stance] }
@@ -927,7 +977,7 @@ components:
             properties:
               firm_platform: { $ref: 'accounts.yaml#/components/schemas/FirmPlatform' }
               rules: { $ref: '#/components/schemas/PresetRules' }
-        not_confirmed_count: { type: integer, minimum: 0 }
+        not_confirmed_count: { type: integer, minimum: 0, description: As `PresetOption.not_confirmed_count`. }
     AccountRuleField:
       type: object
       additionalProperties: false

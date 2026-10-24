@@ -73,6 +73,63 @@
         }
       }
     },
+    "DetailsIngressDuplicateConflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_name",
+        "message_id",
+        "original_instruction_id",
+        "first_received_at",
+        "second_received_at",
+        "differing_fields"
+      ],
+      "description": "`ingress.duplicate_conflict` (5.4.0, Esquadro): the same `message_id` arrived again and differs in\nat least one COMPARED field. The answer is still 200 and nothing is executed; this entry makes it\nvisible (category ingress, actor system, outcome `info`, `safe_to_display` true). Expiry and\neverything else keep coming from the FIRST receipt.\n- Compared (closed list): `source`, `signal_type`, `action`, `position_effect`, `side`,\n  `instrument`, `quantity`, `order`, `changes`, `refs`. The receipt keeps the sha256 of the canonical\n  parsed JSON of these fields only (absent ≠ null, as in the schema), and only while the content\n  itself is kept.\n- Not compared: `message_id` (the key), `sent_at` (changes on every re-send), `reference_price`\n  (changes on a re-send of the same bar), `details` (free text, never used by routing) and\n  `schema_version`.\n- Same compared fields → `ingress.duplicate_ignored` (200, no warning).\n- The notification's target is the original instruction (`target {kind: instruction, id:\n  original_instruction_id}`), which the producer knows (s18 §3; Esmeril L3).\n- Emitted only while the first content exists. The purge job (Q13-b) deletes the instruction and,\n  in the same batch, sets the receipt's `body_sha256` to NULL and `content_purged_at`. A re-send of\n  the id after the purge is a plain `ingress.duplicate_ignored` with `content_not_retained: true`\n  (200, nothing executes), never this code (Esquadro, final).\nA new instruction field joins the list only by an explicit contract change, here and in\n`contracts/instruction/v1/README.md`. Never a body value: only the names of the compared fields that\ndiffer.\n",
+      "properties": {
+        "source_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "message_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "description": "As received; the Core refuses token-shaped ids at ingress."
+        },
+        "original_instruction_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "first_received_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "second_received_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "differing_fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "source",
+              "signal_type",
+              "action",
+              "position_effect",
+              "side",
+              "instrument",
+              "quantity",
+              "order",
+              "changes",
+              "refs"
+            ]
+          }
+        }
+      }
+    },
     "DetailsRiskState": {
       "type": "object",
       "additionalProperties": false,
@@ -186,6 +243,13 @@
           "type": "string",
           "pattern": "^[A-Z0-9]{1,10}$",
           "description": "The instruction's instrument (required with `routing.instrument_unavailable`)."
+        },
+        "risk_detail": {
+          "type": "string",
+          "enum": [
+            "day_unknown"
+          ],
+          "description": "5.4.0: with `routing.risk_blocked` when the block is an unknown trading day (protocol 1.4), not a reached limit."
         },
         "protocol_version": {
           "type": "string",
@@ -779,7 +843,7 @@
         "sync.account_not_found_after_repair",
         "sync.bracket_orphan_leg"
       ],
-      "description": "Stable reason codes (ADR-0004 §6/§6.1; the same codes as the adapter protocol `sync_reasons`).\nThe enum order is the display order, most severe first. Unprotected or unexpected exposure comes\nfirst, then unknown state, then a lost or failed command, then a discontinuity or disconnect, and\nlast the informational orphan-leg cancel. Clients render an unknown code with a generic text\n(same rule as the notification registry).\nCanon: ADR-0004 §6 \"sync reason\" column (r5) and the protocol's `reason-codes.md`; 21 codes. A new\ncode is a minor version here and in the protocol. `flatten_failed_unprotected` (5.3.0, U19,\nEsmeril M1; the 21st code, confirmed by Esquadro; producer: the gateway, from the flatten's rejected/unknown report and the protection legs it cancelled) is a flatten of ANY origin that failed after\ncancelling protection while the position stays open with all or part of its protection lost.\nThe origins are close or reverse (including Q75), the Q27 orphan-leg flatten, and local\nenforcement (S15). It is the only sync reason besides `bracket_double_fill` that is critical. A\nfailed flatten with the protection intact is `command_rejected` (danger). The codes added in r5:\n- `command_unknown`: a command whose status ended `unknown`;\n- `command_rejected`: a command rejected, including a flatten or cancel whose cancel failed\n  (`order.cancel_failed`); the adapter's code is in `adapter_reason_code`. A\n  `command.position_changed` gives the more specific `position_changed`, and so does a\n  `command.nothing_to_reduce` against an expected position that is not flat (the position changed\n  under the reduce: the same fact as the U13 guard);\n- `command_expired`: expired at the adapter or in the Core (`expired_by`);\n- `command_partially_filled`: partially filled without completion before the order's end of life;\n- `snapshot_mismatch`: a reconnect or periodic snapshot differs (`snapshot_trigger`);\n- `external_activity`: master-replication destinations only; TradingView-only destinations are\n  audited only (T3);\n- `fill_corrected`: an amend or remove after which the expected state differs, including an amend\n  or remove of an add the Core does not know;\n- `connection_unpaired` (Q18);\n- `ambiguous_reference` (`order.ambiguous_reference`);\n- `cancel_failed`: a cancel the adapter started by itself (orphan-order protection), with no\n  command; a failed cancel inside a command is `command_rejected`;\n- `disconnected_in_trade`: a disconnect with a position or a command in flight.\n"
+      "description": "Stable reason codes (ADR-0004 §6/§6.1; the same codes as the adapter protocol `sync_reasons`).\nThe enum order is the display order, most severe first. Unprotected or unexpected exposure comes\nfirst, then unknown state, then a lost or failed command, then a discontinuity or disconnect, and\nlast the informational orphan-leg cancel. Clients render an unknown code with a generic text\n(same rule as the notification registry).\nCanon: ADR-0004 §6 \"sync reason\" column (r5); 21 codes (Esmeril nit: `reason-codes.md` does not list them). A new\ncode is a minor version here and in the protocol. `flatten_failed_unprotected` (5.3.0, U19,\nEsmeril M1; the 21st code, confirmed by Esquadro; producer: the gateway, from the flatten's rejected/unknown report and the protection legs it cancelled) is a flatten of ANY origin that failed after\ncancelling protection while the position stays open with all or part of its protection lost.\nThe origins are close or reverse (including Q75), the Q27 orphan-leg flatten, and local\nenforcement (S15). It is the only sync reason besides `bracket_double_fill` that is critical. A\nfailed flatten with the protection intact is `command_rejected` (danger). The codes added in r5:\n- `command_unknown`: a command whose status ended `unknown`;\n- `command_rejected`: a command rejected, including a flatten or cancel whose cancel failed\n  (`order.cancel_failed`); the adapter's code is in `adapter_reason_code`. A\n  `command.position_changed` gives the more specific `position_changed`, and so does a\n  `command.nothing_to_reduce` against an expected position that is not flat (the position changed\n  under the reduce: the same fact as the U13 guard);\n- `command_expired`: expired at the adapter or in the Core (`expired_by`);\n- `command_partially_filled`: partially filled without completion before the order's end of life;\n- `snapshot_mismatch`: a reconnect or periodic snapshot differs (`snapshot_trigger`);\n- `external_activity`: master-replication destinations only; TradingView-only destinations are\n  audited only (T3);\n- `fill_corrected`: an amend or remove after which the expected state differs, including an amend\n  or remove of an add the Core does not know;\n- `connection_unpaired` (Q18);\n- `ambiguous_reference` (`order.ambiguous_reference`);\n- `cancel_failed`: a cancel the adapter started by itself (orphan-order protection), with no\n  command; a failed cancel inside a command is `command_rejected`;\n- `disconnected_in_trade`: a disconnect with a position or a command in flight.\n"
     },
     "Timestamp": {
       "type": "string",
