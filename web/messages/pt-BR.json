@@ -46,6 +46,7 @@
       "search": "Buscar: {label}",
       "noResults": "Nenhum resultado."
     },
+    "includeArchived": "Incluir contas arquivadas",
     "multiSelect": {
       "triggerWithCount": "{label}: {count, plural, one {# selecionado} other {# selecionados}}",
       "withCount": "{label} ({count})",

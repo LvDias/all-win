@@ -18,7 +18,7 @@ const originSources: readonly TradeOrigin[] = ["manual", "platform"];
 
 const isDate = (value: string | null): value is string => value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
-export type UiFilters = { period: Period; fromDate: string; toDate: string; accounts: string[]; sources: string[]; signals: AuditSignalType[] };
+export type UiFilters = { period: Period; fromDate: string; toDate: string; accounts: string[]; sources: string[]; signals: AuditSignalType[]; archived: boolean };
 
 /** Filters live in the URL (`?period=…&account=…&source=…&signal=…`), so a reload or a shared link shows the same list. */
 export function useTradeFilters() {
@@ -43,12 +43,13 @@ export function useTradeFilters() {
       toDate: isDate(toParam) ? toParam : "",
       accounts: p.getAll("account"),
       sources: p.getAll("source"),
+      archived: p.get("archived") === "1",
       signals: p.getAll("signal").filter((value): value is AuditSignalType => signalTypes.some((type) => type === value)),
     };
   }, [search]);
-  const { period, sort, order, fromDate, toDate, accounts, sources, signals } = parsed;
+  const { period, sort, order, fromDate, toDate, accounts, sources, signals, archived } = parsed;
 
-  const ui: UiFilters = { period, fromDate, toDate, accounts, sources, signals };
+  const ui: UiFilters = { period, fromDate, toDate, accounts, sources, signals, archived };
 
   const filters = useMemo<TradeFilters>(() => {
     let from: string | undefined;
@@ -64,8 +65,8 @@ export function useTradeFilters() {
       from = startOfDayInstant(now, daysBack[period], timeZone);
     }
     const origins = sources.filter((value): value is TradeOrigin => originSources.some((origin) => origin === value));
-    return { from, to, accountIds: accounts, sourceIds: sources.filter((value) => !originSources.some((origin) => origin === value)), origins, signalTypes: signals };
-  }, [period, fromDate, toDate, timeZone, now, accounts, sources, signals]);
+    return { from, to, accountIds: accounts, sourceIds: sources.filter((value) => !originSources.some((origin) => origin === value)), origins, signalTypes: signals, archived };
+  }, [period, fromDate, toDate, timeZone, now, accounts, sources, signals, archived]);
 
   const query: TradeQuery = useMemo(() => ({ filters, sort, order }), [filters, sort, order]);
 
@@ -94,6 +95,10 @@ export function useTradeFilters() {
       if (patch.accounts) set("account", patch.accounts);
       if (patch.sources) set("source", patch.sources);
       if (patch.signals) set("signal", patch.signals);
+      if (patch.archived !== undefined) {
+        if (patch.archived) next.set("archived", "1");
+        else next.delete("archived");
+      }
       setOrDelete("sort", patch.sort, patch.sort === "exit_time");
       setOrDelete("order", patch.order, patch.order === "desc");
       const target = next.toString();
@@ -102,8 +107,8 @@ export function useTradeFilters() {
     [search, pathname, router],
   );
 
-  const clear = useCallback(() => update({ accounts: [], sources: [], signals: [], period: "30d" }), [update]);
-  const activeCount = (accounts.length > 0 ? 1 : 0) + (sources.length > 0 ? 1 : 0) + (signals.length > 0 ? 1 : 0) + (period !== "30d" ? 1 : 0);
+  const clear = useCallback(() => update({ accounts: [], sources: [], signals: [], period: "30d", archived: false }), [update]);
+  const activeCount = (accounts.length > 0 ? 1 : 0) + (sources.length > 0 ? 1 : 0) + (signals.length > 0 ? 1 : 0) + (archived ? 1 : 0) + (period !== "30d" ? 1 : 0);
 
   return { ui, filters, query, sort, order, update, clear, activeCount };
 }

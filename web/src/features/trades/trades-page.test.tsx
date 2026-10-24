@@ -120,6 +120,48 @@ describe("TradesPage", () => {
     expect(await screen.findByText("Nenhum trade com estes filtros.")).toBeInTheDocument();
   });
 
+  it("hides archived accounts by default and asks the Core for them only when the switch is on", async () => {
+    const urls: string[] = [];
+    serve([trade()]);
+    server.use(
+      http.get("*/api/v1/trades/summary", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(summary());
+      }),
+      http.get("*/api/v1/trades", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ trades: [trade()] });
+      }),
+    );
+    renderApp(<TradesPage />);
+    const toggle = await screen.findByRole("switch", { name: "Incluir contas arquivadas" });
+    expect(toggle).not.toBeChecked();
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((url) => !url.includes("include_archived"))).toBe(true);
+    await userEvent.setup().click(toggle);
+    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived=1"));
+  });
+
+  it("sends include_archived=true on the list and the summary when the URL asks for archived accounts", async () => {
+    navigation.search = "archived=1";
+    const urls: string[] = [];
+    serve([trade()]);
+    server.use(
+      http.get("*/api/v1/trades/summary", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(summary());
+      }),
+      http.get("*/api/v1/trades", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ trades: [trade()] });
+      }),
+    );
+    renderApp(<TradesPage />);
+    expect(await screen.findByRole("switch", { name: "Incluir contas arquivadas" })).toBeChecked();
+    await waitFor(() => expect(urls.length).toBeGreaterThanOrEqual(2));
+    expect(urls.every((url) => url.includes("include_archived=true"))).toBe(true);
+  });
+
   it("sorts by the clicked column through the URL and exposes aria-sort", async () => {
     serve([trade()]);
     renderApp(<TradesPage />);

@@ -20,6 +20,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { ErrorState } from "@/shared/ui/error-state";
+import { ArchivedSwitch } from "@/shared/components/archived-switch";
 import { MultiSelect } from "@/shared/ui/multi-select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
@@ -103,6 +104,7 @@ export function TradesPage() {
         <MultiSelect label={t("filters.account")} options={accountOptions} selected={ui.accounts} onChange={(value) => update({ accounts: value })} />
         <MultiSelect label={t("filters.source")} options={sourceOptions} selected={ui.sources} onChange={(value) => update({ sources: value })} />
         <MultiSelect label={t("filters.signal")} options={signalOptions} selected={ui.signals} onChange={(value) => update({ signals: value as AuditSignalType[] })} />
+        <ArchivedSwitch checked={ui.archived} onChange={(archived) => update({ archived })} />
         {activeCount > 0 ? (
           <Button type="button" variant="ghost" onClick={clear}>
             {t("filters.clear")}

@@ -17,6 +17,8 @@ export type TradeFilters = {
   sourceIds: string[];
   origins: TradeOrigin[];
   signalTypes: AuditSignalType[];
+  /** Includes trades of archived accounts; the Core hides them by default (Q79). Part of the cursor binding. */
+  archived: boolean;
 };
 
 export type TradeQuery = { filters: TradeFilters; sort: TradeSort; order: "asc" | "desc" };
@@ -29,6 +31,7 @@ function filterParams(filters: TradeFilters): URLSearchParams {
   for (const id of filters.sourceIds) params.append("source_id", id);
   for (const origin of filters.origins) params.append("origin", origin);
   for (const type of filters.signalTypes) params.append("signal_type", type);
+  if (filters.archived) params.set("include_archived", "true");
   return params;
 }
 
