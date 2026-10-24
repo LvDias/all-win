@@ -205,3 +205,8 @@
 - **Exchange channel:** the user reaches this host over SSH as dev2 with the Mac's key (dev1 and dev3 also have it). Packages and logs travel by scp over that existing SSH (Forja's .nt8-exchange proposal); no new port.
 - **Tailnet policy:** the rule tag:allwin-dev → tag:allwin-nt8:22 is removed (no agent access to the VPS; least privilege). The user applies the new policy in the console; infra/tailscale/policy.hujson follows (DevOps).
 - **Canonical docs:** HTTP 5.3.1 (Q98, Compasso); infra/tailscale/policy.hujson and infra/nt8-exchange (Forja).
+
+## 2026-10-24 — Plugin first; M1 later with option B; no agent access to the VPS
+- **Decision:** agents never access the VPS. The team focuses on finishing the NinjaTrader 8 plugin; the user tests manually over RDP. Each round delivers a NinjaScript import .zip (version in the name) and a numbered step-by-step test script (QA [Plugins]).
+- **M1 / port 8443:** deferred. Option **(B)** for now: no port is opened on the dev server; the end-to-end M1 waits for a staging host (decided later). Rejected for now: (A) gateway port 8443 on the tailnet interface.
+- **Consequences:** S2 rounds R0–R2 run against AllWin.FakeCore started by the user on the VPS (loopback only). The return path for logs is Forja's .nt8-exchange over the user's existing dev2 SSH (scp). The package hash is sent by the Maestro in the round message.
