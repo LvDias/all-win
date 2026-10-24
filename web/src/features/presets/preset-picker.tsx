@@ -84,7 +84,14 @@ export function PresetPicker({ selection, onManual, error }: { selection: Preset
     setDraft({ ...draft, resolutions: { ...draft.resolutions, [field]: { selected: "", other: emptyDraft, ...draft.resolutions[field], ...patch } } });
 
   if (firms.isPending) return <Skeleton className="h-40 w-full" />;
-  if (firms.isError) return <ErrorState title={errorMessage(tc, firms.error).message} code={errorMessage(tc, firms.error).code} onRetry={() => void firms.refetch()} />;
+  // The catalog failing must not block the account: registering without a preset stays available.
+  if (firms.isError)
+    return (
+      <div className="space-y-4">
+        <ErrorState title={errorMessage(tc, firms.error).message} code={errorMessage(tc, firms.error).code} onRetry={() => void firms.refetch()} />
+        <Button type="button" variant="link" className="h-auto px-0" onClick={onManual}>{tp("manual")}</Button>
+      </div>
+    );
 
   const rules = version.data ? ruleSetFor(version.data, draft.firmPlatform)?.rules : undefined;
   const anyUnconfirmed = rules ? fieldsShown.some((f) => (rules[f as keyof typeof rules] as Provenance<unknown> | undefined)?.status === "not_confirmed") : false;

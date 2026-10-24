@@ -96,4 +96,15 @@ describe("Nova conta with a firm preset", () => {
     await userEvent.click(screen.getByRole("button", { name: "Escolher um preset da firma" }));
     expect(await screen.findByRole("combobox", { name: /^Firma/ })).toBeInTheDocument();
   });
+
+  it("keeps 'Cadastrar sem preset' available when the firm catalog fails to load", async () => {
+    serve();
+    server.use(http.get("*/api/v1/firms", () => HttpResponse.json({ code: "internal", status: 500 }, { status: 500 })));
+    renderApp(<NewAccountWithPresets />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Conta de prop firm" }));
+    await userEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    expect(await screen.findByRole("button", { name: "Tentar novamente" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cadastrar sem preset" }));
+    expect(await screen.findByRole("textbox", { name: "Firma" })).toBeInTheDocument();
+  });
 });

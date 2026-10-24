@@ -18,6 +18,7 @@ async function mockCore(page: Page) {
   const accounts = new Map<string, Stored>();
   const createBodies: Record<string, unknown>[] = [];
   await page.route("**/api/v1/connections", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/firms", (route) => route.fulfill({ json: { firms: [] } }));
   await page.route("**/api/v1/opt-in-rules", (route) => route.fulfill({ json: { automation: rule("automation", "1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b"), copy: rule("copy", "3b4c5d6e-7f8a-4b9c-8d1e-2f3a4b5c6d7e") } }));
   await page.route(/\/api\/v1\/accounts(\/[^/?]+)?(\/[a-z-]+)?(\?.*)?$/, async (route) => {
     const request = route.request();
@@ -48,6 +49,8 @@ async function mockCore(page: Page) {
     }
     const account = accounts.get(id);
     if (!account) return route.fulfill({ status: 404, json: { error: { code: "common.not_found" } } });
+    // Accounts here have no preset: the detail page asks for it and expects a 404.
+    if (sub === "preset") return route.fulfill({ status: 404, json: { error: { code: "common.not_found" } } });
     if (sub === "archive-impact") return route.fulfill({ json: { has_open_position: false, routes: [], follower_links: [] } });
     if (sub === "lifecycle") {
       const next = { ...account, lifecycle_state: (request.postDataJSON() as { state: string }).state, row_version: account.row_version + 1 };
@@ -99,6 +102,7 @@ test("a prop account cannot be saved without an explicit automation choice", asy
   await page.goto("/pt-BR/accounts/new");
   await page.getByRole("radio", { name: "Conta de prop firm" }).click();
   await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("button", { name: "Cadastrar sem preset" }).click();
   await page.getByRole("textbox", { name: "Firma" }).fill("Apex");
   await page.getByRole("textbox", { name: "Plano" }).fill("50K");
   await page.getByRole("textbox", { name: "Fase" }).fill("Avaliação");
@@ -130,6 +134,7 @@ test.describe("english", () => {
     await page.goto("/en/accounts/new");
     await page.getByRole("radio", { name: "Prop firm account" }).click();
     await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByLabel("Firm", { exact: true })).toBeVisible();
+    // With the catalog mocked empty the step shows the preset picker, whose Firm control is a combobox.
+    await expect(page.getByRole("combobox", { name: /^Firm/ })).toBeVisible();
   });
 });
