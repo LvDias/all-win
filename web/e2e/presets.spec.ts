@@ -227,7 +227,8 @@ test("Nova conta: picks a firm preset, must resolve the not-confirmed value, and
   await page.getByRole("radio", { name: /Não aceitar ordens automatizadas/ }).click();
   await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByRole("button", { name: "Salvar conta" }).click();
-  await expect(page).toHaveURL(new RegExp(`/pt-BR/accounts/${accountId}$`));
+  // The redirect follows the create and a page render: give it room when the host is loaded.
+  await expect(page).toHaveURL(new RegExp(`/pt-BR/accounts/${accountId}$`), { timeout: 20_000 });
   expect(created[0]).toMatchObject({ kind: "prop", preset_version_id: newVersion, rule_values: { drawdown: { type: "static", amount: "2000.00" } }, opt_ins: { automation: { choice: "declined" } } });
   for (const manual of ["firm_name", "plan_name", "phase", "size_amount"]) expect(created[0]).not.toHaveProperty(manual);
 });
