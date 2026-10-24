@@ -132,6 +132,22 @@ describe("AccountFormPage (edit)", () => {
       expect(calls.update).toHaveLength(0);
     });
 
+    it("free text shows ONE set of firm, plan and phase fields, and what is typed is what the PUT sends", async () => {
+      const acc = propAccount({ row_version: 4, firm_name: "Apex", plan_name: "50K", phase: "Avaliação" });
+      const { handlers, calls } = accountHandlers([acc]);
+      server.use(connectionsHandler, ...handlers);
+      const user = userEvent.setup();
+      renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(null)} />);
+      const firm = await screen.findByLabelText("Firma");
+      expect(screen.getAllByLabelText("Firma")).toHaveLength(1);
+      expect(document.querySelectorAll("[id$='-firmName']")).toHaveLength(1);
+      await user.clear(firm);
+      await user.type(firm, "Topstep");
+      await user.click(screen.getByRole("button", { name: "Salvar conta" }));
+      await waitFor(() => expect(calls.update).toHaveLength(1));
+      expect(calls.update[0]).toMatchObject({ firm_name: "Topstep" });
+    });
+
     it("goes back to free text: sends the manual fields and no preset", async () => {
       const acc = propAccount({ row_version: 4, preset_version_id: current, firm_platform: "rithmic", firm_name: "Apex", plan_name: "Plan A", phase: "evaluation", size_amount: "50000.00" });
       const { handlers, calls } = accountHandlers([acc]);

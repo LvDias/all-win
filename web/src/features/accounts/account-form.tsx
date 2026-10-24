@@ -239,7 +239,8 @@ function AccountEditBody({ account, stepUp, preset }: { account: Account; stepUp
           form={form}
           formId={formId}
           editing
-          withFirm={prop && mode === "manual"}
+          // Firm, plan and phase are edited once: in the "Firma e plano" card when the page gives the picker, here only otherwise.
+          withFirm={prop && mode === "manual" && !preset}
           preset={mode === "keep" ? { sizeText: formatMoney(account.size_amount, locale), maxPositionCap: null } : outcome ? { sizeText: formatMoney(outcome.sizeAmount, locale), maxPositionCap: outcome.maxPositionCap } : undefined}
         />
       </Card>
