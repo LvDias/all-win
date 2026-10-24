@@ -51,8 +51,8 @@ describe("AC-1 / AC-3 figures", () => {
     expect(sum.getByText(/33[.,]3\s?%/)).toBeInTheDocument();
     expect(sum.getByText(/1 vitórias · 1 derrotas · 1 zero/)).toBeInTheDocument();
   });
-  // S1 - CONTRACT-BLOCKED 5.4.0 (avg_gross_pnl types not frozen). Remove .skip when the types are in.
-  it.skip("S1 gross average IS drawn beside the net average (PO: literal AC-3), from avg_gross_pnl, exact Core string, never computed - CONTRACT-BLOCKED 5.4.0", async () => {
+  // S1 (closed: avg_gross_pnl is in the 6.1.0 types; this runs against the Vitral patch + 23b1996 schema).
+  it("S1 gross average IS drawn beside the net average (PO: literal AC-3), from avg_gross_pnl, exact Core string, never computed", async () => {
     serve(); renderApp(<PerformancePage />);
     const sum = await summary();
     const card = sum.getByText("P&L médio por trade (líquido)").closest("div")!;
@@ -60,14 +60,39 @@ describe("AC-1 / AC-3 figures", () => {
     expect(card).toHaveTextContent(/bruto/i);
     expect(card).toHaveTextContent(/US\$\s3,77/); // avg_gross_pnl
   });
-  // S1 (groups) - CONTRACT-BLOCKED 5.4.0
-  it("gross average also in each group row, and absent avg_gross_pnl shows an em dash, not 0", async () => {
-    const f = figures(); delete (f as Record<string, unknown>).avg_gross_pnl;
-    serve(perf({ groups: [group({}, f)] })); renderApp(<PerformancePage />);
-    await summary();
-    expect(document.body.textContent).not.toMatch(/NaN|undefined/);
+  it("S1 groups and Total: each group row and the Total row show THEIR OWN gross average beside the net one, as the Core sent it; a missing avg_gross_pnl shows nothing (no 'bruto', no invented value)", async () => {
+    serve(perf({
+      totals: figures({ avg_pnl: "-1.23", avg_gross_pnl: "3.77" }),
+      groups: [group({}, { avg_pnl: "10.00", avg_gross_pnl: "12.50", total_pnl: "100.00" }), group({ source_id: uuid(301), source_name: "Outra" }, { avg_pnl: "-4.00", total_pnl: "-40.00", avg_gross_pnl: undefined })],
+    }));
+    renderApp(<PerformancePage />);
     const rows = await screen.findAllByRole("row");
-    expect(rows.some((r) => /US\$\s3,77/.test(r.textContent ?? ""))).toBe(false); // absent avg_gross_pnl is never invented
+    const first = rows.find((r) => /Estratégia Quântico/.test(r.textContent ?? ""))!;
+    expect(first).toHaveTextContent(/\+US\$\s10,00/);
+    expect(first).toHaveTextContent(/bruto\s\+US\$\s12,50/);
+    const second = rows.find((r) => /Outra/.test(r.textContent ?? ""))!;
+    expect(second).toHaveTextContent(/-US\$\s4,00/);
+    expect(second.textContent ?? "").not.toMatch(/bruto/i);
+    const total = rows.find((r) => within(r).queryByRole("rowheader", { name: "Total" }))!;
+    expect(total).toHaveTextContent(/-US\$\s1,23/);
+    expect(total).toHaveTextContent(/bruto\s\+US\$\s3,77/);
+  });
+  it("S1 never derives the gross average: net average without avg_gross_pnl shows no 'bruto' on the card", async () => {
+    const f = figures({ avg_pnl: "-1.23" }); delete (f as Record<string, unknown>).avg_gross_pnl;
+    serve(perf({ totals: f, groups: [] })); renderApp(<PerformancePage />);
+    const sum = await summary();
+    const card = sum.getByText("P&L médio por trade (líquido)").closest("div")!;
+    expect(card).toHaveTextContent(/-US\$\s1,23/);
+    expect(card.textContent ?? "").not.toMatch(/bruto/i);
+  });
+  it("S1 on the mobile cards: the gross average is beside the net one in each group card and in the Total card", async () => {
+    window.matchMedia = ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+    serve(perf({ groups: [group({}, { avg_pnl: "10.00", avg_gross_pnl: "12.50" })] })); renderApp(<PerformancePage />);
+    const items = await screen.findAllByRole("listitem");
+    const totalCard = items.find((li) => /Total/.test(li.textContent ?? ""))!;
+    expect(totalCard).toHaveTextContent(/bruto\s\+US\$\s3,77/);
+    const groupCard = items.find((li) => /Estratégia Quântico/.test(li.textContent ?? ""))!;
+    expect(groupCard).toHaveTextContent(/bruto\s\+US\$\s12,50/);
   });
   it("S5 (PO decision a): notice only when uncommissioned_count > 0, singular and plural with the comma; the phrase 'inclui comissões estimadas' exists nowhere", async () => {
     serve(perf({ totals: figures({ uncommissioned_count: 2 }) })); const first = renderApp(<PerformancePage />);
