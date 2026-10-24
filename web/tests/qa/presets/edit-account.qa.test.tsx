@@ -1,5 +1,5 @@
 // QA (Retina) — V1-S16 edit page with the preset picker (modes keep / pick another / free text), Q41 attach notice, opt-in rules of the account's preset, and the S13-2 slots in the S5 list/detail. Public indexes only.
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -71,7 +71,7 @@ describe("edit page modes", () => {
     for (const manual of ["firm_name", "plan_name", "phase", "size_amount", "rule_values"]) expect(puts[0]).not.toHaveProperty(manual);
     expect(ruleQueries.some((q) => q.searchParams.get("preset_version_id") === presetA)).toBe(true); // not the generic rules
   });
-  it("pick another: a different selection sends the NEW preset_version_id; going back with 'Manter como está' restores keep and sends the original", async () => {
+  it("pick another: a different selection sends the NEW preset_version_id and no manual fields", async () => {
     serve(); renderApp(<Edit />);
     const u = userEvent.setup();
     await u.click(await screen.findByRole("button", { name: "Trocar o preset" }));
@@ -93,12 +93,12 @@ describe("edit page modes", () => {
     expect(puts[0]).toMatchObject({ preset_version_id: presetA });
     expect(JSON.stringify(puts[0])).not.toContain(presetB);
   });
-  it("a selection that is not complete cannot be saved: 'preset required' and nothing is sent", async () => {
+  it("a selection that is not complete cannot be saved: the 'preset required' message is shown and nothing is sent", async () => {
     serve(); renderApp(<Edit />);
     const u = userEvent.setup();
     await u.click(await screen.findByRole("button", { name: "Trocar o preset" }));
     await u.click(screen.getByRole("button", { name: "Salvar conta" }));
-    await new Promise((r) => setTimeout(r, 300));
+    expect(await screen.findByText("Escolha um preset e resolva os valores obrigatórios.")).toBeInTheDocument();
     expect(puts).toHaveLength(0);
   });
   it("free text: 'Cadastrar sem preset' sends the manual fields and no preset keys", async () => {
@@ -158,6 +158,7 @@ describe("S13-2 slots in the S5 screens (no risk logic, just places)", () => {
   it("list: the risk column exists only when the page supplies it, header and one cell per account; absent = no column", async () => {
     server.use(http.get("*/api/v1/me", () => HttpResponse.json(me)), http.get("*/api/v1/accounts", () => HttpResponse.json({ accounts: [account()] })), http.get("*/api/v1/connections", () => HttpResponse.json([])));
     const original = window.matchMedia;
+    try {
     window.matchMedia = ((query: string) => ({ matches: true, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false })) as typeof window.matchMedia;
     const first = renderApp(<AccountsList />);
     await screen.findAllByText("Apex 50K");
@@ -166,7 +167,9 @@ describe("S13-2 slots in the S5 screens (no risk logic, just places)", () => {
     renderApp(<AccountsList riskColumn={{ header: "Risco hoje", cell: (a) => <span>{`slot:${a.id.slice(-3)}`}</span> }} />);
     expect(await screen.findByRole("columnheader", { name: "Risco hoje" })).toBeInTheDocument();
     expect(screen.getAllByText("slot:500").length).toBeGreaterThan(0);
-    window.matchMedia = original;
+    } finally {
+      window.matchMedia = original; // restored even when an assertion fails
+    }
   });
   it("detail: alertSlot sits right under the header, riskSection after 'Dados da conta'; an empty/false slot renders no wrapper", async () => {
     server.use(http.get("*/api/v1/me", () => HttpResponse.json(me)), http.get("*/api/v1/accounts/:id", () => HttpResponse.json(account())), http.get("*/api/v1/connections", () => HttpResponse.json([])), http.get("*/api/v1/opt-in-rules", () => HttpResponse.json({ automation: rule("automation", ruleAuto), copy: rule("copy", ruleCopy) })));
@@ -180,5 +183,8 @@ describe("S13-2 slots in the S5 screens (no risk logic, just places)", () => {
     const { container } = renderApp(<AccountDetail accountId={acc} alertSlot={false} riskSection={null} />);
     await screen.findByText("Posição aberta");
     expect(container.textContent).not.toMatch(/ALERT-SLOT|RISK-SLOT/);
+    // "no wrapper": an absent slot leaves no empty element behind (an empty div with no text, children or attributes)
+    const empties = Array.from(container.querySelectorAll("div")).filter((d) => d.childElementCount === 0 && (d.textContent ?? "").trim() === "" && d.attributes.length === 0);
+    expect(empties).toHaveLength(0);
   });
 });
