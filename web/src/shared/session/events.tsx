@@ -14,10 +14,10 @@ type Events = { subscribe: (listener: Listener) => () => void };
 
 const EventsContext = createContext<Events | null>(null);
 
-const eventTypes = ["connection.status_changed", "connection.paired", "connection.pairing_code_invalidated", "risk.state_changed", "session.ended"] as const;
+const eventTypes = ["connection.status_changed", "connection.paired", "connection.pairing_code_invalidated", "risk.state_changed", "trade.captured", "session.ended"] as const;
 
 /** Server state shown on screen: refetched after every reconnect, since events are not replayed (OpenAPI `eventStream`). */
-const liveQueryKeys = [["sources"], ["connections"], ["me", "security"], ["risk"]] as const;
+const liveQueryKeys = [["sources"], ["connections"], ["me", "security"], ["risk"], ["trades"]] as const;
 
 function parse(data: unknown): ApiEvent | null {
   if (typeof data !== "string") return null;
