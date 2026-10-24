@@ -137,13 +137,14 @@ skipped and removed. The oldest live ticket of the highest lane takes the next f
 inside a lane. Nothing is reserved: when no `sunday` ticket waits, capacity is not wasted.
 
 * **Sunday lane:** `allwin-heavy --lane sunday <command>` (or `ALLWIN_HEAVY_LANE=sunday`). Only worktrees listed in `LOCK_DIR/LANE.sunday` may use it
-  (one entry per line: an absolute path prefix, a name under `/srv/www/allwin.worktrees`, or `*/name` for any directory called `name`; `#` starts a comment).
-  The list belongs to the Maestro; anyone else asking for the lane runs as `normal` and gets a one-line notice, so nobody promotes themselves.
+  (one entry per line: an absolute path prefix or a name under `/srv/www/allwin.worktrees`; no wildcards, no `*/name`, no `..`; `#` starts a comment).
+  The file is **mode 644 owned by the Maestro's account (dev2)** and the lock directory is **sticky** (3770), so no other account can edit, replace or delete it.
+  Anyone else asking for the lane runs as `normal` and gets a one-line notice, so nobody promotes themselves.
   Remove the file and the lane has no effect.
 * **Waiting:** the wait messages show the position (`position 3 of 5`). A `normal` job gives up (exit 75) only after `ALLWIN_HEAVY_WAIT_S` (default 1800 s)
   **without progress**: the clock restarts whenever its position improves, so 75 means starved. The `sunday` lane waits without a limit.
 * **`allwin-heavy --status`** (read-only) shows the running jobs (slot, user, lane, age, working directory, command) and the queue in service order.
-* **`pnpm install --offline --frozen-lockfile`** is not queued (it is mostly I/O and not in the heavy list): it runs at once with `nice -n 19` and `ionice -c3`.
+* **`pnpm install --offline --frozen-lockfile`** is not queued (it is mostly I/O and not in the heavy list): it runs at once with `nice -n 19` and `ionice -c3`, still inside the systemd scope with the CPU and memory quota (postinstall scripts may run), but without a slot or a ticket.
   `pnpm build`, `vitest`, `tsc` and `eslint` stay inside the wrapper.
 * **Hold time:** on the Sunday path use the default slot target with the compile cache; keep `--fresh-target` for verdict runs (a cold clippy holds a slot for
   ~35 minutes, a warm one a few). Tests: `infra/scripts/test-heavy-queue.sh`.
