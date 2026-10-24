@@ -588,7 +588,7 @@ namespace AllWin.Adapter.Core.Engine
             _instanceId = _store.Get(Collections.Meta, "instance_id") is string id ? StoreJson.Read<string>(id) : "";
             if (_instanceId.Length == 0)
             {
-                _instanceId = Ids.New();
+                _instanceId = string.IsNullOrEmpty(_options.InstanceId) ? Ids.New() : _options.InstanceId!;
                 Put(Collections.Meta, "instance_id", _instanceId);
             }
             if (_store.Get(Collections.Meta, "local_reasons") is string reasons)

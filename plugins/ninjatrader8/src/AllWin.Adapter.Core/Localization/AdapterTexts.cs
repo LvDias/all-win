@@ -18,6 +18,11 @@ namespace AllWin.Adapter.Core.Localization
             ["session.awaiting_welcome"] = new[] { "Connecting to All Win…", "Conectando ao All Win…" },
             ["session.ready"] = new[] { "Connected to All Win", "Conectado ao All Win" },
             ["session.stopped"] = new[] { "Not connected", "Não conectado" },
+            ["transport.pin_mismatch"] = new[]
+            {
+                "The server certificate does not match the pin in dev-core.json. Not connecting; check the fingerprint.",
+                "O certificado do servidor não confere com o pin do dev-core.json. Sem conexão; confira a fingerprint.",
+            },
             ["stop.pair_again"] = new[] { "This NinjaTrader is no longer paired. Pair it again in All Win.", "Este NinjaTrader não está mais pareado. Pareie novamente no All Win." },
             ["stop.update_plugin"] = new[] { "This plugin version is no longer supported. Update the plugin.", "Esta versão do plugin não é mais suportada. Atualize o plugin." },
             ["stop.connected_elsewhere"] = new[] { "This connection was opened on another NinjaTrader.", "Esta conexão foi aberta em outro NinjaTrader." },

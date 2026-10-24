@@ -36,6 +36,11 @@ foreach (var file in files)
         Console.WriteLine("skip " + scenario["name"] + " (needs -with-sim)");
         continue;
     }
+    if (((bool?)scenario["nt8_only"] ?? false) && options.WithSim)
+    {
+        Console.WriteLine("skip " + scenario["name"] + " (NT8 only: depends on the NT8 simulator)");
+        continue;
+    }
     var accounts = ScenarioRunner.AccountsOf(scenario);
     await using var core = new FakeCoreServer(accounts, token, Trace);
     await core.StartAsync(options.WithSim ? 0 : options.Port);

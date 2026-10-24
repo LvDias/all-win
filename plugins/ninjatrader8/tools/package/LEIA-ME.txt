@@ -1,0 +1,73 @@
+All Win para NinjaTrader 8 — build de desenvolvimento / development build {version}
+
+Siga o roteiro do QA (Pêndulo). Este arquivo só descreve o conteúdo.
+Follow the QA script (Pêndulo). This file only lists the contents.
+
+AllWin-NT8-{version}.zip
+  pt: Importar no NT8: Tools > Import > NinjaScript Add-On. Depois reinicie o NT8.
+      Janela: Control Center > New > All Win (a versão aparece no título).
+      Build de desenvolvimento: conecta sozinho ao núcleo falso local (ws://127.0.0.1:8765) com o token de teste
+      criado pelo start-fakecore.cmd. Nunca pede nem mostra token. Nunca executa em conta real (live).
+  en: Import in NT8: Tools > Import > NinjaScript Add-On, then restart NT8.
+      Window: Control Center > New > All Win (version in the title).
+      Development build: connects by itself to the local fake Core (ws://127.0.0.1:8765) with the test token that
+      start-fakecore.cmd creates. Never asks for or shows a token. Never executes on a live account.
+
+start-fakecore.cmd + AllWin.FakeCore.exe + scenarios\
+  pt: Núcleo falso local (só desenvolvimento), escuta só em 127.0.0.1:8765. Se o Firewall do Windows perguntar,
+      clique em Cancelar: não precisa de regra.
+      Sem argumentos (dois cliques) roda o cenário mínimo scenarios\00-min-entrada.json.
+      Ele espera o plugin conectar, pede Enter, envia a ENTRADA (compra 1 MNQ 12-26 a mercado em Sim101, stop 40 ticks,
+      alvo 80 ticks a partir do fill), confere os relatórios, pede Enter e envia o FLATTEN. No fim mostra PASS ou FAIL.
+      Só envia para contas que o plugin declarou como simulação/playback.
+  en: Local fake Core (development only), listens on 127.0.0.1:8765 only. If Windows Firewall asks, click Cancel.
+      Without arguments (double-click) it runs the minimal scenario scenarios\00-min-entrada.json.
+      It waits for the plugin, asks for Enter, sends the ENTRY (buy 1 MNQ 12-26 market on Sim101, stop 40 ticks,
+      target 80 ticks from the fill), checks the reports, asks for Enter and sends the FLATTEN. Ends with PASS or FAIL.
+      Only commands accounts the plugin declared as simulation/playback.
+
+Modo núcleo real (M1) / real Core mode (M1) — só quando o time pedir / only when the team asks
+  pt: Crie %LOCALAPPDATA%\AllWin\dev-core.json com o conteúdo que o time enviar, por exemplo
+        {"endpoint": "wss://<IP>:8443/adapter/v1", "cert_sha256": "<64 hex>"}
+      Depois rode pair-allwin.cmd: ele pede o código de pareamento (o que o time enviou), fala com o Core só se o
+      certificado bater com o pin, grava %LOCALAPPDATA%\AllWin\device.token (só o seu usuário lê) e mostra só o connection_id e o key_id.
+      Reinicie o NT8.
+      O plugin só aceita o servidor cujo certificado tem exatamente esse SHA-256. Arquivo inválido = sem conexão.
+      Pin diferente do certificado: a janela All Win diz isso numa linha própria e não conecta.
+      Cada Core tem seu próprio journal (journal\fakecore, journal\core-<12 hex>); não precisa renomear nada.
+      Para voltar ao núcleo falso local, apague dev-core.json e reinicie o NT8.
+  en: Create %LOCALAPPDATA%\AllWin\dev-core.json with the content the team sends (see above),
+      then run pair-allwin.cmd: it asks for the pairing code (the one the team sent), talks to the Core only if the
+      certificate matches the pin, writes %LOCALAPPDATA%\AllWin\device.token (readable by your user only) and shows
+      only the connection_id and the key_id. Restart NT8.
+      The plugin accepts only the server whose certificate has exactly that SHA-256. Invalid file = no connection.
+      Pin different from the certificate: the All Win window says so on its own line and does not connect.
+      Each Core has its own journal (journal\fakecore, journal\core-<12 hex>); nothing needs renaming.
+      To go back to the local fake Core, delete dev-core.json and restart NT8.
+
+start-r1.cmd
+  pt: Rodada R1: roda os cenários do roteiro do Pêndulo na ordem (01, 03n, 04, 05, 09, 10, 11, 12, 06).
+  en: Round R1: runs the scenarios of Pêndulo's script in order (01, 03n, 04, 05, 09, 10, 11, 12, 06).
+
+AllWin-NT8-CoreSource-{version}.zip  (OPCIONAL / OPTIONAL, último passo / last step)
+  pt: Teste de compilação do núcleo como código-fonte. Se o NT8 mostrar erro de compilação,
+      apague Documentos\NinjaTrader 8\bin\Custom\AddOns\AllWinCoreSource e reinicie o NT8.
+  en: Compile test of the core as source. On a compile error, delete
+      Documents\NinjaTrader 8\bin\Custom\AddOns\AllWinCoreSource and restart NT8.
+
+Se a importação falhar com erro de compilação / If the import fails with a compile error:
+  pt: apague Documentos\NinjaTrader 8\bin\Custom\AddOns\AllWin, reinicie o NT8 e rode collect-allwin.cmd.
+  en: delete Documents\NinjaTrader 8\bin\Custom\AddOns\AllWin, restart NT8 and run collect-allwin.cmd.
+
+collect-allwin.cmd
+  pt: Coleta de diagnóstico de reserva (quando a janela All Win não abrir). Gera AllWin-diag-collect-<hora>.zip na
+      Área de Trabalho. Só copia %LOCALAPPDATA%\AllWin\logs e \journal; nunca token, consentimento nem o log/trace do
+      NT8 (esses são um passo separado do roteiro, filtrado para Sim101/Playback). Se achar algo com formato de token,
+      RECUSA e não gera nada: avise o time sem enviar os arquivos.
+  en: Fallback diagnostics (when the All Win window does not open). Writes AllWin-diag-collect-<time>.zip to the
+      Desktop. Only copies %LOCALAPPDATA%\AllWin\logs and \journal; never token, consent or NT8's log/trace (those
+      are a separate script step, filtered to Sim101/Playback). If it finds a token-shaped string it REFUSES and writes
+      nothing: tell the team without sending the files.
+
+SHA256SUMS fica fora do zip (o hash vai na mensagem do Maestro) / SHA256SUMS is outside the zip (the hash comes in the Maestro's message).
+Pastas / folders: %LOCALAPPDATA%\AllWin\logs (allwin-*.log, events-*.log, fakecore-*.log), %LOCALAPPDATA%\AllWin\journal.

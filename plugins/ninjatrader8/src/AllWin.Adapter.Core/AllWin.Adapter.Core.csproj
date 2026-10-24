@@ -10,6 +10,9 @@
     <AssemblyName>AllWin.Adapter.Core</AssemblyName>
     <Version>0.1.0</Version>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Byte-for-byte reproducible DLL (Guarita): no machine path in the embedded PDB path. -->
+    <PathMap>$(MSBuildProjectDirectory)=/_/AllWin.Adapter.Core</PathMap>
+    <ContinuousIntegrationBuild Condition="'$(Configuration)' == 'Release'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
   <ItemGroup>
     <!-- ADR-0005 N3: compile against NT8's own Newtonsoft.Json 13; never ship it. -->

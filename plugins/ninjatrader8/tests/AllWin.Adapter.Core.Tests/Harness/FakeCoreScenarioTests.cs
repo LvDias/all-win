@@ -22,6 +22,7 @@ namespace AllWin.Adapter.Core.Tests.Harness
         public async Task Scenario_passes_with_the_simulated_platform(string file)
         {
             var scenario = ProtocolJson.ParseObject(File.ReadAllText(Path.Combine(System.AppContext.BaseDirectory, "scenarios", file)));
+            if ((bool?)scenario["nt8_only"] ?? false) return; // behaviour of the NT8 simulator itself (e.g. its rejections)
             var trace = new List<string>();
             var token = "awd_TestKeyId001_" + new string('a', 43);
             await using var core = new FakeCoreServer(ScenarioRunner.AccountsOf(scenario), token, l => { lock (trace) trace.Add(l); });

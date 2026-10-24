@@ -36,6 +36,18 @@ namespace AllWin.Adapter.Core.Engine
         public static string New() => Guid.NewGuid().ToString("D");
     }
 
+    /// <summary>
+    /// Device token shape (OpenAPI pairing response): awd_&lt;12 alphanumerics&gt;_&lt;43 base64url&gt;. A token file with anything else
+    /// is refused before it is ever sent (Guarita I2); the same rule as pair-allwin.ps1.
+    /// </summary>
+    public static class DeviceTokenFormat
+    {
+        private static readonly System.Text.RegularExpressions.Regex Shape =
+            new System.Text.RegularExpressions.Regex("^awd_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}\\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        public static bool IsWellFormed(string? token) => token != null && Shape.IsMatch(token);
+    }
+
     /// <summary>Masks device tokens for logs: only the key_id is kept (ADR-0004 §2).</summary>
     public static class TokenMask
     {

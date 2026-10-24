@@ -11,6 +11,13 @@ using AllWin.Adapter.Core.Protocol;
 namespace AllWin.Adapter.Core.Transport
 {
     /// <summary>
+    /// Opens the WebSocket to the Core: the token goes only in the Authorization header. The default uses
+    /// <see cref="ClientWebSocket"/>; a host can pass its own (e.g. TLS pinned to one certificate on .NET Framework,
+    /// where ClientWebSocket has no per-connection certificate callback).
+    /// </summary>
+    public delegate Task<WebSocket> WebSocketFactory(Uri uri, string token, CancellationToken ct);
+
+    /// <summary>
     /// Keeps one outbound WebSocket to the Core open while the engine wants it (ADR-0004 §2, §4).
     /// Receives on its own task, sends from a serialized queue (ClientWebSocket allows one send at a
     /// time), and hands every frame to the <see cref="EngineLoop"/>. The device token travels only in
@@ -23,14 +30,22 @@ namespace AllWin.Adapter.Core.Transport
         private readonly EngineLoop _loop;
         private readonly IAdapterLog _log;
         private readonly Backoff _backoff;
+        private readonly WebSocketFactory _connect;
         private readonly CancellationTokenSource _stop = new CancellationTokenSource();
         private Task? _run;
+        private int _problem;
+
+        /// <summary>
+        /// Why the last attempt was refused, for the window (Pêndulo M1 item 5); None after a connection opens. Read from any thread.
+        /// </summary>
+        public TransportProblem LastProblem => (TransportProblem)Volatile.Read(ref _problem);
 
         /// <param name="build">
         /// Release builds accept only wss://. Development builds also accept ws:// on loopback, for the fake
         /// Core harness (QA Security I2).
         /// </param>
-        public WebSocketConnector(Uri uri, Func<string?> deviceToken, EngineLoop loop, AdapterBuild build, IAdapterLog? log = null, Backoff? backoff = null)
+        public WebSocketConnector(Uri uri, Func<string?> deviceToken, EngineLoop loop, AdapterBuild build, IAdapterLog? log = null, Backoff? backoff = null,
+            WebSocketFactory? connect = null)
         {
             var allowed = uri.Scheme == "wss" || (build == AdapterBuild.Development && uri.Scheme == "ws" && uri.IsLoopback);
             if (!allowed)
@@ -40,6 +55,24 @@ namespace AllWin.Adapter.Core.Transport
             _loop = loop;
             _log = log ?? NullLog.Instance;
             _backoff = backoff ?? new Backoff();
+            _connect = connect ?? ConnectDefaultAsync;
+        }
+
+        private static async Task<WebSocket> ConnectDefaultAsync(Uri uri, string token, CancellationToken ct)
+        {
+            var socket = new ClientWebSocket();
+            try
+            {
+                socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
+                socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+                await socket.ConnectAsync(uri, ct).ConfigureAwait(false);
+                return socket;
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
         }
 
         public void Start() => _run = Task.Run(() => RunAsync(_stop.Token));
@@ -67,18 +100,19 @@ namespace AllWin.Adapter.Core.Transport
                 }
 
                 var reachedReady = false;
-                using (var socket = new ClientWebSocket())
+                TimeSpan? retryAfter = null;
+                WebSocket? socket = null;
+                try
                 {
-                    socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
-                    socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
                     int? closeCode = null;
                     try
                     {
                         using (var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
                         {
                             connectTimeout.CancelAfter(TimeSpan.FromSeconds(15));
-                            await socket.ConnectAsync(_uri, connectTimeout.Token).ConfigureAwait(false);
+                            socket = await _connect(_uri, token!, connectTimeout.Token).ConfigureAwait(false);
                         }
+                        Volatile.Write(ref _problem, (int)TransportProblem.None);
                         _log.Write(LogLevel.Info, "transport.connected", _uri.Host + " key=" + TokenMask.Mask(token));
                         using (var sink = new SocketSink(socket, _log))
                         using (var receive = CancellationTokenSource.CreateLinkedTokenSource(ct, sink.Aborted))
@@ -89,20 +123,23 @@ namespace AllWin.Adapter.Core.Transport
                     }
                     catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
                     catch (OperationCanceledException) { _log.Write(LogLevel.Warning, "transport.aborted", "engine close"); }
-                    catch (Exception e) when (e is WebSocketException || e is IOException || e is OperationCanceledException)
+                    catch (Exception e) when (e is WebSocketException || e is IOException || e is OperationCanceledException || e is TransportRefusedException)
                     {
-                        _log.Write(LogLevel.Warning, "transport.error", e.GetType().Name);
+                        _log.Write(LogLevel.Warning, "transport.error", e.GetType().Name + (e is TransportRefusedException ? ": " + e.Message : ""));
+                        retryAfter = (e as TransportRefusedException)?.RetryAfter;
+                        Volatile.Write(ref _problem, (int)((e as TransportRefusedException)?.Problem ?? TransportProblem.None));
                     }
                     reachedReady = await _loop.InvokeAsync(e => e.Session == SessionState.Ready).ConfigureAwait(false);
                     var code = closeCode;
                     _loop.Post(e => e.OnDisconnected(code));
                 }
+                finally { socket?.Dispose(); }
                 if (reachedReady) attempt = 0;
-                await Delay(_backoff.Delay(attempt++), ct).ConfigureAwait(false);
+                await Delay(NextDelay(_backoff.Delay(attempt++), retryAfter), ct).ConfigureAwait(false);
             }
         }
 
-        private async Task<int?> ReceiveAsync(ClientWebSocket socket, CancellationToken ct)
+        private async Task<int?> ReceiveAsync(WebSocket socket, CancellationToken ct)
         {
             var buffer = new byte[16 * 1024];
             var message = new MemoryStream();
@@ -132,6 +169,16 @@ namespace AllWin.Adapter.Core.Transport
             return (int?)socket.CloseStatus;
         }
 
+        /// <summary>C-1: max(Retry-After, backoff); a Retry-After that wins gets up to +20 % jitter so clients do not return together.</summary>
+        internal static TimeSpan NextDelay(TimeSpan backoff, TimeSpan? retryAfter, double random01 = -1)
+        {
+            if (retryAfter == null || retryAfter.Value <= backoff) return backoff;
+            var r = random01 >= 0 ? random01 : JitterSource.NextDouble();
+            return TimeSpan.FromMilliseconds(retryAfter.Value.TotalMilliseconds * (1.0 + 0.2 * r));
+        }
+
+        private static readonly Random JitterSource = new Random();
+
         private static async Task Delay(TimeSpan delay, CancellationToken ct)
         {
             try { await Task.Delay(delay, ct).ConfigureAwait(false); }
@@ -144,13 +191,13 @@ namespace AllWin.Adapter.Core.Transport
             /// <summary>Grace for the close handshake before the socket is aborted (half-open TCP never answers).</summary>
             private static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(2);
 
-            private readonly ClientWebSocket _socket;
+            private readonly WebSocket _socket;
             private readonly IAdapterLog _log;
             private readonly BlockingCollection<Func<Task>> _sends = new BlockingCollection<Func<Task>>();
             private readonly CancellationTokenSource _abort = new CancellationTokenSource();
             private readonly Task _pump;
 
-            public SocketSink(ClientWebSocket socket, IAdapterLog log)
+            public SocketSink(WebSocket socket, IAdapterLog log)
             {
                 _socket = socket;
                 _log = log;
@@ -217,5 +264,27 @@ namespace AllWin.Adapter.Core.Transport
                 _abort.Dispose();
             }
         }
+    }
+
+    /// <summary>A refusal the window explains on its own line; the text key is "transport." + snake_case name.</summary>
+    public enum TransportProblem
+    {
+        None,
+        PinMismatch,
+    }
+
+    /// <summary>A connection the transport refused on purpose (e.g. certificate pin mismatch); the reason is safe to log.</summary>
+    public sealed class TransportRefusedException : Exception
+    {
+        public TransportRefusedException(string reason, TimeSpan? retryAfter = null, TransportProblem problem = TransportProblem.None) : base(reason)
+        {
+            RetryAfter = retryAfter;
+            Problem = problem;
+        }
+
+        public TransportProblem Problem { get; }
+
+        /// <summary>The server's Retry-After (429/503): the next attempt waits at least this long.</summary>
+        public TimeSpan? RetryAfter { get; }
     }
 }

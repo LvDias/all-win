@@ -14,6 +14,12 @@ namespace AllWin.Adapter.Core.Engine
         public string? PlatformVersion { get; set; }
 
         /// <summary>
+        /// Instance id to use when the journal has none yet (the host shares it with its pairing tool, so the pairing and the
+        /// hello carry the same id). An id already in the journal always wins.
+        /// </summary>
+        public string? InstanceId { get; set; }
+
+        /// <summary>
         /// U19 (ADR-0005 §N11, [Proposed]): what a confirmed live account may still do after "off". Build/server
         /// configuration only; <see cref="LiveAccountTable.ParseOffPolicy"/> maps missing/invalid to the recommended (a).
         /// </summary>

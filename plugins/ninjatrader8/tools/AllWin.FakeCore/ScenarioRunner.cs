@@ -143,6 +143,12 @@ namespace AllWin.FakeCore
                 case "sleep":
                     await Task.Delay((int)step["ms"]!).ConfigureAwait(false);
                     break;
+                case "pause":
+                    // Manual NT8 rounds: the user presses Enter when ready. Skipped with -with-sim (automated runs).
+                    Console.WriteLine();
+                    Console.WriteLine((string)step["text"]!);
+                    if (_sim == null) await Task.Run(() => Console.ReadLine()).ConfigureAwait(false);
+                    break;
                 case "sim":
                     if (_sim == null) throw new ScenarioFailure("simulator step: run with -with-sim (Linux) or use an NT8-compatible scenario");
                     await _sim.ApplyAsync(step, AliasToPlatformAccount).ConfigureAwait(false);
@@ -159,6 +165,11 @@ namespace AllWin.FakeCore
             await WaitAsync(() => _core.SessionReady, 20000, "session ready before commands (ADR-0004 §3 step 3)").ConfigureAwait(false);
             var alias = (string)step["id"]!;
             var account = _core.Accounts.Single(a => a.Alias == ((string?)step["account"] ?? _core.Accounts[0].Alias));
+            // Safety (QA Pêndulo): the fake Core never commands an account the adapter did not declare as simulation
+            // or playback in its hello.
+            var kind = _core.HelloKind(account.PlatformAccount);
+            if (kind != AccountKind.Simulation && kind != AccountKind.Playback)
+                throw new ScenarioFailure("refused: " + account.PlatformAccount + " is " + (kind?.ToString() ?? "not declared") + " in hello, not simulation/playback; nothing sent");
             var commandId = Ids.New();
             _commandIds[alias] = commandId;
 
@@ -204,7 +215,7 @@ namespace AllWin.FakeCore
             var account = _core.Accounts.Single(a => a.Alias == ((string?)step["account"] ?? _core.Accounts[0].Alias));
             var limits = new AccountLimits
             {
-                AccountId = account.AccountId, PlatformAccount = account.PlatformAccount, Version = (long?)step["version"] ?? 2,
+                AccountId = account.AccountId, PlatformAccount = account.PlatformAccount, Version = _core.LimitsVersionBase + ((long?)step["version"] ?? 2),
                 EnforcementEnabled = (bool?)step["enforcement_enabled"] ?? true, MaxPosition = (int?)step["max_position"] ?? 10,
                 TradingDay = new TradingDaySpec { ResetLocalTime = "17:00", TimeZone = "America/Chicago" }, WarningThresholdPct = 80,
             };

@@ -17,6 +17,8 @@
     { "do": "command", "id": "E3", "kind": "place", "place": { "side": "sell", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
     { "do": "expect_report", "command": "E3", "match": { "status": "rejected", "reason_code": "risk.account_blocked" } },
     { "do": "command", "id": "X1", "kind": "flatten", "flatten": { "reason": "close" } },
-    { "do": "expect_report", "command": "X1", "match": { "status": "filled", "position_after": { "quantity": 0 } } }
+    { "do": "expect_report", "command": "X1", "match": { "status": "filled", "position_after": { "quantity": 0 } } },
+    { "do": "limits", "msg": "L3", "version": 3, "enforcement_enabled": false },
+    { "do": "expect_ack", "msg": "L3" }
   ]
 }

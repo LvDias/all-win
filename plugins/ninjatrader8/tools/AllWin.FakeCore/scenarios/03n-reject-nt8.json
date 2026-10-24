@@ -1,0 +1,16 @@
+{
+  "name": "reject-nt8",
+  "description": "S2 AC-2 inside NT8 (Pêndulo R1): a buy stop far below the market is rejected by the NT8 simulator; the rejection is reported with its reason and a dependent command fails its prerequisite. NT8-compatible variant of 03.",
+  "requires_sim": false,
+  "nt8_only": true,
+  "accounts": [{ "alias": "A", "platform_account": "Sim101" }],
+  "instrument": { "symbol": "MNQ", "contract_month": "2026-12" },
+  "steps": [
+    { "do": "wait_ready", "timeout_ms": 600000 },
+    { "do": "command", "id": "E1", "kind": "place", "place": { "side": "buy", "quantity": 1, "order": { "type": "stop", "stop_price": "1.00" }, "position_effect": "open" } },
+    { "do": "command", "id": "E2", "kind": "place", "depends_on": "E1", "place": { "side": "buy", "quantity": 1, "order": { "type": "market" }, "position_effect": "open" } },
+    { "do": "expect_report", "command": "E1", "match": { "status": "rejected", "reason_code": "order.platform_rejected" }, "timeout_ms": 30000 },
+    { "do": "expect_report", "command": "E2", "match": { "status": "rejected", "reason_code": "command.prerequisite_failed" }, "timeout_ms": 30000 },
+    { "do": "expect_snapshot", "trigger": "reconnect", "positions": { "A": { "MNQ": 0 } } }
+  ]
+}
