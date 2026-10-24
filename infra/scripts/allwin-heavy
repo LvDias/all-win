@@ -105,13 +105,13 @@ fi
 # runs as normal with a one-line notice.
 if [ "$LANE" = sunday ]; then
   cwd_real="$(pwd -P)"; allowed=0
-  # The file is trusted only if the Maestro's account owns it and neither the group nor others can write it (the sticky directory protects
+  # The file is trusted only if the Maestro's account (dev2, fixed in the script: nothing the caller sets can change who is trusted) owns it and neither the group nor others can write it (the sticky directory protects
   # deleting, not creating: a new file made by someone else is ignored).
   lane_file="$LOCK_DIR/LANE.sunday"; lane_ok=0
   if [ -f "$lane_file" ] && [ ! -L "$lane_file" ]; then
     lane_owner="$(stat -c %U "$lane_file" 2>/dev/null || true)"; lane_mode="$(stat -c %a "$lane_file" 2>/dev/null || echo 777)"
-    if [ "$lane_owner" = "${ALLWIN_HEAVY_LANE_OWNER:-dev2}" ] && [ $(( 8#$lane_mode & 8#022 )) -eq 0 ]; then lane_ok=1
-    else echo "allwin-heavy: ignoring LANE.sunday (owner $lane_owner, mode $lane_mode; it must belong to ${ALLWIN_HEAVY_LANE_OWNER:-dev2} with no group or other write)" >&2; fi
+    if [ "$lane_owner" = "dev2" ] && [ $(( 8#$lane_mode & 8#022 )) -eq 0 ]; then lane_ok=1
+    else echo "allwin-heavy: ignoring LANE.sunday (owner $lane_owner, mode $lane_mode; it must belong to dev2 with no group or other write)" >&2; fi
   fi
   while IFS= read -r entry; do
     entry="${entry%%#*}"; entry="${entry//[[:space:]]/}"; [ -n "$entry" ] || continue

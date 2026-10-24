@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Tests of the allwin-heavy queue: FIFO order, the sunday lane, dead tickets, the allowlist, --status and (when sudo is available) tickets made by
-# another account. No root needed for the main tests.   infra/scripts/test-heavy-queue.sh
+# another account. No root needed for the main tests. Run it as dev2: the lane file must be owned by dev2.   infra/scripts/test-heavy-queue.sh
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; H="$here/allwin-heavy"
 T="$(mktemp -d /srv/www/allwin.worktrees/.test-heavy-queue.XXXXXX)"; chmod 2770 "$T"
 trap 'pkill -P $$ 2>/dev/null; rm -rf "$T"' EXIT
 export ALLWIN_HEAVY_LOCK_DIR="$T/lock" ALLWIN_HEAVY_SLOTS=1 ALLWIN_HEAVY_NO_SCCACHE=1 ALLWIN_HEAVY_TARGET_ROOT="$T/tr" ALLWIN_HEAVY_WAIT_S=120
+[ "$(id -un)" = dev2 ] || echo "note: the lane tests expect to run as dev2 (the trusted owner of LANE.sunday); they will report failures otherwise"
 fail=0; check() { if [ "$2" = "$3" ]; then echo "ok   : $1"; else echo "FAIL : $1 (got '$3', wanted '$2')"; fail=1; fi; }
 reset() { rm -rf "$T/lock"; : > "$T/order"; }
 hold() { "$H" sleep "$1" >/dev/null 2>&1 & sleep 1.5; }          # takes the only slot for N seconds
@@ -62,8 +63,8 @@ case "$out" in *"not allowed"*) r=refused ;; *) r="$out" ;; esac; check "the ent
 if sudo -n -u dev3 true 2>/dev/null; then
   rm -f "$T/lock/LANE.sunday"; chmod 3770 "$T/lock"
   sudo -n -u dev3 sh -c "printf '%s\n' '$T/wt-real' > '$T/lock/LANE.sunday'; chmod 644 '$T/lock/LANE.sunday'" 2>/dev/null
-  out="$( cd "$T/wt-real" && "$H" --lane sunday echo hi 2>&1 )"
-  case "$out" in *"ignoring LANE.sunday"*"owner dev3"*) r=ignored ;; *) r="$out" ;; esac; check "a LANE.sunday made by another account (dev3) is ignored" ignored "$r"
+  out="$( cd "$T/wt-real" && ALLWIN_HEAVY_LANE_OWNER=dev3 "$H" --lane sunday echo hi 2>&1 )"   # the old override variable must change nothing
+  case "$out" in *"ignoring LANE.sunday"*"owner dev3"*) r=ignored ;; *) r="$out" ;; esac; check "a LANE.sunday made by another account (dev3) is ignored, even with ALLWIN_HEAVY_LANE_OWNER=dev3" ignored "$r"
 fi
 
 echo "== M1: another account cannot edit, replace or delete LANE.sunday (mode 644 + sticky directory)"
