@@ -6,7 +6,8 @@
 
 ## 1. Scope questions (decide first)
 
-**Decided 2026-10-23:** S-1 (a) manual-tracking-only Topstep preset, (c) for future evaluation; S-2 (a); S-3 and S-4 excluded; S-5 adopted (VPS/personal-device rule recorded per firm). S-6 and section 2 remain open.
+**Decided 2026-10-24:** Take Profit Trader page titles that cannot be retrieved (the site blocks automated access) stay blank with a note and the URL, also in quotes; row 8 below corrected to NC. Q94 (a): Topstep presets cover the Trading Combine only.
+> **Decided 2026-10-23:** S-1 (a) manual-tracking-only Topstep preset, (c) for future evaluation; S-2 (a); S-3 and S-4 excluded; S-5 adopted (VPS/personal-device rule recorded per firm). S-6 and section 2 remain open.
 
 | # | Firm | Question | Finding | Options | Recommendation |
 |---|---|---|---|---|---|
@@ -30,7 +31,7 @@
 | 5 | Topstep | Third-party copiers, webhooks, semi-automation | Not named | **INFO**; stance conditional with text shown |
 | 6 | Topstep | Labs plan details | Partial | **NC** where missing |
 | 7 | Take Profit Trader | Consistency boundary | "below 50%" vs "cannot be more than 50%" | **NC** (warning-only in V1) |
-| 8 | Take Profit Trader | Reset time zone | "Eastern" vs "EST" (5 PM; auto-flatten 4:55 PM) | **PLAN**: "Eastern" (follows daylight saving), shown with both texts — **ASK** if the user wants certainty |
+| 8 | Take Profit Trader | Reset time zone | "Eastern" vs "EST" (5 PM; auto-flatten 4:55 PM) | **NC** (corrected 2026-10-24 from PLAN: a conflicting required field is never picked by the product, S16 AC-5/AC-6); two published values, the user picks; **ASK** if the user wants certainty |
 | 9 | Take Profit Trader | Whether minis and micros share one limit | Gap | **NC**; one max position per account in V1 (Q-A1) |
 | 10 | Take Profit Trader | Copying to/from other firms | Not addressed; opposite positions across own accounts lead to liquidation | **INFO**; show the opposite-positions rule in the account warning |
 

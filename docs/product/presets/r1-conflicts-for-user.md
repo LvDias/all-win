@@ -2,6 +2,7 @@
 
 > **Owner:** Product Owner (Bússola @ Dev2) · **Date:** 2026-10-23 · **Sources:** Lupa's R1 files in [research/](research/) (Apex §8, Phidias §8, Lucid §11), all status `partial`.
 > **Decided 2026-10-23:** recommendations below accepted by the user, Apex Legacy and Phidias LIVE excluded; item-by-item review later. **Default:** conflicting items ship as **"not confirmed"** without blocking the rest of the preset; the user sees each published value with its source and picks one or types their own on the account (Designer O7). This list is for the user to decide **later**; nothing here blocks development or the other preset fields.
+> **Decided 2026-10-24:** Q97 (a): Apex presets cover the evaluations only; Performance Accounts are registered by hand. Apex page titles stay blank with a note (the site blocks automated access).
 > Recommendation codes: **NC** = keep "not confirmed" (user picks per account) · **ASK** = user asks the firm's support and the answer is recorded with date · **PLAN** = use the plan-specific value under the firm's own precedence clause · **SKIP** = leave out of V1 presets · **INFO** = shown as information only, no preset field.
 
 ## 1. Items that affect risk limits or routing (decide first)

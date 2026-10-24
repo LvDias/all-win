@@ -48,7 +48,7 @@ These are checked in QA for every slice that touches the relevant surface, inste
 | ID | Slice | Surfaces | Depends on | Status |
 |---|---|---|---|---|
 | V1-S1 | Webhook ingest: authenticated, validated, idempotent, logged | TradingView Input, Core | S0, ADR-0003 (JSON v1 + ids), adapter-sim | ready |
-| V1-S2 | NinjaTrader plugin: connect to Core and execute a routed entry on a sim account | NT plugin, Core | S0, ADR-0004 (Core↔plugin protocol v1), NT8 spike, Windows+NT8 machine (Q15) | ready |
+| V1-S2 | NinjaTrader plugin: connect to Core and execute a routed entry on a sim account | NT plugin, Core | S0, ADR-0004 (Core↔plugin protocol v1), NT8 spike, manual verification rounds by the user over RDP (Q15, [Decision 2026-10-24]) | ready |
 | **V1-M1** | **First end-to-end demo**: TradingView alert → Core → one NinjaTrader sim account, result back to Core | all | S1 + S2 | milestone |
 | V1-S3 | Passwordless sign-up/login by e-mail code, per-user isolation, source keys and plugin pairing | Web, Core, NT plugin | S0 | ready |
 | V1-S3b | WhatsApp as a second code channel (sign-up, login, step-up, channel change) | Web, Core | S3, Meta business verification (user, started 2026-10-23) | blocked |
@@ -104,7 +104,7 @@ Wave 4
 
 - **First usable increment for the user (personal use, sim):** M1 + S3–S10 + S13–S15 + S16 with R1 presets → TradingView signals routed to several NinjaTrader accounts with profiles, multipliers, limits, enforcement, and audit.
 - **Parallelism:** Web, Core, and plugin work can proceed in parallel per slice once ADR-0003, ADR-0004, each slice's API contract (with fixtures), and the adapter-sim are available (Architect, 2026-10-23). Core is tested against the adapter-sim; the plugin against the Core or the sim. The Web is **not** needed before M1 (seed data). Research slices (R1–R3) need no code and can start immediately.
-- **Bottleneck:** plugin verification requires a Windows machine with NinjaTrader 8 (sim/playback) — see Q15.
+- **Bottleneck:** plugin verification requires a Windows machine with NinjaTrader 8 (sim/playback) and is **manual, by the user over RDP, in rounds** ([Decision 2026-10-24], see S2) — see Q15.
 - Designer input is needed for S3, S5, S6, S7, S10, S13, S16, S18, S22 (Web screens) and for plugin panels in S13/S15.
 
 ---
@@ -128,7 +128,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 ### V1-S2 — NinjaTrader plugin: connect and execute (ready)
 
 **Goal / value:** the plugin running in the user's NinjaTrader 8 connects to All Win and executes what the Core routes to it, reporting results back.
-**Surfaces:** NT plugin, Core. **Depends on:** S0; ADR-0004 (Core↔plugin protocol v1); NT8 spike result; a Windows machine with NT8 for verification (Q15).
+**Surfaces:** NT plugin, Core. **Depends on:** S0; ADR-0004 (Core↔plugin protocol v1); NT8 spike result; a Windows machine with NT8 for verification (Q15). **Verification mode [Decision 2026-10-24]:** tests inside NinjaTrader 8 are **manual, run by the user over RDP, in rounds**; the VPS stays as it is and the agents get no access to it. Each round delivers (1) a package ready to import into NT8, preferably a NinjaScript import file (Tools → Import → NinjaScript Add-On) with the version in its name; (2) a short numbered script (step → expected result) by QA Plugins, with as many checks per round as possible, always on Sim101 or Playback; (3) the logs needed (NT8 folder) and how the user returns them (for example the RDP shared folder).
 
 - **AC-1** Given the plugin is installed and configured with the user's credentials, when NinjaTrader starts, then the plugin connects to the Core and the Core shows that instance as "connected", with the list of NinjaTrader accounts it exposes.
 - **AC-2** Given a routed entry (buy/sell, quantity N) for a connected sim account, then the plugin submits the order on that account and reports back to the Core: accepted, filled (price, quantity, time), partially filled, or rejected (with the platform's reason).
@@ -375,6 +375,7 @@ For M1 the user, secret, and destination account are pre-provisioned (seed) unti
 - **AC-12** The preset stores the firm's **commission per contract per side** when the firm publishes it (with source and date) and prefills the account's commission floor with it (S13 AC-11); when the firm does not publish it, the field starts empty and the account shows the "comissão não informada" warning until the user enters a value. [Decision 2026-10-23f]
 - **AC-13** The preset models, where a trailing drawdown stops trailing, a **structured `stops_trailing_at`** rule filled when the firm publishes it, with source and date; the Core's risk floor and the plugin's local floor **stop trailing at that point** (Q90 a, [Decision 2026-10-24]). Until the field exists, the account keeps trailing and shows a warning that the lock point is not modelled.
 - **AC-14** **Topstep V1 presets cover the Trading Combine only** (Q94 a, [Decision 2026-10-24]); Express Funded and Live Funded accounts are registered by hand.
+- **AC-15** **Apex V1 presets cover the evaluations only** (Q97 a, [Decision 2026-10-24]); Performance Accounts are registered by hand.
 
 ### V1-R1 / R2 / R3 — Prop firm preset research (ready)
 
@@ -457,7 +458,7 @@ Q7 [Decision 2026-10-23]: the user shares the Pine indicator source and the team
 | NinjaTrader plugin stability (connection, order state, multi-instance) | Wrong or missing executions | Thinnest E2E first (M1); out-of-sync detection (S11) and exactly-once (S12) before any real use; sim-only development (X-7) |
 | TradingView webhook delivery is best-effort (no guaranteed retry) | Missed signals | Audit shows received signals; user can compare with TradingView alert log; documented in S17 guide |
 | Local OCO on NinjaTrader/Rithmic connections: a stop fill does not cancel the target while NT8 is down | Unprotected or unwanted positions after an outage | S9 AC-4 user-facing limit; S11 AC-5 reconnect check; Q27 |
-| Plugin verification needs Windows + NT8 (two machines for S19 cross-instance) | Critical-path bottleneck | Q15; adapter-sim lets Core proceed without it |
+| Plugin verification needs Windows + NT8 (two machines for S19 cross-instance) and is manual, by the user over RDP, in rounds | Critical-path bottleneck; the schedule depends on the user's availability per round | Q15; adapter-sim lets Core proceed without it; each round ships a package, a numbered script and a log list (S2) |
 | Unique id generation inside Pine alerts | Duplicates or false "duplicate ignored" | Architect defines id rule in JSON contract v1; S17 AC-3 tests it |
 | Prop firm rule research volume (18 firms) and frequent rule changes | Release delay or wrong limits | Start R1 now; per-firm "verified" status; report-to-user rule; re-verification before release |
 | Firms that forbid copying or automation | User account violations | Stance shown at registration and routing (S16 AC-4); not legal advice (§12) |
@@ -664,7 +665,7 @@ Enforcement flattens positions and blocks accounts: nothing below is applied unt
 | Q75 | A `close` (or the closing leg of a barred `reverse`) reaches an out-of-sync account where All Win believes the position is flat. Send it or trust All Win's position? | (a) Trust All Win, send nothing; (b) always send a flatten, the plugin checks the real position and reports `already_flat` | **(b)** — **DECIDED (b), 2026-10-23**: extension of P1; S7 AC-8b — **Side effects confirmed 2026-10-24: Q75-1 yes (cancels every working order on the contract, manual ones included, user notified); Q75-2 yes (a reverse to X on a believed-flat account really holding X closes X and opens nothing); S7 AC-8b** |
 | Q76 | A **reduce** reaches that same account (believed flat)? (split from Q75) | (a) Not sent; `routing.nothing_to_reduce`, audited, user notified; (b) send a flatten anyway | **(a)** — **DECIDED (a), 2026-10-23**: a reduce never becomes a flatten; S7 AC-8b |
 
-### Questions for the user — next-wave gaps (Q77–Q96, all decided 2026-10-24 except Q78 withdrawn)
+### Questions for the user — next-wave gaps (Q77–Q97, all decided 2026-10-24 except Q78 withdrawn)
 
 | # | Question | Options | Recommendation |
 |---|---|---|---|
@@ -688,6 +689,7 @@ Enforcement flattens positions and blocks accounts: nothing below is applied unt
 | Q94 | Topstep presets in V1: which programs? Express Funded (XFA, balance-based scaling plan) and Live Funded (LFA, call-up only) do not fit one maximum position per account | (a) Trading Combine only; XFA and LFA registered by hand; (b) add XFA with the scale as text; (c) wait for a format with a scaling table | **DECIDED (a), 2026-10-24**: S16 AC-14 |
 | Q95 | Clearing an out-of-sync flag: should it need the step-up code? | yes / no | **DECIDED yes, 2026-10-24**: added to the Q35 set; S3 AC-10, S11 AC-3b |
 | Q96 | "Restart today's count" (Q92 c): should it need the step-up code? | yes / no | **DECIDED yes, 2026-10-24**: added to the Q35 set; S3 AC-10, S13 AC-15 |
+| Q97 | Apex Performance Accounts (PA, funded phase) have a maximum position and a daily loss limit by profit tier, which do not fit one maximum per account in V1 | (a) Apex presets cover the evaluations only; PAs registered by hand; (b) add the PAs with the top tier as the max and the scale as text; (c) wait for a format with tiers | **DECIDED (a), 2026-10-24**: same principle as Q94; S16 AC-15 |
 
 ## 8. Architect inputs requested
 
