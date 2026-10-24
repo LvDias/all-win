@@ -74,7 +74,18 @@ Default sort: exit time, newest first (stated in the caption). Sortable headers 
 | Origem | source name + signal type chip; `Manual`; `Plataforma (sem sinal)` (§3.4) |
 | Ações | kebab: `Ver detalhes`, `Ver instrução` (when originating instruction exists, → S10 timeline), `Ver conta` |
 
-The table scrolls horizontally inside its container with a sticky first column (F§9). Below `md`, each trade is a `Card`: account + direction as title, P&L top-right, then the definition list in the same order. The cards keep the table's sort control (C§4, rule from Aquarela): a `Select` "Ordenar por" / "Sort by" above the list with the same sort keys and directions as the sortable headers (`Saída`, `P&L`, `Tempo na operação`, each newest/highest first or oldest/lowest first), the same default, and the same URL state.
+The table scrolls horizontally inside its container with a sticky first column (F§9). Below `md`, each trade is a `Card`: account + direction as title, P&L top-right, then the definition list in the same order. The cards keep the table's sort control (C§4, rule from Aquarela): a `Select` "Ordenar por" / "Sort by" above the list with the same sort keys and directions as the sortable headers (`Saída`, `P&L`, `Tempo na operação`), the same default, and the same URL state. One option per key and direction (labels pt-BR / en; the API `sort` and `order` of `listTrades` in the last column):
+
+| Option pt-BR | Option en | `sort`, `order` |
+|---|---|---|
+| Saída: mais recente primeiro *(padrão)* | Exit: newest first *(default)* | `exit_time`, `desc` |
+| Saída: mais antiga primeiro | Exit: oldest first | `exit_time`, `asc` |
+| P&L: maior primeiro | P&L: highest first | `pnl`, `desc` |
+| P&L: menor primeiro | P&L: lowest first | `pnl`, `asc` |
+| Tempo na operação: mais longo primeiro | Time in trade: longest first | `duration`, `desc` |
+| Tempo na operação: mais curto primeiro | Time in trade: shortest first | `duration`, `asc` |
+
+Behavior as C§4 "Sorting below `md` (cards)": the visible label "Ordenar por" / "Sort by"; desktop and mobile share one sort state (and the URL) and send the same request; changing it reloads the list from the first page, as a header click does. **On change, focus stays on the `Select` and a polite live region says "Ordenado por {campo}, {direção}" / "Sorted by {field}, {direction}"** (for example "Ordenado por Tempo na operação, mais longo primeiro" / "Sorted by Time in trade, longest first"). The header buttons are not rendered below `md`.
 
 ### 3.4 Origin labels
 
