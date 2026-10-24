@@ -38,21 +38,20 @@ fi
 tty_flag=()
 [ -t 0 ] || tty_flag=(-T)   # no terminal (pipe, cron): do not ask docker for a TTY
 
-# Belt and braces: what the command prints also goes to the host's syslog/journald (tag allwin-admin-recovery). Only the
-# command's own output is copied; the codes are read from the terminal by the Core and are never printed. Fails closed:
-# without a working logger the recovery does not run. The record carries the operator identity and the flag names (no values).
+# Belt and braces: the host's syslog/journald (tag allwin-admin-recovery) gets only a start line and an end line. The command's output is NOT
+# copied (on a terminal the container's echo of what the operator types would travel on that stream), so a typed code can never reach the log.
+# The record carries the operator identity, the subcommand and the flag names (no values). Fails closed: without a working
+# logger the recovery does not run.
 log() { logger -t allwin-admin-recovery -p authpriv.notice -- "$*"; }
 flags=""
 for a in "$@"; do case "$a" in --*) flags="$flags ${a%%=*}" ;; -*) flags="$flags ${a:0:2}" ;; *) [ -n "${sub:-}" ] || sub="$(clean "$a" | cut -c1-40)" ;; esac; done
 log "start login=${ALLWIN_OPERATOR_LOGIN:-?} ssh_connection=${ALLWIN_OPERATOR_SSH_CONNECTION:-?} ssh_key=${ALLWIN_OPERATOR_SSH_KEY:-?} command=${sub:-?}${flags}" \
   || { echo "allwin-admin-recovery: cannot write to the system log (logger); refusing to run" >&2; exit 1; }
 
-set +eu   # $! of the process substitution is read below
+set +e
 docker compose -f "$compose_file" --env-file "$env_file" exec "${tty_flag[@]}" \
   -e ALLWIN_OPERATOR_LOGIN -e ALLWIN_OPERATOR_SSH_CONNECTION -e ALLWIN_OPERATOR_SSH_KEY \
-  core allwin-core admin recovery "$@" 2>&1 \
-  | tee >(tr -cd '[:print:]\n' | logger -t allwin-admin-recovery -p authpriv.notice)
-rc="${PIPESTATUS[0]}"
-wait $! 2>/dev/null
+  core allwin-core admin recovery "$@"
+rc=$?
 log "end exit=$rc"
 exit "$rc"
