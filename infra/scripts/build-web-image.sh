@@ -3,6 +3,8 @@
 #   build-web-image.sh <repo worktree> <image tag>      e.g. allwin-web:sunday-dev
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# These scripts serve the Sunday path: ask for the sunday lane (honoured only for worktrees listed in .heavy-locks/LANE.sunday; others run as normal).
+export ALLWIN_HEAVY_LANE="${ALLWIN_HEAVY_LANE:-sunday}"
 wt="${1:-}"; tag="${2:-}"
 [ -f "$wt/web/package.json" ] && [[ "$tag" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$ ]] || { echo "usage: $0 <repo worktree> <image:tag>" >&2; exit 2; }
 dk() { if docker info >/dev/null 2>&1; then docker "$@"; else sg docker -c "$(printf '%q ' docker "$@")"; fi; }

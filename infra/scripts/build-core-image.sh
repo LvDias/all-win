@@ -7,6 +7,8 @@
 # An image built with a test feature (dev-stubs, ADR-0006 rule 8) MUST get a distinct tag and never goes to staging or a release.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# These scripts serve the Sunday path: ask for the sunday lane (honoured only for worktrees listed in .heavy-locks/LANE.sunday; others run as normal).
+export ALLWIN_HEAVY_LANE="${ALLWIN_HEAVY_LANE:-sunday}"
 wt="${1:-}"; tag="${2:-}"; shift 2 || true
 [ -d "$wt/core" ] && [[ "$tag" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$ ]] || { echo "usage: $0 <repo worktree> <image:tag> [-- <cargo args>]" >&2; exit 2; }
 [ "${1:-}" = "--" ] && shift
@@ -36,9 +38,10 @@ SQLX_OFFLINE=true "$here/allwin-heavy" bash -c '
 ' _ "$wt" "$stage" "$pkg" "$bin" "$@"
 cp "$here/../docker/$dockerfile" "$stage/Dockerfile"
 echo "binary sha256: $(sha256sum "$stage/$bin" | cut -d' ' -f1)"
-echo "marker 'allwin-dev-stub:routing-entry-gate' occurrences in the binary: $(grep -c -a -- 'allwin-dev-stub:routing-entry-gate' "$stage/$bin" || true)"
-# ADR-0006 rule 8, enforced on the BINARY (not only on the arguments): the stand-in marker present means a -dev-stubs tag, and a -dev-stubs tag means the marker is present.
-markers="$(grep -c -a -- 'allwin-dev-stub:routing-entry-gate' "$stage/$bin" || true)"
+echo "dev-stub markers ('allwin-dev-stub:' prefix: routing-entry-gate, gateway-risk, ...) in the binary: $(grep -c -a -- 'allwin-dev-stub:' "$stage/$bin" || true)"
+# ADR-0006 rule 8, enforced on the BINARY (not only on the arguments): ANY test stand-in marker (every one starts with 'allwin-dev-stub:', for example
+# routing-entry-gate in routing-application and gateway-risk in the app gateway) means a -dev-stubs tag, and a -dev-stubs tag means a marker is present.
+markers="$(grep -c -a -- 'allwin-dev-stub:' "$stage/$bin" || true)"
 if [ "$pkg" = app ]; then
   case "$tag" in
     *-dev-stubs) [ "$markers" -gt 0 ] || { echo "refusing: tag $tag claims dev-stubs but the binary has no stand-in marker" >&2; exit 2; } ;;
