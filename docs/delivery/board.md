@@ -51,47 +51,42 @@
 - Waiting for the user: nothing. Windows access is the user's own (no dependency). Plugin → Core path decided with staging at M1 (option B). All Q75–Q98 DECIDED.
 - Re-plan S2 / M1 for manual NT8 rounds (2026-10-24): Elo (package + log paths), Pêndulo (round scripts), Forja (exchange channel, park Phase 2), Esquadro (spike plan rev. 5), Rumo (slice plan). Maestro reports the schedule impact.
 - Blocker for the S2 plugin merge (Crivo n3, spike rev. 7): the plugin 1.3 contract tests are red on main (19); fixed on the S2 branch before its merge (negotiated 1.2–1.4). Plugin S2 order (Elo): R0 probe package → net48 host + packaging + NT stubs → protocol 1.3/1.4.
+- Merge-train note: when AC-12 (Cinzel) meets 061400 (Brasa), rename the consumer identity-operator → identity.operator (persisted consumer key with a CHECK). Owner: Brasa.
+- Merge-train note: S16 StanceBlock → FirmRuleQuote titleNote pass-through (Grosa L1) is done right after the S22 line (FirmRuleQuote with titleNote) merges. Owner: Mosaico.
+- Merge-train note (Vitral): shared/routes.ts accountsPath and presetsPath are adjacent lines; when S5 and S16 merge, a context conflict is expected — keep both set (accountsPath = '/accounts', presetsPath = '/presets').
+- Merge-train note (Crivo): when Q95/Q96 step-up (Brasa) meets AC-12 (Cinzel), the DB test loop must insert session = (action != AdminRecovery). Owner: Brasa.
 - Presets release files: path data/presets/releases/<firm>.json (Maestro decision 2026-10-24); writer Torno (format/generator), content approval Rumo per file, commit Rebite on hash match. Topstep: content APPROVED c186f6041d14a47e, delta pending (consistency day-lock NC note + real page titles via Aquarela).
 - Rollout order (Crivo m3 / Vigia L3, ADR-0004 r5): plugin with protocol 1.4 FIRST, then a Core speaking 1.4 — otherwise entries on accounts with a drawdown rule served by a < 1.4 plugin are skipped. Nothing in production yet; applies to the first release plan (Forja/Maestro). Consequence (Pêndulo I1): the shipped plugin speaks 1.0–1.2, so the plugin 1.4 slice gates every E2E with a drawdown rule (prop accounts).
 - Resume: the Maestro re-reads this board, `decisions.md`, and runs `maestri list` / `maestri check` on each agent.
 
-## Team assignments (2026-10-23 ~22:40) — idle rule: nobody idle >15 min without a reason here
+## Team assignments (2026-10-24 ~04:00) — idle rule: nobody idle >15 min without a reason here
 
 | Agent | Now | Waiting reason (if any) |
 |---|---|---|
-| Forja (DevOps, Dev2) | qa-db hardening (Esmeril findings); integrate de98e86 to main | — |
-| Rebite (DevOps, Dev2, Sonnet, new) | routine queue: QA envs/worktrees (Agulha, Sonda), WIP commits (Mosaico, Lupa, Aquarela), Vitral commits on hash match | — |
-| Brasa | S3 core (critical path) | — |
-| Malha @ Dev3 | S5 core ready SHA; ReadAccounts::binding_of for S7 | — |
-| Torno | S6 core to ready SHA on 5.1.1 | — |
-| Ferro @ Dev3 | S7 decision use case; rebase on 4939133+196a30a+7872ca9 | Q75/Q76 code waits ADR-0003 r4 |
-| Elo @ Dev3 | plugin L-a/L-b delta, then protocol 1.3 | — |
-| Vitral | S3 web passwordless rebuild + findings | — |
-| Mosaico | S5 web: profile_size tie (5.0.0 fields) | — |
-| Esquadro @ Dev3 | ADR-0003 r4 (Pêndulo M-Q75) | user answer on Q75 flatten scope |
-| Compasso | HTTP 5.2.0 draft (freeze after r4) | — |
-| Lastro @ Dev3 | S5/S6 migrations review; 061300 brief | — |
-| Rumo @ Dev3 | Q81 recommendation; wave-2 diff 91358f8f24f471ca in review | — |
-| Aquarela | specs S8/S11/S13/S17 fixes (Esmeril lows); S16 + S5 next | S16/S5 wait Bisturi verdict on a37d36ba45e3 |
-| Lupa | dismissed 2026-10-23 after R4 + questions-to-firms.md (re-recruit for new research) | — |
-| Crivo @ Dev3 | Code Review 196a30a, ADR r4 | — |
-| Bisturi @ Dev3 | Code Review Rumo 91358f8f24f471ca | — |
-| Esmeril @ Dev3 (new) | Code Review Aquarela C§9; next qa-db re-review, HTTP 5.2.0 | — |
-| Vigia | QA Security 196a30a, ADR r4, C3/U13 re-checks | — |
-| Guarita @ Dev3 (new) | QA Security S5 web 2ab3173; qa-db 3c37f2b re-check | — |
-| Pêndulo | NT8 Windows checklist for untested items | — |
-| Sentinela | cargo PG tests on 196a30a; latency A/B with Pulso | — |
-| Pulso (SRE, new) | latency A/B judgement; ingress histogram + perf method proposal | — |
-| Prisma @ Dev3 | QA plans S5 core / S3 core | — |
-| Sonda @ Dev3 (new) | QA crate core/tests/qa + S7 engine tests | — |
-| Agulha (new, Sonnet) | QA tests core/tests/qa s3_identity.rs (S3 3f23c81) | — |
-| Lente @ Dev3 | QA plan S5 web; re-verify S3 web | — |
-| Retina @ Dev3 (new, Sonnet) | QA Frontend S13 web 5b7d9be | — |
-| Bigorna @ Dev3 (new) | Core gateway (S2 Core side) milestone 1 enterprise; owns adapter-sim | — |
-| Pulso (SRE) | S1 latency A/B verdict; host CPU (allwin-heavy by Forja) | — |
-| Traço @ Dev3 | not reconnected; specs split Aquarela / Nanquim | — |
-| Nanquim @ Dev3 (new, Sonnet) | specs S21/S22/S10/S15/plugin-panels (4fad5e69d5be in review); S18 next | S18 frozen inside a37d36ba45e3 until Bisturi verdict |
-| Grosa @ Dev3 (new) | Code Review S5 web 2ab3173 | — |
+| Elo @ Dev3 | PLUGIN PRIORITY: minimal NT8 package AllWin-NT8-0.1.0-min (code done; FakeCore win-x64 build queued) | build queue paused by the SRE window until ≤04:50 |
+| Pêndulo | short round script for the minimal package | — |
+| Forja / Rebite (DevOps) | commits, merges, quiet window; merge train prep | Rebite on call |
+| Pulso + Sentinela | latency A/B main × 196a30a (window 2, GO 03:40) | — |
+| Brasa | S3 follow-ups; 061400 lows; merge-train identity side | — |
+| Cinzel | AC-12 r3 (Brasa APPROVED) | Guarita verdict on r3 |
+| Bigorna @ Dev3 | gateway delta A (Grosa) then B (r5 + Pêndulo F1–F9) | build queue (pause) |
+| Ferro @ Dev3 | ingress latency histogram | merges wait on 196a30a A/B |
+| Malha @ Dev3 | S13 application / SHA for Torno (status asked) | — |
+| Torno | S16 core; per-account ops | Malha SHA |
+| Mosaico | S16 web delta 6 under gates; E2E queued | Grosa verdict; build queue |
+| Vitral | 6.0.0 web lot (types regen once in the train) | merge train |
+| Aquarela | design delta 3 fixes (Bisturi b4cf13c80c5a CHANGES) | — |
+| Nanquim @ Dev3 | S18 notifications spec (GO 2026-10-24) | — |
+| Compasso | HTTP 6.0.1 + protocol 1.4.2 (text) | — |
+| Esquadro @ Dev3 | ADR-0004 r6, policy 3.4, spike 7.1 | — |
+| Lastro @ Dev3 | data model 16.20 (maint grant note) | — |
+| Rumo @ Dev3 | slice-plan: Q98 (b), minimal plugin priority | — |
+| Prisma @ Dev3 | QA Backend S3 core + Q88 delta | Forja commit SHA of b657e17218c8 |
+| Sonda @ Dev3 | QA Backend 061400 | build queue |
+| Crivo, Esmeril, Grosa, Bisturi @ Dev3 | Code Review on call (Grosa: S16 delta 6) | review queue |
+| Vigia, Guarita @ Dev3 | QA Security on call (Guarita: AC-12 r3) | review queue |
+| Retina @ Dev3 | QA Frontend S16 full gate | build queue |
+| Agulha | dismissed 2026-10-24 ~04:00 (no near-term gateway QA work; Sonda + Pêndulo cover) | — |
 
 ## Backlog (queued, not started)
 - Protocol minor delta `accounts_changed` (C→A, with ack) so a bind takes effect immediately (Esquadro X2); with Elo, Maestro schedules.

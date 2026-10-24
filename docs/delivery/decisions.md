@@ -214,3 +214,9 @@
 ## 2026-10-24 — Windows access is the user's; minimal working plugin first
 - **Windows access:** how the user connects to the Windows VPS is the user's decision; the team does not depend on it and drops it from the pending items. The plugin → Core path is decided together with the staging host, at M1.
 - **Priority:** as soon as possible, a minimal version WORKING inside NT8: a fake-Core command opens a market entry on Sim101 with stop/target (OCO) at the profile distances and reports the fill and the bracket. Finish and the other functions come in the following rounds.
+
+## 2026-10-24 — Q99, Q100, Q101 (clear out of sync, notifications)
+- **Q99 yes:** a notification group the user dismissed reopens when the account is flagged out of sync for a NEW reason (sync.flagged), in addition to the 3 routing codes of Q68 (b).
+- **Q100 (a):** after a clear, a position only partially covered by working stops, or whose protection is unknown, counts as not protected: new automated entries stay blocked until it is fully covered or flat (fail closed). Rejected: (b) only "no stop at all" blocks.
+- **Q101 yes:** when the only remaining reason is the one held at the clear and the position becomes fully covered or flat, the account returns to in sync by itself (audited), without a second clear. User addition: if the stop is later cancelled or removed and the position is uncovered again, new automated entries are blocked again automatically. Applied reading (as in HTTP 6.1.0 and ADR-0004 r6): that new uncovered state is a new reason and needs a new clear (sticky, Q14).
+- **Canonical docs:** HTTP 6.1.x (Compasso), ADR-0004 r6.1 §6.4 (Architect), slice-plan S11/S18 (PO), specs S11/S18 (design).
