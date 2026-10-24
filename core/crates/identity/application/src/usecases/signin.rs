@@ -15,6 +15,7 @@ use crate::changes::{
 use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
 use crate::ports::{CodeDelivery, CodeMessage};
+use crate::usecases::channel_change::{CancelScope, cancel_pending_with, commit_with_cancel};
 use crate::usecases::codes::{self, Check};
 use crate::usecases::common::user_audit;
 use crate::usecases::delivery::DeliveryJob;
@@ -562,7 +563,9 @@ impl SignOutEverywhere {
                 reason: EndReason::SignedOutEverywhere,
                 at: now,
             });
-        self.deps.store.commit(changes).await?;
-        Ok(())
+        // Q88 (a): it also cancels the pending channel change.
+        let with_cancel =
+            cancel_pending_with(&self.deps, ctx, CancelScope::Any, changes.clone(), meta).await?;
+        commit_with_cancel(&self.deps, with_cancel, changes).await
     }
 }

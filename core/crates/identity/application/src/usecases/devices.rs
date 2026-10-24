@@ -1,5 +1,6 @@
 //! `listDevices`, `forgetDevice` (auth policy rev. 2 §5.2). Forgetting a device revokes it and ends
-//! its sessions; its cookie then counts as none. No step-up: it only reduces access.
+//! its sessions; its cookie then counts as none, and a pending channel change requested from it
+//! is cancelled (Q88 (a)). No step-up: it only reduces access.
 
 use identity_enterprise::ids::DeviceId;
 use identity_enterprise::session::EndReason;
@@ -8,6 +9,7 @@ use crate::auth::AuthContext;
 use crate::changes::{Actor, AuditAction, ChangeSet, EndedSessions, IdentityEvent, Write};
 use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
+use crate::usecases::channel_change::{CancelScope, cancel_pending_with, commit_with_cancel};
 use crate::usecases::common::user_audit;
 use crate::views::DeviceView;
 
@@ -89,7 +91,15 @@ impl ForgetDevice {
                 reason: EndReason::DeviceRevoked,
                 at: now,
             });
-        deps.store.commit(changes).await?;
-        Ok(())
+        // Q88 (a): a pending channel change requested from this device is cancelled with it.
+        let with_cancel = cancel_pending_with(
+            deps,
+            ctx,
+            CancelScope::RequestedFrom(device_id),
+            changes.clone(),
+            meta,
+        )
+        .await?;
+        commit_with_cancel(deps, with_cancel, changes).await
     }
 }

@@ -820,6 +820,8 @@ async fn http_passwordless_flows() {
 /// registered and an unknown identifier or challenge. Every answer is held to the floor plus a
 /// jitter; statistically, every sample is at or above the floor and the medians stay within a few
 /// tens of milliseconds. Sequential requests, distinct client IPs (no throttle interplay).
+/// 30 samples per side: the standard error of a median gap from the 0–99 ms jitter alone is about
+/// 9 ms, so the 40 ms bound is over 4 standard errors (Crivo L11: 12 samples failed ~7% by chance).
 #[tokio::test(flavor = "multi_thread")]
 async fn code_endpoints_do_not_reveal_registration_by_time() {
     let Some(db) = setup().await else { return };
@@ -830,7 +832,7 @@ async fn code_endpoints_do_not_reveal_registration_by_time() {
         trust_forwarded_for: false,
         events: Arc::new(SseHub::new()),
     }));
-    const N: u8 = 12;
+    const N: u8 = 30;
     const FLOOR: std::time::Duration = std::time::Duration::from_millis(500);
     for i in 0..N {
         seed_user(&deps, &format!("timing{i}@example.com"), false).await;

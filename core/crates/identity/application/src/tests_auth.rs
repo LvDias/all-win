@@ -4,7 +4,7 @@
 use chrono::Duration;
 use identity_enterprise::channel::{Channel, Destination};
 use identity_enterprise::channel_change::ChangeStatus;
-use identity_enterprise::ids::{ConnectionId, InvitationId};
+use identity_enterprise::ids::{ChannelChangeId, ConnectionId, InvitationId};
 use identity_enterprise::invitation::Invitation;
 use identity_enterprise::otp::{CodeRole, Purpose, StepUpAction};
 use identity_enterprise::profile::Locale;
@@ -919,6 +919,91 @@ async fn channel_change_from_a_new_device_waits_72_hours_and_can_be_cancelled() 
         w.alerts.0.lock().unwrap().last(),
         Some(crate::ports::SecurityAlert::ChannelChangeAfterCancel { .. })
     ));
+}
+
+/// Status of the user's change, read from the store.
+async fn change_status(
+    w: &World,
+    c: &crate::auth::AuthContext,
+    id: ChannelChangeId,
+) -> ChangeStatus {
+    use crate::ports::IdentityStore;
+    w.store
+        .channel_change(c.user.id, id)
+        .await
+        .unwrap()
+        .unwrap()
+        .status
+}
+
+/// Q88 (a): "sign out everywhere" cancels the pending channel change in the same transaction,
+/// audited as the user's cancellation, with a notice to every channel.
+#[tokio::test]
+async fn sign_out_everywhere_cancels_the_pending_channel_change() {
+    let w = World::new();
+    let (_, _, c) = signed_in(&w, "ana@example.com", false).await;
+    let view = start_change(&w, &c, "new@example.com").await.unwrap();
+    let other = ctx(&w, &login(&w, "ana@example.com").await).await.unwrap();
+    SignOutEverywhere::new(w.deps.clone())
+        .handle(&other, &meta())
+        .await
+        .unwrap();
+    assert_eq!(
+        change_status(&w, &c, view.id).await,
+        ChangeStatus::Cancelled
+    );
+    let last = w.store.committed().into_iter().last().unwrap();
+    assert!(last.audit.iter().any(|a| matches!(
+        a.action,
+        AuditAction::ChannelChangeCancelled { by_user: true, .. }
+    )));
+    assert!(
+        last.audit
+            .iter()
+            .any(|a| matches!(a.action, AuditAction::SignedOutEverywhere))
+    );
+    assert!(last.events.iter().any(|e| matches!(
+        e,
+        IdentityEvent::NoticeRequested {
+            notice: Notice::ChannelChangeCancelled { .. },
+            ..
+        }
+    )));
+    // Without a pending change it is a plain sign-out.
+    let again = ctx(&w, &login(&w, "ana@example.com").await).await.unwrap();
+    SignOutEverywhere::new(w.deps.clone())
+        .handle(&again, &meta())
+        .await
+        .unwrap();
+}
+
+/// Q88 (a): "forget device" cancels a pending change only when that device requested it.
+#[tokio::test]
+async fn forget_device_cancels_only_a_change_requested_from_that_device() {
+    let w = World::new();
+    let (_, _, requester) = signed_in(&w, "ana@example.com", false).await;
+    let view = start_change(&w, &requester, "new@example.com")
+        .await
+        .unwrap();
+    let other = ctx(&w, &login(&w, "ana@example.com").await).await.unwrap();
+    let third = ctx(&w, &login(&w, "ana@example.com").await).await.unwrap();
+    ForgetDevice::new(w.deps.clone())
+        .handle(&other, third.session.device_id, &meta())
+        .await
+        .unwrap();
+    assert_eq!(
+        change_status(&w, &requester, view.id).await,
+        ChangeStatus::AwaitingCodes,
+        "another device: the change stays"
+    );
+    ForgetDevice::new(w.deps.clone())
+        .handle(&other, requester.session.device_id, &meta())
+        .await
+        .unwrap();
+    assert_eq!(
+        change_status(&w, &requester, view.id).await,
+        ChangeStatus::Cancelled
+    );
 }
 
 #[tokio::test]

@@ -701,3 +701,46 @@ async fn channel_change_expiry_hold_and_worker() {
     drop((deps, store));
     db.teardown().await;
 }
+
+/// 061310 (Crivo L1, user-authorized): identity.source.name holds only what the Core's
+/// DisplayName accepts — 1..60 characters, not blank, no token shape — even on paths that bypass
+/// the API (here an UPDATE as the superuser, which bypasses RLS but not CHECKs).
+#[tokio::test(flavor = "multi_thread")]
+async fn source_names_are_shape_checked_in_the_database() {
+    let Some(db) = setup().await else { return };
+    let (deps, _store, delivery) = deps(&db);
+    seed_user(&deps, "ana@example.com", false).await;
+    let (_, a) = sign_in(&db, &deps, &delivery, "ana@example.com", None).await;
+    let p = step_up(&db, &deps, &delivery, &a, StepUpAction::SourceCreate, None).await;
+    let created = CreateSource::new(deps.clone())
+        .handle(&a, "Main", SourceType::TradingView, Some(&p), &meta())
+        .await
+        .unwrap();
+    let id = created.source.source.id.as_uuid();
+    let rename = |name: String| {
+        let pool = db.inspect.clone();
+        async move {
+            sqlx::query("UPDATE identity.source SET name = $1 WHERE id = $2")
+                .bind(name)
+                .bind(id)
+                .execute(&pool)
+                .await
+        }
+    };
+    let token = format!("awk_Abc123Def456_{}", "s".repeat(43));
+    for bad in [
+        String::new(),
+        "   ".to_owned(),
+        "a".repeat(61),
+        token.clone(),
+        format!("feed {token}"),
+    ] {
+        let e = rename(bad.clone()).await.unwrap_err();
+        assert!(
+            e.to_string().contains("source_name_shape_check"),
+            "{bad:?}: {e}"
+        );
+    }
+    rename("é".repeat(60)).await.unwrap();
+    db.teardown().await;
+}
