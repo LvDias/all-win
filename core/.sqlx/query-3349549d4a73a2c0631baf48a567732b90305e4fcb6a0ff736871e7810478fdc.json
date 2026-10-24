@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.channel_change\n                     (id, user_id, channel, new_value, requested_session_id, kind, admin_user_id, verified_by,\n                      verification_ref, break_glass, status, created_at, expires_at)\n                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'awaiting_codes', $11, $12)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3349549d4a73a2c0631baf48a567732b90305e4fcb6a0ff736871e7810478fdc"
+}

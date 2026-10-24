@@ -308,6 +308,13 @@ fn action_text(action: StepUpAction, locale: Locale) -> &'static str {
                 "change the bound account"
             }
         }
+        StepUpAction::AdminRecovery => {
+            if pt {
+                "recuperar o acesso de um usuário (comando de operador)"
+            } else {
+                "recover a user's access (operator command)"
+            }
+        }
     }
 }
 
@@ -347,17 +354,33 @@ pub fn code_message(d: &CodeDelivery) -> (String, SecretString) {
             (Channel::Email, false) => "to change your e-mail".to_owned(),
             (Channel::Whatsapp, false) => "to change your WhatsApp number".to_owned(),
         },
+        CodeMessage::AdminRecovery => {
+            if pt {
+                "para recuperar o acesso à sua conta".to_owned()
+            } else {
+                "to recover access to your account".to_owned()
+            }
+        }
     };
-    let (subject, never) = if pt {
-        (
+    let recovery = matches!(d.message, CodeMessage::AdminRecovery);
+    let (subject, never) = match (pt, recovery) {
+        (true, false) => (
             "Seu código All Win",
             "A equipe All Win nunca pede este código.",
-        )
-    } else {
-        (
+        ),
+        (false, false) => (
             "Your All Win code",
             "The All Win team will never ask you for this code.",
-        )
+        ),
+        // The one code the user reads to someone: the admin who verified them (AC-12).
+        (true, true) => (
+            "Seu código All Win",
+            "Informe este código somente ao administrador do All Win que verificou sua identidade e está atendendo você agora. Se você não pediu a recuperação, não o informe a ninguém.",
+        ),
+        (false, true) => (
+            "Your All Win code",
+            "Tell this code only to the All Win admin who verified your identity and is helping you now. If you did not ask for a recovery, do not tell it to anyone.",
+        ),
     };
     let body = if pt {
         format!(
@@ -423,6 +446,126 @@ pub fn notice_message(locale: Locale, notice: &Notice) -> (Destination, String, 
                 "Canal da conta trocado"
             } else {
                 "Account channel changed"
+            };
+            (to.clone(), subject.to_owned(), body)
+        }
+        // Policy §9 (Esquadro): the full notice goes to the new e-mail only. No action link.
+        Notice::AccountRecovered {
+            to,
+            sources,
+            pairings,
+        } => {
+            let body = if pt {
+                format!(
+                    "A recuperação do acesso à sua conta All Win terminou e este é agora o e-mail da conta.\n\nTodas as sessões foram encerradas e todos os dispositivos, removidos. Continuam ativos: {sources} fonte(s) de sinais e {pairings} pareamento(s) do NT8. Entre no All Win e revise-os em \"Fontes de sinais\" e em \"Conexões\": troque a URL ou revogue a fonte, e desfaça o pareamento, de tudo o que você não reconhecer.\n"
+                )
+            } else {
+                format!(
+                    "The recovery of your All Win account is complete, and this is now the account's e-mail.\n\nEvery session was ended and every device removed. Still active: {sources} signal source(s) and {pairings} NT8 pairing(s). Sign in to All Win and review them under \"Signal sources\" and \"Connections\": rotate or revoke any source, and unpair any instance, that you do not recognize.\n"
+                )
+            };
+            let subject = if pt {
+                "Acesso à conta recuperado"
+            } else {
+                "Account access recovered"
+            };
+            (to.clone(), subject.to_owned(), body)
+        }
+        // Policy 3.3 §9.1 (c): at a break-glass start, to the target's channels. No action link.
+        Notice::BreakGlassStarted {
+            to,
+            masked_account,
+            at,
+        } => {
+            let at = at.format("%Y-%m-%d %H:%M UTC");
+            let body = if pt {
+                format!(
+                    "Uma recuperação de emergência (break-glass) da conta All Win de {masked_account} foi iniciada no servidor em {at}. Se não foi você, fale com o suporte e use \"Cancelar troca\" em qualquer sessão.\n"
+                )
+            } else {
+                format!(
+                    "An emergency (break-glass) recovery of the All Win account of {masked_account} was started on the server at {at}. If this was not you, contact support and use \"Cancel change\" in any session.\n"
+                )
+            };
+            let subject = if pt {
+                "Recuperação de emergência iniciada"
+            } else {
+                "Emergency recovery started"
+            };
+            (to.clone(), subject.to_owned(), body)
+        }
+        // To every other active platform admin: they can cancel it with the operator command.
+        Notice::AdminBreakGlassStarted {
+            to,
+            masked_account,
+            at,
+        } => {
+            let at = at.format("%Y-%m-%d %H:%M UTC");
+            let body = if pt {
+                format!(
+                    "Uma recuperação de emergência (break-glass) da conta All Win de {masked_account} foi iniciada no servidor em {at}. Se ela não foi combinada, cancele-a com \"allwin-core admin recovery cancel\" e fale com o operador.\n"
+                )
+            } else {
+                format!(
+                    "An emergency (break-glass) recovery of the All Win account of {masked_account} was started on the server at {at}. If it was not agreed, cancel it with \"allwin-core admin recovery cancel\" and talk to the operator.\n"
+                )
+            };
+            let subject = if pt {
+                "Recuperação de emergência de um administrador"
+            } else {
+                "An administrator's emergency recovery"
+            };
+            (to.clone(), subject.to_owned(), body)
+        }
+        // Break-glass alert to the operator's address: ids only, never who ran it.
+        Notice::OperatorAlert {
+            to,
+            change_id,
+            step,
+            outcome,
+            at,
+        } => {
+            let at = at.format("%Y-%m-%d %H:%M UTC");
+            let change = change_id.as_deref().unwrap_or("-");
+            let body = if pt {
+                format!(
+                    "Alerta All Win: comando de operador em modo break-glass.\nPasso: {step}. Resultado: {outcome}. Troca: {change}. Em: {at}.\nQuem rodou está no log do operador do servidor (target operator) e no log do sshd do host.\n"
+                )
+            } else {
+                format!(
+                    "All Win alert: operator command in break-glass mode.\nStep: {step}. Outcome: {outcome}. Change: {change}. At: {at}.\nWho ran it is in the server's operator log (target operator) and the host's sshd log.\n"
+                )
+            };
+            let subject = if pt {
+                "Alerta: break-glass usado"
+            } else {
+                "Alert: break-glass used"
+            };
+            (to.clone(), subject.to_owned(), body)
+        }
+        // Only the fact: the old channel may be the attacker's, so no count or list.
+        Notice::RecoveredByAdmin {
+            to,
+            channel,
+            masked_new_value,
+            at,
+        } => {
+            let at = at.format("%Y-%m-%d %H:%M UTC");
+            let body = if pt {
+                format!(
+                    "O {} da sua conta All Win foi substituído por {masked_new_value} por uma recuperação administrativa em {at}. Não foi você? Fale com o suporte.\n",
+                    channel.as_str()
+                )
+            } else {
+                format!(
+                    "Your All Win account's {} was replaced with {masked_new_value} by an administrative recovery at {at}. Not you? Contact support.\n",
+                    channel.as_str()
+                )
+            };
+            let subject = if pt {
+                "Conta recuperada pelo administrador"
+            } else {
+                "Account recovered by an administrator"
             };
             (to.clone(), subject.to_owned(), body)
         }

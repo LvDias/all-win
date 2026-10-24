@@ -4,6 +4,7 @@ mod common;
 
 pub mod access_port;
 pub mod admin;
+pub mod admin_recovery;
 pub mod channel_change;
 pub(crate) mod codes;
 pub mod connections;

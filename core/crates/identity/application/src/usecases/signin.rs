@@ -386,9 +386,12 @@ impl ResendCode {
         ) else {
             return Ok(());
         };
-        let bound_elsewhere = row
-            .session_id
-            .is_some_and(|s| session.is_none_or(|c| c.session.id != s));
+        // A session-less step-up or change code belongs to the operator command (AC-12): no
+        // session may resend it.
+        let bound_elsewhere = match row.session_id {
+            Some(s) => session.is_none_or(|c| c.session.id != s),
+            None => matches!(purpose, Purpose::StepUp | Purpose::ChannelChange),
+        };
         if bound_elsewhere || !row.state.is_open(now) || !user.is_active() {
             return Ok(());
         }

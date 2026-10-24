@@ -21,4 +21,6 @@ mod testing;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_admin_recovery;
+#[cfg(test)]
 mod tests_auth;

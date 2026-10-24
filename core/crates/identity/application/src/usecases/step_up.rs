@@ -48,6 +48,10 @@ impl RequestStepUp {
         let deps = &self.deps;
         let now = deps.clock.now();
         let user = &ctx.user;
+        if cmd.action.is_operator_only() {
+            // `admin_recovery`: only the operator command asks for it (HTTP 5.4.0).
+            return Err(IdentityError::InvalidRequest { pointer: "/action" });
+        }
         if cmd.action == StepUpAction::AdminInvitationCreate {
             ctx.require_admin()?;
         }

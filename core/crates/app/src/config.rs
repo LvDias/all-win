@@ -22,6 +22,7 @@
 //! | `CODE_SENDER` | `disabled` | `disabled` (no provider: every code delivery fails) or `dev_smtp` (only with `APP_ENV` development or test) |
 //! | `DEV_SMTP_ADDR` | `127.0.0.1:1025` | SMTP of the development mail catcher (Mailpit), for `CODE_SENDER=dev_smtp` |
 //! | `DEV_SMTP_FROM` | `core@allwin.local` | sender address of development mail |
+//! | `OPERATOR_ALERT_EMAIL` | unset | where break-glass alerts of `allwin-core admin recovery` are e-mailed (ids only); unset = server log only (warned at startup) |
 //! | `IDENTITY_ADAPTER_MIN_VERSIONS` | `ninjatrader8=1.0.0` | minimum plugin version per adapter type, `type=semver[,…]`; development builds pair only outside production |
 //! | `RUST_LOG` | `info` | tracing filter |
 //!
@@ -114,6 +115,9 @@ pub struct IdentityConfig {
     pub step_up_q35_persistence_actions: bool,
     pub code_sender: CodeSenderConfig,
     pub adapter_min_versions: Vec<(String, String)>,
+    /// `OPERATOR_ALERT_EMAIL`: where break-glass alerts of the operator command are e-mailed
+    /// (S3 AC-12, Esquadro N-1). Unset: the alert is only in the server log (warned at startup).
+    pub operator_alert_email: Option<String>,
 }
 
 /// Key bytes that never reach logs.
@@ -196,12 +200,22 @@ fn identity_config(
         })
         .collect::<Option<Vec<_>>>()
         .ok_or(ConfigError::Invalid("IDENTITY_ADAPTER_MIN_VERSIONS"))?;
+    let operator_alert_email = match non_empty("OPERATOR_ALERT_EMAIL") {
+        Some(raw) => Some(
+            identity_enterprise::email::EmailAddress::parse(raw.trim())
+                .map_err(|_| ConfigError::Invalid("OPERATOR_ALERT_EMAIL"))?
+                .normalized()
+                .to_owned(),
+        ),
+        None => None,
+    };
     Ok(Some(IdentityConfig {
         peppers,
         pepper_current,
         step_up_q35_persistence_actions,
         code_sender,
         adapter_min_versions,
+        operator_alert_email,
     }))
 }
 
@@ -504,6 +518,23 @@ mod tests {
         );
         let ok = with(&[("APP_PUBLIC_ORIGIN", "https://app.test")]).unwrap();
         let id = ok.identity.unwrap();
+        assert_eq!(id.operator_alert_email, None);
+        let alert = with(&[
+            ("APP_PUBLIC_ORIGIN", "https://app.test"),
+            ("OPERATOR_ALERT_EMAIL", " Ops@Example.com "),
+        ])
+        .unwrap();
+        assert_eq!(
+            alert.identity.unwrap().operator_alert_email.as_deref(),
+            Some("ops@example.com")
+        );
+        assert!(matches!(
+            with(&[
+                ("APP_PUBLIC_ORIGIN", "https://app.test"),
+                ("OPERATOR_ALERT_EMAIL", "not-an-address"),
+            ]),
+            Err(ConfigError::Invalid("OPERATOR_ALERT_EMAIL"))
+        ));
         assert_eq!(
             (id.pepper_current, id.code_sender.clone()),
             (1, CodeSenderConfig::Disabled)

@@ -748,6 +748,18 @@ async fn http_passwordless_flows() {
         (r.status, r.code()),
         (StatusCode::UNPROCESSABLE_ENTITY, "auth.channel_unavailable")
     );
+    // The admin recovery step-up belongs to the operator command only (HTTP 5.4.0, S3 AC-12).
+    let r = api
+        .post(
+            "/api/v1/auth/step-up",
+            Some(&bob),
+            json!({"action": "admin_recovery", "target_id": uuid::Uuid::now_v7(), "channel": "email"}),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code(), r.pointer()),
+        (StatusCode::BAD_REQUEST, "common.invalid_request", "/action")
+    );
 
     // Channel change: two codes, cancel from the same user, 404 for another.
     reset_send_limits(&db).await;
@@ -760,6 +772,7 @@ async fn http_passwordless_flows() {
         .await;
     assert_eq!(r.status, StatusCode::ACCEPTED, "{:?}", r.body);
     assert_eq!(r.body["codes"].as_array().unwrap().len(), 2);
+    assert_eq!(r.body["kind"], "user_change");
     assert_eq!(r.body["masked_new_value"], "n***@e***.com");
     let change = r.body["id"].as_str().unwrap().to_owned();
     let sec = api.get("/api/v1/me/security", Some(&ana)).await;
@@ -1085,5 +1098,131 @@ async fn another_users_resources_are_never_reachable() {
         )
         .await;
     assert_eq!(r.body, json!({"delivery": "not_reported"}));
+    db.teardown().await;
+}
+
+/// S3 AC-12 over HTTP: the user's session sees an admin recovery without codes, cannot confirm
+/// it even with a correctly sealed challenge, and another user cannot cancel it (404).
+#[tokio::test(flavor = "multi_thread")]
+async fn http_admin_recovery_is_visible_cancellable_and_never_confirmable() {
+    use identity_application::usecases::admin_recovery::*;
+    use identity_enterprise::channel_change::{VerificationRef, VerifiedBy};
+    use identity_enterprise::otp::{ChallengeClaims, DeviceClass, Purpose};
+
+    let Some(db) = setup().await else { return };
+    let (deps, _store, delivery) = deps(&db);
+    let state = Arc::new(IdentityHttpState {
+        deps: deps.clone(),
+        public_origin: ORIGIN.into(),
+        trust_forwarded_for: false,
+        events: Arc::new(SseHub::new()),
+    });
+    let api = Api {
+        app: router(state),
+        delivery: delivery.clone(),
+    };
+    seed_user(&deps, "root@example.com", true).await;
+    seed_user(&deps, "ana@example.com", false).await;
+    seed_user(&deps, "bob@example.com", false).await;
+    let ana = api.login(&db, "ana@example.com").await;
+    let bob = api.login(&db, "bob@example.com").await;
+
+    let (op, target) = ResolveOperator::new(deps.clone())
+        .handle(ResolveOperatorCommand {
+            admin_email: Some("root@example.com".into()),
+            break_glass: false,
+            user: UserRef::Email("ana@example.com".into()),
+            host: identity_application::changes::HostReport::default(),
+        })
+        .await
+        .unwrap();
+    reset_send_limits(&db).await;
+    let ch = RequestOperatorStepUp::new(deps.clone())
+        .handle(&op, target.id.as_uuid())
+        .await
+        .unwrap();
+    let proof = StepUpProof {
+        challenge_id: ch.challenge_id.expose().to_owned(),
+        code: delivery.last_code_to("root@example.com").unwrap(),
+    };
+    reset_send_limits(&db).await;
+    let view = StartAdminRecovery::new(deps.clone())
+        .handle(
+            &op,
+            &target,
+            StartRecoveryCommand {
+                new_email: "ana.new@example.com".into(),
+                verified_by: VerifiedBy::InPerson,
+                verification_ref: VerificationRef::parse("desk visit").unwrap(),
+                step_up: Some(proof),
+            },
+        )
+        .await
+        .unwrap();
+    let change = view.change_id.as_uuid().to_string();
+
+    let sec = api.get("/api/v1/me/security", Some(&ana)).await;
+    let pending = &sec.body["pending_channel_change"];
+    assert_eq!(pending["id"], change.as_str());
+    assert_eq!(pending["kind"], "admin_recovery");
+    assert_eq!(pending["codes"], json!([]));
+
+    // A correctly sealed challenge for the new-value code is still refused.
+    let code_id: uuid::Uuid = sqlx::query_scalar(
+        "SELECT id FROM identity.one_time_code WHERE channel_change_id = $1 AND code_role = 'new_value'",
+    )
+    .bind(view.change_id.as_uuid())
+    .fetch_one(&db.inspect)
+    .await
+    .unwrap();
+    let ident = deps.hasher.identifier_hmac("ana.new@example.com");
+    let sealed = deps.hasher.seal_challenge(&ChallengeClaims {
+        code_id: identity_enterprise::ids::CodeId::from_uuid(code_id),
+        purpose: Purpose::ChannelChange,
+        identifier_hmac: ident.bytes,
+        pepper_version: ident.pepper_version,
+        device_class: DeviceClass::Known,
+        issued_at: chrono::Utc::now(),
+    });
+    let r = api
+        .post(
+            &format!("/api/v1/me/channel-changes/{change}/verify"),
+            Some(&ana),
+            json!({
+                "challenge_id": sealed.expose(),
+                "code": delivery.last_code_to("ana.new@example.com").unwrap(),
+            }),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.code()),
+        (StatusCode::FORBIDDEN, "auth.code_invalid"),
+        "{:?}",
+        r.body
+    );
+    let consumed: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT consumed_at FROM identity.one_time_code WHERE id = $1")
+            .bind(code_id)
+            .fetch_one(&db.inspect)
+            .await
+            .unwrap();
+    assert_eq!(consumed, None);
+
+    let r = api
+        .post(
+            &format!("/api/v1/me/channel-changes/{change}/cancel"),
+            Some(&bob),
+            json!({}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    let r = api
+        .post(
+            &format!("/api/v1/me/channel-changes/{change}/cancel"),
+            Some(&ana),
+            json!({}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
     db.teardown().await;
 }

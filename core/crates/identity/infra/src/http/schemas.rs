@@ -126,6 +126,8 @@ pub enum StepUpAction {
     AdminInvitationCreate,
     RouteEnable,
     AccountBindingChange,
+    /// The admin's own step-up for the operator command (5.4.0); `requestStepUp` refuses it.
+    AdminRecovery,
 }
 
 impl StepUpAction {
@@ -142,6 +144,7 @@ impl StepUpAction {
             Self::AdminInvitationCreate => A::AdminInvitationCreate,
             Self::RouteEnable => A::RouteEnable,
             Self::AccountBindingChange => A::AccountBindingChange,
+            Self::AdminRecovery => A::AdminRecovery,
         }
     }
 }
@@ -418,6 +421,16 @@ pub struct Device {
     pub current: bool,
 }
 
+/// 5.4.0 (S3 AC-12). `user_change` is the user's own flow; `admin_recovery` is started and
+/// confirmed by a platform admin with the operator command (never HTTP). The user's session sees it
+/// with `codes` empty and can cancel it during the hold.
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeKindDto {
+    UserChange,
+    AdminRecovery,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeStatusDto {
@@ -450,6 +463,7 @@ pub struct ChangeCode {
 pub struct ChannelChange {
     #[schema(value_type = Uuid)]
     pub id: String,
+    pub kind: ChangeKindDto,
     pub channel: CodeChannel,
     /// `on_hold` = every code confirmed, the change waits until `hold_until` (auth policy §9 hold; §7 M2) and can be cancelled.
     pub status: ChangeStatusDto,

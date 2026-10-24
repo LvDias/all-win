@@ -51,10 +51,13 @@ pub enum StepUpAction {
     AdminInvitationCreate,
     RouteEnable,
     AccountBindingChange,
+    /// The admin's own step-up for the operator command `admin recovery` (S3 AC-12, HTTP 5.4.0);
+    /// never requested over HTTP.
+    AdminRecovery,
 }
 
 impl StepUpAction {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::SourceCreate,
         Self::SourceRotate,
         Self::ConnectionCreate,
@@ -65,6 +68,7 @@ impl StepUpAction {
         Self::AdminInvitationCreate,
         Self::RouteEnable,
         Self::AccountBindingChange,
+        Self::AdminRecovery,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -79,6 +83,7 @@ impl StepUpAction {
             Self::AdminInvitationCreate => "admin_invitation_create",
             Self::RouteEnable => "route_enable",
             Self::AccountBindingChange => "account_binding_change",
+            Self::AdminRecovery => "admin_recovery",
         }
     }
 
@@ -96,7 +101,13 @@ impl StepUpAction {
                 | Self::AccountOptInAccept
                 | Self::RouteEnable
                 | Self::AccountBindingChange
+                | Self::AdminRecovery
         )
+    }
+
+    /// Only the operator command asks for it; `requestStepUp` refuses it.
+    pub fn is_operator_only(self) -> bool {
+        self == Self::AdminRecovery
     }
 
     /// Required only while the Core setting `step_up.q35_persistence_actions` is on; the others
@@ -282,6 +293,9 @@ mod tests {
         }
         assert!(!StepUpAction::AccountOptInAccept.is_q35_conditional());
         assert!(StepUpAction::AccountBindingChange.requires_target());
+        let r = StepUpAction::AdminRecovery;
+        assert!(r.is_operator_only() && r.requires_target() && !r.is_q35_conditional());
+        assert!(!StepUpAction::AdminInvitationCreate.is_operator_only());
         assert_eq!(AccessError::Unavailable.http_status(), 500);
         assert_eq!(AccessError::CodeInvalid.http_status(), 403);
         let p = StepUpProof {

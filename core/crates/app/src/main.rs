@@ -4,7 +4,7 @@ use anyhow::{Context, bail};
 use app::config::{Config, SecretString};
 use app::{App, MIGRATOR, dev, http, telemetry};
 
-/// `allwin-core [serve | migrate | openapi | seed [LABEL] | revoke-key KEY_ID]`
+/// `allwin-core [serve | migrate | openapi | seed [LABEL] | revoke-key KEY_ID | admin recovery …]`
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -45,8 +45,14 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Some("admin") if args.get(1).map(String::as_str) == Some("recovery") => {
+            // Operator command on the host only (S3 AC-12); there is no HTTP route for it.
+            telemetry::init();
+            app::admin_recovery::run(&args[2..]).await
+        }
         Some(_) => bail!(
-            "usage: allwin-core [serve | migrate | openapi | seed [LABEL] | revoke-key KEY_ID]"
+            "usage: allwin-core [serve | migrate | openapi | seed [LABEL] | revoke-key KEY_ID | admin recovery …]\n{}",
+            app::admin_recovery::USAGE
         ),
     }
 }

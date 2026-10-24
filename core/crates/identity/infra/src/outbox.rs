@@ -9,7 +9,8 @@
 
 use chrono::{DateTime, Utc};
 use identity_application::changes::{
-    Actor, AuditAction, AuditRecord, EndedSessions, IdentityEvent, Notice, StepUpFailure, Trail,
+    Actor, AuditAction, AuditRecord, ChangeAudit, EndedSessions, IdentityEvent, Notice,
+    OperatorOutcome, OperatorRecord, StepUpFailure, Trail,
 };
 use identity_enterprise::channel::{Channel, Destination};
 use identity_enterprise::profile::Locale;
@@ -29,7 +30,28 @@ fn actor(actor: Actor) -> &'static str {
     match actor {
         Actor::User(_) | Actor::Admin(_) | Actor::TokenHolder => "user",
         Actor::System | Actor::Adapter(_) => "system",
+        // The admin's id stays out of the user's trail (HTTP 5.4.0).
+        Actor::PlatformAdmin(_) => "platform_admin",
     }
+}
+
+/// `kind`, and for an admin recovery `verified_by` and `break_glass` on every entry, plus
+/// `verification_ref` on `requested` and `on_hold` (HTTP 5.4.0 `DetailsSecurityChannelChange`).
+fn change_details(mut d: Value, kind: &ChangeAudit, with_ref: bool) -> Value {
+    d["kind"] = json!(kind.kind().as_str());
+    if let ChangeAudit::AdminRecovery {
+        verified_by,
+        verification_ref,
+        break_glass,
+    } = kind
+    {
+        d["verified_by"] = json!(verified_by.as_str());
+        d["break_glass"] = json!(break_glass);
+        if with_ref {
+            d["verification_ref"] = json!(verification_ref.as_str());
+        }
+    }
+    d
 }
 
 fn ts(at: &DateTime<Utc>) -> String {
@@ -80,20 +102,27 @@ fn details(action: &AuditAction) -> Value {
         }
         AuditAction::ChannelChangeRequested {
             change_id,
+            kind,
             channel,
             masked_new_value,
-        } => {
-            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str(), "masked_new_value": masked_new_value })
-        }
+        } => change_details(
+            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str(), "masked_new_value": masked_new_value }),
+            kind,
+            true,
+        ),
         AuditAction::ChannelChangeOnHold {
             change_id,
+            kind,
             channel,
             hold_until,
-        } => {
-            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str(), "hold_until": ts(hold_until) })
-        }
+        } => change_details(
+            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str(), "hold_until": ts(hold_until) }),
+            kind,
+            true,
+        ),
         AuditAction::ChannelChangeCompleted {
             change_id,
+            kind,
             channel,
             masked_old_value,
             masked_new_value,
@@ -102,18 +131,27 @@ fn details(action: &AuditAction) -> Value {
             if let Some(old) = masked_old_value {
                 d["masked_old_value"] = json!(old);
             }
-            d
+            change_details(d, kind, false)
         }
         AuditAction::ChannelChangeCancelled {
             change_id,
+            kind,
             channel,
             by_user,
-        } => {
-            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str(), "by": if *by_user { "user" } else { "system" } })
-        }
-        AuditAction::ChannelChangeNotCompleted { change_id, channel } => {
-            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str() })
-        }
+        } => change_details(
+            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str(), "by": if *by_user { "user" } else { "system" } }),
+            kind,
+            false,
+        ),
+        AuditAction::ChannelChangeNotCompleted {
+            change_id,
+            kind,
+            channel,
+        } => change_details(
+            json!({ "change_id": change_id.as_uuid(), "channel": channel.as_str() }),
+            kind,
+            false,
+        ),
         AuditAction::DeviceForgotten {
             device_id,
             device_label,
@@ -240,6 +278,44 @@ fn notice_payload(locale: Locale, notice: &Notice) -> Value {
         } => {
             json!({ "kind": "channel_changed", "to": to(d), "channel": channel.as_str(), "masked_new_value": masked_new_value })
         }
+        Notice::AccountRecovered {
+            to: d,
+            sources,
+            pairings,
+        } => {
+            json!({ "kind": "account_recovered", "to": to(d), "sources": sources, "pairings": pairings })
+        }
+        Notice::RecoveredByAdmin {
+            to: d,
+            channel,
+            masked_new_value,
+            at,
+        } => {
+            json!({ "kind": "recovered_by_admin", "to": to(d), "channel": channel.as_str(), "masked_new_value": masked_new_value, "at": ts(at) })
+        }
+        Notice::BreakGlassStarted {
+            to: d,
+            masked_account,
+            at,
+        } => {
+            json!({ "kind": "break_glass_started", "to": to(d), "masked_account": masked_account, "at": ts(at) })
+        }
+        Notice::AdminBreakGlassStarted {
+            to: d,
+            masked_account,
+            at,
+        } => {
+            json!({ "kind": "admin_break_glass_started", "to": to(d), "masked_account": masked_account, "at": ts(at) })
+        }
+        Notice::OperatorAlert {
+            to: d,
+            change_id,
+            step,
+            outcome,
+            at,
+        } => {
+            json!({ "kind": "operator_alert", "to": to(d), "change_id": change_id, "step": step, "outcome": outcome, "at": ts(at) })
+        }
         Notice::ChannelChangeOnHold {
             to: d,
             channel,
@@ -282,6 +358,42 @@ pub fn notice_from_payload(payload: &Value) -> Option<(Locale, Notice)> {
             channel: channel("channel")?,
             masked_new_value: text("masked_new_value")?,
         },
+        "account_recovered" => Notice::AccountRecovered {
+            to: to()?,
+            sources: usize::try_from(payload.get("sources")?.as_u64()?).ok()?,
+            pairings: usize::try_from(payload.get("pairings")?.as_u64()?).ok()?,
+        },
+        "break_glass_started" => Notice::BreakGlassStarted {
+            to: to()?,
+            masked_account: text("masked_account")?,
+            at: DateTime::parse_from_rfc3339(&text("at")?)
+                .ok()?
+                .with_timezone(&Utc),
+        },
+        "operator_alert" => Notice::OperatorAlert {
+            to: to()?,
+            change_id: text("change_id"),
+            step: text("step")?,
+            outcome: text("outcome")?,
+            at: DateTime::parse_from_rfc3339(&text("at")?)
+                .ok()?
+                .with_timezone(&Utc),
+        },
+        "admin_break_glass_started" => Notice::AdminBreakGlassStarted {
+            to: to()?,
+            masked_account: text("masked_account")?,
+            at: DateTime::parse_from_rfc3339(&text("at")?)
+                .ok()?
+                .with_timezone(&Utc),
+        },
+        "recovered_by_admin" => Notice::RecoveredByAdmin {
+            to: to()?,
+            channel: channel("channel")?,
+            masked_new_value: text("masked_new_value")?,
+            at: DateTime::parse_from_rfc3339(&text("at")?)
+                .ok()?
+                .with_timezone(&Utc),
+        },
         "channel_change_on_hold" => Notice::ChannelChangeOnHold {
             to: to()?,
             channel: channel("channel")?,
@@ -301,6 +413,12 @@ pub fn notice_from_payload(payload: &Value) -> Option<(Locale, Notice)> {
 
 pub fn event(event: &IdentityEvent) -> Envelope {
     match event {
+        IdentityEvent::OperatorRecovery(r) => Envelope {
+            user_id: r.user_id,
+            event_type: event.event_type(),
+            occurred_at: r.at,
+            payload: operator_payload(r),
+        },
         IdentityEvent::SessionsEnded {
             user_id,
             sessions,
@@ -369,11 +487,99 @@ pub fn event(event: &IdentityEvent) -> Envelope {
     }
 }
 
+/// `identity.operator_recovery` payload: ids, the step and outcome, and the host-reported
+/// session values under `host_reported` (formats validated by `HostReport::parse`). Never a code.
+fn operator_payload(r: &OperatorRecord) -> Value {
+    let (outcome, reason) = match r.outcome {
+        OperatorOutcome::Done => ("done", None),
+        OperatorOutcome::Refused(why) => ("refused", Some(why)),
+        OperatorOutcome::StepUpFailed => ("step_up_failed", None),
+        OperatorOutcome::AttemptsExhausted => ("attempts_exhausted", None),
+    };
+    json!({
+        "admin_user_id": r.admin_user_id.map(|u| u.as_uuid()),
+        "change_id": r.change_id.map(|c| c.as_uuid()),
+        "step": r.step.as_str(),
+        "outcome": outcome,
+        "reason": reason,
+        "break_glass": r.break_glass,
+        "after_cancel": r.after_cancel,
+        "host_reported": {
+            "login": r.host.login(),
+            "ssh_connection": r.host.ssh_connection(),
+            "key_fingerprint": r.host.key_fingerprint(),
+        },
+    })
+}
+
+/// The operator log line of an `identity.operator_recovery` row, read back by `app`'s consumer.
+#[derive(Debug, PartialEq, Eq)]
+pub struct OperatorLogLine {
+    pub admin_user_id: Option<String>,
+    pub change_id: Option<String>,
+    pub step: String,
+    pub outcome: String,
+    pub reason: Option<String>,
+    pub break_glass: bool,
+    pub after_cancel: bool,
+    pub host_login: Option<String>,
+    pub host_ssh_connection: Option<String>,
+    pub host_key_fingerprint: Option<String>,
+}
+
+pub fn operator_from_payload(payload: &Value) -> Option<OperatorLogLine> {
+    let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_owned);
+    let host = payload.get("host_reported")?;
+    Some(OperatorLogLine {
+        admin_user_id: text(payload, "admin_user_id"),
+        change_id: text(payload, "change_id"),
+        step: text(payload, "step")?,
+        outcome: text(payload, "outcome")?,
+        reason: text(payload, "reason"),
+        break_glass: payload.get("break_glass")?.as_bool()?,
+        after_cancel: payload.get("after_cancel")?.as_bool()?,
+        host_login: text(host, "login"),
+        host_ssh_connection: text(host, "ssh_connection"),
+        host_key_fingerprint: text(host, "key_fingerprint"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use identity_application::changes::Notice;
     use identity_enterprise::email::EmailAddress;
+
+    #[test]
+    fn operator_events_carry_marked_host_values_and_read_back() {
+        use identity_application::changes::{HostReport, OperatorStep};
+        let user = shared_kernel::UserId::new_v7();
+        let r = OperatorRecord {
+            user_id: user,
+            admin_user_id: Some(user),
+            change_id: None,
+            step: OperatorStep::Resolve,
+            outcome: OperatorOutcome::Refused("other_admin_available"),
+            break_glass: true,
+            after_cancel: false,
+            host: HostReport::parse(
+                Some("ops"),
+                Some("203.0.113.5 51234 10.0.0.2 22"),
+                Some("bad"),
+            ),
+            at: Utc::now(),
+        };
+        let e = event(&IdentityEvent::OperatorRecovery(r));
+        assert_eq!(e.event_type, "identity.operator_recovery");
+        assert_eq!(e.user_id, user);
+        let line = operator_from_payload(&e.payload).unwrap();
+        assert_eq!(line.outcome, "refused");
+        assert_eq!(line.reason.as_deref(), Some("other_admin_available"));
+        assert!(line.break_glass);
+        assert_eq!(line.host_login.as_deref(), Some("ops"));
+        assert_eq!(line.host_key_fingerprint, None, "invalid format dropped");
+        assert!(e.payload["host_reported"].is_object());
+    }
 
     #[test]
     fn notices_round_trip_through_the_outbox() {
@@ -395,5 +601,41 @@ mod tests {
         };
         let p = notice_payload(Locale::PtBr, &n);
         assert_eq!(notice_from_payload(&p), Some((Locale::PtBr, n)));
+        let n = Notice::AccountRecovered {
+            to: Destination::Email(EmailAddress::parse("n@example.com").unwrap()),
+            sources: 2,
+            pairings: 1,
+        };
+        let p = notice_payload(Locale::PtBr, &n);
+        assert_eq!(notice_from_payload(&p), Some((Locale::PtBr, n)));
+        let n = Notice::RecoveredByAdmin {
+            to: Destination::Email(EmailAddress::parse("a@example.com").unwrap()),
+            channel: Channel::Email,
+            masked_new_value: "n***@e***.com".into(),
+            at: DateTime::parse_from_rfc3339("2026-10-26T09:00:00.000Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        };
+        let p = notice_payload(Locale::En, &n);
+        assert_eq!(p.get("sources"), None, "no count to the old channel");
+        assert_eq!(notice_from_payload(&p), Some((Locale::En, n)));
+        let at = DateTime::parse_from_rfc3339("2026-10-26T09:00:00.000Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        for n in [
+            Notice::BreakGlassStarted {
+                to: Destination::Email(EmailAddress::parse("a@example.com").unwrap()),
+                masked_account: "a***@e***.com".into(),
+                at,
+            },
+            Notice::AdminBreakGlassStarted {
+                to: Destination::Email(EmailAddress::parse("b@example.com").unwrap()),
+                masked_account: "a***@e***.com".into(),
+                at,
+            },
+        ] {
+            let p = notice_payload(Locale::PtBr, &n);
+            assert_eq!(notice_from_payload(&p), Some((Locale::PtBr, n)));
+        }
     }
 }

@@ -48,7 +48,7 @@ const TOKEN_SECRET_LEN: usize = 43;
 
 /// True when `s` contains `aw(k|d)_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}` anywhere (source or device
 /// token shape).
-fn contains_token_shape(s: &str) -> bool {
+pub(crate) fn contains_token_shape(s: &str) -> bool {
     let b = s.as_bytes();
     let key = |c: &u8| c.is_ascii_alphanumeric();
     let secret = |c: &u8| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-';

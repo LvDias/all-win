@@ -10,9 +10,10 @@ use std::path::Path;
 
 use chrono::{TimeZone, Utc};
 use identity_application::changes::{
-    AUDIT_EVENT_TYPES, Actor, AuditAction, AuditRecord, StepUpFailure, Trail,
+    AUDIT_EVENT_TYPES, Actor, AuditAction, AuditRecord, ChangeAudit, StepUpFailure, Trail,
 };
 use identity_enterprise::channel::{Channel, PhoneNumber, mask_email};
+use identity_enterprise::channel_change::{VerificationRef, VerifiedBy};
 use identity_enterprise::connection::ConnectionStatus;
 use identity_enterprise::email::EmailAddress;
 use identity_enterprise::ids::{ChannelChangeId, ConnectionId, DeviceId, InvitationId, SourceId};
@@ -40,6 +41,11 @@ fn samples() -> Vec<AuditAction> {
     let previous_key = KeyId::parse("ZyXwVu987654").unwrap();
     let email = |raw: &str| mask_email(&EmailAddress::parse(raw).unwrap());
     let phone = PhoneNumber::parse("+5511987651234").unwrap().masked();
+    let recovery = |break_glass| ChangeAudit::AdminRecovery {
+        verified_by: VerifiedBy::VideoCall,
+        verification_ref: VerificationRef::parse("ticket 4521").unwrap(),
+        break_glass,
+    };
     vec![
         AuditAction::SignedIn {
             channel: Channel::Email,
@@ -79,39 +85,81 @@ fn samples() -> Vec<AuditAction> {
         },
         AuditAction::ChannelChangeRequested {
             change_id: change,
+            kind: ChangeAudit::UserChange,
             channel: Channel::Email,
             masked_new_value: email("ana@example.com"),
         },
         AuditAction::ChannelChangeOnHold {
             change_id: change,
+            kind: ChangeAudit::UserChange,
             channel: Channel::Email,
             hold_until: at,
         },
         AuditAction::ChannelChangeCompleted {
             change_id: change,
+            kind: ChangeAudit::UserChange,
             channel: Channel::Email,
             masked_old_value: Some(email("bia@example.com")),
             masked_new_value: email("ana@example.com"),
         },
         AuditAction::ChannelChangeCompleted {
             change_id: change,
+            kind: ChangeAudit::UserChange,
             channel: Channel::Whatsapp,
             masked_old_value: None,
             masked_new_value: phone,
         },
         AuditAction::ChannelChangeCancelled {
             change_id: change,
+            kind: ChangeAudit::UserChange,
             channel: Channel::Email,
             by_user: true,
         },
         AuditAction::ChannelChangeCancelled {
             change_id: change,
+            kind: ChangeAudit::UserChange,
             channel: Channel::Email,
             by_user: false,
         },
         AuditAction::ChannelChangeNotCompleted {
             change_id: change,
+            kind: ChangeAudit::UserChange,
             channel: Channel::Whatsapp,
+        },
+        // Admin recovery (AC-12, HTTP 5.4.0): every code with the recovery fields.
+        AuditAction::ChannelChangeRequested {
+            change_id: change,
+            kind: recovery(false),
+            channel: Channel::Email,
+            masked_new_value: email("ana@example.com"),
+        },
+        AuditAction::ChannelChangeOnHold {
+            change_id: change,
+            kind: recovery(true),
+            channel: Channel::Email,
+            hold_until: at,
+        },
+        AuditAction::ChannelChangeCompleted {
+            change_id: change,
+            kind: recovery(false),
+            channel: Channel::Email,
+            masked_old_value: Some(email("bia@example.com")),
+            masked_new_value: email("ana@example.com"),
+        },
+        AuditAction::ChannelChangeCancelled {
+            change_id: change,
+            kind: recovery(false),
+            channel: Channel::Email,
+            by_user: false,
+        },
+        AuditAction::ChannelChangeNotCompleted {
+            change_id: change,
+            kind: recovery(true),
+            channel: Channel::Email,
+        },
+        AuditAction::StepUpSucceeded {
+            action: StepUpAction::AdminRecovery,
+            target_id: Some(Uuid::now_v7()),
         },
         AuditAction::DeviceForgotten {
             device_id: DeviceId::new_v7(),

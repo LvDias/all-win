@@ -29,7 +29,7 @@ use identity_application::usecases::step_up::{RequestStepUp, RequestStepUpComman
 use identity_application::views::{
     ChannelChangeView, ConnectionView, DeliveryView, InvitationView, SignedIn, SourceView,
 };
-use identity_enterprise::channel_change::ChangeStatus;
+use identity_enterprise::channel_change::{ChangeKind, ChangeStatus};
 use identity_enterprise::connection::{
     AdapterBuild, AdapterInfo, ConnectionStatus, DisconnectReason,
 };
@@ -141,6 +141,10 @@ fn change_dto(v: &ChannelChangeView) -> Result<ChannelChange, IdentityError> {
     }
     Ok(ChannelChange {
         id: v.id.as_uuid().to_string(),
+        kind: match v.kind {
+            ChangeKind::UserChange => ChangeKindDto::UserChange,
+            ChangeKind::AdminRecovery => ChangeKindDto::AdminRecovery,
+        },
         channel: CodeChannel::of(v.channel),
         status: match v.status {
             ChangeStatus::AwaitingCodes => ChangeStatusDto::AwaitingCodes,
@@ -1455,6 +1459,7 @@ mod tests {
         let at = chrono::Utc.with_ymd_and_hms(2026, 10, 23, 9, 0, 0).unwrap();
         let v = ChannelChangeView {
             id: ChannelChangeId::new_v7(),
+            kind: identity_enterprise::channel_change::ChangeKind::UserChange,
             channel: Channel::Email,
             status: ChangeStatus::OnHold,
             masked_new_value: "n***@e***.com".into(),

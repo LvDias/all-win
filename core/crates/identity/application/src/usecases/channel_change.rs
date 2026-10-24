@@ -1,5 +1,6 @@
 //! `startChannelChange`, `verifyChannelChangeCode`, `cancelChannelChange` and the worker that
-//! applies due holds (auth policy rev. 2 §7, §9; M2 approved; data model §4.3).
+//! applies due holds (auth policy rev. 2 §7, §9; M2 approved; data model §4.3). The admin
+//! recovery (AC-12) shares the hold, the cancel and the worker; it starts in `admin_recovery`.
 
 use chrono::{DateTime, Utc};
 use identity_enterprise::channel::{Channel, Destination, PhoneNumber};
@@ -15,7 +16,8 @@ use shared_kernel::UserId;
 
 use crate::auth::AuthContext;
 use crate::changes::{
-    Actor, AuditAction, ChangeSet, CodeTable, EndedSessions, IdentityEvent, Notice, Write,
+    Actor, AuditAction, ChangeAudit, ChangeSet, CodeTable, EndedSessions, IdentityEvent, Notice,
+    Write,
 };
 use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
@@ -44,7 +46,8 @@ pub(crate) async fn value_taken(
 }
 
 /// The view of a change with one sealed challenge per code (re-sealed from the row, so the
-/// tokens are the ones the codes were issued under).
+/// tokens are the ones the codes were issued under). An admin recovery shows no code: only the
+/// admin confirms it (HTTP 5.4.0).
 pub(crate) fn view(
     deps: &IdentityDeps,
     change: &ChannelChange,
@@ -53,6 +56,7 @@ pub(crate) fn view(
 ) -> ChannelChangeView {
     let mut code_views: Vec<ChangeCodeView> = codes
         .iter()
+        .filter(|_| change.recovery.is_none())
         .filter_map(|c| {
             let role = c.role?;
             let ident = codes::identifier(deps, c.destination.normalized());
@@ -77,6 +81,7 @@ pub(crate) fn view(
     });
     ChannelChangeView {
         id: change.id,
+        kind: change.kind(),
         channel: change.channel(),
         status: change.status_at(now),
         masked_new_value: change.new_value.masked(),
@@ -98,7 +103,7 @@ fn parse_value(channel: Channel, raw: &str) -> Result<Destination, IdentityError
 }
 
 /// Notices to every current channel value of the user.
-fn notice_to_all(
+pub(crate) fn notice_to_all(
     user: &User,
     at: DateTime<Utc>,
     make: impl Fn(Destination) -> Notice,
@@ -251,6 +256,7 @@ impl StartChannelChange {
             Actor::User(user.id),
             AuditAction::ChannelChangeRequested {
                 change_id: change.id,
+                kind: ChangeAudit::UserChange,
                 channel: cmd.channel,
                 masked_new_value: new_value.masked(),
             },
@@ -302,6 +308,11 @@ impl VerifyChannelChangeCode {
         };
         if change.status_at(now) != ChangeStatus::AwaitingCodes {
             return Err(IdentityError::ChannelChangeClosed);
+        }
+        // Only the admin confirms a recovery, with the operator command (AC-12): no session
+        // may confirm its code, whoever holds it.
+        if change.recovery.is_some() {
+            return Err(IdentityError::CodeInvalid);
         }
         codes::admit_verify(deps, cmd.meta.ip, now).await?;
         let codes_now = deps.store.change_codes(user.id, change.id).await?;
@@ -368,6 +379,7 @@ impl VerifyChannelChangeCode {
                     Actor::User(user.id),
                     AuditAction::ChannelChangeOnHold {
                         change_id: change.id,
+                        kind: ChangeAudit::UserChange,
                         channel: change.channel(),
                         hold_until,
                     },
@@ -470,6 +482,7 @@ fn complete_now(
             Actor::User(user.id),
             AuditAction::ChannelChangeCompleted {
                 change_id: change.id,
+                kind: ChangeAudit::UserChange,
                 channel: change.channel(),
                 masked_old_value: old.as_ref().map(Destination::masked),
                 masked_new_value: change.new_value.masked(),
@@ -519,18 +532,25 @@ pub(crate) async fn cancel_pending_with(
     let Some(change) = deps.store.open_channel_change(user.id).await? else {
         return Ok(changes);
     };
-    if !matches!(
-        change.status_at(now),
-        ChangeStatus::AwaitingCodes | ChangeStatus::OnHold
-    ) {
+    // Q88 (a): only a change the user requested; an admin recovery ends only by "Cancelar
+    // troca" or the admin's cancel (policy 3.3 §9.1).
+    if change.recovery.is_some()
+        || !matches!(
+            change.status_at(now),
+            ChangeStatus::AwaitingCodes | ChangeStatus::OnHold
+        )
+    {
         return Ok(changes);
     }
     if let CancelScope::RequestedFrom(device) = scope {
-        let from_device = deps
-            .store
-            .session(user.id, change.requested_session_id)
-            .await?
-            .is_some_and(|s| s.device_id == device);
+        let from_device = match change.requested_session_id {
+            Some(session) => deps
+                .store
+                .session(user.id, session)
+                .await?
+                .is_some_and(|s| s.device_id == device),
+            None => false,
+        };
         if !from_device {
             return Ok(changes);
         }
@@ -546,6 +566,7 @@ pub(crate) async fn cancel_pending_with(
             Actor::User(user.id),
             AuditAction::ChannelChangeCancelled {
                 change_id: change.id,
+                kind: ChangeAudit::UserChange,
                 channel: change.channel(),
                 by_user: true,
             },
@@ -617,6 +638,7 @@ impl CancelChannelChange {
                 Actor::User(user.id),
                 AuditAction::ChannelChangeCancelled {
                     change_id,
+                    kind: ChangeAudit::of(&change),
                     channel: change.channel(),
                     by_user: true,
                 },
@@ -676,7 +698,11 @@ impl ApplyDueChannelHolds {
             let changes = if blocked {
                 self.not_completed(&user, &change, now)
             } else {
-                self.apply(&user, &change, now)
+                let kept = match change.recovery {
+                    Some(_) => Some(self.kept_access(user_id).await?),
+                    None => None,
+                };
+                self.apply(&user, &change, kept, now)
             };
             match deps.store.commit(changes).await {
                 Ok(()) => done += 1,
@@ -701,7 +727,28 @@ impl ApplyDueChannelHolds {
         Ok(done)
     }
 
-    fn apply(&self, user: &User, change: &ChannelChange, now: DateTime<Utc>) -> ChangeSet {
+    /// Source tokens and pairings that a recovery leaves in place (policy §9).
+    async fn kept_access(&self, user: UserId) -> Result<(usize, usize), IdentityError> {
+        let sources = self.deps.store.sources(user, false).await?.len();
+        let pairings = self
+            .deps
+            .store
+            .connections(user, false)
+            .await?
+            .iter()
+            .filter(|c| c.connection.instance.is_some())
+            .count();
+        Ok((sources, pairings))
+    }
+
+    /// `kept`: the counts of a recovery's notice to the new e-mail (`None` for a user change).
+    fn apply(
+        &self,
+        user: &User,
+        change: &ChannelChange,
+        kept: Option<(usize, usize)>,
+        now: DateTime<Utc>,
+    ) -> ChangeSet {
         let old = user.destination(change.channel());
         let mut set = ChangeSet::new(user.id)
             .write(Write::FinishHeldChannelChange {
@@ -734,6 +781,7 @@ impl ApplyDueChannelHolds {
                 Actor::System,
                 AuditAction::ChannelChangeCompleted {
                     change_id: change.id,
+                    kind: ChangeAudit::of(change),
                     channel: change.channel(),
                     masked_old_value: old.as_ref().map(Destination::masked),
                     masked_new_value: change.new_value.masked(),
@@ -747,39 +795,69 @@ impl ApplyDueChannelHolds {
                 reason: EndReason::ChannelChanged,
                 at: now,
             });
-        for e in notice_to_all(user, now, |to| Notice::ChannelChanged {
+        let Some((sources, pairings)) = kept else {
+            for e in notice_to_all(user, now, |to| Notice::ChannelChanged {
+                to,
+                channel: change.channel(),
+                masked_new_value: change.new_value.masked(),
+            }) {
+                set = set.event(e);
+            }
+            return set;
+        };
+        // A recovery (Esquadro): the old channels learn only the fact; the new e-mail, now the
+        // user's, gets the full notice with what to review.
+        for e in notice_to_all(user, now, |to| Notice::RecoveredByAdmin {
             to,
             channel: change.channel(),
             masked_new_value: change.new_value.masked(),
+            at: now,
         }) {
             set = set.event(e);
         }
-        set
+        set.event(IdentityEvent::NoticeRequested {
+            user_id: user.id,
+            locale: user.locale,
+            notice: Notice::AccountRecovered {
+                to: change.new_value.clone(),
+                sources,
+                pairings,
+            },
+            at: now,
+        })
     }
 
     fn not_completed(&self, user: &User, change: &ChannelChange, now: DateTime<Utc>) -> ChangeSet {
-        let mut set = ChangeSet::new(user.id)
-            .write(Write::CancelChannelChange {
-                change_id: change.id,
-                by_session: None,
-                at: now,
-            })
-            .audit(user_audit(
-                user.id,
-                Actor::System,
-                AuditAction::ChannelChangeNotCompleted {
-                    change_id: change.id,
-                    channel: change.channel(),
-                },
-                now,
-                None,
-            ));
-        for e in notice_to_all(user, now, |to| Notice::ChannelChangeCancelled {
-            to,
-            channel: change.channel(),
-        }) {
-            set = set.event(e);
-        }
-        set
+        not_completed(user, change, now)
     }
+}
+
+/// The Core closes an open change with the generic `not_completed` reason (policy §3): a hold
+/// that can no longer apply, a recovery whose code was failed 5 times, or a user change that an
+/// admin recovery replaces.
+pub(crate) fn not_completed(user: &User, change: &ChannelChange, now: DateTime<Utc>) -> ChangeSet {
+    let mut set = ChangeSet::new(user.id)
+        .write(Write::CancelChannelChange {
+            change_id: change.id,
+            by_session: None,
+            at: now,
+        })
+        .audit(user_audit(
+            user.id,
+            Actor::System,
+            AuditAction::ChannelChangeNotCompleted {
+                change_id: change.id,
+                kind: ChangeAudit::of(change),
+                channel: change.channel(),
+            },
+            now,
+            None,
+        ));
+    for e in notice_to_all(user, now, |to| Notice::ChannelChangeCancelled {
+        to,
+        channel: change.channel(),
+    }) {
+        set = set.event(e);
+    }
+    set
 }

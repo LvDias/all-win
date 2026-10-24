@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use identity_enterprise::channel::Channel;
-use identity_enterprise::channel_change::ChangeStatus;
+use identity_enterprise::channel_change::{ChangeKind, ChangeStatus};
 use identity_enterprise::connection::{Connection, ConnectionStatus};
 use identity_enterprise::ids::{ChannelChangeId, ConnectionId, DeviceId};
 use identity_enterprise::invitation::{Invitation, InvitationStatus};
@@ -74,6 +74,7 @@ pub struct ChangeCodeView {
 #[derive(Clone, Debug)]
 pub struct ChannelChangeView {
     pub id: ChannelChangeId,
+    pub kind: ChangeKind,
     pub channel: Channel,
     pub status: ChangeStatus,
     pub masked_new_value: String,

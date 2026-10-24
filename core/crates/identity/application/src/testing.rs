@@ -208,6 +208,8 @@ impl FakeStore {
     #[allow(clippy::too_many_lines)]
     fn apply(st: &mut State, scope: UserId, w: Write) -> Result<(), StoreError> {
         match w {
+            // Handled by `commit`.
+            Write::SwitchScope(_) => {}
             Write::InsertUser(u) => {
                 rls(scope, u.id)?;
                 if st
@@ -1218,8 +1220,13 @@ impl IdentityStore for FakeStore {
     async fn commit(&self, changes: ChangeSet) -> Result<(), StoreError> {
         let mut guard = self.state.lock().unwrap();
         let mut next = guard.clone();
+        let mut scope = changes.scope;
         for w in changes.writes.clone() {
-            Self::apply(&mut next, changes.scope, w)?;
+            if let Write::SwitchScope(user) = w {
+                scope = user;
+                continue;
+            }
+            Self::apply(&mut next, scope, w)?;
         }
         *guard = next;
         self.committed.lock().unwrap().push(changes);

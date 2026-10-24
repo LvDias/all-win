@@ -304,6 +304,9 @@ pub enum CodeMessage {
     ChannelChange {
         channel: Channel,
     },
+    /// The code an admin recovery sends to the new e-mail; the user reads it to the admin
+    /// (AC-12).
+    AdminRecovery,
 }
 
 /// A code on its way to a channel. `code` prints `***` in `Debug`.
@@ -412,7 +415,16 @@ pub trait SecurityAlerts: Send + Sync {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SecurityAlert {
-    GlobalSendsExceeded { sends: usize },
+    GlobalSendsExceeded {
+        sends: usize,
+    },
     PrefixSendsExceeded,
-    ChannelChangeAfterCancel { user_id: UserId },
+    ChannelChangeAfterCancel {
+        user_id: UserId,
+    },
+    /// The operator's break-glass recovery (I3) started, confirmed or cancelled a recovery.
+    AdminRecoveryBreakGlass {
+        user_id: UserId,
+        change_id: identity_enterprise::ids::ChannelChangeId,
+    },
 }

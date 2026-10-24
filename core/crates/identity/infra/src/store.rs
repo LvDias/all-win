@@ -24,7 +24,9 @@ use identity_application::ports::{
     WindowCount,
 };
 use identity_enterprise::channel::{Channel, Destination, PhoneNumber};
-use identity_enterprise::channel_change::{ChangeStatus, ChannelChange};
+use identity_enterprise::channel_change::{
+    ChangeStatus, ChannelChange, Recovery, VerificationRef, VerifiedBy,
+};
 use identity_enterprise::connection::{
     AdapterBuild, AdapterInfo, Connection, ConnectionStatus, PairedInstance, PairingCode,
 };
@@ -292,7 +294,12 @@ struct ChangeRow {
     user_id: Uuid,
     channel: String,
     new_value: String,
-    requested_session_id: Uuid,
+    requested_session_id: Option<Uuid>,
+    kind: String,
+    admin_user_id: Option<Uuid>,
+    verified_by: Option<String>,
+    verification_ref: Option<String>,
+    break_glass: bool,
     status: String,
     created_at: DateTime<Utc>,
     expires_at: DateTime<Utc>,
@@ -304,11 +311,31 @@ struct ChangeRow {
 
 impl ChangeRow {
     fn into_change(self) -> Result<ChannelChange, StoreError> {
+        let recovery = match self.kind.as_str() {
+            "user_change" => None,
+            "admin_recovery" => Some(Recovery {
+                admin_user_id: UserId::from_uuid(
+                    self.admin_user_id.ok_or_else(|| corrupt("admin_user_id"))?,
+                ),
+                verified_by: self
+                    .verified_by
+                    .as_deref()
+                    .and_then(VerifiedBy::parse)
+                    .ok_or_else(|| corrupt("verified_by"))?,
+                verification_ref: VerificationRef::from_stored(
+                    self.verification_ref
+                        .ok_or_else(|| corrupt("verification_ref"))?,
+                ),
+                break_glass: self.break_glass,
+            }),
+            _ => return Err(corrupt("change kind")),
+        };
         Ok(ChannelChange {
             id: ChannelChangeId::from_uuid(self.id),
             user_id: UserId::from_uuid(self.user_id),
             new_value: Destination::from_stored(channel(&self.channel)?, self.new_value),
-            requested_session_id: SessionId::from_uuid(self.requested_session_id),
+            requested_session_id: self.requested_session_id.map(SessionId::from_uuid),
+            recovery,
             status: ChangeStatus::parse(&self.status).ok_or_else(|| corrupt("change status"))?,
             created_at: self.created_at,
             expires_at: self.expires_at,
@@ -887,7 +914,8 @@ impl IdentityStore for PgIdentityStore {
         let mut tx = self.scoped(user_id).await?;
         let row = sqlx::query_as!(
             ChangeRow,
-            r#"SELECT id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at,
+            r#"SELECT id, user_id, channel, new_value, requested_session_id, kind, admin_user_id, verified_by,
+                      verification_ref, break_glass, status, created_at, expires_at,
                       hold_until, completed_at, cancelled_at, cancelled_by_session_id
                  FROM identity.channel_change WHERE user_id = $1 AND id = $2"#,
             user_id.as_uuid(),
@@ -907,7 +935,8 @@ impl IdentityStore for PgIdentityStore {
         let mut tx = self.scoped(user_id).await?;
         let row = sqlx::query_as!(
             ChangeRow,
-            r#"SELECT id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at,
+            r#"SELECT id, user_id, channel, new_value, requested_session_id, kind, admin_user_id, verified_by,
+                      verification_ref, break_glass, status, created_at, expires_at,
                       hold_until, completed_at, cancelled_at, cancelled_by_session_id
                  FROM identity.channel_change
                 WHERE user_id = $1 AND status IN ('awaiting_codes', 'on_hold')"#,
@@ -927,7 +956,8 @@ impl IdentityStore for PgIdentityStore {
         let mut tx = self.scoped(user_id).await?;
         let row = sqlx::query_as!(
             ChangeRow,
-            r#"SELECT id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at,
+            r#"SELECT id, user_id, channel, new_value, requested_session_id, kind, admin_user_id, verified_by,
+                      verification_ref, break_glass, status, created_at, expires_at,
                       hold_until, completed_at, cancelled_at, cancelled_by_session_id
                  FROM identity.channel_change WHERE user_id = $1
                 ORDER BY created_at DESC, id DESC LIMIT 1"#,
@@ -1204,7 +1234,13 @@ impl IdentityStore for PgIdentityStore {
 
     async fn commit(&self, changes: ChangeSet) -> Result<(), StoreError> {
         let mut tx = self.scoped(changes.scope).await?;
+        let mut current = changes.scope;
         for write in changes.writes {
+            if let Write::SwitchScope(user) = write {
+                set_scope(&mut tx, user).await?;
+                current = user;
+                continue;
+            }
             apply(&mut tx, write).await?;
         }
         let envelopes = changes
@@ -1212,7 +1248,6 @@ impl IdentityStore for PgIdentityStore {
             .iter()
             .map(outbox::audit)
             .chain(changes.events.iter().map(outbox::event));
-        let mut current = changes.scope;
         for envelope in envelopes {
             // An admin-trail row belongs to the admin; switch the RLS scope just for that insert.
             if envelope.user_id != current {
@@ -1285,6 +1320,10 @@ async fn invalidate_signup_codes(
 #[allow(clippy::too_many_lines)]
 async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<(), StoreError> {
     match write {
+        // Never reached: `commit` intercepts it to track the scope of the outbox rows.
+        Write::SwitchScope(_) => {
+            return Err(StoreError::Unavailable("SwitchScope outside commit".into()));
+        }
         Write::UpdateProfile {
             user_id,
             locale,
@@ -1687,13 +1726,19 @@ async fn apply(tx: &mut Transaction<'static, Postgres>, write: Write) -> Result<
         Write::InsertChannelChange(c) => {
             sqlx::query!(
                 r#"INSERT INTO identity.channel_change
-                     (id, user_id, channel, new_value, requested_session_id, status, created_at, expires_at)
-                   VALUES ($1, $2, $3, $4, $5, 'awaiting_codes', $6, $7)"#,
+                     (id, user_id, channel, new_value, requested_session_id, kind, admin_user_id, verified_by,
+                      verification_ref, break_glass, status, created_at, expires_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'awaiting_codes', $11, $12)"#,
                 c.id.as_uuid(),
                 c.user_id.as_uuid(),
                 c.channel().as_str(),
                 c.new_value.normalized(),
-                c.requested_session_id.as_uuid(),
+                c.requested_session_id.map(|s| s.as_uuid()),
+                c.kind().as_str(),
+                c.recovery.as_ref().map(|r| r.admin_user_id.as_uuid()),
+                c.recovery.as_ref().map(|r| r.verified_by.as_str()),
+                c.recovery.as_ref().map(|r| r.verification_ref.as_str()),
+                c.recovery.as_ref().is_some_and(|r| r.break_glass),
                 c.created_at,
                 c.expires_at
             )

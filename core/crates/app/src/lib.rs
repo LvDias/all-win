@@ -1,5 +1,6 @@
 //! Composition root: configuration, telemetry, HTTP server and wiring of module ports.
 
+pub mod admin_recovery;
 pub mod config;
 pub mod dev;
 pub mod http;

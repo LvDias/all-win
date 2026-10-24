@@ -10,11 +10,13 @@ use access::{SessionAuthenticator, StepUpGate};
 use adapter_tradingview::IngressState;
 use async_trait::async_trait;
 use axum::Router;
-use identity_application::changes::{AUDIT_EVENT_TYPES, NOTICE_EVENT_TYPE, SSE_EVENT_TYPES};
+use identity_application::changes::{
+    AUDIT_EVENT_TYPES, NOTICE_EVENT_TYPE, Notice, OPERATOR_EVENT_TYPE, SSE_EVENT_TYPES,
+};
 use identity_application::deps::{IdentityDeps, IdentitySettings};
 use identity_application::ports::{
-    AccountTargets, CodeSender, ConnectionAccounts, ConnectionPresence, Mailer, SourceActivity,
-    SourceKeyListener,
+    AccountTargets, CodeSender, ConnectionAccounts, ConnectionPresence, DeliveryQueue, Mailer,
+    SourceActivity, SourceKeyListener,
 };
 use identity_application::usecases::access_port::IdentityAccess;
 use identity_application::usecases::channel_change::ApplyDueChannelHolds;
@@ -176,6 +178,135 @@ impl EventConsumer for NoticeConsumer {
     }
 }
 
+/// `identity.operator_recovery` (S3 AC-12, Esquadro N-1): the operator command runs in its own
+/// process, whose stdout is the operator's terminal, so its actions reach the collected server
+/// log only through this consumer. Normal actions: warn. Break-glass: error, a `security_alert`
+/// line and an e-mail to `OPERATOR_ALERT_EMAIL` (ids only). Who ran it (host-reported) goes to
+/// this log only; the audit consumer never registers the type.
+struct OperatorConsumer {
+    sender: Arc<dyn NoticeSender>,
+    disabled: bool,
+    alert_to: Option<identity_enterprise::channel::Destination>,
+    /// Break-glass events already logged whose alert e-mail is still to be sent (Brasa R3-2):
+    /// a retry re-sends the e-mail without repeating the log lines.
+    awaiting_mail: std::sync::Mutex<std::collections::HashSet<uuid::Uuid>>,
+}
+
+impl OperatorConsumer {
+    fn new(
+        sender: Arc<dyn NoticeSender>,
+        disabled: bool,
+        alert_to: Option<identity_enterprise::channel::Destination>,
+    ) -> Self {
+        Self {
+            sender,
+            disabled,
+            alert_to,
+            awaiting_mail: std::sync::Mutex::new(std::collections::HashSet::new()),
+        }
+    }
+
+    /// Marks `id` as logged; `false` when it already was (a retry of its e-mail).
+    fn first_time(&self, id: uuid::Uuid) -> bool {
+        self.awaiting_mail.lock().map_or(true, |mut s| s.insert(id))
+    }
+
+    fn mailed(&self, id: uuid::Uuid) {
+        if let Ok(mut s) = self.awaiting_mail.lock() {
+            s.remove(&id);
+        }
+    }
+}
+
+#[async_trait]
+impl EventConsumer for OperatorConsumer {
+    fn name(&self) -> &'static str {
+        "identity-operator"
+    }
+
+    async fn handle(&self, e: &OutboxEvent) -> Result<(), String> {
+        let l = identity_infra::outbox::operator_from_payload(&e.payload)
+            .ok_or_else(|| "malformed operator payload".to_owned())?;
+        let dash = |v: &Option<String>| v.clone().unwrap_or_else(|| "-".into());
+        if !l.break_glass {
+            tracing::warn!(
+                target: "operator",
+                event_id = %e.id,
+                user_id = %e.user_id.as_uuid(),
+                admin_user_id = dash(&l.admin_user_id),
+                change_id = dash(&l.change_id),
+                step = l.step,
+                outcome = l.outcome,
+                reason = dash(&l.reason),
+                after_cancel = l.after_cancel,
+                host_login = dash(&l.host_login),
+                host_ssh_connection = dash(&l.host_ssh_connection),
+                host_ssh_key = dash(&l.host_key_fingerprint),
+                "admin recovery (host-reported session values)"
+            );
+            if l.after_cancel {
+                tracing::warn!(target: "security_alert", user_id = %e.user_id.as_uuid(), "channel change requested again after a cancellation");
+            }
+            return Ok(());
+        }
+        if self.first_time(e.id) {
+            self.log_break_glass(e, &l);
+        }
+        let Some(to) = &self.alert_to else {
+            self.mailed(e.id);
+            return Ok(());
+        };
+        if self.disabled {
+            self.mailed(e.id);
+            tracing::warn!(event_id = %e.id, "break-glass alert e-mail not sent: no e-mail provider configured");
+            return Ok(());
+        }
+        let notice = Notice::OperatorAlert {
+            to: to.clone(),
+            change_id: l.change_id.clone(),
+            step: l.step.clone(),
+            outcome: l.outcome.clone(),
+            at: e.occurred_at,
+        };
+        match self
+            .sender
+            .send_notice(identity_enterprise::profile::Locale::PtBr, &notice)
+            .await
+        {
+            Ok(()) => {
+                self.mailed(e.id);
+                Ok(())
+            }
+            Err(err) => {
+                tracing::error!(target: "operator", event_id = %e.id, class = err.class(), "break-glass alert e-mail failed; it will be retried");
+                Err(format!("operator alert delivery failed: {}", err.class()))
+            }
+        }
+    }
+}
+
+impl OperatorConsumer {
+    fn log_break_glass(&self, e: &OutboxEvent, l: &identity_infra::outbox::OperatorLogLine) {
+        let dash = |v: &Option<String>| v.clone().unwrap_or_else(|| "-".into());
+        tracing::error!(
+            target: "operator",
+            event_id = %e.id,
+            user_id = %e.user_id.as_uuid(),
+            admin_user_id = dash(&l.admin_user_id),
+            change_id = dash(&l.change_id),
+            step = l.step,
+            outcome = l.outcome,
+            reason = dash(&l.reason),
+            after_cancel = l.after_cancel,
+            host_login = dash(&l.host_login),
+            host_ssh_connection = dash(&l.host_ssh_connection),
+            host_ssh_key = dash(&l.host_key_fingerprint),
+            "admin recovery BREAK-GLASS (host-reported session values)"
+        );
+        tracing::error!(target: "security_alert", event_id = %e.id, step = l.step, outcome = l.outcome, "break-glass used");
+    }
+}
+
 pub fn versioned_keys(cfg: &IdentityConfig) -> anyhow::Result<VersionedKeys> {
     let keys: BTreeMap<i16, Vec<u8>> = cfg
         .peppers
@@ -186,20 +317,25 @@ pub fn versioned_keys(cfg: &IdentityConfig) -> anyhow::Result<VersionedKeys> {
         .map_err(|e| anyhow::anyhow!("IDENTITY_PEPPERS: {e}"))
 }
 
-/// Builds identity and registers its outbox consumers (`audit` for the audit codes).
-#[allow(clippy::too_many_arguments)]
-pub fn wire(
+/// Identity's dependencies and the senders `app` drives, shared by the server and the operator
+/// command (`admin recovery`).
+pub(crate) struct IdentityParts {
+    pub deps: IdentityDeps,
+    pub sender: Arc<dyn CodeSender>,
+    pub notices: Arc<dyn NoticeSender>,
+    pub public_origin: String,
+}
+
+pub(crate) fn parts(
     config: &Config,
     cfg: &IdentityConfig,
     db: &PgPool,
     worker: &PgPool,
     clock: Arc<dyn Clock>,
-    ingress: Arc<IngressState>,
-    audit: Arc<dyn EventConsumer>,
-    consumers: &mut Consumers,
-) -> anyhow::Result<IdentityWiring> {
+    source_keys: Arc<dyn SourceKeyListener>,
+    queue: Arc<dyn DeliveryQueue>,
+) -> anyhow::Result<IdentityParts> {
     let alerts = Arc::new(LogSecurityAlerts);
-    let (queue, delivery) = delivery_channel();
     let (sender, notices, mailer): (Arc<dyn CodeSender>, Arc<dyn NoticeSender>, Arc<dyn Mailer>) =
         match &cfg.code_sender {
             CodeSenderConfig::Disabled => (
@@ -231,7 +367,7 @@ pub fn wire(
         mailer,
         presence: Arc::new(NoPresence),
         source_activity: Arc::new(NoSourceActivity),
-        source_keys: Arc::new(IngressKeyListener(ingress)),
+        source_keys,
         adapters: Arc::new(adapters),
         pairing_throttle: Arc::new(PrefixPairingThrottle::new(
             PairingThrottlePolicy::default(),
@@ -242,7 +378,7 @@ pub fn wire(
             CodeThrottlePolicy::default(),
             alerts.clone(),
         )),
-        delivery: Arc::new(queue),
+        delivery: queue,
         alerts,
         account_targets: Arc::new(NoAccountTargets),
         settings: IdentitySettings {
@@ -259,10 +395,45 @@ pub fn wire(
         },
         "identity settings"
     );
+    Ok(IdentityParts {
+        deps,
+        sender,
+        notices,
+        public_origin,
+    })
+}
+
+/// Builds identity and registers its outbox consumers (`audit` for the audit codes).
+#[allow(clippy::too_many_arguments)]
+pub fn wire(
+    config: &Config,
+    cfg: &IdentityConfig,
+    db: &PgPool,
+    worker: &PgPool,
+    clock: Arc<dyn Clock>,
+    ingress: Arc<IngressState>,
+    audit: Arc<dyn EventConsumer>,
+    consumers: &mut Consumers,
+) -> anyhow::Result<IdentityWiring> {
+    let (queue, delivery) = delivery_channel();
+    let IdentityParts {
+        deps,
+        sender,
+        notices,
+        public_origin,
+    } = parts(
+        config,
+        cfg,
+        db,
+        worker,
+        clock,
+        Arc::new(IngressKeyListener(ingress)),
+        Arc::new(queue),
+    )?;
     let events = Arc::new(SseHub::new());
     let sse: Arc<dyn EventConsumer> = Arc::new(SseConsumer(events.clone()));
     let notice: Arc<dyn EventConsumer> = Arc::new(NoticeConsumer {
-        sender: notices,
+        sender: notices.clone(),
         disabled: cfg.code_sender == CodeSenderConfig::Disabled,
     });
     for t in AUDIT_EVENT_TYPES {
@@ -272,6 +443,22 @@ pub fn wire(
         consumers.register(t, sse.clone());
     }
     consumers.register(NOTICE_EVENT_TYPE, notice);
+    let alert_to = cfg.operator_alert_email.as_deref().and_then(|raw| {
+        identity_enterprise::email::EmailAddress::parse(raw)
+            .ok()
+            .map(identity_enterprise::channel::Destination::Email)
+    });
+    if alert_to.is_none() {
+        tracing::warn!(
+            "OPERATOR_ALERT_EMAIL is unset: break-glass alerts reach the server log only"
+        );
+    }
+    let operator: Arc<dyn EventConsumer> = Arc::new(OperatorConsumer::new(
+        notices.clone(),
+        cfg.code_sender == CodeSenderConfig::Disabled,
+        alert_to,
+    ));
+    consumers.register(OPERATOR_EVENT_TYPE, operator);
     let emitted: Vec<&str> = identity_application::changes::emitted_event_types().collect();
     consumers.require(&emitted, crate::unconsumed::UNCONSUMED)?;
     let router = identity_infra::http::router(Arc::new(IdentityHttpState {
@@ -289,4 +476,150 @@ pub fn wire(
         delivery,
         sender,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+    use super::*;
+    use identity_application::changes::{
+        HostReport, IdentityEvent, OperatorOutcome, OperatorRecord, OperatorStep,
+    };
+    use identity_application::ports::DeliveryError;
+    use identity_enterprise::channel::Destination;
+    use identity_enterprise::email::EmailAddress;
+    use identity_enterprise::profile::Locale;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Sent(Mutex<Vec<Notice>>);
+
+    #[async_trait]
+    impl NoticeSender for Sent {
+        async fn send_notice(&self, _: Locale, notice: &Notice) -> Result<(), DeliveryError> {
+            self.0.lock().unwrap().push(notice.clone());
+            Ok(())
+        }
+    }
+
+    fn row(break_glass: bool) -> OutboxEvent {
+        let user = UserId::new_v7();
+        let envelope =
+            identity_infra::outbox::event(&IdentityEvent::OperatorRecovery(OperatorRecord {
+                user_id: user,
+                admin_user_id: Some(user),
+                change_id: None,
+                step: OperatorStep::Start,
+                outcome: OperatorOutcome::Done,
+                break_glass,
+                after_cancel: false,
+                host: HostReport::parse(Some("ops"), Some("203.0.113.5 1 10.0.0.2 22"), None),
+                at: chrono::Utc::now(),
+            }));
+        OutboxEvent {
+            id: uuid::Uuid::now_v7(),
+            user_id: envelope.user_id,
+            event_type: envelope.event_type.to_owned(),
+            occurred_at: envelope.occurred_at,
+            payload: envelope.payload,
+        }
+    }
+
+    fn consumer(sent: Arc<Sent>, disabled: bool, to: Option<&str>) -> OperatorConsumer {
+        OperatorConsumer::new(
+            sent,
+            disabled,
+            to.map(|t| Destination::Email(EmailAddress::parse(t).unwrap())),
+        )
+    }
+
+    #[tokio::test]
+    async fn break_glass_e_mails_the_operator_with_ids_only() {
+        let sent = Arc::new(Sent::default());
+        let c = consumer(sent.clone(), false, Some("ops@example.com"));
+        c.handle(&row(true)).await.unwrap();
+        let notices = sent.0.lock().unwrap().clone();
+        assert_eq!(notices.len(), 1);
+        let Notice::OperatorAlert {
+            to, step, outcome, ..
+        } = &notices[0]
+        else {
+            panic!("{notices:?}");
+        };
+        assert_eq!(to.normalized(), "ops@example.com");
+        assert_eq!((step.as_str(), outcome.as_str()), ("start", "done"));
+        assert!(
+            !format!("{notices:?}").contains("203.0.113.5"),
+            "who ran it stays in the log"
+        );
+    }
+
+    #[tokio::test]
+    async fn normal_actions_and_unconfigured_or_disabled_senders_send_nothing() {
+        let sent = Arc::new(Sent::default());
+        consumer(sent.clone(), false, Some("ops@example.com"))
+            .handle(&row(false))
+            .await
+            .unwrap();
+        consumer(sent.clone(), false, None)
+            .handle(&row(true))
+            .await
+            .unwrap();
+        consumer(sent.clone(), true, Some("ops@example.com"))
+            .handle(&row(true))
+            .await
+            .unwrap();
+        assert!(sent.0.lock().unwrap().is_empty());
+        let mut bad = row(true);
+        bad.payload = serde_json::json!({});
+        assert!(
+            consumer(sent, false, None).handle(&bad).await.is_err(),
+            "a malformed row is retried, never dropped silently"
+        );
+    }
+
+    /// Fails the first send, then delivers.
+    #[derive(Default)]
+    struct FlakyOnce(Mutex<u32>);
+
+    #[async_trait]
+    impl NoticeSender for FlakyOnce {
+        async fn send_notice(&self, _: Locale, _: &Notice) -> Result<(), DeliveryError> {
+            let mut calls = self.0.lock().unwrap();
+            *calls += 1;
+            if *calls == 1 {
+                Err(DeliveryError::Failed("smtp".into()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn an_e_mail_retry_does_not_repeat_the_log_lines() {
+        let flaky = Arc::new(FlakyOnce::default());
+        let c = OperatorConsumer::new(
+            flaky.clone(),
+            false,
+            Some(Destination::Email(
+                EmailAddress::parse("ops@example.com").unwrap(),
+            )),
+        );
+        let ev = row(true);
+        assert!(c.handle(&ev).await.is_err(), "the failed e-mail is retried");
+        assert!(!c.first_time(ev.id), "logged once, before the retry");
+        // Still pending (that check changed nothing): the retry only mails.
+        assert!(c.handle(&ev).await.is_ok());
+        assert_eq!(*flaky.0.lock().unwrap(), 2);
+        assert!(c.first_time(ev.id), "cleared once the e-mail went out");
+    }
+
+    #[test]
+    fn the_operator_event_is_never_an_audit_code() {
+        assert!(!AUDIT_EVENT_TYPES.contains(&OPERATOR_EVENT_TYPE));
+        assert!(
+            identity_application::changes::emitted_event_types().any(|t| t == OPERATOR_EVENT_TYPE),
+            "app must register a consumer for it"
+        );
+    }
 }

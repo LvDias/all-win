@@ -7,7 +7,7 @@ use std::net::IpAddr;
 
 use chrono::{DateTime, Utc};
 use identity_enterprise::channel::{Channel, Destination};
-use identity_enterprise::channel_change::ChannelChange;
+use identity_enterprise::channel_change::{ChangeKind, ChannelChange, VerificationRef, VerifiedBy};
 use identity_enterprise::connection::{Connection, ConnectionStatus, PairedInstance, PairingCode};
 use identity_enterprise::device::KnownDevice;
 use identity_enterprise::ids::{
@@ -44,6 +44,10 @@ pub enum CodeTable {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Write {
+    /// Moves the transaction's RLS scope to another user for the writes that follow (an admin
+    /// recovery consumes the admin's step-up code and changes the target's rows in one
+    /// transaction).
+    SwitchScope(UserId),
     /// Sign-up completion. Conflict `EmailTaken` when the normalized e-mail already belongs to a user.
     InsertUser(User),
     UpdateProfile {
@@ -283,6 +287,9 @@ pub enum Write {
 pub enum Actor {
     User(UserId),
     Admin(UserId),
+    /// A platform admin acting on another user's data (Q28 recovery, contract `platform_admin`);
+    /// the admin's id never reaches the user's trail.
+    PlatformAdmin(UserId),
     /// The Core itself (automatic action).
     System,
     /// The paired plugin of a connection.
@@ -304,6 +311,37 @@ pub enum Trail {
 pub enum StepUpFailure {
     Missing,
     CodeInvalid,
+}
+
+/// `kind` and the recovery fields of every `security.channel_change_*` entry (HTTP 5.4.0).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChangeAudit {
+    UserChange,
+    AdminRecovery {
+        verified_by: VerifiedBy,
+        verification_ref: VerificationRef,
+        break_glass: bool,
+    },
+}
+
+impl ChangeAudit {
+    pub fn of(change: &ChannelChange) -> Self {
+        match &change.recovery {
+            None => Self::UserChange,
+            Some(r) => Self::AdminRecovery {
+                verified_by: r.verified_by,
+                verification_ref: r.verification_ref.clone(),
+                break_glass: r.break_glass,
+            },
+        }
+    }
+
+    pub fn kind(&self) -> ChangeKind {
+        match self {
+            Self::UserChange => ChangeKind::UserChange,
+            Self::AdminRecovery { .. } => ChangeKind::AdminRecovery,
+        }
+    }
 }
 
 /// Audited actions; `event_type()` is the contract `AuditCode` (modules/audit.yaml) and the fields
@@ -340,27 +378,32 @@ pub enum AuditAction {
     },
     ChannelChangeRequested {
         change_id: ChannelChangeId,
+        kind: ChangeAudit,
         channel: Channel,
         masked_new_value: String,
     },
     ChannelChangeOnHold {
         change_id: ChannelChangeId,
+        kind: ChangeAudit,
         channel: Channel,
         hold_until: DateTime<Utc>,
     },
     ChannelChangeCompleted {
         change_id: ChannelChangeId,
+        kind: ChangeAudit,
         channel: Channel,
         masked_old_value: Option<String>,
         masked_new_value: String,
     },
     ChannelChangeCancelled {
         change_id: ChannelChangeId,
+        kind: ChangeAudit,
         channel: Channel,
         by_user: bool,
     },
     ChannelChangeNotCompleted {
         change_id: ChannelChangeId,
+        kind: ChangeAudit,
         channel: Channel,
     },
     DeviceForgotten {
@@ -484,13 +527,18 @@ pub const SSE_EVENT_TYPES: &[&str] = &[
 /// Outbox `event_type` of the e-mail notices (no secret inside; policy §5.3, §7).
 pub const NOTICE_EVENT_TYPE: &str = "identity.notice_requested";
 
+/// Outbox `event_type` of every operator-command action (S3 AC-12, policy 3.3 §9.1; Esquadro
+/// N-1). Not an audit code: a consumer in `app` writes it to the server's operator log and alerts
+/// on break-glass, so it never reaches the account owner's trail.
+pub const OPERATOR_EVENT_TYPE: &str = "identity.operator_recovery";
+
 /// Every `event_type` identity writes to the outbox; `app` requires a consumer for each.
 pub fn emitted_event_types() -> impl Iterator<Item = &'static str> {
     AUDIT_EVENT_TYPES
         .iter()
         .chain(SSE_EVENT_TYPES)
         .copied()
-        .chain(std::iter::once(NOTICE_EVENT_TYPE))
+        .chain([NOTICE_EVENT_TYPE, OPERATOR_EVENT_TYPE])
 }
 
 impl AuditAction {
@@ -568,6 +616,42 @@ pub enum Notice {
         channel: Channel,
         masked_new_value: String,
     },
+    /// To the new e-mail when an admin recovery takes effect (Esquadro): sessions ended, devices
+    /// revoked, and the source tokens and pairings that stayed, to review. No action link.
+    AccountRecovered {
+        to: Destination,
+        sources: usize,
+        pairings: usize,
+    },
+    /// To every old channel when an admin recovery takes effect: only the fact and the date, no
+    /// count (the old channel may be the attacker's).
+    RecoveredByAdmin {
+        to: Destination,
+        channel: Channel,
+        masked_new_value: String,
+        at: DateTime<Utc>,
+    },
+    /// To the target's current channels when a break-glass recovery starts (policy 3.3 §9.1 c).
+    BreakGlassStarted {
+        to: Destination,
+        masked_account: String,
+        at: DateTime<Utc>,
+    },
+    /// To every other active platform admin when a break-glass recovery starts.
+    AdminBreakGlassStarted {
+        to: Destination,
+        masked_account: String,
+        at: DateTime<Utc>,
+    },
+    /// To the operator's configured address for a break-glass action (Esquadro N-1). Ids, step
+    /// and outcome only: who ran it stays in the server's operator log.
+    OperatorAlert {
+        to: Destination,
+        change_id: Option<String>,
+        step: String,
+        outcome: String,
+        at: DateTime<Utc>,
+    },
     /// To every channel: a change is on hold until `hold_until` and can be cancelled.
     ChannelChangeOnHold {
         to: Destination,
@@ -577,6 +661,109 @@ pub enum Notice {
     },
     /// To every channel after a cancellation.
     ChannelChangeCancelled { to: Destination, channel: Channel },
+}
+
+/// What the host wrapper reports about the operator's SSH session (policy 3.3 §9.1 b). The
+/// command runs in the container and cannot observe the session, so these are only
+/// "host-reported": anyone with a host shell can set them. Each value is kept only when it has
+/// the expected format; the sshd log is the strong record.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HostReport {
+    login: Option<String>,
+    ssh_connection: Option<String>,
+    key_fingerprint: Option<String>,
+}
+
+impl HostReport {
+    /// `login`: `^[a-z_][a-z0-9_.-]{0,31}$`; `ssh_connection`: `ip port ip port`; the key:
+    /// `^SHA256:[A-Za-z0-9+/]{43}$`. Anything else is dropped.
+    pub fn parse(login: Option<&str>, ssh_connection: Option<&str>, key: Option<&str>) -> Self {
+        let login = login.map(str::trim).filter(|l| {
+            let mut c = l.chars();
+            c.next().is_some_and(|f| f.is_ascii_lowercase() || f == '_')
+                && l.len() <= 32
+                && c.all(|x| x.is_ascii_lowercase() || x.is_ascii_digit() || "_.-".contains(x))
+        });
+        let ssh_connection = ssh_connection.map(str::trim).filter(|v| {
+            let f: Vec<&str> = v.split_ascii_whitespace().collect();
+            f.len() == 4
+                && f[0].parse::<IpAddr>().is_ok()
+                && f[1].parse::<u16>().is_ok()
+                && f[2].parse::<IpAddr>().is_ok()
+                && f[3].parse::<u16>().is_ok()
+        });
+        let key_fingerprint = key.map(str::trim).filter(|k| {
+            k.strip_prefix("SHA256:").is_some_and(|b| {
+                b.len() == 43
+                    && b.bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'+' || c == b'/')
+            })
+        });
+        Self {
+            login: login.map(str::to_owned),
+            ssh_connection: ssh_connection.map(str::to_owned),
+            key_fingerprint: key_fingerprint.map(str::to_owned),
+        }
+    }
+
+    pub fn login(&self) -> Option<&str> {
+        self.login.as_deref()
+    }
+
+    pub fn ssh_connection(&self) -> Option<&str> {
+        self.ssh_connection.as_deref()
+    }
+
+    pub fn key_fingerprint(&self) -> Option<&str> {
+        self.key_fingerprint.as_deref()
+    }
+}
+
+/// The operator-command step an `identity.operator_recovery` event reports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperatorStep {
+    /// Resolving who acts on whom, before any action.
+    Resolve,
+    Start,
+    Confirm,
+    Cancel,
+}
+
+impl OperatorStep {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Resolve => "resolve",
+            Self::Start => "start",
+            Self::Confirm => "confirm",
+            Self::Cancel => "cancel",
+        }
+    }
+}
+
+/// How the step ended. `Refused` carries a stable reason code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperatorOutcome {
+    Done,
+    Refused(&'static str),
+    StepUpFailed,
+    AttemptsExhausted,
+}
+
+/// One operator-command action for the operator log (never the audit).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OperatorRecord {
+    /// The target user (the outbox row's owner).
+    pub user_id: UserId,
+    /// The acting admin, when known; the target itself on break-glass.
+    pub admin_user_id: Option<UserId>,
+    pub change_id: Option<ChannelChangeId>,
+    pub step: OperatorStep,
+    pub outcome: OperatorOutcome,
+    pub break_glass: bool,
+    /// A request after a cancellation (the admin alert of policy §9).
+    pub after_cancel: bool,
+    pub host: HostReport,
+    pub at: DateTime<Utc>,
 }
 
 /// Integration events published through the outbox (SSE projection, gateway, audit, notices).
@@ -609,6 +796,8 @@ pub enum IdentityEvent {
         connection_id: ConnectionId,
         at: DateTime<Utc>,
     },
+    /// `identity.operator_recovery`: an operator-command action (AC-12).
+    OperatorRecovery(OperatorRecord),
     /// An e-mail notice for the user, in their locale.
     NoticeRequested {
         user_id: UserId,
@@ -630,6 +819,7 @@ impl IdentityEvent {
             Self::ConnectionPaired { .. } => "identity.connection_paired",
             Self::PairingCodeSuperseded { .. } => "identity.pairing_code_invalidated",
             Self::NoticeRequested { .. } => NOTICE_EVENT_TYPE,
+            Self::OperatorRecovery(_) => OPERATOR_EVENT_TYPE,
         }
     }
 }
@@ -676,6 +866,16 @@ impl ChangeSet {
         self.events.extend(other.events);
         self
     }
+
+    /// Appends a set of another scope in the same transaction: its writes run after a
+    /// [`Write::SwitchScope`] to its scope (an admin's step-up consume plus the target's change).
+    pub fn then_in(mut self, other: ChangeSet) -> Self {
+        self.writes.push(Write::SwitchScope(other.scope));
+        self.writes.extend(other.writes);
+        self.audit.extend(other.audit);
+        self.events.extend(other.events);
+        self
+    }
 }
 
 #[cfg(test)]
@@ -688,7 +888,7 @@ mod tests {
         let all: std::collections::BTreeSet<&str> = emitted_event_types().collect();
         assert_eq!(
             all.len(),
-            AUDIT_EVENT_TYPES.len() + SSE_EVENT_TYPES.len() + 1
+            AUDIT_EVENT_TYPES.len() + SSE_EVENT_TYPES.len() + 2
         );
         for t in AUDIT_EVENT_TYPES {
             assert!(
