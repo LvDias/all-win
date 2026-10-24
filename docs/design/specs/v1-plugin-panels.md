@@ -127,7 +127,7 @@ A section "Segurança deste computador" with the always-visible state: "Contas r
 The plugin does **not** revoke the pairing. `Desconectar este computador` only **stops the connection from this computer**; the pairing stays in the Core as `Desconectada` with the usual out-of-sync rules (S11), and **revoking the pairing is done in the web with a code** (S3-10; Q18 stays: confirmation listing the accounts, strong warning with an open position or enforcement on, nothing is closed).
 - Dialog: title "Desconectar este computador?"; body "O All Win para de enviar ordens e de receber as suas execuções neste computador. No All Win a conexão aparece como desconectada. Para encerrar o pareamento de vez, desparear no All Win → Conexões." and, when applicable (the plugin knows its mapped accounts' positions and orders): danger text "Há posição aberta em: {accounts}. Ela continua aberta no NinjaTrader e o All Win não a acompanhará; as contas ficarão fora de sincronia no All Win." with a required checkbox "Entendo" only in that case. If enforcement is on: "Com a aplicação automática ligada, o NinjaTrader continua aplicando os últimos limites recebidos, como em uma queda de conexão." **Requirement (S15 AC-4):** local enforcement MUST keep running with the cached limits after a user disconnect, and the block stays reactive. A disconnect is not an unpair (G7 applies only to unpairing or unmapping). An account must not be able to escape a block by disconnecting. Open question to the Plugin Engineer (Elo): confirm this in the host and the Adapter.Core design (ADR-0004 §7).
 - With an open position or a command in flight, the account is flagged out of sync and an alert is raised (`sync.disconnected_by_user` **[Proposal: not yet in the contract or ADR-0004; the protocol owner adds it to the 1.3 / S11 delta]**: "Você desconectou o plugin com posição aberta; o All Win não está acompanhando esta conta"); without a position there is only the status and the audit entry, no alert (ADR-0004 §6).
-- **While any mapped account is blocked until the reset (Q82, proposed):** `Desconectar este computador` still works (enforcement keeps running, see above), but unpairing from the web or unlinking/disabling that account is refused until the reset (S15 §3). **[Provisional, Q82 rec. (a); the user has not decided. If (b), unpair ends the local enforcement as G7 says.]** In the plugin, a refused revocation appears as the notice "Conta bloqueada até {time}: o pareamento só pode ser encerrado depois do reset."
+- **While any mapped account is blocked until the reset (Q82 (a) [Decision 2026-10-24]):** `Desconectar este computador` still works (enforcement keeps running, see above), but unpairing from the web or unlinking/disabling that account is refused until the reset (S15 §3). In the plugin, a refused revocation appears as the notice "Conta bloqueada até {time}: o pareamento só pode ser encerrado depois do reset."
 - Buttons `Desconectar` (destructive style) / `Cancelar` (default).
 - Result: badge `Desconectado por você`, the plugin does not reconnect on its own, a `Reconectar` button reconnects with the stored credential (no code needed). The credential stays in the protected store; **[Elo/PO: whether to forget it]**. The same state survives a NinjaTrader restart until the user reconnects **[Elo]**.
 - To remove the credential from this computer the user revokes in the web (state `Despareado`, back to the pairing form).
@@ -350,12 +350,13 @@ Legend: [OFF] official NinjaScript docs, [INF] WPF/.NET 4.8 inference, [EXP] nee
 
 **Decided by the user (2026-10-23):** Q65 (S15 AC-12) the plugin never steals focus: Log + non-activating toast + permanent per-account status in the panel; the window never opens itself. Q62 (S15 AC-9) release at the reset: informational notification + audit entry.
 
+**Decided (2026-10-24):** Q82 (a) while an account is blocked, unpair / unlink / disable is refused until the reset, with the reason (§4.5, S15 §3).
+
 **Not decided (provisional):**
 
 | ID | Question | Spec default (provisional) |
 |---|---|---|
 | Q66 | Unpair in the plugin | Only **disconnects** locally (warning + checkbox when a position is open); the pairing stays in the Core as disconnected with the out-of-sync rules; revoking is in the web with a code (Q18 unchanged) |
-| Q82 (proposed) | While an account is blocked, refuse unpair / unlink / disable until the reset? | (a) refused with the reason (§4.5, S15 §3) |
 
 **Answered by the PO:** Q-P7 — no Alerts Log (`AlertCallback`) in V1 (§7).
 

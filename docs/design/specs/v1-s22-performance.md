@@ -1,9 +1,9 @@
 # V1-S22 — Performance metrics view — Screen spec
 
-> **Owner:** Product Designer (Nanquim) · **Status:** proposed, PO review (Rumo) applied · **Revision:** 2 · **Date:** 2026-10-23
-> **Slice:** [V1-S22](../../product/release-1/slice-plan.md) AC-1 … AC-3 (slice-plan rev. 7 plus the decisions of 2026-10-23); vision §10. Consumes the data of S21; filters and formats are shared with it.
+> **Owner:** Product Designer (Nanquim) · **Status:** proposed, PO review (Rumo) applied · **Revision:** 3 · **Date:** 2026-10-24
+> **Slice:** [V1-S22](../../product/release-1/slice-plan.md) AC-1 … AC-5 (slice-plan rev. 7 plus the decisions of 2026-10-23/24); vision §10. Consumes the data of S21; filters and formats are shared with it.
 > **Foundations and components:** [foundations.md](../foundations.md) (F§6 numbers and time, F§7 status, F§10 feedback, F§4 "charts get their palette in this slice"), [components.md](../components.md) (C§3 `EmptyState`, C§4 `DataTable`). **Related:** [S21](v1-s21-trades.md) (trade list, filters, `—` for missing MAE/MFE), [S10](v1-s10-audit-log.md).
-> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9): `contracts/http/modules/performance.yaml` and the notes [s22-performance](../../architecture/contracts/s22-performance.md). Operation `getPerformance`. **Where this spec and the contract differ, the contract wins.**
+> **Contract:** [HTTP contract 5.4.0 (draft)](../../../contracts/http/openapi.yaml) (draft by Compasso, not yet committed; header to the commit once it is): `contracts/http/modules/performance.yaml` and the notes [s22-performance](../../architecture/contracts/s22-performance.md). Operation `getPerformance`. **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend). Every metric is computed by the Core from stored trades (the plugin computed MAE/MFE/P&L per trade, S21 AC-2). QA owns the checks.
 > **Scope note (slice plan):** the metric set is an *assumption refined with the Designer*; **changes beyond the list in AC-1 go to the user**. This spec stays inside AC-1. Extra metrics someone may want (profit factor, best/worst trade, average win and loss, per-day curve) are **not drawn**: Q59 (a) decided, V1 shows only the AC-1 list [Decision 2026-10-23].
 
@@ -39,7 +39,7 @@
 | Filter | Component | Values |
 |---|---|---|
 | Período / Period | chips `Hoje`, `7 dias`, `30 dias`, `Personalizado` (two date pickers, zone shown) | default `30 dias`; the period filters by the trade's **exit time**, in the display zone, exactly as S21 |
-| Contas / Accounts | multi-select `Combobox`, all accounts selected by default, includes deleted accounts `(excluída)` | the "set of accounts" of AC-1. TODO Q79 (pending): whether trades of archived accounts stay in the metrics; recommendation: kept, hidden by default, `Arquivadas` filter. Not hard-coded: the answer changes only that default, and S21 §3.1 follows the same answer. |
+| Contas / Accounts | multi-select `Combobox`, all accounts selected by default, includes deleted accounts `(excluída)` | the "set of accounts" of AC-1. Q79 (a), S21 AC-12 [Decision 2026-10-24]: trades of archived accounts stay in the data but are **excluded by default**; they enter the metrics only with the `Arquivadas` filter (a `Switch` "Incluir contas arquivadas", off by default, in the URL), the same control as S21 §3.1. |
 
 State lives in the URL (`?period=…&account=…&group=…`) and is carried to S21. Filters apply as they change (debounced); below `md` they open in a `Sheet` with `Aplicar`/`Limpar`. An `aria-live="polite"` region announces "Resultados atualizados: {n} trades" after each change.
 
@@ -51,7 +51,7 @@ A `dl` of seven figure `Card`s (two columns on mobile, four ≥ `lg`), all from 
 |---|---|---|---|
 | Trades | Trades | integer | |
 | P&L líquido total | Total net P&L | signed money (F§6.2) with `--pnl-*` token **and** sign; the **gross** total beside it, smaller, labeled `bruto` (AC-3) | definition in §3.4 |
-| P&L líquido médio por trade | Avg net P&L per trade | signed money (net only; the contract carries no gross average) | |
+| P&L líquido médio por trade | Avg net P&L per trade | signed money with `--pnl-*` token and sign; the **gross average** (`avg_gross_pnl`) beside it, smaller, labeled `bruto` (AC-3, like the totals) | definition in §3.4 |
 | Taxa de acerto | Win rate | percent with one decimal as sent by the Core, plus "{wins} vitórias · {losses} derrotas · {zero} zero" (counts from the Core) | definition in §3.4 |
 | Tempo médio na operação | Avg time in trade | duration, two units (`12 min 30 s`) | |
 | MAE médio | Avg MAE | money | basis line when not all trades have it, see below |
@@ -59,7 +59,7 @@ A `dl` of seven figure `Card`s (two columns on mobile, four ≥ `lg`), all from 
 
 - **Basis line** under MAE/MFE averages when some trades lack the value (manual trades may omit them, S21 §4.4): "Base: {k} de {n} trades" with a `Info` popover "Trades sem este valor não entram na média." When all have it, no line.
 - Each figure has an `Info` icon-button (name "Como é calculado: {figure}") that opens the definition (§3.4).
-- A figure with no data shows `—`, never `0`, **except** the trade count and the net/gross totals: with zero trades they show `0` and `US$ 0,00` (S22 AC-5, **pending**: in the PO's staged diff 82f52221d61edbdd, not yet approved or in the slice plan), while averages and rates show `—`, and the page says there are no trades (§3.5).
+- A figure with no data shows `—`, never `0`, **except** the trade count and the net/gross totals: with zero trades they show `0` and `US$ 0,00` (S22 AC-5 [Decision 2026-10-24]), while averages (net and gross), rates and ratios show `—`, and the page says "Nenhum trade neste filtro." (en: "No trades in this filter.", §3.5).
 - **Commissions notice:** when the net of the filtered set includes estimated commissions (S21 Q71) or accounts with the warning "comissão não informada" (S13 AC-11), a `Info` line under the P&L figures says: "O líquido inclui comissões estimadas ou há contas sem comissão informada." (en: "Net includes estimated commissions, or some accounts have no commission entered."), with the account names in the popover. Suggested by the PO; not a new rule.
 
 ### 3.3 Breakdown by source and signal type
@@ -73,7 +73,7 @@ Control above the table: `ToggleGroup` "Agrupar por" with three options: `Fonte`
 | Grupo / Group | `Estratégia Quântico · Gatilhos`; `Manual`; `Plataforma (sem sinal)`; `Replicação · {master}` (S19, V1.1 only if present); labels as in S21 §3.4. A revoked or deleted source keeps its name with `(revogada)`; signal type for groups without one is `—` |
 | Trades | integer; link `Ver` → S21 filtered to this group |
 | P&L líquido total | signed net money + gross beside it + proportion bar (below, on the net) |
-| P&L líquido médio | signed net money |
+| P&L líquido médio | signed net money + gross average beside it (`bruto`), no bar |
 | Taxa de acerto | percent |
 | Tempo médio | duration |
 | MAE médio / MFE médio | money, `—` when none, basis in the cell's title when partial |
@@ -100,9 +100,8 @@ The pt-BR/en wording is reviewed by the PO; the definitions must match what the 
 | State | UI |
 |---|---|
 | Loading | Skeleton of seven figure cards and 4 table rows; changing a filter keeps the previous values dimmed (`aria-busy`) until the new ones arrive, so no old number looks current |
-| No trades in the filter (counts) | The summary keeps its figures: trades `0`, net and gross totals `US$ 0,00`, averages and rates `—`, with the sentence "Nenhum trade neste filtro." (S22 AC-5, **pending** as above). The `EmptyState` below replaces the breakdown table only |
+| Filter returns no trades (S22 AC-5, decided) | The summary keeps its figures: trades `0`, net and gross totals `US$ 0,00`, **averages (net and gross), rates and ratios `—`**, with the sentence "Nenhum trade neste filtro." / "No trades in this filter." The breakdown table is replaced by an `EmptyState` `filtered` with the chips and `Limpar filtros`. Archived accounts are excluded unless the filter includes them (Q79) |
 | First use (no trades at all) | `EmptyState` `first-use`: "Ainda não há trades para analisar." / "Conecte uma conta ou registre um trade manual para ver o desempenho." + links `Ver conexões` and `Registrar trade` |
-| Filter returns no trades | `EmptyState` `filtered` with the chips and `Limpar filtros` |
 | Error | `ErrorState` + retry + code; filters kept |
 | New trades since `as_of` | banner `role="status"`: "Há novos trades desde {time}. Atualizar" (the figures never change under the user's eyes, so they keep reconciling with the list the user is looking at) |
 | Stale stream | `Sem dados recentes` next to the `as_of` line |
@@ -140,7 +139,7 @@ The pt-BR/en wording is reviewed by the PO; the definitions must match what the 
 | Need | Notes |
 |---|---|
 | `getPerformance`: filters `from`, `to`, `account_ids`; `group_by` (`source`, `signal_type`, `source_signal`) | Same filter semantics as `listTrades` (exit time, instants), same trade set; one call |
-| Totals object: `trade_count`, `win_count`, `loss_count`, `breakeven_count`, `total_pnl` (net, `pnl_basis: net`), `total_gross_pnl`, `total_commission`, `avg_pnl` (net average; no gross average in the contract: the gross average is not drawn), `uncommissioned_count`, `win_rate` (string, one decimal), `avg_duration_seconds`, `avg_mae` + `mae_sample_count`, `avg_mfe` + `mfe_sample_count` | Exact strings; no float in the Core or on the wire; names from the draft contract performance.yaml, the contract wins. `uncommissioned_count` (trades with commission source `none`) drives the §3.2 notice |
+| Totals object: `trade_count`, `win_count`, `loss_count`, `breakeven_count`, `total_pnl` (net, `pnl_basis: net`), `total_gross_pnl`, `total_commission`, `avg_pnl` (net average) and `avg_gross_pnl` (gross average; `PerformanceFigures`, summary and groups, 5.4.0 draft), `uncommissioned_count`, `win_rate` (string, one decimal), `avg_duration_seconds`, `avg_mae` + `mae_sample_count`, `avg_mfe` + `mfe_sample_count` | Exact strings; no float in the Core or on the wire; names from the draft contract performance.yaml, the contract wins. `uncommissioned_count` (trades with commission source `none`) drives the §3.2 notice |
 | Groups: the same object + group keys (`source_id`, `source_name`, `signal_type`, `origin`), `bar_ratio` | Only groups with ≥ 1 trade; sorted as requested |
 | `as_of` instant | Same snapshot as `getTradesSummary`, so S21 and S22 can be compared |
 | Query-string contract shared with S21 (period, accounts, source, signal) | for the `Ver` links |
@@ -153,13 +152,13 @@ The pt-BR/en wording is reviewed by the PO; the definitions must match what the 
 
 **Architect (Compasso):** Q-S22-2 percent precision and string format of the win rate.
 
-**User decisions (2026-10-23) and the pending one:**
+**User decisions (2026-10-23/24):**
 
 | ID | Question | Spec default |
 |---|---|---|
 | Q58 | Win rate with net P&L = 0 | **Decided (a):** win = net P&L > 0; total = all trades; wins, losses and zero counts shown |
 | Q59 | Extra metrics beyond AC-1 (profit factor, best/worst trade, average win/loss, per-day curve) | **Decided (a):** V1 shows only the AC-1 list; the extras are not drawn |
-| Q79 | Trades of archived accounts | **Pending:** TODO in §3.1; recommendation kept, hidden by default, `Arquivadas` filter |
+| Q79 | Trades of archived accounts | **Decided (a)** [2026-10-24]: kept, excluded by default, `Arquivadas` filter (S21 AC-12) |
 
 **Reminder:** S22 reconciles with the trade list (S22 AC-2), so Q52–Q57 and Q71 (MAE/MFE unit, date filter, net P&L with gross beside it, optional MAE/MFE, edit/delete of manual trades, what one trade is, manual-trade commissions) define the numbers.
 
@@ -168,7 +167,9 @@ The pt-BR/en wording is reviewed by the PO; the definitions must match what the 
 | AC | Where |
 |---|---|
 | AC-1 totals and per-trade averages of P&L, win rate, time in trade, MAE, MFE for a period and set of accounts, split by source and signal type | §3.1–§3.3 |
-| AC-5 (pending) empty-state figures | §3.2, §3.5 |
+| AC-4 breakdown by source and signal type; Total row reconciles with S21 | §3.3 |
+| AC-5 empty-state figures (count 0, totals US$ 0,00, averages/rates/ratios `—`, sentence) | §3.2, §3.5 |
+| AC-12 (S21) archived accounts only with the filter | §3.1 |
 | AC-3 net P&L is the main value, gross beside it; win = net > 0 | §3.2–§3.4 |
 | AC-2 numbers reconcile exactly with the trade list | §2, §3.3 total row, §3.5 `as_of`, `Ver` links, §6 |
 | X-2, X-3, X-6, X-8 | permissions, Core-computed values, pt-BR/en, instants |
