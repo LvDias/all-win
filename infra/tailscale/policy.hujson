@@ -13,11 +13,11 @@
 	},
 
 	"acls": [
-		// The user's devices reach the VPS: RDP and SSH (SSH is only usable if sshd is ever started; Phase 2 is parked).
+		// The user's devices reach the VPS over RDP only. SSH (22) has no rule: sshd is not started (Phase 2 parked, 2026-10-24).
 		{
 			"action": "accept",
 			"src":    ["autogroup:member"],
-			"dst":    ["tag:allwin-nt8:3389", "tag:allwin-nt8:22"],
+			"dst":    ["tag:allwin-nt8:3389"],
 		},
 		// The dev server has no rule towards the VPS: NinjaTrader 8 tests are manual, run by the user over RDP
 		// (decision 2026-10-24); files travel through the user's Mac.
@@ -30,8 +30,8 @@
 	"tests": [
 		{
 			"src":    "autogroup:member",
-			"accept": ["tag:allwin-nt8:3389", "tag:allwin-nt8:22"],
-			"deny":   ["tag:allwin-nt8:445", "tag:allwin-dev:22"],
+			"accept": ["tag:allwin-nt8:3389"],
+			"deny":   ["tag:allwin-nt8:22", "tag:allwin-nt8:445", "tag:allwin-dev:22"],
 		},
 		{
 			"src":    "tag:allwin-dev",
