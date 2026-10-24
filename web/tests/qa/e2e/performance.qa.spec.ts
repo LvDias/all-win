@@ -10,10 +10,11 @@ const group = (n: number, o: Record<string, unknown> = {}, f: Record<string, unk
 const perf = { as_of: "2026-10-23T14:00:00Z", group_by: "source_signal", totals: figures(), groups: [group(1, {}, { total_pnl: "120.00" }), group(2, {}, { total_pnl: "-60.00" }), group(3, { origin: "manual", source_id: undefined, source_name: undefined, signal_type: undefined }, { total_pnl: "5.00" })] };
 
 async function mock(page: Page, delayMs = 0) {
+  let performanceCalls = 0;
   await page.route("**/api/v1/events", (r) => r.fulfill({ status: 200, contentType: "text/event-stream", body: ": ok\n\n" }));
   await page.route("**/api/v1/me", (r) => r.fulfill({ json: me }));
   await page.route("**/api/v1/accounts", (r) => r.fulfill({ json: { accounts: [{ id: u(100), display_name: "Apex 50K" }] } }));
-  await page.route("**/api/v1/performance*", async (r) => { if (delayMs && r.request().url().includes("period=7d")) await new Promise((x) => setTimeout(x, delayMs)); await r.fulfill({ json: perf }); });
+  await page.route("**/api/v1/performance*", async (r) => { if (delayMs && ++performanceCalls > 1) await new Promise((x) => setTimeout(x, delayMs)); await r.fulfill({ json: perf }); }); // the first load is instant, a changed filter is slow
 }
 async function axe(page: Page) {
   await page.addScriptTag({ path: axePath });

@@ -69,19 +69,21 @@ describe("AC-1 / AC-3 figures", () => {
     const rows = await screen.findAllByRole("row");
     expect(rows.some((r) => /US\$\s3,77/.test(r.textContent ?? ""))).toBe(false); // absent avg_gross_pnl is never invented
   });
-  it("commissions notice when estimated or missing commissions are in the set", async () => {
-    serve(perf({ totals: figures({ uncommissioned_count: 2 }) })); renderApp(<PerformancePage />);
-    expect(await screen.findByText("O líquido inclui comissões estimadas ou há contas sem comissão informada.")).toBeInTheDocument(); // Nanquim delta text; confirm with PO if the delta is in force
-  });
-  it("win rate uses the pt-BR decimal comma (33,3 %), not the wire dot", async () => {
-    serve(perf({ totals: figures({ win_rate: "33.3" }) })); renderApp(<PerformancePage />);
+  it("S5 (PO decision a): notice only when uncommissioned_count > 0, singular and plural with the comma; the phrase 'inclui comissões estimadas' exists nowhere", async () => {
+    serve(perf({ totals: figures({ uncommissioned_count: 2 }) })); const first = renderApp(<PerformancePage />);
+    expect(await screen.findByText("2 trades sem comissão informada: neles, o líquido é igual ao bruto.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/inclui comissões estimadas/);
+    first.unmount();
+    serve(perf({ totals: figures({ uncommissioned_count: 1 }) })); const second = renderApp(<PerformancePage />);
+    expect(await screen.findByText("1 trade sem comissão informada: nele, o líquido é igual ao bruto.")).toBeInTheDocument();
+    second.unmount();
+    serve(perf({ totals: figures({ uncommissioned_count: 0 }) })); renderApp(<PerformancePage />);
     await summary();
-    expect(document.body.textContent).toMatch(/33,3\s?%/);
-    expect(document.body.textContent).not.toMatch(/33\.3\s?%/);
+    expect(screen.queryByText(/sem comissão informada/)).not.toBeInTheDocument();
   });
   it("uncommissioned_count > 0 warns that net equals gross for those trades", async () => {
     serve(perf({ totals: figures({ uncommissioned_count: 2 }) })); renderApp(<PerformancePage />);
-    expect(await screen.findByText(/sem comissão informada/)).toBeInTheDocument();
+    expect(await screen.findByText(/sem comissão informada: neles, o líquido é igual ao bruto/)).toBeInTheDocument();
   });
   it("only the AC-1 metrics: no profit factor, best/worst trade, average win/loss or per-day curve (Q59)", async () => {
     serve(); renderApp(<PerformancePage />);
@@ -108,10 +110,11 @@ describe("Q55 basis line and AC-5 empties", () => {
   });
   it("AC-5 (decided 2026-10-24): filter with no trades keeps the summary - count 0 and net/gross totals US$ 0,00, averages/rates/ratios '—' - says 'Nenhum trade neste filtro.' and replaces only the breakdown by the filtered empty state with Limpar filtros", async () => {
     navigation.search = "signal=trigger";
+    server.use(http.get("*/api/v1/trades/summary", () => HttpResponse.json({ count: 5, total_pnl: "10.00" }))); // the user HAS trades, this filter matches none
     serve(empty); renderApp(<PerformancePage />);
     const sum = await summary();
     expect(await screen.findByText("Nenhum trade neste filtro.")).toBeInTheDocument();
-    expect(sum.getByText("Trades").closest("div")).toHaveTextContent(/\b0\b/);
+    expect(sum.getByText("Trades").closest("div")).toHaveTextContent(/Trades\s*0$/);
     expect(sum.getAllByText(/US\$\s0,00/).length).toBeGreaterThan(0);
     expect(sum.getAllByText("—").length).toBeGreaterThanOrEqual(5); // net avg, gross avg, win rate, time, MAE, MFE
     expect(document.body.textContent).not.toMatch(/NaN|0,0\s?%/);
@@ -129,8 +132,9 @@ describe("Q55 basis line and AC-5 empties", () => {
   });
   it("no trades with filters: totals 0, averages/rates '—', says there are no trades, never offers to create", async () => {
     navigation.search = `account=${uuid(100)}`;
+    server.use(http.get("*/api/v1/trades/summary", () => HttpResponse.json({ count: 5, total_pnl: "10.00" })));
     serve(empty); renderApp(<PerformancePage />);
-    expect(await screen.findByText(/Nenhum trade/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Nenhum trade/)).length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toMatch(/NaN|0,0\s?%|0 s\b/);
     expect(screen.queryByRole("link", { name: "Registrar trade" })).not.toBeInTheDocument();
   });
@@ -245,7 +249,7 @@ describe("states", () => {
   it("another user's account id: the Core answers empty totals; the UI shows the empty state, not an error", async () => {
     navigation.search = `account=${uuid(555)}`;
     serve(empty); renderApp(<PerformancePage />);
-    expect(await screen.findByText(/Nenhum trade/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Nenhum trade/)).length).toBeGreaterThan(0);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

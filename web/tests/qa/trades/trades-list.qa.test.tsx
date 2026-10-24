@@ -63,7 +63,7 @@ describe("AC-1 net main, gross beside; exact strings", () => {
   it("uncommissioned_count > 0 warns that net equals gross (singular and plural)", async () => {
     serve([{ trades: [trade()] }], summary({ uncommissioned_count: 1 }));
     renderApp(<TradesPage />);
-    expect(await screen.findByText("1 trade sem comissão informada: nele o líquido é igual ao bruto.")).toBeInTheDocument();
+    expect(await screen.findByText("1 trade sem comissão informada: nele, o líquido é igual ao bruto.")).toBeInTheDocument();
   });
   it("no warning when the field is absent or zero", async () => {
     serve([{ trades: [trade()] }], summary({ uncommissioned_count: undefined }));
