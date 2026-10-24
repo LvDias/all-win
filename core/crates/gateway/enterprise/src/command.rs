@@ -135,6 +135,19 @@ pub enum WaitReason {
     HeldForPrerequisite,
 }
 
+impl WaitReason {
+    /// Stable name for operator logs.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoSession => "no_session",
+            Self::AccountNotInWelcome => "account_not_in_welcome",
+            Self::SnapshotPending => "snapshot_pending",
+            Self::ProtocolBelowReduce => "protocol_below_reduce",
+            Self::HeldForPrerequisite => "held_for_prerequisite",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delivery {
     /// Commit `sent` (first send) then write; for `Sent`, retransmit the stored frame unchanged.

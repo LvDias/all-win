@@ -59,6 +59,9 @@ pub struct GatewayRuntime {
     /// Failed authentications per IP (Crivo g1).
     failures: crate::failures::FailureBudget,
     trust_forwarded_for: bool,
+    /// Consecutive `snapshot_timeout` closes per connection (ADR-0004 §5, O2); reset when a
+    /// session's reconnect window closes.
+    snapshot_timeouts: Mutex<HashMap<ConnectionId, u32>>,
 }
 
 impl GatewayRuntime {
@@ -87,7 +90,14 @@ impl GatewayRuntime {
             controls: Mutex::new(HashMap::new()),
             failures: crate::failures::FailureBudget::new(DEFAULT_FAILURES_PER_MIN),
             trust_forwarded_for: false,
+            snapshot_timeouts: Mutex::new(HashMap::new()),
         }
+    }
+
+    fn snapshot_timeouts(&self) -> std::sync::MutexGuard<'_, HashMap<ConnectionId, u32>> {
+        self.snapshot_timeouts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The per-IP failure budget (the ingress's `ip_token_failures_per_min`) and whether the
@@ -325,6 +335,11 @@ async fn pump(
     let mut last_tx = tokio::time::Instant::now();
     let mut last_token_check = tokio::time::Instant::now();
     let mut token_check_failures = 0u32;
+    let started = tokio::time::Instant::now();
+    let snapshot_warn = Duration::from_millis(u64::from(rt.settings.snapshot_warn_ms));
+    let snapshot_timeout = Duration::from_millis(u64::from(rt.settings.snapshot_timeout_ms));
+    let mut window_warned = false;
+    let mut window_closed = false;
     loop {
         tokio::select! {
             incoming = socket.recv() => {
@@ -335,6 +350,10 @@ async fn pump(
                         if let Some(a) = &outcome.alert {
                             // Operational alert (ADR-0004 §5): code and ref only, never the detail.
                             tracing::error!(session = %session.id, code = %a.code, ref_msg_id = ?a.ref_msg_id, command = a.command, "adapter refused a Core frame");
+                        }
+                        if let Some(r) = &outcome.refused {
+                            // O2: the type, the code and the schema path only, never the payload.
+                            tracing::warn!(session = %session.id, connection_id = %session.connection_id, msg_id = ?r.msg_id, frame_type = %r.kind, code = r.code, schema_path = ?r.path, "refused an adapter frame");
                         }
                         for frame in outcome.replies {
                             if !send(socket, frame).await {
@@ -379,6 +398,16 @@ async fn pump(
             },
             _ = tick.tick() => {
                 let now = tokio::time::Instant::now();
+                if !window_closed {
+                    match snapshot_window(rt, session, now.duration_since(started), snapshot_warn, snapshot_timeout, &mut window_warned) {
+                        Window::Open => {}
+                        Window::Closed => window_closed = true,
+                        Window::TimedOut => {
+                            close(socket, CloseCode::Normal, "snapshot_timeout").await;
+                            return (SessionEnd::Network, false);
+                        }
+                    }
+                }
                 if now.duration_since(last_rx) >= heartbeat * 3 {
                     close(socket, CloseCode::HeartbeatTimeout, "heartbeat_timeout").await;
                     return (SessionEnd::Network, false);
@@ -417,6 +446,58 @@ async fn pump(
     }
 }
 
+enum Window {
+    Open,
+    Closed,
+    TimedOut,
+}
+
+/// The reconnect window bounds (ADR-0004 §5, O2): an open window (a mapped account without an
+/// evaluated snapshot, e.g. a snapshot refused as invalid) holds every command of the account.
+/// Operator WARN at `snapshot_warn_ms`; at `snapshot_timeout_ms` the session closes with 4000
+/// `snapshot_timeout` and the adapter reconnects and resends; the 3rd consecutive close of a
+/// connection is critical. The count resets when a session's window closes.
+fn snapshot_window(
+    rt: &GatewayRuntime,
+    session: &Session,
+    open_for: Duration,
+    warn: Duration,
+    timeout: Duration,
+    warned: &mut bool,
+) -> Window {
+    if !session.snapshot_window_open() {
+        rt.snapshot_timeouts().remove(&session.connection_id);
+        return Window::Closed;
+    }
+    if open_for >= timeout {
+        let n = {
+            let mut m = rt.snapshot_timeouts();
+            let n = m.entry(session.connection_id).or_insert(0);
+            *n += 1;
+            *n
+        };
+        if n >= 3 {
+            tracing::error!(alert = "gateway.snapshot_timeout", session = %session.id, connection_id = %session.connection_id, consecutive = n, "ALERT reconnect snapshot never evaluated; closing again");
+        } else {
+            tracing::warn!(alert = "gateway.snapshot_timeout", session = %session.id, connection_id = %session.connection_id, consecutive = n, "reconnect snapshot not evaluated in time; closing for a resend");
+        }
+        return Window::TimedOut;
+    }
+    if open_for >= warn && !*warned {
+        *warned = true;
+        tracing::warn!(alert = "gateway.snapshot_waiting", session = %session.id, connection_id = %session.connection_id, open_s = open_for.as_secs(), "ALERT reconnect window still open; commands are held");
+    }
+    Window::Open
+}
+
+/// The consecutive `snapshot_timeout` closes recorded for a connection (tests).
+pub fn snapshot_timeouts(rt: &GatewayRuntime, connection: ConnectionId) -> u32 {
+    rt.snapshot_timeouts()
+        .get(&connection)
+        .copied()
+        .unwrap_or(0)
+}
+
 /// One delivery pass; `false` when the socket failed. A frame whose `sent` commit happened but
 /// whose write failed is retransmitted at the next session (ADR-0004 §5 acceptance criterion).
 async fn deliver(rt: &GatewayRuntime, session: &Session, socket: &mut WebSocket) -> bool {
@@ -424,6 +505,14 @@ async fn deliver(rt: &GatewayRuntime, session: &Session, socket: &mut WebSocket)
         Ok(pass) => {
             for e in &pass.failures {
                 tracing::error!(session = %session.id, error = %e, "a command could not be processed; retried next pass");
+            }
+            // O2 (Esquadro): an exit held pending by a session gate; WARN at 60 s, then critical.
+            for st in &pass.stalls {
+                if st.critical {
+                    tracing::error!(alert = "gateway.exit_stalled", session = %session.id, connection_id = %session.connection_id, command_id = %st.command_id, account_id = %st.account_id, reason = st.reason.as_str(), waited_s = st.waited_s, "ALERT exit command stalled");
+                } else {
+                    tracing::warn!(alert = "gateway.exit_waiting", session = %session.id, connection_id = %session.connection_id, command_id = %st.command_id, account_id = %st.account_id, reason = st.reason.as_str(), waited_s = st.waited_s, "ALERT exit command waiting");
+                }
             }
             for o in pass.outgoing {
                 if !send(socket, o.frame).await {

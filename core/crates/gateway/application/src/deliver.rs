@@ -6,12 +6,15 @@
 //! taken in creation order (`created_at`, then `msg_id`, a UUIDv7 allocated in routing's list
 //! order), so a reverse's flatten always goes before its place (Grosa H1).
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use gateway_enterprise::command::{
     CommandKind, CommandState, Delivery, DeliveryContext, Prerequisite, RETRANSMISSION_HORIZON,
+    WaitReason,
 };
+use gateway_enterprise::ids::{AccountId, CommandId};
 use gateway_enterprise::position::flat_proven;
 use gateway_enterprise::report::{ChildRole, ReportFact, ReportStatus};
 use gateway_enterprise::sync::{ReasonDetails, ReasonEntry, ReasonScope, SyncReason, SyncState};
@@ -43,6 +46,47 @@ pub struct Outgoing {
 pub struct Pass {
     pub outgoing: Vec<Outgoing>,
     pub failures: Vec<StoreError>,
+    /// Operator alerts for exit commands held pending by a session gate (O2).
+    pub stalls: Vec<ExitStall>,
+}
+
+/// An exit command still `pending` behind a session gate (Esquadro, O2): WARN once at 60 s,
+/// critical once at 5 min, then the critical again every 30 min. Operator only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExitStall {
+    pub command_id: CommandId,
+    pub account_id: AccountId,
+    pub reason: WaitReason,
+    pub waited_s: i64,
+    pub critical: bool,
+}
+
+const STALL_WARN: chrono::Duration = chrono::Duration::seconds(60);
+const STALL_CRITICAL: chrono::Duration = chrono::Duration::minutes(5);
+const STALL_REPEAT: chrono::Duration = chrono::Duration::minutes(30);
+
+/// What has been raised for one held exit (in memory: one Core instance in V1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct StallMark {
+    warned: bool,
+    critical_at: Option<DateTime<Utc>>,
+}
+
+/// Edge-triggered level for an exit held `waited`: `Some(critical)` when an alert is due now.
+fn stall_due(mark: &mut StallMark, waited: chrono::Duration, now: DateTime<Utc>) -> Option<bool> {
+    if waited >= STALL_CRITICAL {
+        if mark.critical_at.is_none_or(|at| now - at >= STALL_REPEAT) {
+            mark.warned = true;
+            mark.critical_at = Some(now);
+            return Some(true);
+        }
+        return None;
+    }
+    if waited >= STALL_WARN && !mark.warned {
+        mark.warned = true;
+        return Some(false);
+    }
+    None
 }
 
 #[derive(Clone)]
@@ -52,6 +96,7 @@ pub struct DeliverCommands {
     settings: SessionSettings,
     /// A sent flatten's normal report timeout, after which a held reverse leg is decided.
     prerequisite_timeout: chrono::Duration,
+    stalls: Arc<Mutex<HashMap<CommandId, StallMark>>>,
 }
 
 /// Terminal outcome decided by the Core for a command (expiry, horizon, refusal, adapter error).
@@ -73,6 +118,7 @@ impl DeliverCommands {
             bindings,
             settings,
             prerequisite_timeout,
+            stalls: Arc::default(),
         }
     }
 
@@ -99,7 +145,10 @@ impl DeliverCommands {
             .open_commands(session.user_id, session.connection_id)
             .await?
         {
-            match self.deliver_one(session, stored, now).await {
+            match self
+                .deliver_one(session, stored, now, &mut pass.stalls)
+                .await
+            {
                 Ok(Some(o)) => pass.outgoing.push(o),
                 Ok(None) => {}
                 Err(e) => pass.failures.push(e),
@@ -113,6 +162,7 @@ impl DeliverCommands {
         session: &Session,
         stored: StoredCommand,
         now: DateTime<Utc>,
+        stalls: &mut Vec<ExitStall>,
     ) -> Result<Option<Outgoing>, StoreError> {
         let cmd = &stored.command;
         let mapped = session.mapped(stored.account_id);
@@ -131,6 +181,7 @@ impl DeliverCommands {
             account_out_of_sync: out_of_sync,
         };
         let decision = cmd.delivery(now, &ctx);
+        self.track_stall(&stored, decision, now, stalls);
         // Read only when the pass writes an entry (not on every wait or retransmission).
         let refs = match decision {
             Delivery::Wait(_) | Delivery::Done => Value::Null,
@@ -306,6 +357,43 @@ impl DeliverCommands {
                 Ok(None)
             }
             Delivery::Wait(_) | Delivery::Done => Ok(None),
+        }
+    }
+
+    /// O2: an exit (never an entry, which expires) still `pending` behind a session gate.
+    fn track_stall(
+        &self,
+        stored: &StoredCommand,
+        decision: Delivery,
+        now: DateTime<Utc>,
+        out: &mut Vec<ExitStall>,
+    ) {
+        let cmd = &stored.command;
+        let mut marks = self
+            .stalls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let held = match decision {
+            Delivery::Wait(reason)
+                if cmd.state == CommandState::Pending && !cmd.increases_position() =>
+            {
+                reason
+            }
+            _ => {
+                marks.remove(&cmd.id);
+                return;
+            }
+        };
+        let waited = now - cmd.created_at;
+        let mark = marks.entry(cmd.id).or_default();
+        if let Some(critical) = stall_due(mark, waited, now) {
+            out.push(ExitStall {
+                command_id: cmd.id,
+                account_id: stored.account_id,
+                reason: held,
+                waited_s: waited.num_seconds(),
+                critical,
+            });
         }
     }
 

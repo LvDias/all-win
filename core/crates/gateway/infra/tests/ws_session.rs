@@ -203,9 +203,11 @@ async fn adapter_session_end_to_end() {
         (Some("command"), Some("1.2"))
     );
 
-    // Not acked; the connection drops. A new session retransmits the same frame.
+    // Not acked; the connection drops. A new session retransmits the same frame. Wait until the
+    // Core has seen the drop: reconnecting earlier would supersede the old session instead of
+    // ending it as `network` (a race under load, found with O2's parallel test).
     drop(c);
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    wait_until(|| h.runtime.sessions.get(connection).is_none()).await;
     let mut c = h.connect(Some(TOKEN)).await;
     h.hello(&mut c, &["1.3"]).await;
     h.next(&mut c).await.unwrap();
@@ -220,6 +222,18 @@ async fn adapter_session_end_to_end() {
     let ack = json!({"protocol_version": "1.3", "msg_id": Uuid::now_v7(), "type": "ack",
         "sent_at": gateway_application::wire::timestamp(Utc::now()), "payload": {"msg_ids": [msg_id]}});
     c.send(Message::Text(ack.to_string().into())).await.unwrap();
+    // The ack is processed before the next session supersedes this one (same race under load).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let state: String = sqlx::query_scalar("SELECT state FROM gateway.command")
+            .fetch_one(&db.inspect)
+            .await
+            .unwrap();
+        if state == "acked" || tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
     // A second session for the same connection supersedes the first (4004).
     let mut c2 = h.connect(Some(TOKEN)).await;
@@ -324,6 +338,14 @@ async fn an_oversized_frame_closes_the_session() {
     db.teardown().await;
 }
 
+/// Polls `done` every 20 ms for up to 10 s.
+async fn wait_until(done: impl Fn() -> bool) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while !done() && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 /// `disconnect_reason` of every `gateway.connection_session_changed`, in outbox order, once at
 /// least `users` by-user disconnects are recorded (or after 10 s).
 async fn session_reasons_until_user(db: &common::Db, users: usize) -> Vec<Option<String>> {
@@ -373,5 +395,50 @@ async fn close_4100_is_always_classified_as_by_user() {
     let ends: Vec<&str> = reasons.iter().filter_map(|r| r.as_deref()).collect();
     assert_eq!(ends.len(), ROUNDS, "{ends:?}");
     assert!(ends.iter().all(|r| *r == "user"), "{ends:?}");
+    db.teardown().await;
+}
+
+/// O2 / ADR-0004 §5: a reconnect window that never closes (e.g. the snapshot was refused as
+/// invalid) holds every command; the Core closes with 4000 `snapshot_timeout` so the adapter
+/// resends, counts consecutive closes per connection, and resets once a window closes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unevaluated_reconnect_window_closes_with_4000_and_is_counted() {
+    let Some(db) = common::setup().await else {
+        return;
+    };
+    let settings = gateway_application::session::SessionSettings {
+        snapshot_warn_ms: 200,
+        snapshot_timeout_ms: 1_000,
+        ..Default::default()
+    };
+    let srv = server::start_with(&db, settings).await;
+    let h = harness(&srv);
+    for n in 1..=3 {
+        let mut c = h.connect(Some(TOKEN)).await;
+        h.hello(&mut c, &["1.2"]).await;
+        assert_eq!(h.next(&mut c).await.unwrap()["type"], "welcome");
+        let end = loop {
+            match h.next(&mut c).await {
+                Ok(_) => continue,
+                Err(code) => break code,
+            }
+        };
+        assert_eq!(end, Some(4000), "closed for a resend");
+        assert_eq!(
+            gateway_infra::ws::snapshot_timeouts(&srv.runtime, srv.connection),
+            n
+        );
+    }
+    // A snapshot evaluated in time closes the window and resets the count.
+    let mut c = h.connect(Some(TOKEN)).await;
+    h.hello(&mut c, &["1.2"]).await;
+    assert_eq!(h.next(&mut c).await.unwrap()["type"], "welcome");
+    h.snapshot(&mut c, "1.2").await;
+    assert_eq!(h.next(&mut c).await.unwrap()["type"], "ack");
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert_eq!(
+        gateway_infra::ws::snapshot_timeouts(&srv.runtime, srv.connection),
+        0
+    );
     db.teardown().await;
 }

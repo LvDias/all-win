@@ -1275,3 +1275,83 @@ async fn a_place_whose_body_disagrees_on_position_effect_is_refused() {
     assert!(matches!(out, Err(crate::consume::ConsumeError::Invalid(_))));
     assert!(w.store.state().commands.is_empty(), "nothing stored");
 }
+
+// ---- O2: operator visibility -----------------------------------------------------------------
+
+#[tokio::test]
+async fn o2_a_refused_frame_carries_its_type_code_and_schema_path_never_the_payload() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    let msg = Uuid::now_v7();
+    let out = frames_uc(&w, Arc::new(RejectAll))
+        .handle(
+            &session,
+            &frame("position_snapshot", "1.2", msg, json!({"secret": "x"})),
+            t(1),
+        )
+        .await;
+    assert_eq!(
+        out.refused,
+        Some(crate::frames::Refusal {
+            kind: "position_snapshot".into(),
+            code: "protocol.invalid_message",
+            msg_id: Some(msg),
+            path: Some("schema violation at /payload".into()),
+        })
+    );
+    // A type that is not a protocol name is not logged as sent.
+    let out = frames_uc(&w, Arc::new(RejectAll))
+        .handle(&session, &frame("Bad Type\n", "1.2", msg, json!({})), t(1))
+        .await;
+    assert_eq!(out.refused.unwrap().kind, "?");
+    // An accepted frame is no refusal.
+    let out = frames_uc(&w, Arc::new(AcceptAll))
+        .handle(&session, &frame("heartbeat", "1.2", msg, json!({})), t(1))
+        .await;
+    assert_eq!(out.refused, None);
+}
+
+#[tokio::test]
+async fn o2_an_exit_held_by_the_reconnect_window_alerts_once_per_level() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    // No reconnect snapshot: the window stays open and the flatten waits (SnapshotPending).
+    w.request(json!([flatten(2)]), t(0)).await;
+    let uc = w.deliver_uc();
+    let stalls = |at: DateTime<Utc>| {
+        let uc = uc.clone();
+        let session = session.clone();
+        async move { uc.handle(&session, at).await.unwrap().stalls }
+    };
+    assert!(stalls(t(59_000)).await.is_empty());
+    let warn = stalls(t(60_000)).await;
+    assert_eq!(warn.len(), 1);
+    assert_eq!(
+        (warn[0].reason, warn[0].critical, warn[0].waited_s),
+        (
+            gateway_enterprise::command::WaitReason::SnapshotPending,
+            false,
+            60
+        )
+    );
+    assert!(stalls(t(61_000)).await.is_empty(), "once");
+    let critical = stalls(t(300_000)).await;
+    assert!(critical.len() == 1 && critical[0].critical);
+    assert!(stalls(t(301_000)).await.is_empty(), "once");
+    assert!(stalls(t(300_000 + 29 * 60_000)).await.is_empty());
+    assert!(stalls(t(300_000 + 30 * 60_000)).await[0].critical, "repeat");
+    // Delivered: no more alerts.
+    w.reconnect_snapshot(&session, json!([]), json!([]), t(2_400_000))
+        .await;
+    assert_eq!(w.deliver(&session, t(2_400_001)).await.len(), 1);
+    assert!(stalls(t(9_000_000)).await.is_empty());
+}
+
+#[tokio::test]
+async fn o2_an_entry_waiting_never_raises_an_exit_alert() {
+    let w = World::new();
+    let (session, _) = w.connect(&["1.2"], "simulation", t(0)).await.unwrap();
+    w.request(json!([entry(1, t(600_000))]), t(0)).await;
+    let pass = w.deliver_uc().handle(&session, t(300_000)).await.unwrap();
+    assert!(pass.stalls.is_empty());
+}

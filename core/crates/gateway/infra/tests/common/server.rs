@@ -111,6 +111,10 @@ pub struct Server {
 }
 
 pub async fn start(db: &Db) -> Server {
+    start_with(db, SessionSettings::default()).await
+}
+
+pub async fn start_with(db: &Db, settings: SessionSettings) -> Server {
     let user = db.user().await;
     let connection = ConnectionId::from_uuid(Uuid::now_v7());
     let account = AccountId::from_uuid(Uuid::now_v7());
@@ -122,7 +126,6 @@ pub async fn start(db: &Db) -> Server {
     let risk = Arc::new(NoRisk);
     let schema = Arc::new(ProtocolSchema::load().unwrap());
     let sessions = Sessions::default();
-    let settings = SessionSettings::default();
     let principal = AdapterPrincipal {
         user_id: user,
         connection_id: connection,

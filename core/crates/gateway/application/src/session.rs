@@ -19,6 +19,11 @@ pub struct SessionSettings {
     pub ack_timeout_ms: u32,
     /// Always true outside production (ADR-0004 §8 environment guard).
     pub simulation_only: bool,
+    /// Reconnect window still open after this long: operator WARN (ADR-0004 §5, O2).
+    pub snapshot_warn_ms: u32,
+    /// Reconnect window still open after this long: close 4000 `snapshot_timeout`, so the
+    /// adapter reconnects and resends its snapshot (ADR-0004 §5, O2).
+    pub snapshot_timeout_ms: u32,
 }
 
 impl Default for SessionSettings {
@@ -27,6 +32,8 @@ impl Default for SessionSettings {
             heartbeat_interval_ms: 10_000,
             ack_timeout_ms: 5_000,
             simulation_only: true,
+            snapshot_warn_ms: 60_000,
+            snapshot_timeout_ms: 300_000,
         }
     }
 }
@@ -129,6 +136,15 @@ impl Session {
 
     pub fn snapshot_evaluated(&self, account: AccountId) -> bool {
         self.state().snapshot_evaluated.contains(&account)
+    }
+
+    /// The reconnect window is open while a mapped account has no evaluated snapshot: its
+    /// commands wait (`SnapshotPending`).
+    pub fn snapshot_window_open(&self) -> bool {
+        let s = self.state();
+        self.accounts
+            .keys()
+            .any(|a| !s.snapshot_evaluated.contains(a))
     }
 
     pub fn mark_snapshot_evaluated(&self, account: AccountId) {

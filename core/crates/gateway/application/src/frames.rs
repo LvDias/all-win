@@ -44,6 +44,8 @@ impl CloseCode {
     }
 }
 
+const INVALID: &str = "protocol.invalid_message";
+
 /// Sent by the adapter when the user pressed "Desconectar" (protocol 1.3).
 pub const CLOSE_BY_USER: u16 = 4100;
 
@@ -57,6 +59,18 @@ pub struct FrameOutcome {
     pub deliver: bool,
     /// An adapter `error` to log and alert on (code and ref only, never `detail`).
     pub alert: Option<AdapterAlert>,
+    /// The Core refused the adapter's frame (O2: logged as a WARN, never with the payload).
+    pub refused: Option<Refusal>,
+}
+
+/// Why the Core refused an adapter frame: its type, the error code sent back, and the schema
+/// error's instance path. Never a value from the frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refusal {
+    pub kind: String,
+    pub code: &'static str,
+    pub msg_id: Option<Uuid>,
+    pub path: Option<String>,
 }
 
 /// Operational alert: the adapter refused a Core frame (a Core bug, ADR-0004 §5).
@@ -76,12 +90,42 @@ impl FrameOutcome {
         }
     }
 
+    /// The `error` reply for a refused frame, with its `Refusal` for the operator log.
+    fn refuse(
+        v: ProtocolVersion,
+        kind: &str,
+        code: &'static str,
+        msg_id: Option<Uuid>,
+        path: Option<String>,
+        now: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            replies: vec![error_frame(v, code, msg_id, now)],
+            refused: Some(Refusal {
+                kind: log_kind(kind),
+                code,
+                msg_id,
+                path: path.map(|p| p.chars().take(200).collect()),
+            }),
+            ..Self::default()
+        }
+    }
+
     fn close(code: CloseCode, reason: &'static str) -> Self {
         Self {
             close: Some((code, reason)),
             ..Self::default()
         }
     }
+}
+
+/// A frame type as the adapter sent it, kept only when it has the shape of a protocol type name
+/// (the frame failed validation, so it may be anything).
+fn log_kind(kind: &str) -> String {
+    let ok = !kind.is_empty()
+        && kind.len() <= 32
+        && kind.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+    if ok { kind.to_owned() } else { "?".to_owned() }
 }
 
 pub fn ack_frame(version: ProtocolVersion, msg_ids: &[Uuid], now: DateTime<Utc>) -> String {
@@ -143,27 +187,34 @@ impl HandleFrame {
             .get("msg_id")
             .and_then(Value::as_str)
             .and_then(|s| Uuid::parse_str(s).ok());
-        if self.validator.validate(&value).is_err() {
+        let kind = value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        if let Err(path) = self.validator.validate(&value) {
             // Not acked: a reliable frame stays in the adapter's outbox (§9), never executed or lost.
-            return FrameOutcome::reply(error_frame(v, "protocol.invalid_message", ref_id, now));
+            return FrameOutcome::refuse(v, &kind, INVALID, ref_id, Some(path), now);
         }
         let Ok(env) = serde_json::from_value::<Envelope>(value) else {
-            return FrameOutcome::reply(error_frame(v, "protocol.invalid_message", ref_id, now));
+            return FrameOutcome::refuse(v, &kind, INVALID, ref_id, None, now);
         };
         // §9 rollback rule (Grosa M5): a frame from another minor is accepted when its type exists
         // in the negotiated version; the full schema has already validated its payload.
         let known_major =
             ProtocolVersion::parse(&env.protocol_version).is_ok_and(|e| e.same_major(v));
         if !known_major || !type_exists(&env.kind, v) {
-            return FrameOutcome::reply(error_frame(
+            return FrameOutcome::refuse(
                 v,
+                &env.kind,
                 "protocol.unsupported_value",
                 Some(env.msg_id),
+                None,
                 now,
-            ));
+            );
         }
-        let invalid =
-            |id| FrameOutcome::reply(error_frame(v, "protocol.invalid_message", Some(id), now));
+        let kind = env.kind.clone();
+        let invalid = |id| FrameOutcome::refuse(v, &kind, INVALID, Some(id), None, now);
         match env.kind.as_str() {
             "heartbeat" | "risk_state" => FrameOutcome::default(),
             "error" => self.adapter_error(session, &env, now).await,
@@ -194,14 +245,7 @@ impl HandleFrame {
     async fn reliable(&self, session: &Session, env: Envelope, now: DateTime<Utc>) -> FrameOutcome {
         let v = session.version;
         let ack = || FrameOutcome::reply(ack_frame(v, &[env.msg_id], now));
-        let invalid = || {
-            FrameOutcome::reply(error_frame(
-                v,
-                "protocol.invalid_message",
-                Some(env.msg_id),
-                now,
-            ))
-        };
+        let invalid = || FrameOutcome::refuse(v, &env.kind, INVALID, Some(env.msg_id), None, now);
         match self
             .store
             .receipt_known(session.user_id, session.connection_id, env.msg_id)
@@ -242,11 +286,18 @@ impl HandleFrame {
                         replies: vec![ack_frame(v, &[env.msg_id], now)],
                         close: None,
                         deliver: true,
-                        alert: None,
+                        ..FrameOutcome::default()
                     },
-                    Err(
-                        SnapshotError::Invalid(_) | SnapshotError::Store(StoreError::Rejected(_)),
-                    ) => invalid(),
+                    // The field name only (static), never its value.
+                    Err(SnapshotError::Invalid(field)) => FrameOutcome::refuse(
+                        v,
+                        &env.kind,
+                        INVALID,
+                        Some(env.msg_id),
+                        Some(format!("snapshot field {field}")),
+                        now,
+                    ),
+                    Err(SnapshotError::Store(StoreError::Rejected(_))) => invalid(),
                     Err(_) => FrameOutcome::close(CloseCode::Normal, "intake_retry"),
                 }
             }
