@@ -20,6 +20,7 @@ use identity_application::auth::{Activity, AuthenticateSession};
 use identity_application::changes::{ChangeSet, CodeTable, Write};
 use identity_application::error::IdentityError;
 use identity_application::ports::*;
+use identity_application::usecases::adapter_auth::{AuthenticateDeviceToken, DeviceTokenStatus};
 use identity_application::usecases::channel_change::*;
 use identity_application::usecases::connections::*;
 use identity_application::usecases::invitations::*;
@@ -206,6 +207,18 @@ async fn rls_lint_sources_connections_and_pairing() {
             .await
             .unwrap();
     assert_eq!((dev_user, dev_revoked), (alice.id.as_uuid(), false));
+    // The gateway's path: the token authenticates through the definer lookup, as allwin_app.
+    let principal = AuthenticateDeviceToken::new(deps.clone())
+        .handle(&identity_enterprise::secret::SecretString::new(
+            token.clone(),
+        ))
+        .await
+        .unwrap()
+        .expect("a fresh device token authenticates");
+    assert_eq!(
+        (principal.user_id, principal.connection_id),
+        (alice.id, conn_id)
+    );
     assert!(store.connection(bob.id, conn_id).await.unwrap().is_none());
     RecordConnectionLiveState::new(deps.clone())
         .handle(alice.id, conn_id, LiveState::Connected, Utc::now())
@@ -245,6 +258,20 @@ async fn rls_lint_sources_connections_and_pairing() {
             .await
             .unwrap();
     assert!(dev_revoked);
+    assert!(
+        !DeviceTokenStatus::new(deps.clone())
+            .handle(&principal.key_id)
+            .await
+            .unwrap(),
+        "revoked by the unpair"
+    );
+    let revoked_events: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM app.outbox WHERE event_type = 'identity.device_token_revoked'",
+    )
+    .fetch_one(&db.inspect)
+    .await
+    .unwrap();
+    assert_eq!(revoked_events, 1);
 
     // Admin listing and the e-mail oracle gate.
     assert_eq!(

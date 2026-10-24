@@ -10,7 +10,9 @@ use access::{SessionAuthenticator, StepUpGate};
 use adapter_tradingview::IngressState;
 use async_trait::async_trait;
 use axum::Router;
-use identity_application::changes::{AUDIT_EVENT_TYPES, NOTICE_EVENT_TYPE, SSE_EVENT_TYPES};
+use identity_application::changes::{
+    AUDIT_EVENT_TYPES, DEVICE_TOKEN_REVOKED_EVENT_TYPE, NOTICE_EVENT_TYPE, SSE_EVENT_TYPES,
+};
 use identity_application::deps::{IdentityDeps, IdentitySettings};
 use identity_application::ports::{
     AccountTargets, CodeSender, ConnectionAccounts, ConnectionPresence, Mailer, SourceActivity,
@@ -116,6 +118,53 @@ impl SourceActivity for NoSourceActivity {
         _: &[SourceId],
     ) -> Result<std::collections::HashMap<SourceId, chrono::DateTime<chrono::Utc>>, String> {
         Ok(std::collections::HashMap::new())
+    }
+}
+
+/// The gateway's adapter authentication (S2) over identity's device tokens: token parsing and
+/// the hash compare stay in identity; the gateway only sees the principal.
+pub struct IdentityDeviceTokens(pub IdentityDeps);
+
+#[async_trait]
+impl gateway_application::ports::DeviceTokens for IdentityDeviceTokens {
+    async fn authenticate(
+        &self,
+        presented: &gateway_application::ports::PresentedToken,
+    ) -> Result<
+        Option<gateway_application::ports::AdapterPrincipal>,
+        gateway_application::ports::PortError,
+    > {
+        let principal = identity_application::usecases::adapter_auth::AuthenticateDeviceToken::new(
+            self.0.clone(),
+        )
+        .handle(&identity_enterprise::secret::SecretString::new(
+            presented.expose(),
+        ))
+        .await
+        .map_err(|e| gateway_application::ports::PortError(e.to_string()))?;
+        Ok(
+            principal.map(|p| gateway_application::ports::AdapterPrincipal {
+                user_id: p.user_id,
+                connection_id: gateway_enterprise::ids::ConnectionId::from_uuid(
+                    p.connection_id.as_uuid(),
+                ),
+                key_id: p.key_id.as_str().to_owned(),
+                locale: p.locale.as_str().to_owned(),
+            }),
+        )
+    }
+
+    async fn still_valid(
+        &self,
+        key_id: &str,
+    ) -> Result<bool, gateway_application::ports::PortError> {
+        let Some(key) = KeyId::parse(key_id) else {
+            return Ok(false);
+        };
+        identity_application::usecases::adapter_auth::DeviceTokenStatus::new(self.0.clone())
+            .handle(&key)
+            .await
+            .map_err(|e| gateway_application::ports::PortError(e.to_string()))
     }
 }
 
@@ -279,7 +328,10 @@ pub fn wire(
         consumers.register(t, sse.clone());
     }
     consumers.register(NOTICE_EVENT_TYPE, notice);
-    let emitted: Vec<&str> = identity_application::changes::emitted_event_types().collect();
+    // The revocation's consumer is the gateway's, wired after identity: `App::wire` requires it.
+    let emitted: Vec<&str> = identity_application::changes::emitted_event_types()
+        .filter(|t| *t != DEVICE_TOKEN_REVOKED_EVENT_TYPE)
+        .collect();
     consumers.require(&emitted, crate::unconsumed::UNCONSUMED)?;
     let router = identity_infra::http::router(Arc::new(IdentityHttpState {
         deps: deps.clone(),

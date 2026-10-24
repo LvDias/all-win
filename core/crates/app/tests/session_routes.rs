@@ -18,7 +18,7 @@ use tower::ServiceExt;
 
 const PEPPER: &str = "1:AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"; // test-only, 32 bytes
 
-const ROUTES: [&str; 7] = [
+const ROUTES: [&str; 9] = [
     "/api/v1/me",
     "/api/v1/accounts",
     "/api/v1/default-profiles",
@@ -26,6 +26,8 @@ const ROUTES: [&str; 7] = [
     "/api/v1/instruments",
     "/api/v1/opt-in-rules",
     "/api/v1/accounts/0190d3c4-0000-7000-8000-000000000001/profiles",
+    "/api/v1/routes",
+    "/api/v1/route-candidates",
 ];
 
 fn app(with_identity: bool) -> axum::Router {
@@ -178,6 +180,9 @@ async fn every_wired_handler_checks_the_session_then_origin() {
             db.clone(),
         ))),
     ));
+    let identity_store: Arc<dyn identity_application::ports::IdentityStore> = Arc::new(
+        identity_infra::store::PgIdentityStore::new(db.clone(), lazy()),
+    );
     let wired = app::accounts::wire(
         &db,
         app::accounts::store(&db),
@@ -185,11 +190,14 @@ async fn every_wired_handler_checks_the_session_then_origin() {
         app::accounts::SessionPorts {
             authenticator: Arc::new(StubSessions),
             step_up: Arc::new(NoStepUp),
-            identity_store: Arc::new(identity_infra::store::PgIdentityStore::new(
-                db.clone(),
-                lazy(),
-            )),
+            identity_store: identity_store.clone(),
         },
+        Arc::new(app::gateway::GatewayVenues {
+            store: app::gateway::store(&db),
+            identity: identity_store.clone(),
+            accounts: Arc::default(),
+        }),
+        app::routing::account_routes(&db, identity_store),
         "https://app.test".into(),
         false,
         false,

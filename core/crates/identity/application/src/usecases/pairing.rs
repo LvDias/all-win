@@ -9,7 +9,9 @@ use identity_enterprise::connection::{AdapterInfo, ConnectionStatus, PairedInsta
 use identity_enterprise::tokens::{PrefixedToken, PrefixedTokenKind, SecretBytes};
 use uuid::Uuid;
 
-use crate::changes::{Actor, AuditAction, ChangeSet, IdentityEvent, StoredKey, Write};
+use crate::changes::{
+    Actor, AuditAction, ChangeSet, IdentityEvent, StoredKey, TokenRevokedReason, Write,
+};
 use crate::deps::IdentityDeps;
 use crate::error::IdentityError;
 use crate::ports::{StoreConflict, StoreError};
@@ -132,6 +134,17 @@ impl PairAdapter {
                     status: ConnectionStatus::Disconnected,
                     at: now,
                 });
+            // A re-pair revokes the previous instance's token in the same transaction.
+            let changes = if replaced_previous {
+                changes.event(IdentityEvent::DeviceTokenRevoked {
+                    user_id,
+                    connection_id,
+                    reason: TokenRevokedReason::Repaired,
+                    at: now,
+                })
+            } else {
+                changes
+            };
             match deps.store.commit(changes).await {
                 Ok(()) => {
                     return Ok(PairingResult {

@@ -18,7 +18,7 @@ use identity_enterprise::profile::Locale;
 use identity_enterprise::secret::SecretString;
 use identity_enterprise::session::Session;
 use identity_enterprise::source::Source;
-use identity_enterprise::tokens::{CodeHmac, TokenHash};
+use identity_enterprise::tokens::{CodeHmac, KeyId, TokenHash};
 use identity_enterprise::user::{User, UserStatus};
 use shared_kernel::UserId;
 use thiserror::Error;
@@ -80,6 +80,16 @@ pub struct UserSummary {
     pub whatsapp_verified: bool,
     pub created_at: DateTime<Utc>,
     pub last_sign_in_at: Option<DateTime<Utc>>,
+}
+
+/// Adapter authentication (S2): the device token with a key id, across users.
+#[derive(Clone, Debug)]
+pub struct DeviceTokenRecord {
+    pub user_id: UserId,
+    pub connection_id: ConnectionId,
+    pub token_hash: TokenHash,
+    /// The token was revoked, the connection unpaired, or the user is not active.
+    pub revoked: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -229,6 +239,9 @@ pub trait IdentityStore: Send + Sync {
         user_id: UserId,
         connection_id: ConnectionId,
     ) -> Result<Option<ConnectionRecord>, StoreError>;
+    /// The device token with this key id, whoever owns it (definer lookup; the WebSocket
+    /// upgrade has no user scope yet).
+    async fn device_token(&self, key_id: &KeyId) -> Result<Option<DeviceTokenRecord>, StoreError>;
     /// Pairing code whose HMAC equals one of `candidates` and that is redeemable at `now`.
     async fn redeemable_pairing_code(
         &self,

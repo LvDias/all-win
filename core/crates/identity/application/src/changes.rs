@@ -484,13 +484,16 @@ pub const SSE_EVENT_TYPES: &[&str] = &[
 /// Outbox `event_type` of the e-mail notices (no secret inside; policy §5.3, §7).
 pub const NOTICE_EVENT_TYPE: &str = "identity.notice_requested";
 
+/// Outbox `event_type` for the gateway (S2): a connection's device token was revoked.
+pub const DEVICE_TOKEN_REVOKED_EVENT_TYPE: &str = "identity.device_token_revoked";
+
 /// Every `event_type` identity writes to the outbox; `app` requires a consumer for each.
 pub fn emitted_event_types() -> impl Iterator<Item = &'static str> {
     AUDIT_EVENT_TYPES
         .iter()
         .chain(SSE_EVENT_TYPES)
         .copied()
-        .chain(std::iter::once(NOTICE_EVENT_TYPE))
+        .chain([NOTICE_EVENT_TYPE, DEVICE_TOKEN_REVOKED_EVENT_TYPE])
 }
 
 impl AuditAction {
@@ -616,9 +619,30 @@ pub enum IdentityEvent {
         notice: Notice,
         at: DateTime<Utc>,
     },
-    // `identity.device_token_revoked` (gateway closes the WebSocket with 4002) is added by S2
-    // together with its gateway consumer (Esquadro decision 1, rule A). Until then the revoked
-    // `device_token` row is the source of truth: the gateway refuses it at connect.
+    /// The connection's device token stopped working (unpair, or a re-pair that issued a new
+    /// one): the gateway closes that connection's adapter session (4002). The `device_token` row
+    /// stays the source of truth: a revoked token is refused at connect and on revalidation.
+    DeviceTokenRevoked {
+        user_id: UserId,
+        connection_id: ConnectionId,
+        reason: TokenRevokedReason,
+        at: DateTime<Utc>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TokenRevokedReason {
+    Unpaired,
+    Repaired,
+}
+
+impl TokenRevokedReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unpaired => "unpaired",
+            Self::Repaired => "repaired",
+        }
+    }
 }
 
 impl IdentityEvent {
@@ -630,6 +654,7 @@ impl IdentityEvent {
             Self::ConnectionPaired { .. } => "identity.connection_paired",
             Self::PairingCodeSuperseded { .. } => "identity.pairing_code_invalidated",
             Self::NoticeRequested { .. } => NOTICE_EVENT_TYPE,
+            Self::DeviceTokenRevoked { .. } => DEVICE_TOKEN_REVOKED_EVENT_TYPE,
         }
     }
 }
@@ -688,7 +713,7 @@ mod tests {
         let all: std::collections::BTreeSet<&str> = emitted_event_types().collect();
         assert_eq!(
             all.len(),
-            AUDIT_EVENT_TYPES.len() + SSE_EVENT_TYPES.len() + 1
+            AUDIT_EVENT_TYPES.len() + SSE_EVENT_TYPES.len() + 2
         );
         for t in AUDIT_EVENT_TYPES {
             assert!(
@@ -727,9 +752,6 @@ mod tests {
             at: chrono::Utc::now(),
         };
         assert!(SSE_EVENT_TYPES.contains(&e.event_type()));
-        assert!(
-            !all.contains("identity.device_token_revoked"),
-            "added by S2 with its consumer"
-        );
+        assert!(all.contains(DEVICE_TOKEN_REVOKED_EVENT_TYPE));
     }
 }

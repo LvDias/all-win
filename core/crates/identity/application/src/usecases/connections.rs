@@ -12,7 +12,7 @@ use identity_enterprise::source::DisplayName;
 use shared_kernel::UserId;
 
 use crate::auth::AuthContext;
-use crate::changes::{Actor, AuditAction, ChangeSet, IdentityEvent, Write};
+use crate::changes::{Actor, AuditAction, ChangeSet, IdentityEvent, TokenRevokedReason, Write};
 use crate::deps::{IdentityDeps, RequestMeta};
 use crate::error::IdentityError;
 use crate::ports::{ConnectionAccounts, ConnectionRecord, StoreConflict, StoreError};
@@ -377,6 +377,16 @@ impl UnpairConnection {
                 status: ConnectionStatus::Unpaired,
                 at: now,
             });
+        let changes = if was_paired {
+            changes.event(IdentityEvent::DeviceTokenRevoked {
+                user_id: ctx.user.id,
+                connection_id: id,
+                reason: TokenRevokedReason::Unpaired,
+                at: now,
+            })
+        } else {
+            changes
+        };
         deps.store.commit(changes).await?;
         Ok(())
     }

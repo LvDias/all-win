@@ -25,7 +25,7 @@ use identity_enterprise::profile::Locale;
 use identity_enterprise::secret::SecretString;
 use identity_enterprise::session::Session;
 use identity_enterprise::source::Source;
-use identity_enterprise::tokens::{CodeHmac, TokenHash};
+use identity_enterprise::tokens::{CodeHmac, KeyId, TokenHash};
 use identity_enterprise::user::User;
 use shared_kernel::{Clock, UserId};
 
@@ -1184,6 +1184,23 @@ impl IdentityStore for FakeStore {
             .get(&id)
             .filter(|c| c.user_id == user)
             .map(|c| Self::record(&st, c)))
+    }
+    async fn device_token(&self, key_id: &KeyId) -> Result<Option<DeviceTokenRecord>, StoreError> {
+        let st = self.state.lock().unwrap();
+        Ok(st
+            .device_tokens
+            .iter()
+            .find(|t| t.key.key_id == *key_id)
+            .and_then(|t| {
+                let c = st.connections.get(&t.connection_id)?;
+                let active = st.users.get(&c.user_id).is_some_and(User::is_active);
+                Some(DeviceTokenRecord {
+                    user_id: c.user_id,
+                    connection_id: t.connection_id,
+                    token_hash: t.key.secret_hash,
+                    revoked: t.revoked || !c.is_paired() || !active,
+                })
+            }))
     }
     async fn redeemable_pairing_code(
         &self,

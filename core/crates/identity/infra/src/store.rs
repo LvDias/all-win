@@ -20,8 +20,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use identity_application::changes::{ChangeSet, CodeTable, StoredKey, Write};
 use identity_application::ports::{
-    ConnectionRecord, IdentityStore, LoginTarget, StoreConflict, StoreError, UserSummary,
-    WindowCount,
+    ConnectionRecord, DeviceTokenRecord, IdentityStore, LoginTarget, StoreConflict, StoreError,
+    UserSummary, WindowCount,
 };
 use identity_enterprise::channel::{Channel, Destination, PhoneNumber};
 use identity_enterprise::channel_change::{ChangeStatus, ChannelChange};
@@ -1147,6 +1147,27 @@ impl IdentityStore for PgIdentityStore {
         .map_err(db)?;
         tx.commit().await.map_err(db)?;
         row.map(ConnectionRow::into_record).transpose()
+    }
+
+    async fn device_token(&self, key_id: &KeyId) -> Result<Option<DeviceTokenRecord>, StoreError> {
+        let row = sqlx::query!(
+            r#"SELECT user_id AS "user_id!", connection_id AS "connection_id!", token_hash AS "token_hash!",
+                      revoked AS "revoked!"
+                 FROM identity.resolve_device_token($1)"#,
+            key_id.as_str()
+        )
+        .fetch_optional(&self.app)
+        .await
+        .map_err(db)?;
+        row.map(|r| {
+            Ok(DeviceTokenRecord {
+                user_id: UserId::from_uuid(r.user_id),
+                connection_id: ConnectionId::from_uuid(r.connection_id),
+                token_hash: TokenHash::from_bytes(hash32(r.token_hash)?),
+                revoked: r.revoked,
+            })
+        })
+        .transpose()
     }
 
     async fn redeemable_pairing_code(

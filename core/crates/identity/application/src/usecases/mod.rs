@@ -3,6 +3,7 @@
 mod common;
 
 pub mod access_port;
+pub mod adapter_auth;
 pub mod admin;
 pub mod channel_change;
 pub(crate) mod codes;

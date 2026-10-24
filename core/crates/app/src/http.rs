@@ -18,6 +18,7 @@ pub const UNMATCHED_INGRESS: &str = "<unmatched-ingress>";
 pub fn router(state: AppState) -> Router {
     let ingress = adapter_tradingview::router(state.ingress.clone());
     let sessions = state.sessions.clone().unwrap_or_default();
+    let adapter = state.adapter.clone().unwrap_or_default();
     Router::new()
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
@@ -25,6 +26,7 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
         .merge(ingress)
         .merge(sessions)
+        .merge(adapter)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(make_span)
@@ -51,6 +53,9 @@ async fn healthz() -> StatusCode {
 async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     let mut out = String::new();
     state.ingress.metrics.render(&mut out);
+    if let Some(gateway) = &state.gateway_metrics {
+        gateway.render(&mut out);
+    }
     // Dead-lettered: an audit entry missing from a user's log (X-5). Unconsumed: events of
     // a type with no registered consumer, never fetched (Architect decision (A)). Alert on > 0.
     // Allowlisted types (crate::unconsumed) are not unconsumed: no consumer yet, by decision.

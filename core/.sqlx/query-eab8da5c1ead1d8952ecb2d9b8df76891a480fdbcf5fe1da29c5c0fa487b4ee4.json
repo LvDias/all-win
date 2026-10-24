@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT user_id AS \"user_id!\", connection_id AS \"connection_id!\", token_hash AS \"token_hash!\",\n                      revoked AS \"revoked!\"\n                 FROM identity.resolve_device_token($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "connection_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "token_hash!",
+        "type_info": "Bytea",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "revoked!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "eab8da5c1ead1d8952ecb2d9b8df76891a480fdbcf5fe1da29c5c0fa487b4ee4"
+}

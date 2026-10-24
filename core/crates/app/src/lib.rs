@@ -10,6 +10,7 @@ pub mod openapi;
 pub mod outbox;
 pub mod purge;
 pub mod routing;
+pub mod routing_ports;
 pub mod telemetry;
 pub mod unconsumed;
 pub mod wiring;
@@ -23,7 +24,9 @@ use anyhow::Context;
 use audit_application::RecordAuditEntry;
 use audit_infra::PgAuditStore;
 use catalog_application::IsInstrumentEnabled;
+use catalog_application::instrument::{ActiveContractQuery, ListInstruments};
 use catalog_infra::PgInstrumentRepository;
+use identity_application::usecases::connections::RecordConnectionLiveState;
 use routing_application::enterprise::IngressEvent;
 use routing_application::{IngestInstruction, IngestStore, RecordIngressRejection};
 use routing_infra::PgIngestStore;
@@ -51,6 +54,11 @@ pub struct AppState {
     /// `/sources`, `/connections`, `/adapter/v1/pairings`, `/events`), accounts and profiles,
     /// opt-in rules and instruments; `None` without `IDENTITY_PEPPERS`.
     pub sessions: Option<axum::Router>,
+    /// The adapters' WebSocket (`GET /adapter/v1`, a device token, not a session); `None`
+    /// without `IDENTITY_PEPPERS`.
+    pub adapter: Option<axum::Router>,
+    /// The gateway's counters for `/metrics`; `None` without `IDENTITY_PEPPERS`.
+    pub gateway_metrics: Option<Arc<gateway::GatewayMetrics>>,
 }
 
 /// The wired application plus its background workers.
@@ -134,6 +142,8 @@ impl App {
         }
         consumers.require(&IngressEvent::TYPES, unconsumed::UNCONSUMED)?;
         let account_store = accounts::store(&db);
+        let mut adapter = None;
+        let mut gateway_metrics = None;
         let (identity, sessions) = match &config.identity {
             Some(cfg) => {
                 let wired = identity::wire(
@@ -147,28 +157,111 @@ impl App {
                     audit.clone(),
                     &mut consumers,
                 )?;
+                // accounts and the gateway read each other (ADR-0008): the gateway's reads of
+                // accounts are set once accounts is wired.
+                let gateway_store = gateway::store(&db);
+                let accounts_reads: gateway::AccountsReads = Arc::default();
+                let venues = Arc::new(gateway::GatewayVenues {
+                    store: gateway_store.clone(),
+                    identity: wired.deps.store.clone(),
+                    accounts: accounts_reads.clone(),
+                });
                 let modules = accounts::wire(
                     &db,
-                    account_store,
-                    clock,
+                    account_store.clone(),
+                    clock.clone(),
                     accounts::SessionPorts {
                         authenticator: wired.authenticator.clone(),
                         step_up: wired.step_up.clone(),
                         identity_store: wired.deps.store.clone(),
                     },
+                    venues,
+                    routing::account_routes(&db, wired.deps.store.clone()),
                     wired.public_origin.clone(),
                     config.trust_forwarded_for,
                     config.app_env.is_production(),
-                    audit,
+                    audit.clone(),
                     &mut consumers,
                 );
+                if accounts_reads.set(modules.reads).is_err() {
+                    anyhow::bail!("accounts reads set twice");
+                }
+                let gateway = gateway::wire(
+                    gateway::GatewayDeps {
+                        store: gateway_store.clone(),
+                        tokens: Arc::new(identity::IdentityDeviceTokens(wired.deps.clone())),
+                        accounts: accounts_reads.clone(),
+                        presence: RecordConnectionLiveState::new(wired.deps.clone()),
+                        clock: clock.clone(),
+                        app_env: Some(routing_ports::app_env_str(config.app_env).to_owned()),
+                        token_failures_per_min: config.ip_token_failures_per_min,
+                        trust_forwarded_for: config.trust_forwarded_for,
+                    },
+                    audit.clone(),
+                    &mut consumers,
+                )
+                .map_err(|e| anyhow::anyhow!("gateway: {e}"))?;
+                let gates =
+                    routing_ports::risk_gates(config.app_env, Arc::new(gateway.reads.clone()));
+                let instruments = Arc::new(PgInstrumentRepository::new(db.clone()));
+                let routing = routing::wire(
+                    &db,
+                    account_store,
+                    wired.deps.store.clone(),
+                    modules.brackets,
+                    ListInstruments::new(instruments.clone()),
+                    ActiveContractQuery::new(instruments),
+                    routing::RoutingPorts {
+                        positions: Arc::new(gateway.reads.clone()),
+                        out_of_sync: Arc::new(gateway.reads.clone()),
+                        risk_blocked: gates.risk_blocked,
+                        limits_pending: gates.limits_pending,
+                        connections: Arc::new(routing_ports::GatewayConnections {
+                            accounts: accounts_reads,
+                            store: gateway_store,
+                            identity: wired.deps.store.clone(),
+                        }),
+                    },
+                    routing::RoutingSession {
+                        authenticator: wired.authenticator.clone(),
+                        step_up: wired.step_up.clone(),
+                        public_origin: wired.public_origin.clone(),
+                        trust_forwarded_for: config.trust_forwarded_for,
+                    },
+                    clock,
+                );
+                routing_ports::check_stand_ins(&routing.gates, config.app_env)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                let stand_ins = routing.gates.stand_ins();
+                if !stand_ins.is_empty() {
+                    tracing::warn!(
+                        gates = ?stand_ins,
+                        "routing gates 7–8: stand-in (no risk limits) — dev-stubs"
+                    );
+                }
+                // The router and its decision consumer go together (one unit).
+                consumers.register("ingress.received", routing.decisions);
+                for code in routing_ports::ROUTING_AUDIT_CODES {
+                    consumers.register(code, audit.clone());
+                }
                 let emitted: Vec<&str> = accounts_application::EMITTED_EVENT_TYPES
                     .iter()
                     .chain(accounts_application::profiles::PROFILE_EVENT_TYPES.iter())
+                    .chain(gateway_application::events::EMITTED.iter())
+                    .chain(gateway_application::events::AUDIT_CODES.iter())
+                    .chain(gateway_application::events::NOTIFICATIONS.iter())
                     .copied()
+                    .chain(routing_ports::emitted())
+                    .chain([identity_application::changes::DEVICE_TOKEN_REVOKED_EVENT_TYPE])
                     .collect();
                 consumers.require(&emitted, unconsumed::UNCONSUMED)?;
-                let sessions = wired.router.clone().merge(modules.router);
+                let sessions = wired
+                    .router
+                    .clone()
+                    .merge(modules.router)
+                    .merge(routing.router);
+                adapter = Some(gateway.router);
+                gateway_metrics = Some(gateway.metrics);
                 (Some(wired), Some(sessions))
             }
             None => {
@@ -186,6 +279,8 @@ impl App {
                 consumed_event_types: consumers.types().into(),
                 ingress,
                 sessions,
+                adapter,
+                gateway_metrics,
             },
             dispatcher: outbox::OutboxDispatcher::new(worker, consumers, wake),
             identity,

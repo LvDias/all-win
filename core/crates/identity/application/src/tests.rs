@@ -778,3 +778,75 @@ async fn profile_update_validates_time_zone() {
         (43_200, 86_400)
     );
 }
+
+/// S2 adapter authentication: the device token authenticates (with the user's locale) until a
+/// re-pair or an unpair revokes it, and each revocation emits `identity.device_token_revoked`.
+#[tokio::test]
+async fn device_tokens_authenticate_until_revoked() {
+    use crate::changes::TokenRevokedReason;
+    use crate::usecases::adapter_auth::{AuthenticateDeviceToken, DeviceTokenStatus};
+    use identity_enterprise::secret::SecretString;
+
+    let w = World::with_settings(false);
+    let (user, _, c) = signed_in(&w, "ana@example.com", false).await;
+    let created = CreateConnection::new(w.deps.clone())
+        .handle(&c, "Desk A", None, &meta())
+        .await
+        .unwrap();
+    let pair = PairAdapter::new(w.deps.clone());
+    let first = pair
+        .handle(pair_cmd(created.pairing.pairing_code.expose()))
+        .await
+        .unwrap();
+    let id = first.connection_id;
+    let auth = AuthenticateDeviceToken::new(w.deps.clone());
+    let status = DeviceTokenStatus::new(w.deps.clone());
+    let p = auth.handle(&first.device_token).await.unwrap().unwrap();
+    assert_eq!(
+        (p.user_id, p.connection_id, p.locale),
+        (user.id, id, user.locale)
+    );
+    assert!(status.handle(&p.key_id).await.unwrap());
+    // A wrong secret or a malformed token: nothing, alike.
+    let mut wrong = first.device_token.expose().to_owned();
+    let last = if wrong.ends_with('A') { 'B' } else { 'A' };
+    wrong.pop();
+    wrong.push(last);
+    for t in [wrong.as_str(), "awd_nope", ""] {
+        assert!(
+            auth.handle(&SecretString::new(t)).await.unwrap().is_none(),
+            "{t}"
+        );
+    }
+    let revoked = |reason: TokenRevokedReason| {
+        w.store.committed().iter().any(|c| {
+            c.events.iter().any(|e| {
+                matches!(e, IdentityEvent::DeviceTokenRevoked { connection_id, reason: r, .. }
+                    if *connection_id == id && *r == reason)
+            })
+        })
+    };
+    assert!(!revoked(TokenRevokedReason::Repaired));
+    // Re-pair: the first token stops working.
+    let again = NewPairingCode::new(w.deps.clone())
+        .handle(&c, id, None, &meta())
+        .await
+        .unwrap();
+    let second = pair
+        .handle(pair_cmd(again.pairing_code.expose()))
+        .await
+        .unwrap();
+    assert!(auth.handle(&first.device_token).await.unwrap().is_none());
+    assert!(!status.handle(&p.key_id).await.unwrap());
+    assert!(revoked(TokenRevokedReason::Repaired));
+    let p2 = auth.handle(&second.device_token).await.unwrap().unwrap();
+    // Unpair: the second token stops working too.
+    let proof = proof(&w, &c, StepUpAction::ConnectionUnpair, Some(id.as_uuid())).await;
+    UnpairConnection::new(w.deps.clone())
+        .handle(&c, id, true, Some(&proof), &meta())
+        .await
+        .unwrap();
+    assert!(auth.handle(&second.device_token).await.unwrap().is_none());
+    assert!(!status.handle(&p2.key_id).await.unwrap());
+    assert!(revoked(TokenRevokedReason::Unpaired));
+}

@@ -7,19 +7,16 @@ use std::sync::Arc;
 use access::{SessionAuthenticator, StepUpGate};
 use accounts_application::enterprise::opt_in::{FirmStance, OptInKind, RuleVersionRef};
 use accounts_application::enterprise::profile::TickSpec;
-use accounts_application::enterprise::{
-    AccountId, ConnectionId, PresetVersionId, SizeAmount, VenueAccountId,
-};
+use accounts_application::enterprise::{AccountId, PresetVersionId, SizeAmount};
 use accounts_application::ports::{
-    AccountRoutes, AccountStore, BindingView, CurrentRule, PortError, PresetCatalog, PresetFacts,
-    RouteRef, RuleSelection, RuleSource, RuleVersions, UserTimeZone, VenueAccountFacts,
-    VenueAccounts,
+    AccountRoutes, AccountStore, CurrentRule, PortError, PresetCatalog, PresetFacts, RuleSelection,
+    RuleSource, RuleVersions, UserTimeZone, VenueAccounts,
 };
 use accounts_application::profiles::ports::{EnabledInstrument, ProfileCatalog};
 use accounts_application::profiles::{
     BracketQuery, PROFILE_EVENT_TYPES, ProfileDeps, ProfilePlanner, ProfileUseCases,
 };
-use accounts_application::{AUDIT_EVENT_TYPES, AccountsDeps};
+use accounts_application::{AUDIT_EVENT_TYPES, AccountsDeps, ReadAccounts};
 use accounts_infra::profiles::PgProfileStore;
 use accounts_infra::store::PgAccountStore;
 use async_trait::async_trait;
@@ -112,52 +109,6 @@ impl PresetCatalog for NoPresets {
     }
 }
 
-/// gateway (S2) is not built: no platform account resolves, so nothing can be bound. An open
-/// position is never assumed absent.
-struct NoVenues;
-
-#[async_trait]
-impl VenueAccounts for NoVenues {
-    async fn resolve(
-        &self,
-        _: UserId,
-        _: ConnectionId,
-        _: &str,
-    ) -> Result<Option<VenueAccountFacts>, PortError> {
-        Ok(None)
-    }
-
-    async fn describe(
-        &self,
-        _: UserId,
-        _: &[VenueAccountId],
-    ) -> Result<Vec<BindingView>, PortError> {
-        Ok(Vec::new())
-    }
-
-    async fn has_open_position(&self, _: UserId, _: VenueAccountId) -> Result<bool, PortError> {
-        Err(PortError("gateway unavailable".into()))
-    }
-}
-
-/// routing (S7) subscriptions are not wired yet: no account has routes.
-struct NoRoutes;
-
-#[async_trait]
-impl AccountRoutes for NoRoutes {
-    async fn routes_of(&self, _: UserId, _: AccountId) -> Result<Vec<RouteRef>, PortError> {
-        Ok(Vec::new())
-    }
-
-    async fn has_enabled_automated_route(
-        &self,
-        _: UserId,
-        _: AccountId,
-    ) -> Result<bool, PortError> {
-        Ok(false)
-    }
-}
-
 /// identity: the user's time zone (IANA name from the profile).
 struct IdentityTimeZones(Arc<dyn IdentityStore>);
 
@@ -223,6 +174,8 @@ pub struct AccountsWiring {
     pub router: Router,
     /// For routing's bracket coverage (S7), handed over when routing is wired.
     pub brackets: BracketQuery,
+    /// For the gateway's account reads (ADR-0008), set into its `AccountsReads`.
+    pub reads: ReadAccounts,
 }
 
 /// Session-side ports from identity that every module router needs.
@@ -239,6 +192,8 @@ pub fn wire(
     store: Arc<dyn AccountStore>,
     clock: Arc<dyn Clock>,
     session: SessionPorts,
+    venues: Arc<dyn VenueAccounts>,
+    routes: Arc<dyn AccountRoutes>,
     public_origin: String,
     trust_forwarded_for: bool,
     production: bool,
@@ -256,8 +211,8 @@ pub fn wire(
         store,
         rules: Arc::new(CatalogRules(rules.clone())),
         presets: Arc::new(NoPresets),
-        venues: Arc::new(NoVenues),
-        routes: Arc::new(NoRoutes),
+        venues,
+        routes,
         time_zones: Arc::new(IdentityTimeZones(session.identity_store)),
         profiles: Arc::new(ProfilePlanner::new(profile_store.clone(), catalog.clone())),
         step_up: session.step_up,
@@ -272,6 +227,7 @@ pub fn wire(
     for t in AUDIT_EVENT_TYPES.iter().chain(PROFILE_EVENT_TYPES.iter()) {
         consumers.register(t, audit.clone());
     }
+    let reads = ReadAccounts::new(deps.clone());
     let auth = session.authenticator;
     let router = Router::new()
         .merge(accounts_infra::http::router(Arc::new(
@@ -306,5 +262,6 @@ pub fn wire(
     AccountsWiring {
         router,
         brackets: BracketQuery::new(profile_store, catalog),
+        reads,
     }
 }

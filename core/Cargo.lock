@@ -1251,6 +1251,7 @@ dependencies = [
  "chrono",
  "identity-enterprise",
  "shared-kernel",
+ "subtle",
  "thiserror",
  "tokio",
  "uuid",

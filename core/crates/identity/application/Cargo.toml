@@ -16,6 +16,7 @@ shared-kernel.workspace = true
 access.workspace = true
 async-trait.workspace = true
 chrono = { workspace = true, features = ["clock", "std"] }
+subtle.workspace = true
 thiserror.workspace = true
 uuid = { workspace = true, features = ["v7"] }
 

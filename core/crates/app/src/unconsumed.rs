@@ -37,11 +37,6 @@ pub const UNCONSUMED: &[Unconsumed] = &[
         start: StartPolicy::FromNow,
     },
     Unconsumed {
-        event_type: "account.binding_changed",
-        consumer_slice: "S2 gateway",
-        start: StartPolicy::FromNow,
-    },
-    Unconsumed {
         event_type: "account.changed",
         consumer_slice: "SSE (accounts)",
         start: StartPolicy::FromNow,
@@ -49,6 +44,41 @@ pub const UNCONSUMED: &[Unconsumed] = &[
     Unconsumed {
         event_type: "account.archived",
         consumer_slice: "SSE (accounts)",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "gateway.execution_reported",
+        consumer_slice: "S13 risk (PROVISIONAL: confirm from_now)",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "gateway.account_sync_changed",
+        consumer_slice: "SSE (accounts)",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "routing.reverse_close_only",
+        consumer_slice: "S18 notifications",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "sync.bracket_double_fill",
+        consumer_slice: "S18 notifications",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "sync.bracket_incomplete",
+        consumer_slice: "S18 notifications",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "sync.bracket_orphan_leg",
+        consumer_slice: "S18 notifications",
+        start: StartPolicy::FromNow,
+    },
+    Unconsumed {
+        event_type: "sync.flatten_failed_unprotected",
+        consumer_slice: "S18 notifications",
         start: StartPolicy::FromNow,
     },
 ];
@@ -86,6 +116,10 @@ pub fn emitted_event_types() -> Vec<&'static str> {
     all.extend(identity_application::changes::emitted_event_types());
     all.extend(accounts_application::EMITTED_EVENT_TYPES);
     all.extend(accounts_application::profiles::PROFILE_EVENT_TYPES);
+    all.extend(gateway_application::events::EMITTED);
+    all.extend(gateway_application::events::AUDIT_CODES);
+    all.extend(gateway_application::events::NOTIFICATIONS);
+    all.extend(crate::routing_ports::emitted());
     all
 }
 

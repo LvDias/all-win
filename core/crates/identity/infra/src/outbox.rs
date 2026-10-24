@@ -355,6 +355,17 @@ pub fn event(event: &IdentityEvent) -> Envelope {
             occurred_at: *at,
             payload: json!({ "connection_id": connection_id.as_uuid(), "reason": "superseded" }),
         },
+        IdentityEvent::DeviceTokenRevoked {
+            user_id,
+            connection_id,
+            reason,
+            at,
+        } => Envelope {
+            user_id: *user_id,
+            event_type: event.event_type(),
+            occurred_at: *at,
+            payload: json!({ "connection_id": connection_id.as_uuid(), "reason": reason.as_str() }),
+        },
         IdentityEvent::NoticeRequested {
             user_id,
             locale,
