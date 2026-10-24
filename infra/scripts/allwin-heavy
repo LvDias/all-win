@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Run a heavy command (cargo build/test/clippy, dotnet build/test, pnpm build, full vitest, playwright, e2e stack)
-# under a host-wide 3-slot semaphore, a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
+# under a host-wide 4-slot semaphore (temporarily; 3 normally), a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
 #   allwin-heavy cargo test --workspace
 #   allwin-heavy --fresh-target cargo test --workspace   (QA verdict run: private target per SHA, removed after)
 set -euo pipefail
 
-SLOTS="${ALLWIN_HEAVY_SLOTS:-3}"
+SLOTS="${ALLWIN_HEAVY_SLOTS:-4}"   # 4 until Monday 2026-10-26 (user decision, load ~8); back to 3 afterwards
 LOCK_DIR="${ALLWIN_HEAVY_LOCK_DIR:-/srv/www/allwin.worktrees/.heavy-locks}"
 CPU_QUOTA="${ALLWIN_HEAVY_CPU_QUOTA:-200%}"
 WAIT_MAX="${ALLWIN_HEAVY_WAIT_S:-1800}"   # seconds to wait for a slot
