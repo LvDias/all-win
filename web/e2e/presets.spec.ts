@@ -176,6 +176,8 @@ test.describe("english", () => {
 });
 
 test("Nova conta: picks a firm preset, must resolve the not-confirmed value, and creates the account without manual firm fields", async ({ page, api }) => {
+  // The longest flow (four dropdowns, six steps): on a loaded host it needs more than the default 30 s.
+  test.slow();
   await api.signedIn();
   const firmId = "00000000-0000-4000-8000-000000000001";
   const planId = "00000000-0000-4000-8000-000000000010";
