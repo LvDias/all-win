@@ -30,7 +30,8 @@ export function LanguageSwitcher() {
   const locale = useLocale();
   const { locked, pending } = useLocaleSwitch();
   const names = isLocale(locale) ? localeNames[locale] : localeNames["pt-BR"];
-  const accessibleName = t("triggerName", { language: names.name });
+  // WCAG 2.5.3: the name contains the visible text at every width, the full name from `sm` up and the short label below.
+  const accessibleName = t("triggerName", { language: names.name, short: names.short });
 
   const trigger = (
     <Button variant="outline" disabled={locked} aria-label={accessibleName} aria-busy={pending}>

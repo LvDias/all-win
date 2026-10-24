@@ -56,7 +56,7 @@
   },
   "language": {
     "label": "Idioma",
-    "triggerName": "Idioma: {language}",
+    "triggerName": "Idioma: {language}, {short}",
     "locked": "Feche a janela atual para trocar o idioma",
     "switching": "Trocando o idioma…",
     "failed": "Não foi possível salvar o idioma. Tente de novo.",

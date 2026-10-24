@@ -48,9 +48,18 @@ describe("LanguageSwitcher", () => {
     signedOut();
     const user = userEvent.setup();
     renderApp(<LanguageSwitcher />);
-    await user.click(screen.getByRole("button", { name: "Idioma: Português (Brasil)" }));
+    await user.click(screen.getByRole("button", { name: "Idioma: Português (Brasil), PT" }));
     expect(await screen.findByRole("menuitemradio", { name: "English" })).toHaveAttribute("lang", "en");
     expect(screen.getByRole("menuitemradio", { name: "Português (Brasil)" })).toHaveAttribute("lang", "pt-BR");
+  });
+
+  it("keeps both visible labels (full name from sm up, short label below) inside the accessible name (WCAG 2.5.3)", () => {
+    signedOut();
+    renderApp(<LanguageSwitcher />);
+    const button = screen.getByRole("button", { name: /Idioma:/ });
+    const visible = [...button.querySelectorAll("span")].map((span) => span.textContent ?? "").filter(Boolean);
+    expect(visible).toEqual(["Português (Brasil)", "PT"]);
+    for (const text of visible) expect(button.getAttribute("aria-label")).toContain(text);
   });
 
   it("signed out: sets the cookie and navigates keeping query and hash, without calling the API", async () => {

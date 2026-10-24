@@ -56,7 +56,7 @@
   },
   "language": {
     "label": "Language",
-    "triggerName": "Language: {language}",
+    "triggerName": "Language: {language}, {short}",
     "locked": "Close the current window to change the language",
     "switching": "Changing language…",
     "failed": "Could not save the language. Try again.",
