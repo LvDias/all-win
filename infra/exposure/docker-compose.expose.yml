@@ -1,0 +1,25 @@
+# Overlay for the E2E exposure of the plugin gateway: ONE extra Caddy that publishes 8443 and proxies only /adapter/v1.
+# Use together with the dev stack and ONLY while the firewall rules of firewall-open.sh are in place:
+#   docker compose -f docker-compose.dev.yml -f ../exposure/docker-compose.expose.yml --env-file .env --profile core up -d caddy-adapter
+# Docker-published ports bypass ufw; the access control for this port is the DOCKER-USER chain set by firewall-open.sh.
+services:
+  caddy-adapter:
+    image: caddy:2.10-alpine
+    # No restart policy: a reboot or a crash never reopens the port by itself.
+    restart: "no"
+    depends_on:
+      - core
+    environment:
+      CORE_PORT: ${CORE_PORT:-8080}
+    ports:
+      - "8443:8443"
+    volumes:
+      - ../exposure/Caddyfile.adapter:/etc/caddy/Caddyfile:ro
+      - ${ALLWIN_E2E_CERT_DIR:?set ALLWIN_E2E_CERT_DIR (see infra/exposure/README.md)}:/certs:ro
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/data", "/config"]
+    mem_limit: 256m
+    pids_limit: 200

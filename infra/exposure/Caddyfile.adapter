@@ -1,0 +1,47 @@
+# All Win — Caddy edge for the E2E exposure of the plugin gateway (ONLY /adapter/v1). See README.md.
+# Everything else answers nothing: the connection is closed without a body. No access log of the URI or headers:
+# the plugin's Bearer device token travels in a header (masking rule R2).
+{
+	admin off
+	auto_https off
+	log default {
+		level INFO
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>headers delete
+				resp_headers>Location delete
+			}
+		}
+	}
+}
+
+# Static self-signed certificate with the server's public IP as a SAN (cert and key are generated on the server by
+# gen-e2e-cert.sh and mounted read-only; never in the repository). The plugin trusts exactly this certificate.
+https://:8443 {
+	tls /certs/e2e.crt /certs/e2e.key {
+		protocols tls1.2 tls1.3
+	}
+
+	@adapter path /adapter/v1 /adapter/v1/*
+	handle @adapter {
+		# Plugin HTTP calls (pairing, token) and the WebSocket upgrade; transport cap above the contract limits.
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy core:{$CORE_PORT:8080} {
+			# Idle WebSocket sessions are the Core's business (heartbeats); drop dead upstreams fast.
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 30s
+			}
+		}
+	}
+
+	# Anything else (web, /api, /ingress, /metrics, scanners): close the connection, no response.
+	handle {
+		abort
+	}
+}
