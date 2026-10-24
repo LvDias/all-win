@@ -12,15 +12,26 @@ cat > "$tmp/in.log" <<'LOG'
 2026-10-24 10:00:05 path C:\Users\JohnDoe\Documents\NinjaTrader 8\log\log.txt
 2026-10-24 10:00:06 blob 0123456789abcdef0123456789abcdef0123456789abcdef and AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEf
 2026-10-24 10:00:07 url https://user:hunter2@example.com/path?x=1
-2026-10-24 10:00:08 -----BEGIN OPENSSH PRIVATE KEY-----
+2026-10-24 10:00:09 {"password": "FakePass123", "token": "faketok999", "note": "ok"}
+2026-10-24 10:00:10 password="two words here" and secret='single quoted words' end
+2026-10-24 10:00:11 <Password>FakeXmlPass1</Password><ApiKey>FakeXmlKey2</ApiKey><Account>Sim101</Account>
+2026-10-24 10:00:12 peers 2001:db8::1 fe80::abcd:1 and ::1 and ::ffff:1234:5678
+2026-10-24 10:00:13 path C:/Users/JaneRoe/Documents/NinjaTrader 8/log
+2026-10-24 10:00:14 user=johndoe99 User: maria.silva username jsmith42 login=trader77
+2026-10-24 10:00:15 call +55 11 91234-5678 or (11) 91234-5678 or 555-123-4567 mac aa:bb:cc:dd:ee:ff machine DESKTOP-AB12CD
+2026-10-24 10:00:16 -----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+Qy+NTUxOQAAACBfakefakefakeFAKEFAKEfakefakeFAKEFAKE/fakefake+FAKE0123
+-----END OPENSSH PRIVATE KEY-----
+2026-10-24 10:00:17 after the key, Sim101 still here
 LOG
 out="$tmp/out.log"
 perl "$here/redact.pl" "$tmp/in.log" > "$out" 2> "$tmp/counts"
 fail=0
-for leak in APEX-1234567 abcDEF1234567890xyz eyJhbGciOiJIUzI1NiJ9 AbCdEfGhIjKl_ tskey-auth 203.0.113.7 2001:db8 vm-a.tail1234 user@example.com JohnDoe 0123456789abcdef0123 hunter2 'PRIVATE KEY'; do
+for leak in FakePass123 faketok999 'two words' 'single quoted' FakeXmlPass1 FakeXmlKey2 2001:db8::1 fe80::abcd JaneRoe johndoe99 maria.silva jsmith42 trader77 91234-5678 555-123-4567 aa:bb:cc:dd:ee:ff DESKTOP-AB12CD b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ 'FAKEFAKEfakefake' APEX-1234567 abcDEF1234567890xyz eyJhbGciOiJIUzI1NiJ9 AbCdEfGhIjKl_ tskey-auth 203.0.113.7 2001:db8 vm-a.tail1234 user@example.com JohnDoe 0123456789abcdef0123 hunter2 'PRIVATE KEY'; do
   if grep -qF -- "$leak" "$out"; then echo "FAIL: leaked '$leak'"; fail=1; fi
 done
-for keep in 'Account: Sim101' 'Playback101 ok' 127.0.0.1 'C:\Users\<user>'; do
+for keep in '10:00:12 peers' '::1 and' '<Account>Sim101</Account>' 'after the key, Sim101 still here' 'Account: Sim101' 'Playback101 ok' 127.0.0.1 'C:\Users\<user>'; do
   grep -qF -- "$keep" "$out" || { echo "FAIL: lost '$keep'"; fail=1; }
 done
 # the redacted output is stable, and --check agrees

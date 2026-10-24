@@ -21,9 +21,12 @@ while IFS= read -r -d '' f; do
   esac
   case "$f" in
     *.txt|*.log|*.json|*.jsonl|*.ndjson|*.csv|*.xml|*.md) ;;
-    *.snap) grep -Iq . "$f" || { echo "$f (binary)" >> "$work/skipped.txt"; continue; } ;;   # plugin state snapshot, only if text
+    *.snap) ;;   # plugin state snapshot: kept only if it is UTF-8 text (checked below)
     *) echo "$f" >> "$work/skipped.txt"; continue ;;
   esac
+  if ! perl -e 'local $/; open(my $h, "<:raw", $ARGV[0]) or exit 1; my $s = <$h>; exit(($s =~ /\0/ || !utf8::decode($s)) ? 1 : 0)' "$f"; then
+    echo "$f (not UTF-8 text; convert it to UTF-8 first)" >> "$work/skipped.txt"; continue
+  fi
   size="$(wc -c < "$f" | tr -d ' ')"
   if [ "$size" -gt 52428800 ]; then echo "$f (over 50 MB)" >> "$work/skipped.txt"; continue; fi
   n=$((n + 1))
