@@ -385,3 +385,229 @@ async fn current_limits_returns_only_derived_accounts_with_the_plugin_version() 
             .is_empty()
     );
 }
+
+// ---- fills (E1 gateway.execution_reported) ------------------------------------------------
+
+mod fills {
+    use super::*;
+    use chrono::NaiveDate;
+    use risk_enterprise::{Position, Side};
+
+    use crate::fills::{
+        AppliedFill, ApplyFill, FillOperation, FillOutcome, FillStore, FillWrite, FillsDeps,
+        InstrumentFacts, InstrumentPoints, ReportedFill,
+    };
+
+    #[derive(Default)]
+    struct Fills {
+        rows: Mutex<HashMap<(Uuid, String), AppliedFill>>,
+        positions: Mutex<HashMap<(Uuid, String), Position>>,
+        days: Mutex<HashMap<(Uuid, NaiveDate), (Decimal, Decimal, Decimal)>>,
+        stale: Mutex<bool>,
+    }
+
+    #[async_trait]
+    impl FillStore for Fills {
+        async fn applied_fill(
+            &self,
+            _: UserId,
+            account: Uuid,
+            fill_id: &str,
+        ) -> Result<Option<AppliedFill>, StoreError> {
+            Ok(self
+                .rows
+                .lock()
+                .unwrap()
+                .get(&(account, fill_id.to_owned()))
+                .cloned())
+        }
+
+        async fn position(
+            &self,
+            _: UserId,
+            account: Uuid,
+            symbol: &str,
+            _: NaiveDate,
+        ) -> Result<Option<Position>, StoreError> {
+            Ok(self
+                .positions
+                .lock()
+                .unwrap()
+                .get(&(account, symbol.to_owned()))
+                .copied())
+        }
+
+        async fn write_fill(
+            &self,
+            _: UserId,
+            account: Uuid,
+            w: &FillWrite,
+        ) -> Result<(), StoreError> {
+            let key = (account, w.row.fill_id.clone());
+            let mut rows = self.rows.lock().unwrap();
+            if w.new_day.is_some() && rows.contains_key(&key) {
+                return Err(StoreError::Stale);
+            }
+            rows.insert(key, w.row.clone());
+            let mut days = self.days.lock().unwrap();
+            let day = days.entry((account, w.row.trading_date)).or_default();
+            day.0 += w.delta_gross;
+            day.1 += w.delta_commission;
+            day.2 += w.delta_gap;
+            if let Some(p) = w.position {
+                self.positions
+                    .lock()
+                    .unwrap()
+                    .insert((account, w.row.instrument_symbol.clone()), p);
+            }
+            *self.stale.lock().unwrap() = w.stale;
+            Ok(())
+        }
+    }
+
+    struct Points;
+
+    #[async_trait]
+    impl InstrumentPoints for Points {
+        async fn facts(&self, symbol: &str) -> Result<Option<InstrumentFacts>, PortError> {
+            Ok((symbol == "MNQ").then_some(InstrumentFacts {
+                point_value: dec("2"),
+                tick_size: dec("0.25"),
+            }))
+        }
+    }
+
+    struct Env {
+        w: World,
+        fills: Arc<Fills>,
+        uc: ApplyFill,
+    }
+
+    async fn env() -> Env {
+        let w = world();
+        w.set("500", 1, NOW);
+        DeriveLimits::new(w.deps())
+            .handle(w.user, w.account)
+            .await
+            .unwrap();
+        let fills = Arc::new(Fills::default());
+        let uc = ApplyFill::new(FillsDeps {
+            limits: w.store.clone(),
+            fills: fills.clone(),
+            instruments: Arc::new(Points),
+        });
+        Env { w, fills, uc }
+    }
+
+    fn fill(
+        id: &str,
+        side: Side,
+        qty: i64,
+        price: &str,
+        after: (i64, Option<&str>),
+    ) -> ReportedFill {
+        ReportedFill {
+            event_id: Uuid::now_v7(),
+            account_id: Uuid::nil(),
+            fill_id: id.into(),
+            operation: FillOperation::Add,
+            instrument_symbol: "MNQ".into(),
+            contract_month: NaiveDate::from_ymd_opt(2026, 12, 1).unwrap(),
+            side,
+            qty,
+            price: dec(price),
+            reported_commission: Some(dec("0.50")),
+            commission_effective: dec("0.62") * Decimal::from(qty),
+            position_after: Some(after.0),
+            avg_price_after: after.1.map(dec),
+            at: utc(NOW),
+        }
+    }
+
+    impl Env {
+        async fn apply(&self, mut f: ReportedFill) -> FillOutcome {
+            f.account_id = self.w.account;
+            self.uc.handle(self.w.user, &f).await.unwrap()
+        }
+
+        fn day(&self) -> (Decimal, Decimal, Decimal) {
+            let date = NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
+            self.fills.days.lock().unwrap()[&(self.w.account, date)]
+        }
+
+        fn stale(&self) -> bool {
+            *self.fills.stale.lock().unwrap()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_round_trip_realizes_on_average_cost_once() {
+        let e = env().await;
+        let open = fill("F1", Side::Buy, 2, "21000", (2, Some("21000")));
+        assert_eq!(
+            e.apply(open.clone()).await,
+            FillOutcome::Applied { stale: false }
+        );
+        assert_eq!(e.apply(open).await, FillOutcome::Duplicate, "redelivery");
+        let close = fill("F2", Side::Sell, 2, "21010", (0, None));
+        assert_eq!(e.apply(close).await, FillOutcome::Applied { stale: false });
+        // 2 × 10 points × 2 USD. Effective commission 0.62 × 2 per fill (2.48 in all); the
+        // platform reported 0.50 per fill, so the gap is (1.24 − 0.50) × 2 = 1.48.
+        let (gross, commission, gap) = e.day();
+        assert_eq!(gross, dec("40"));
+        assert_eq!(commission, dec("2.48"));
+        assert_eq!(gap, dec("1.48"));
+        let row = e.fills.rows.lock().unwrap()[&(e.w.account, "F2".to_owned())].clone();
+        assert_eq!(
+            (row.position_before, row.avg_price_before, row.point_value),
+            (Some(2), Some(dec("21000")), dec("2"))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_amend_recomputes_from_stored_inputs_and_a_remove_reverses() {
+        let e = env().await;
+        e.apply(fill("F1", Side::Buy, 2, "21000", (2, Some("21000"))))
+            .await;
+        e.apply(fill("F2", Side::Sell, 2, "21010", (0, None))).await;
+        let mut amend = fill("F2", Side::Sell, 2, "21005", (0, None));
+        amend.operation = FillOperation::Amend;
+        assert_eq!(e.apply(amend).await, FillOutcome::Applied { stale: false });
+        assert_eq!(e.day().0, dec("20"));
+        let mut remove = fill("F2", Side::Sell, 2, "21005", (2, Some("21000")));
+        remove.operation = FillOperation::Remove;
+        e.apply(remove).await;
+        assert_eq!(e.day().0, dec("0"));
+        let row = e.fills.rows.lock().unwrap()[&(e.w.account, "F2".to_owned())].clone();
+        assert!(row.removed && row.qty == 0 && row.gross.is_zero());
+    }
+
+    #[tokio::test]
+    async fn an_unknown_basis_realizes_nothing_and_is_stale() {
+        let e = env().await;
+        // No stored row; the platform shows a flip: the old average cannot be known.
+        let f = fill("F1", Side::Sell, 3, "21000", (-2, Some("21000")));
+        assert_eq!(e.apply(f).await, FillOutcome::Applied { stale: true });
+        assert_eq!(e.day().0, dec("0"));
+        assert!(e.stale());
+    }
+
+    #[tokio::test]
+    async fn unknown_cases_write_nothing() {
+        let e = env().await;
+        let mut amend = fill("F9", Side::Sell, 1, "21000", (0, None));
+        amend.operation = FillOperation::Amend;
+        assert_eq!(e.apply(amend).await, FillOutcome::UnknownFill);
+        let mut other = fill("F1", Side::Buy, 1, "100", (1, Some("100")));
+        other.instrument_symbol = "ZZZ".into();
+        assert_eq!(e.apply(other).await, FillOutcome::UnknownInstrument);
+        // An account without derived limits yet.
+        let mut no_limits = fill("F1", Side::Buy, 1, "21000", (1, Some("21000")));
+        no_limits.account_id = Uuid::now_v7();
+        assert_eq!(
+            e.uc.handle(e.w.user, &no_limits).await.unwrap(),
+            FillOutcome::NoLimits
+        );
+        assert!(e.fills.rows.lock().unwrap().is_empty());
+    }
+}

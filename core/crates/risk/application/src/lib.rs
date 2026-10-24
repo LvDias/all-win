@@ -2,6 +2,7 @@
 //! account's limits from its accounts inputs, the trading-day reset step, and (next) the fills and
 //! the risk-state queries. Ports are consumer-owned and wired in `crates/app`.
 
+pub mod fills;
 pub mod limits;
 pub mod ports;
 pub mod wire;

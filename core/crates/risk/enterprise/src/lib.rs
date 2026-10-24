@@ -18,7 +18,9 @@ pub use derivation::{Derivation, LimitKind, RuleInputs, Scheduled, derive};
 pub use drawdown::DrawdownTracker;
 pub use evaluation::{EvaluationProgress, EvaluationState};
 pub use meter::{Meter, MeterState, consistency_share, live_net};
-pub use position::{FillEffect, Position, Reconciled, Side, apply_fill, reconcile, round_money};
+pub use position::{
+    FillEffect, Position, Reconciled, Side, apply_fill, position_before, reconcile, round_money,
+};
 pub use rules::{
     DailyLoss, Drawdown, DrawdownType, OnReach, ResetTime, RiskRules, RuleKind, TrailingLock,
 };
