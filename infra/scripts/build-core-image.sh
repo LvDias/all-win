@@ -50,3 +50,5 @@ if [ "$pkg" = app ]; then
 fi
 dk build -q -t "$tag" "$stage"
 echo "image $tag built from $(git -C "$wt" rev-parse --short HEAD)"
+# Cap the BuildKit cache (it grew to 22 GB and helped fill the disk): keep the most recent ALLWIN_BUILDKIT_KEEP (default 5GB), no --no-cache, so rebuilds stay cheap.
+dk builder prune -f --keep-storage "${ALLWIN_BUILDKIT_KEEP:-5GB}" >/dev/null 2>&1 || true
