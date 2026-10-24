@@ -7,6 +7,8 @@
 # An image built with a test feature (dev-stubs, ADR-0006 rule 8) MUST get a distinct tag and never goes to staging or a release.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# These scripts serve the Sunday path: ask for the sunday lane (honoured only for worktrees listed in .heavy-locks/LANE.sunday; others run as normal).
+export ALLWIN_HEAVY_LANE="${ALLWIN_HEAVY_LANE:-sunday}"
 wt="${1:-}"; tag="${2:-}"; shift 2 || true
 [ -d "$wt/core" ] && [[ "$tag" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$ ]] || { echo "usage: $0 <repo worktree> <image:tag> [-- <cargo args>]" >&2; exit 2; }
 [ "${1:-}" = "--" ] && shift
