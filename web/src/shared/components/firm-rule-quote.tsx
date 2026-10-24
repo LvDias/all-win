@@ -10,7 +10,10 @@ import { Button } from "@/shared/ui/button";
 
 type FirmRuleQuoteProps = {
   firm: string;
-  pageTitle: string;
+  /** Absent for a page without a title: the caption then shows the URL and `titleNote` explains why. */
+  pageTitle?: string;
+  /** The Core's own words on why there is no title (never translated here). */
+  titleNote?: string;
   /** ISO instant the page was read. */
   accessedAt: string;
   url: string;
@@ -26,7 +29,7 @@ type FirmRuleQuoteProps = {
 /** Only https links are rendered as links: the URL comes from the preset data, never from the user, but a `javascript:` value must not become an href. */
 const safeUrl = (value: string): string | null => (/^https:\/\//i.test(value) ? value : null);
 
-export function FirmRuleQuote({ firm, pageTitle, accessedAt, url, text, lang, summary }: FirmRuleQuoteProps) {
+export function FirmRuleQuote({ firm, pageTitle, titleNote, accessedAt, url, text, lang, summary }: FirmRuleQuoteProps) {
   const t = useTranslations("firmRule");
   const { locale, timeZone } = useDisplay();
   const [expanded, setExpanded] = useState(false);
@@ -49,7 +52,8 @@ export function FirmRuleQuote({ firm, pageTitle, accessedAt, url, text, lang, su
         </div>
       ) : null}
       <figcaption className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-        <span>{t("caption", { firm, page: pageTitle, date: formatDate(accessedAt, locale, timeZone) })}</span>
+        <span>{t("caption", { firm, page: pageTitle || url, date: formatDate(accessedAt, locale, timeZone) })}</span>
+        {!pageTitle && titleNote ? <span>{titleNote}</span> : null}
         {safeUrl(url) ? (
           <a href={safeUrl(url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline underline-offset-4">
             {t("viewPage")}

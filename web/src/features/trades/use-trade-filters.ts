@@ -3,20 +3,16 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import type { AuditSignalType, TradeOrigin } from "@/shared/api/types";
-import { startOfDayInstant, zonedToInstant } from "@/shared/format";
+import { isDateText, periods, periodWindow, type Period } from "@/shared/format";
 import { useDisplay } from "@/shared/session/display";
 import type { TradeFilters, TradeQuery, TradeSort } from "./api";
 
-export type Period = "today" | "7d" | "30d" | "custom";
+export type { Period };
 
-const periods: readonly Period[] = ["today", "7d", "30d", "custom"];
 const signalTypes: readonly AuditSignalType[] = ["trigger", "trade_plan", "nq_trigger", "master_account"];
 const sorts: readonly TradeSort[] = ["exit_time", "pnl", "duration"];
-const daysBack: Record<Exclude<Period, "custom">, number> = { today: 0, "7d": 7, "30d": 30 };
 /** "Manual" and "Platform (no signal)" sit in the source filter but are origins for the Core (spec §3.1). */
 const originSources: readonly TradeOrigin[] = ["manual", "platform"];
-
-const isDate = (value: string | null): value is string => value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 export type UiFilters = { period: Period; fromDate: string; toDate: string; accounts: string[]; sources: string[]; signals: AuditSignalType[]; archived: boolean };
 
@@ -39,8 +35,8 @@ export function useTradeFilters() {
       period: periods.find((item) => item === rawPeriod) ?? "30d",
       sort: sorts.find((item) => item === rawSort) ?? "exit_time",
       order: p.get("order") === "asc" ? ("asc" as const) : ("desc" as const),
-      fromDate: isDate(fromParam) ? fromParam : "",
-      toDate: isDate(toParam) ? toParam : "",
+      fromDate: isDateText(fromParam) ? fromParam : "",
+      toDate: isDateText(toParam) ? toParam : "",
       accounts: p.getAll("account"),
       sources: p.getAll("source"),
       archived: p.get("archived") === "1",
@@ -52,18 +48,7 @@ export function useTradeFilters() {
   const ui: UiFilters = { period, fromDate, toDate, accounts, sources, signals, archived };
 
   const filters = useMemo<TradeFilters>(() => {
-    let from: string | undefined;
-    let to: string | undefined;
-    if (period === "custom") {
-      if (fromDate) from = zonedToInstant(fromDate, "00:00:00", timeZone) ?? undefined;
-      if (toDate) {
-        const [y, m, d] = toDate.split("-").map(Number) as [number, number, number];
-        const next = new Date(Date.UTC(y, m - 1, d + 1));
-        to = zonedToInstant(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`, "00:00:00", timeZone) ?? undefined;
-      }
-    } else {
-      from = startOfDayInstant(now, daysBack[period], timeZone);
-    }
+    const { from, to } = periodWindow(period, fromDate, toDate, now, timeZone);
     const origins = sources.filter((value): value is TradeOrigin => originSources.some((origin) => origin === value));
     return { from, to, accountIds: accounts, sourceIds: sources.filter((value) => !originSources.some((origin) => origin === value)), origins, signalTypes: signals, archived };
   }, [period, fromDate, toDate, timeZone, now, accounts, sources, signals, archived]);

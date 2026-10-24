@@ -10,6 +10,9 @@ export function Table({ className, ...props }: ComponentProps<"table">) {
 }
 export const TableHeader = (props: ComponentProps<"thead">) => <thead className="[&_tr]:border-b" {...props} />;
 export const TableBody = (props: ComponentProps<"tbody">) => <tbody {...props} />;
+export function TableFooter({ className, ...props }: ComponentProps<"tfoot">) {
+  return <tfoot className={cn("border-t bg-muted font-medium", className)} {...props} />;
+}
 export function TableRow({ className, ...props }: ComponentProps<"tr">) {
   return <tr className={cn("border-b last:border-0", className)} {...props} />;
 }

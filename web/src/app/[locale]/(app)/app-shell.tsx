@@ -1,6 +1,6 @@
 "use client";
 
-import { Cable, ChevronDown, Landmark, Home, ListChecks, Mail, Menu, Radio, Settings, Shield, SlidersHorizontal, X } from "lucide-react";
+import { Cable, ChartNoAxesColumn, ChevronDown, Landmark, Home, ListChecks, Mail, Menu, Radio, Settings, Shield, SlidersHorizontal, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Dialog as SheetPrimitive } from "radix-ui";
 import Link from "next/link";
@@ -28,7 +28,7 @@ function useNavigation(isAdmin: boolean): NavGroup[] {
   const groups: NavGroup[] = [
     { label: null, items: [{ href: "/", label: t("home"), icon: Home }] },
     ...(accountsPath ? [{ label: null, items: [{ href: accountsPath, label: t("accounts"), icon: Landmark }] }] : []),
-    { label: null, items: [{ href: "/trades", label: t("trades"), icon: ListChecks }] },
+    { label: null, items: [{ href: "/trades", label: t("trades"), icon: ListChecks }, { href: "/performance", label: t("performance"), icon: ChartNoAxesColumn }] },
     { label: t("connections"), items: [{ href: "/connections/sources", label: t("sources"), icon: Radio }, { href: "/connections/ninjatrader", label: t("ninjatrader"), icon: Cable }] },
     { label: t("settings"), items: [{ href: "/settings/security", label: t("security"), icon: Shield }, { href: "/settings/preferences", label: t("preferences"), icon: SlidersHorizontal }] },
   ];
