@@ -8,6 +8,7 @@
 //! floor" outside production; it shows only in the operator log, never in the audit.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use accounts_application::enterprise::{
@@ -179,10 +180,8 @@ impl VenueAccounts for GatewayVenues {
             .accounts_for_venues(user_id, &[venue_account_id])
             .await
             .map_err(acc_err)?;
-        // Never "flat" on uncertainty (Brasa M2): a venue that no longer maps to an account (a
-        // rebind race) or an account out of sync (its positions are not known) is an error.
         let Some(account) = bound.get(&venue_account_id) else {
-            return Err(AccountsPortError("platform account not bound".into()));
+            return Ok(open_position_answer(None, &[]));
         };
         let account = GatewayAccountId::from_uuid(account.account_id.as_uuid());
         let sync = self
@@ -190,15 +189,24 @@ impl VenueAccounts for GatewayVenues {
             .account_sync(user_id, account)
             .await
             .map_err(acc_err)?;
-        if sync.state() == SyncState::OutOfSync {
-            return Err(AccountsPortError("account out of sync".into()));
-        }
         let open = self
             .store
             .open_positions(user_id, account)
             .await
             .map_err(acc_err)?;
-        Ok(open.iter().any(|(_, q)| *q != 0))
+        Ok(open_position_answer(Some(sync.state()), &open))
+    }
+}
+
+/// `has_open_position` never answers "flat" on uncertainty (Brasa M2) and never fails on it
+/// either (Grosa H-1: an error fails `listAccounts` for every account and blocks the pause):
+/// a venue no longer bound to an account (a rebind race) or an account out of sync reads
+/// "possibly open". Rebind, archive and delete stay refused; pause and disable work. A
+/// three-state port is a follow-up (Brasa/Esquadro).
+fn open_position_answer(sync: Option<SyncState>, open: &[(Instrument, i64)]) -> bool {
+    match sync {
+        Some(SyncState::InSync) => open.iter().any(|(_, q)| *q != 0),
+        Some(SyncState::OutOfSync) | None => true,
     }
 }
 
@@ -433,6 +441,10 @@ pub mod dev_stubs {
             user: UserId,
             accounts: &[GatewayAccountId],
         ) -> Result<HashMap<GatewayAccountId, DerivedLimits>, GatewayPortError> {
+            // Production fails before any read, also for an empty account list (Grosa L-2).
+            if self.environment != Environment::NonProduction {
+                return Err(GatewayPortError("risk unavailable".into()));
+            }
             for a in accounts {
                 self.allowed(user, *a).await.map_err(GatewayPortError)?;
             }
@@ -475,6 +487,96 @@ fn risk(app_env: Option<&str>, kinds: Arc<dyn AccountKindOf>) -> Arc<dyn RiskLim
     }
 }
 
+// ---- operational metrics -------------------------------------------------------------------
+
+/// Why C1 dropped a `routing.commands_requested` without storing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DropReason {
+    /// The payload does not parse as `CommandsRequested`.
+    Malformed,
+    /// It parses but the gateway refuses it (`ConsumeError::Invalid`).
+    Invalid,
+}
+
+impl DropReason {
+    const ALL: [Self; 2] = [Self::Malformed, Self::Invalid];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Malformed => "malformed",
+            Self::Invalid => "invalid",
+        }
+    }
+}
+
+/// Gateway counters for `/metrics` (no users, accounts or tokens). Alert on any increase of
+/// `allwin_gateway_commands_dropped_total`: a routed command that will never reach the plugin
+/// (Esquadro, M3 condition (a)).
+#[derive(Debug, Default)]
+pub struct GatewayMetrics {
+    malformed: AtomicU64,
+    invalid: AtomicU64,
+}
+
+impl GatewayMetrics {
+    fn counter(&self, reason: DropReason) -> &AtomicU64 {
+        match reason {
+            DropReason::Malformed => &self.malformed,
+            DropReason::Invalid => &self.invalid,
+        }
+    }
+
+    pub fn dropped(&self, reason: DropReason) -> u64 {
+        self.counter(reason).load(Ordering::Relaxed)
+    }
+
+    fn record_drop(&self, reason: DropReason) {
+        self.counter(reason).fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Prometheus text format, appended to the app's `/metrics`.
+    pub fn render(&self, out: &mut String) {
+        out.push_str("# TYPE allwin_gateway_commands_dropped_total counter\n");
+        for reason in DropReason::ALL {
+            out.push_str(&format!(
+                "allwin_gateway_commands_dropped_total{{reason=\"{}\"}} {}\n",
+                reason.label(),
+                self.dropped(reason)
+            ));
+        }
+    }
+}
+
+/// The `command_id`s an event names, read leniently (the event may not parse).
+fn named_command_ids(payload: &serde_json::Value) -> Vec<String> {
+    payload["commands"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["command_id"].as_str().map(str::to_owned))
+        .collect()
+}
+
+/// The operational alert of a dropped C1 event: counted, and logged as an ERROR with the
+/// `alert` key the log alerting matches, the event id and the command ids (never the body).
+fn alert_dropped(
+    metrics: &GatewayMetrics,
+    event_id: uuid::Uuid,
+    payload: &serde_json::Value,
+    reason: DropReason,
+    why: &str,
+) {
+    metrics.record_drop(reason);
+    tracing::error!(
+        alert = "gateway.commands_dropped",
+        reason = reason.label(),
+        %event_id,
+        command_ids = ?named_command_ids(payload),
+        %why,
+        "routing.commands_requested dropped: these commands will not reach the plugin"
+    );
+}
+
 // ---- outbox consumers ----------------------------------------------------------------------
 
 /// C1: `routing.commands_requested` → command rows, then wake the connection's session.
@@ -483,6 +585,7 @@ fn risk(app_env: Option<&str>, kinds: Arc<dyn AccountKindOf>) -> Arc<dyn RiskLim
 struct CommandsConsumer {
     consume: ConsumeCommandsRequested,
     runtime: Arc<GatewayRuntime>,
+    metrics: Arc<GatewayMetrics>,
 }
 
 #[async_trait]
@@ -501,7 +604,13 @@ impl EventConsumer for CommandsConsumer {
             Ok(p) => p,
             Err(e) => {
                 // A malformed event never becomes valid: not retried (Brasa M3).
-                tracing::error!(event_id = %event.id, error = %e, "routing.commands_requested is malformed; dropped");
+                alert_dropped(
+                    &self.metrics,
+                    event.id,
+                    &event.payload,
+                    DropReason::Malformed,
+                    &e.to_string(),
+                );
                 return Ok(());
             }
         };
@@ -515,7 +624,13 @@ impl EventConsumer for CommandsConsumer {
                 Ok(())
             }
             Err(ConsumeError::Invalid(why)) => {
-                tracing::error!(event_id = %event.id, instruction_id = %parsed.instruction_id, %why, "invalid commands; dropped");
+                alert_dropped(
+                    &self.metrics,
+                    event.id,
+                    &event.payload,
+                    DropReason::Invalid,
+                    &why,
+                );
                 Ok(())
             }
             Err(e) => Err(e.to_string()),
@@ -657,6 +772,8 @@ pub struct GatewayWiring {
     pub router: Router,
     /// For routing (S7): `PositionFor`, `AccountKindOf` and entry gate 6.
     pub reads: GatewayReads,
+    /// Rendered by the app's `/metrics`.
+    pub metrics: Arc<GatewayMetrics>,
 }
 
 /// Builds the gateway and registers its consumers and its audited event types.
@@ -697,11 +814,13 @@ pub fn wire(
         .with_failure_budget(deps.token_failures_per_min, deps.trust_forwarded_for),
     );
 
+    let metrics = Arc::new(GatewayMetrics::default());
     consumers.register(
         "routing.commands_requested",
         Arc::new(CommandsConsumer {
             consume: ConsumeCommandsRequested::new(store.clone(), bindings.clone()),
             runtime: runtime.clone(),
+            metrics: metrics.clone(),
         }),
     );
     consumers.register(
@@ -724,6 +843,7 @@ pub fn wire(
     Ok(GatewayWiring {
         router: gateway_infra::router(runtime),
         reads,
+        metrics,
     })
 }
 
@@ -836,5 +956,41 @@ mod tests {
             assert!(r.current_limits(user, &[account]).await.is_err());
             assert!(r.commission_rate(user, account).await.is_err());
         }
+    }
+
+    /// Esquadro M3 (a): a dropped C1 event is counted per reason and named in the alert.
+    #[test]
+    fn dropped_commands_are_counted_and_rendered() {
+        let m = GatewayMetrics::default();
+        let payload = serde_json::json!({"commands": [{"command_id": "c-1"}, {"x": 1}]});
+        assert_eq!(named_command_ids(&payload), ["c-1"]);
+        let id = uuid::Uuid::nil();
+        alert_dropped(&m, id, &payload, DropReason::Malformed, "bad");
+        alert_dropped(&m, id, &payload, DropReason::Invalid, "bad");
+        alert_dropped(&m, id, &payload, DropReason::Invalid, "bad");
+        assert_eq!(m.dropped(DropReason::Malformed), 1);
+        assert_eq!(m.dropped(DropReason::Invalid), 2);
+        let mut out = String::new();
+        m.render(&mut out);
+        assert!(out.contains("allwin_gateway_commands_dropped_total{reason=\"malformed\"} 1"));
+        assert!(out.contains("allwin_gateway_commands_dropped_total{reason=\"invalid\"} 2"));
+        assert!(named_command_ids(&serde_json::json!("not an object")).is_empty());
+    }
+
+    /// Grosa H-1: uncertainty reads "possibly open", never an error and never "flat".
+    #[test]
+    fn has_open_position_is_possibly_open_when_unsure() {
+        let mnq = Instrument::new("MNQ", "2026-12").unwrap();
+        assert!(!open_position_answer(Some(SyncState::InSync), &[]));
+        assert!(!open_position_answer(
+            Some(SyncState::InSync),
+            &[(mnq.clone(), 0)]
+        ));
+        assert!(open_position_answer(
+            Some(SyncState::InSync),
+            &[(mnq.clone(), -1)]
+        ));
+        assert!(open_position_answer(Some(SyncState::OutOfSync), &[]));
+        assert!(open_position_answer(None, &[]), "venue no longer bound");
     }
 }
