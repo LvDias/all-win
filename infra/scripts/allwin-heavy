@@ -25,8 +25,18 @@ chmod 2770 -- "$LOCK_DIR" 2>/dev/null || true
 
 # Take any free slot; poll every 5 seconds. The slot is held by this shell's fd until the command ends
 # (the child inherits it too, so the slot stays taken even if this wrapper is killed).
-waited=0 announced=0 held=""
+waited=0 announced=0 paused_said=0 held=""
 while [ -z "$held" ]; do
+  # Planned quiet window (SRE perf measurement): while LOCK_DIR/PAUSE exists, NEW jobs wait; running jobs finish.
+  # Waiting under a pause does not count against the wait limit. Only ALLWIN_HEAVY_IGNORE_PAUSE=1 (the measuring
+  # account's own run) goes through.
+  if [ -e "$LOCK_DIR/PAUSE" ] && [ "${ALLWIN_HEAVY_IGNORE_PAUSE:-0}" != 1 ]; then
+    if [ "$paused_said" = 0 ]; then
+      note="$(head -c 200 "$LOCK_DIR/PAUSE" 2>/dev/null | tr -d '\000-\037')"
+      echo "allwin-heavy: paused for SRE quiet window${note:+ ($note)}; waiting for it to end..." >&2; paused_said=1
+    fi
+    sleep 5; continue
+  fi
   for i in $(seq 1 "$SLOTS"); do
     f="$LOCK_DIR/slot.$i"
     ( umask 007; : >> "$f" ) 2>/dev/null || true
