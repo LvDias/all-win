@@ -33,12 +33,14 @@ The import is all or nothing. Any failure rejects the whole file, and nothing is
 6. Every quote and source URL is on one of `firm.domains`, or one of their subdomains.
 7. `evaluation_profit_target` appears only in `evaluation` phases.
 8. For each (kind, platform), a rule text's `version` is the stored one when the stance and text are unchanged, and the stored one + 1 when either changed. It never goes back.
-9. `changes` equal the Core's own diff against the previous release:
-   - stance and text changes;
-   - every `rule_value_changed`;
-   - every preset added or removed;
-   - `material` ⇔ `change.cause = text_changed`.
-10. Texts are plain text and contain no token-shaped part (`aw[kd]_…`).
+9. `changes` equal the Core's own diff against the previous release. Diff semantics (1.0.1, with Torno):
+   - **`rule_value_changed`** compares a field without `sources`. A new access date or page is not a value change, but `status`, `value`, `published_text` and the values in `published_values` count; those values are also compared without their `sources`.
+   - **Platforms.** With per-platform `rule_sets` there is one entry per (preset, field, `firm_platform`), with `firm_platform` set. Without platforms the entry has no `firm_platform`. A rule set that appears or disappears for a platform in an existing preset makes every field of it a `rule_value_changed` with that platform.
+   - **Automation and copy texts.** A stance change gives `stance_changed`, and only that entry when the text also changed. A text-only change gives `stance_text_changed` with `material` ⇔ `change.cause = text_changed`.
+   - **`vps` / `personal_device`.** A value change gives `stance_changed`. A change of quotes or research alone gives `stance_text_changed` with `material: false`; these stances have no `change.cause` and never suspend anything.
+   - **Presets.** Every preset added or removed gives `preset_added` / `preset_removed`.
+   - **Split change.** A change in how `automation` / `copy` texts split by platform between releases (one text ↔ per-platform texts) is **refused** in V1 (fail-closed). It would need its own suspension rule.
+10. Texts are plain text and contain no token-shaped part (`aw[kd]_…`). This covers every displayed text: quotes, `name`, `label`, `published_text`, `description` and localized texts.
 11. Every offered preset (size × rule set) has at least one `verified` rule field. A firm with no verified data is not offered (S16 AC-5), so its file is refused.
 
 ## Idempotent publishing

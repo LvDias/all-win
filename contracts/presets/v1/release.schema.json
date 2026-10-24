@@ -17,7 +17,7 @@
     "schema_version": {
       "type": "string",
       "pattern": "^1\\.[0-9]+$",
-      "description": "Major 1; a newer minor may add optional fields only."
+      "description": "Major 1; a newer minor may add optional fields only. 1.1 adds drawdown trailing_lock (Q90); the Core accepts 1.0 and 1.1."
     },
     "firm": {
       "type": "object",
@@ -353,11 +353,10 @@
       "required": [
         "text",
         "language",
-        "page_title",
         "url",
         "accessed_at"
       ],
-      "description": "A verbatim quote of the firm's official text in the firm's language (never translated). Plain text; clients render it as text, never HTML or Markdown.",
+      "description": "A verbatim quote of the firm's official text in the firm's language (never translated). Plain text; clients render it as text, never HTML or Markdown. page_title is optional from 1.1: a page that blocks automated access (e.g. Apex, TPT) has no title, but carries title_note, url and accessed_at.",
       "properties": {
         "text": {
           "type": "string",
@@ -370,7 +369,8 @@
         },
         "page_title": {
           "type": "string",
-          "maxLength": 300
+          "maxLength": 300,
+          "minLength": 1
         },
         "section": {
           "type": "string",
@@ -386,8 +386,35 @@
           "type": "string",
           "format": "date",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "title_note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "1.1 (user decision 2026-10-24; Torno): only when page_title is absent, because the site blocks automated access (e.g. Apex, TPT). A short plain-text note from the publisher, in English, e.g. 'title not retrieved: site blocks automated access, 2026-10-24'. The url is the link. The title is never derived. Required on a quote without page_title."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "page_title"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "title_note"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "title_note"
+            ]
+          }
+        }
+      ]
     },
     "research": {
       "type": "object",
@@ -433,14 +460,37 @@
         },
         "page_title": {
           "type": "string",
-          "maxLength": 300
+          "maxLength": 300,
+          "minLength": 1
         },
         "quote": {
           "type": "string",
           "maxLength": 2000,
           "description": "Short verbatim sentence for a dynamic page (research format §2)."
+        },
+        "title_note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "1.1 (user decision 2026-10-24; Torno): only when page_title is absent, because the site blocks automated access (e.g. Apex, TPT). A short plain-text note from the publisher, in English, e.g. 'title not retrieved: site blocks automated access, 2026-10-24'. The url is the link. The title is never derived. Optional on a source without page_title."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "page_title"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "title_note"
+              ]
+            }
+          }
+        }
+      ]
     },
     "provenance_status": {
       "enum": [
@@ -719,6 +769,43 @@
         "description": {
           "type": "string",
           "maxLength": 500
+        },
+        "trailing_lock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "description": "1.1 (Q90 a; HTTP 5.4.0 DrawdownValue.trailing_lock). Where a trailing drawdown stops trailing: floor_reaches_start locks the floor at size_amount + offset; never = it never stops. The publisher fills it from the research (Torno): 'stops at the starting balance' → {mode: floor_reaches_start}; 'starting balance + $100' → offset '100.00'; 'persists until the end' → {mode: never}. Ambiguous or conflicting text → the whole drawdown is not_confirmed with published_values, each with its own trailing_lock; silent text → absent (the Core's interim: keeps trailing + warning). stops_trailing_at stays the published text. Trailing types only.",
+          "properties": {
+            "mode": {
+              "enum": [
+                "floor_reaches_start",
+                "never"
+              ]
+            },
+            "offset": {
+              "$ref": "#/$defs/money"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "never"
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "offset"
+                  ]
+                }
+              }
+            }
+          ]
         }
       },
       "allOf": [
@@ -734,6 +821,25 @@
             "required": [
               "description"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "static",
+                  "other"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "trailing_lock"
+              ]
+            }
           }
         }
       ]

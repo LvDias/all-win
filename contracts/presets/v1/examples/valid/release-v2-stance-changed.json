@@ -134,7 +134,7 @@
                       "status": "verified",
                       "value": {
                         "type": "trailing_eod",
-                        "amount": "2000.00"
+                        "amount": "2500.00"
                       },
                       "sources": [
                         {
