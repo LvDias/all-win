@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.19 (3237b6c); **rev. 16.20 proposed** (#14 review): the outbox purge needs a maint column `UPDATE` on `app.outbox` for `FOR UPDATE SKIP LOCKED`; keep or replace it if the #1b columns or the legacy grant go (§6.4).
+- **Status:** Accepted (2026-10-24), rev. 16.20 (afd92aa); **rev. 16.21 proposed**: the [migration register](migration-register.md) (every Wave 1 version with owner, approved hash, commit, state and data deletion, plus the merge order); 061900/061910 reserved as the re-stamp of 061250/061300 if they merge after the Sunday train (§8); the `copied_from_size` comment and the Q60 tie rule cover every account kind since Q73 b (Torno L-S6-1) (§5.4).
+- Rev. 16.20 (afd92aa) (#14 review): the outbox purge needs a maint column `UPDATE` on `app.outbox` for `FOR UPDATE SKIP LOCKED`; keep or replace it if the #1b columns or the legacy grant go (§6.4).
 - Rev. 16.19 (3237b6c): `routing_decision.outcome` narrowed to the HTTP 5.2.0 terms (no `rejected`) in the unmerged `…061200` (Ferro, patch 6f3a77829e95) (§6.2).
 - Rev. 16.18 (5162063) (Q95/Q96): forward migration #2f `…061810` widens the `one_time_code` action and target `CHECK`s for `account_sync_clear` and `trading_day_restart` (§4, §8).
 - Rev. 16.17 (c78563c) (Esmeril L1–L3 on 16.16, Crivo via Esquadro): a dead-letter re-process keeps the original `received_at`; a discard needs a reason; decisions are final (trigger); "never purged" yields to Q13-b erasure (§6.3).
@@ -829,7 +830,7 @@ CREATE TABLE accounts.account_bracket_profile (          -- the account's own co
   distance_unit    text NOT NULL CHECK (distance_unit IN ('points','ticks','usd')),
   stop_distance    NUMERIC(22,10) NOT NULL CHECK (stop_distance > 0),
   target_distance  NUMERIC(22,10) NOT NULL CHECK (target_distance > 0),
-  copied_from_size NUMERIC(18,4),                        -- provenance (nearest standard size for real accounts)
+  copied_from_size NUMERIC(18,4),                        -- provenance: the standard size whose default was copied (nearest size, Q60/Q73; any kind)
   origin           text NOT NULL CHECK (origin IN ('size_default','nearest_size_default','set_by_user')),  -- rev. 8 (S6 2.3.0)
   copied_at        timestamptz,                          -- initial copy or last restore
   customized       boolean NOT NULL DEFAULT false,       -- edited after the copy; false again on restore
@@ -849,7 +850,7 @@ CREATE TABLE accounts.account_bracket_profile (          -- the account's own co
   - A copy (`size_default`, `nearest_size_default`) carries `copied_from_size` and `copied_at`, and `set_by_user` carries neither, matching the contract's `if/then`.
   - `default_now` is derived, not stored: it is the current `default_bracket_profile` of `copied_from_size`.
   - Restore sets `copied_at = now()` and `customized = false`. Editing a copy sets `customized = true` and keeps the origin. A `set_by_user` profile is never `customized` (`CHECK`; contract `AccountProfile`).
-  - **Exact tie between two standard sizes for a real account (Q60, provisional c):** the user picks the size at create (`createAccount.profile_size`). The copy is still `nearest_size_default` + `copied_from_size`, so there is no new column.
+  - **Exact tie between two standard sizes (Q60, provisional c; any account kind since Q73 b):** the user picks the size at create (`createAccount.profile_size`). The copy is still `nearest_size_default` + `copied_from_size`, so there is no new column.
 - **No profile (Q43, provisional):** an account created while its size had no default has no row, and routing skips its entries with `routing.no_bracket_profile`. The nearest-size tie rule (Q-S6-7) is a Core/PO rule with no schema impact.
 - USD distances: the contract takes 2 decimals and the `CHECK` keeps 4 as headroom (Q-S6-6).
 
@@ -2026,6 +2027,8 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 
 ### Wave 1 order (versions assigned at integration)
 
+The [migration register](migration-register.md) lists each version's owner, approved hash, commit, state and whether it deletes data, and gives the merge order. This table keeps the content of each migration.
+
 | # | Migration | Slice |
 |---|---|---|
 | 1 | `app_bootstrap`: schemas, `app.current_user_id()`, default privileges, `app.outbox` | S1 (Ferro); merged alone and first, since S1 and S3 both build on it |
@@ -2070,7 +2073,7 @@ CREATE INDEX trade_fill_fill_idx ON trades.trade_fill (account_id, fill_id);   -
 - Versions on `main`: `20261023060000` #1, `…060010` #1b, `…060100`/`…060200` #2/#3, `…060300` #4, `…060500` #6, `…060600` #7.
 - **Assigned by the DBA (rev. 16):** `…060700` #8 and `…060800` #2b (S3 branch), then `…060900` #5a, `…061000` #5, `…061050` #5b, `…061100` #5c, `…061200` #6b, `…061300` #6c (reserved) and `…061310` #2d (reserved, rev. 16.4).
   - `…060610` #1c and `…060620` #7b (rev. 16.2) sit between `main` and S3, because their branch merges before S3. If S3 merges first, the DBA re-stamps them to `…0614xx` before their merge.
-  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); rev. 16.18: `…061810` #2f (Brasa); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own.
+  - `…061400` #14 is Brasa's outbox tracking (rev. 16.4). Rev. 16.6: `…061500` #10 and `…061510` #10b (Malha, S13), `…061600` #9 (Bigorna). Rev. 16.8: `…061250` #6d (Ferro), `…061700` #11, `…061710` #11b, `…061720` #11c (Torno), `…061800` #2e (Cinzel); rev. 16.10: `…061610` #9b (Bigorna); rev. 16.12: `…061730` #11d (Torno); rev. 16.16: `…061620` #9c (Bigorna); rev. 16.18: `…061810` #2f (Brasa); `…061650` was assigned and withdrawn (Esquadro chose (B)). From `…061900` on, numbers are assigned on request (#13); no branch picks its own. Rev. 16.21: `…061900` and `…061910` are reserved as the re-stamp of 061250 #6d and 061300 #6c if they merge after the Sunday train, which already carries 061310–061610.
   - Branches merge in numeric order. A branch that must merge before a lower number is re-stamped by the DBA before the merge, never after.
 
 **Audit columns (rev. 9): forward migration #7b `audit_entry_activity_columns`.** #7 is on `main`, so it is not edited.
