@@ -17,7 +17,7 @@
     "schema_version": {
       "type": "string",
       "pattern": "^1\\.[0-9]+$",
-      "description": "Major 1; a newer minor may add optional fields only. 1.1 adds drawdown trailing_lock (Q90); the Core accepts 1.0 and 1.1."
+      "description": "Major 1; a newer minor may add optional fields only. 1.1 adds drawdown trailing_lock (Q90) and title_note, with page_title optional on a quote; the Core accepts 1.0 and 1.1, and refuses a 1.0 file that uses a 1.1 field (README check 12)."
     },
     "firm": {
       "type": "object",

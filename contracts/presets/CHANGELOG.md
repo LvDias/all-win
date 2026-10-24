@@ -1,5 +1,8 @@
 # Preset release — changelog
 
+## 1.1.1 — 2026-10-24 (documentation only; no schema shape change)
+- README check 12 (Esmeril nit on 1.1): a `schema_version` "1.0" file that uses a 1.1 field (`trailing_lock`, `title_note`, a quote without `page_title`) is refused by the Core. The schema cannot gate nested objects on the root `schema_version`, so it is a Core check with a test per case (Torno). The `schema_version` description names the 1.1 fields.
+
 ## 1.1 — 2026-10-24 (additive minor; on top of 1.0.1)
 - `drawdown_value.trailing_lock` (Q90 a, user; Esquadro, Torno, Malha) {`mode` `floor_reaches_start` | `never`, `offset` ≥ 0 only with `floor_reaches_start`}. Trailing types only (schema), the same as HTTP 5.4.0 `DrawdownValue.trailing_lock`. The publisher maps the research text without inventing: ambiguous → `not_confirmed`, silent → absent. `stops_trailing_at` stays the published text. The diff (check 9) sees `trailing_lock` as part of the value. The Core accepts `schema_version` 1.0 and 1.1.
 - **Page titles (user decision 2026-10-24):** a firm page that blocks automated access (e.g. Apex, TPT) is cited with NO title and a short `title_note`, plus the required `url` and `accessed_at`; nothing is derived.

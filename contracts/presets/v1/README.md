@@ -42,6 +42,7 @@ The import is all or nothing. Any failure rejects the whole file, and nothing is
    - **Split change.** A change in how `automation` / `copy` texts split by platform between releases (one text ↔ per-platform texts) is **refused** in V1 (fail-closed). It would need its own suspension rule.
 10. Texts are plain text and contain no token-shaped part (`aw[kd]_…`). This covers every displayed text: quotes, `name`, `label`, `published_text`, `description` and localized texts.
 11. Every offered preset (size × rule set) has at least one `verified` rule field. A firm with no verified data is not offered (S16 AC-5), so its file is refused.
+12. A file uses only the fields of the minor it declares (1.1.1, Esmeril). A `schema_version` "1.0" file is refused when it has any 1.1 field: `trailing_lock` in a drawdown value, `title_note` on a quote or a source, or a quote without `page_title`. The schema cannot see `schema_version` from those nested objects, so the Core checks it. A Core test covers each of the three cases.
 
 ## Idempotent publishing
 
@@ -53,4 +54,4 @@ This needs a release column (Lastro), not a schema change.
 
 ## Versioning
 
-`schema_version` is `1.x`. A minor version adds optional fields only, and a Core that knows `1.n` refuses a file with a newer minor. A breaking change is `v2`.
+`schema_version` is `1.x`. A minor version adds optional fields only, and a Core that knows `1.n` refuses a file with a newer minor. A file is also refused when it uses a field of a minor newer than the one it declares (check 12). A breaking change is `v2`.
