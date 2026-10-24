@@ -1,0 +1,1863 @@
+{
+  "schema_version": "1.2",
+  "firm": {
+    "slug": "leeloo-trading",
+    "name": "Leeloo Trading",
+    "domains": [
+      "leelootrading.com",
+      "support.leelootrading.com"
+    ]
+  },
+  "release": {
+    "version_number": 1,
+    "verified_on": "2026-10-23",
+    "research_file": "docs/product/presets/research/leeloo-trading.md",
+    "changes": []
+  },
+  "platforms": [
+    {
+      "code": "rithmic",
+      "label": "Rithmic"
+    }
+  ],
+  "stances": {
+    "automation": [
+      {
+        "kind": "automation",
+        "version": 1,
+        "firm_stance": "unknown",
+        "quotes": [],
+        "research": {
+          "searched_on": "2026-10-23",
+          "sources": [
+            {
+              "url": "https://leelootrading.com/",
+              "accessed_at": "2026-10-23",
+              "page_title": "Leeloo™ Where education meets aspiration"
+            },
+            {
+              "url": "https://leelootrading.com/support",
+              "accessed_at": "2026-10-23",
+              "page_title": "We're here to help..."
+            },
+            {
+              "url": "https://leelootrading.com/terms-of-service",
+              "accessed_at": "2026-10-23",
+              "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+            },
+            {
+              "url": "https://leelootrading.com/merchant-products",
+              "accessed_at": "2026-10-23",
+              "page_title": "Leeloo Store"
+            }
+          ]
+        }
+      }
+    ],
+    "copy": [
+      {
+        "kind": "copy",
+        "version": 1,
+        "firm_stance": "conditional",
+        "quotes": [
+          {
+            "text": "Copying trades across users is expressly prohibited and your accounts will be closed.",
+            "language": "en",
+            "url": "https://leelootrading.com/terms-of-service",
+            "accessed_at": "2026-10-23",
+            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+          },
+          {
+            "text": "Traders are not permitted to manually copy, use copiers or any type of copy software on the following account types:\nAccelerator Accounts\nAccounts with either 10 day or 15 day payout Edge Enhancers\nAccounts with the WAIVE 30% Rule Edge Enhancer\nAccounts with the Reduce Rule (from 30% to 50%) Edge Enhancer\nWeekly accounts\nThird-party accounts",
+            "language": "en",
+            "url": "https://support.leelootrading.com/news/32/restrictions-on-copying-between-performance-accounts.aspx",
+            "accessed_at": "2026-10-23",
+            "page_title": "Restrictions on Copying between Performance Accounts"
+          },
+          {
+            "text": "Traders are also restricted from copying more than three accounts, simultaneously.",
+            "language": "en",
+            "url": "https://support.leelootrading.com/news/32/restrictions-on-copying-between-performance-accounts.aspx",
+            "accessed_at": "2026-10-23",
+            "page_title": "Restrictions on Copying between Performance Accounts"
+          }
+        ]
+      }
+    ],
+    "vps": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-23",
+        "sources": [
+          {
+            "url": "https://leelootrading.com/",
+            "accessed_at": "2026-10-23",
+            "page_title": "Leeloo™ Where education meets aspiration"
+          },
+          {
+            "url": "https://leelootrading.com/support",
+            "accessed_at": "2026-10-23",
+            "page_title": "We're here to help..."
+          },
+          {
+            "url": "https://leelootrading.com/terms-of-service",
+            "accessed_at": "2026-10-23",
+            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+          },
+          {
+            "url": "https://support.leelootrading.com/",
+            "accessed_at": "2026-10-23",
+            "page_title": "Search the Portal"
+          }
+        ]
+      }
+    },
+    "personal_device": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-23",
+        "sources": [
+          {
+            "url": "https://leelootrading.com/",
+            "accessed_at": "2026-10-23",
+            "page_title": "Leeloo™ Where education meets aspiration"
+          },
+          {
+            "url": "https://leelootrading.com/support",
+            "accessed_at": "2026-10-23",
+            "page_title": "We're here to help..."
+          },
+          {
+            "url": "https://leelootrading.com/terms-of-service",
+            "accessed_at": "2026-10-23",
+            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+          },
+          {
+            "url": "https://support.leelootrading.com/",
+            "accessed_at": "2026-10-23",
+            "page_title": "Search the Portal"
+          }
+        ]
+      }
+    }
+  },
+  "plans": [
+    {
+      "key": "foundation",
+      "name": "Foundation (LL)",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "Aspire $25,000",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 30,
+                        "published_text": "3 minis | 30 micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "$1,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "The Limited Trailing Minimum Account Balance (LTMAB) or Auto Liquidate Threshold Value (ALTV) is a rising trailing max drawdown that tracks your open equity intra-trade, based on the unrealized highest profit point in your Practice Account.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "This limit trails your highest unrealized profit throughout the Practice Account's life.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "Launch $50,000",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 80,
+                        "published_text": "8 minis | 80 micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "$2,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "The Limited Trailing Minimum Account Balance (LTMAB) or Auto Liquidate Threshold Value (ALTV) is a rising trailing max drawdown that tracks your open equity intra-trade, based on the unrealized highest profit point in your Practice Account.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "This limit trails your highest unrealized profit throughout the Practice Account's life.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "Climb $100,000",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 120,
+                        "published_text": "12 minis | 120 micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "$3,000 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "The Limited Trailing Minimum Account Balance (LTMAB) or Auto Liquidate Threshold Value (ALTV) is a rising trailing max drawdown that tracks your open equity intra-trade, based on the unrealized highest profit point in your Practice Account.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "This limit trails your highest unrealized profit throughout the Practice Account's life.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "Cruise $150,000",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 150,
+                        "published_text": "15 minis | 150 micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "$5,000 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "The Limited Trailing Minimum Account Balance (LTMAB) or Auto Liquidate Threshold Value (ALTV) is a rising trailing max drawdown that tracks your open equity intra-trade, based on the unrealized highest profit point in your Practice Account.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "This limit trails your highest unrealized profit throughout the Practice Account's life.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "250k",
+              "size_label": "Burst $250,000",
+              "size_amount": "250000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 250,
+                        "published_text": "25 minis | 250 micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "$6,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "The Limited Trailing Minimum Account Balance (LTMAB) or Auto Liquidate Threshold Value (ALTV) is a rising trailing max drawdown that tracks your open equity intra-trade, based on the unrealized highest profit point in your Practice Account.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "This limit trails your highest unrealized profit throughout the Practice Account's life.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "15000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "300k",
+              "size_label": "Explode $300,000",
+              "size_amount": "300000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 300,
+                        "published_text": "30 minis | 300 micros"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "$7,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "The Limited Trailing Minimum Account Balance (LTMAB) or Auto Liquidate Threshold Value (ALTV) is a rising trailing max drawdown that tracks your open equity intra-trade, based on the unrealized highest profit point in your Practice Account.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "text": "This limit trails your highest unrealized profit throughout the Practice Account's life.",
+                          "language": "en",
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "20000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "phase": "funded",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "Aspire $25,000",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "30% Rule: Daily profits in a PA should not exceed 30% of the net profit from the initial starting balance, promoting responsible risk management and consistent trading growth.",
+                        "threshold_pct": "30"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "Launch $50,000",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "30% Rule: Daily profits in a PA should not exceed 30% of the net profit from the initial starting balance, promoting responsible risk management and consistent trading growth.",
+                        "threshold_pct": "30"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "Climb $100,000",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "30% Rule: Daily profits in a PA should not exceed 30% of the net profit from the initial starting balance, promoting responsible risk management and consistent trading growth.",
+                        "threshold_pct": "30"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "Cruise $150,000",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "30% Rule: Daily profits in a PA should not exceed 30% of the net profit from the initial starting balance, promoting responsible risk management and consistent trading growth.",
+                        "threshold_pct": "30"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "250k",
+              "size_label": "Burst $250,000",
+              "size_amount": "250000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "30% Rule: Daily profits in a PA should not exceed 30% of the net profit from the initial starting balance, promoting responsible risk management and consistent trading growth.",
+                        "threshold_pct": "30"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "300k",
+              "size_label": "Explode $300,000",
+              "size_amount": "300000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a44/rising-trailing-max-drawdown-explained.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          }
+                        ]
+                      }
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "not_published",
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://leelootrading.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Leeloo™ Where education meets aspiration"
+                          },
+                          {
+                            "url": "https://leelootrading.com/support",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "We're here to help..."
+                          },
+                          {
+                            "url": "https://leelootrading.com/terms-of-service",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Natural Trading, LLC dba Leeloo Trading Disclaimers, Terms of Use, Terms and Condition, and Refund Policy"
+                          },
+                          {
+                            "url": "https://support.leelootrading.com/kb/a103/2_-holding-positions-during-the-close.aspx",
+                            "accessed_at": "2026-10-23",
+                            "title_note": "knowledge base article behind a login: not readable"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "30% Rule: Daily profits in a PA should not exceed 30% of the net profit from the initial starting balance, promoting responsible risk management and consistent trading growth.",
+                        "threshold_pct": "30"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://leelootrading.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Leeloo™ Where education meets aspiration"
+                        },
+                        {
+                          "url": "https://leelootrading.com/support",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "We're here to help..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "excluded_plans": []
+}

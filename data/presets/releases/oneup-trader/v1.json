@@ -1,0 +1,2855 @@
+{
+  "schema_version": "1.2",
+  "firm": {
+    "slug": "oneup-trader",
+    "name": "OneUp Trader",
+    "domains": [
+      "oneuptrader.com",
+      "help.oneuptrader.com"
+    ]
+  },
+  "release": {
+    "version_number": 1,
+    "verified_on": "2026-10-23",
+    "research_file": "docs/product/presets/research/oneup-trader.md",
+    "changes": []
+  },
+  "platforms": [
+    {
+      "code": "rithmic",
+      "label": "Rithmic"
+    }
+  ],
+  "stances": {
+    "automation": [
+      {
+        "kind": "automation",
+        "version": 1,
+        "firm_stance": "unknown",
+        "quotes": [],
+        "research": {
+          "searched_on": "2026-10-23",
+          "sources": [
+            {
+              "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+              "accessed_at": "2026-10-23",
+              "page_title": "Evaluation Rules & Parameters"
+            },
+            {
+              "url": "https://help.oneuptrader.com/article/372-funded-trader-rules",
+              "accessed_at": "2026-10-23",
+              "page_title": "Funded Trader Rules"
+            },
+            {
+              "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+              "accessed_at": "2026-10-23",
+              "page_title": "Most Popular Questions"
+            },
+            {
+              "url": "https://www.oneuptrader.com/terms",
+              "accessed_at": "2026-10-23",
+              "page_title": "Terms & Conditions"
+            }
+          ]
+        }
+      }
+    ],
+    "copy": [
+      {
+        "kind": "copy",
+        "version": 1,
+        "firm_stance": "conditional",
+        "quotes": [
+          {
+            "text": "Traders are expressly prohibited from engaging in copy-trading activities between funded accounts held under different names or individuals. However, copy-trading is permissible when conducted across multiple funded accounts under the Trader's own name and solely for the purposes of risk management and strategy diversification.",
+            "language": "en",
+            "url": "https://help.oneuptrader.com/article/372-funded-trader-rules",
+            "accessed_at": "2026-10-23",
+            "page_title": "Funded Trader Rules"
+          },
+          {
+            "text": "Traders can analyze and execute trades on a single chart while seamlessly replicating them across multiple accounts via a trade copier.",
+            "language": "en",
+            "url": "https://help.oneuptrader.com/article/505-can-i-have-multiple-evaluation-accounts",
+            "accessed_at": "2026-10-23",
+            "page_title": "Multiple Evaluation Accounts"
+          }
+        ]
+      }
+    ],
+    "vps": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-23",
+        "sources": [
+          {
+            "url": "https://help.oneuptrader.com/article/372-funded-trader-rules",
+            "accessed_at": "2026-10-23",
+            "page_title": "Funded Trader Rules"
+          },
+          {
+            "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+            "accessed_at": "2026-10-23",
+            "page_title": "Most Popular Questions"
+          },
+          {
+            "url": "https://www.oneuptrader.com/terms",
+            "accessed_at": "2026-10-23",
+            "page_title": "Terms & Conditions"
+          },
+          {
+            "url": "https://www.oneuptrader.com/",
+            "accessed_at": "2026-10-23",
+            "page_title": "BECOME A FULLY FUNDED TRADER"
+          }
+        ]
+      }
+    },
+    "personal_device": {
+      "value": "unknown",
+      "quotes": [],
+      "research": {
+        "searched_on": "2026-10-23",
+        "sources": [
+          {
+            "url": "https://help.oneuptrader.com/article/372-funded-trader-rules",
+            "accessed_at": "2026-10-23",
+            "page_title": "Funded Trader Rules"
+          },
+          {
+            "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+            "accessed_at": "2026-10-23",
+            "page_title": "Most Popular Questions"
+          },
+          {
+            "url": "https://www.oneuptrader.com/terms",
+            "accessed_at": "2026-10-23",
+            "page_title": "Terms & Conditions"
+          },
+          {
+            "url": "https://www.oneuptrader.com/",
+            "accessed_at": "2026-10-23",
+            "page_title": "BECOME A FULLY FUNDED TRADER"
+          }
+        ]
+      }
+    }
+  },
+  "plans": [
+    {
+      "key": "evaluation",
+      "name": "Evaluation",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "25K",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 3,
+                        "published_text": "Max 3 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$1,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 6,
+                        "published_text": "Max 6 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$2,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 12,
+                        "published_text": "Max 12 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$3,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 15,
+                        "published_text": "Max 15 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$5,000 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "250k",
+              "size_label": "250K",
+              "size_amount": "250000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 25,
+                        "published_text": "Max 25 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$5,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "15000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 10
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "pro-evaluation",
+      "name": "Pro Evaluation",
+      "phases": [
+        {
+          "phase": "evaluation",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "25K",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 3,
+                        "published_text": "Max 3 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$1,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1500.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 5
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 6,
+                        "published_text": "Max 6 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$2,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "3000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 5
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 12,
+                        "published_text": "Max 12 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$3,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "6000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 5
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 15,
+                        "published_text": "Max 15 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$5,000 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "9000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 5
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "250k",
+              "size_label": "250K",
+              "size_amount": "250000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "verified",
+                      "value": {
+                        "contracts": 25,
+                        "published_text": "Max 25 Contracts"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        }
+                      ]
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "The Trailing Drawdown is calculated in Real-Time during your trading day.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change for the rest of your evaluation.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Rules Definitions"
+                        },
+                        {
+                          "text": "$5,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/389-rules-definitions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Rules Definitions"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "consistency_rule": {
+                      "status": "verified",
+                      "value": {
+                        "text": "Traders must have three (3) other best trading days' net profits total summed up to equal 80% or more of the largest day's net profit."
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ]
+                    },
+                    "commission_per_contract_side": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "1.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/391-important-evaluation-info",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Important Evaluation Info"
+                        }
+                      ]
+                    },
+                    "evaluation_profit_target": {
+                      "status": "verified",
+                      "value": {
+                        "amount": "15000.00"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  },
+                  "stored_only": {
+                    "min_trading_days": {
+                      "status": "verified",
+                      "value": {
+                        "days": 5
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "funded-trader-account",
+      "name": "Funded Trader Account",
+      "phases": [
+        {
+          "phase": "funded",
+          "sizes": [
+            {
+              "key": "25k",
+              "size_label": "25K",
+              "size_amount": "25000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Your buying power (number of contracts to trade) will be determined by the Cash On Hand value (seen in R|Trader Pro) at the beginning of the trading session.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Dynamic Scaling Targets"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Dynamic Scaling Targets"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Most Popular Questions"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "The Trailing Drawdown is calculated in real-time during your trading session and it includes commissions and fees.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "$1,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Trailing Drawdown"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "50k",
+              "size_label": "50K",
+              "size_amount": "50000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Your buying power (number of contracts to trade) will be determined by the Cash On Hand value (seen in R|Trader Pro) at the beginning of the trading session.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Dynamic Scaling Targets"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Dynamic Scaling Targets"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Most Popular Questions"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "The Trailing Drawdown is calculated in real-time during your trading session and it includes commissions and fees.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "$2,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Trailing Drawdown"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "100k",
+              "size_label": "100K",
+              "size_amount": "100000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Your buying power (number of contracts to trade) will be determined by the Cash On Hand value (seen in R|Trader Pro) at the beginning of the trading session.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Dynamic Scaling Targets"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Dynamic Scaling Targets"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Most Popular Questions"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "The Trailing Drawdown is calculated in real-time during your trading session and it includes commissions and fees.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "$3,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Trailing Drawdown"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "150k",
+              "size_label": "150K",
+              "size_amount": "150000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Your buying power (number of contracts to trade) will be determined by the Cash On Hand value (seen in R|Trader Pro) at the beginning of the trading session.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Dynamic Scaling Targets"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Dynamic Scaling Targets"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Most Popular Questions"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "The Trailing Drawdown is calculated in real-time during your trading session and it includes commissions and fees.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "$5,000 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Trailing Drawdown"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "key": "250k",
+              "size_label": "250K",
+              "size_amount": "250000.00",
+              "rule_sets": [
+                {
+                  "rules": {
+                    "max_position_qty": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Your buying power (number of contracts to trade) will be determined by the Cash On Hand value (seen in R|Trader Pro) at the beginning of the trading session.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Dynamic Scaling Targets"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/386-funded-trader-dynamic-scaling-targets",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Dynamic Scaling Targets"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Most Popular Questions"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "drawdown": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Once your Trailing Drawdown reaches your initial starting balance, it will not change.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "The Trailing Drawdown is calculated in real-time during your trading session and it includes commissions and fees.",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Funded Trader Trailing Drawdown"
+                        },
+                        {
+                          "text": "$5,500 Trailing Drawdown",
+                          "language": "en",
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/388-funded-trader-trailing-drawdown",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Funded Trader Trailing Drawdown"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    },
+                    "daily_loss_limit": {
+                      "status": "verified",
+                      "value": {
+                        "kind": "none"
+                      },
+                      "sources": [
+                        {
+                          "url": "https://help.oneuptrader.com/article/468-most-popular-questions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Most Popular Questions"
+                        },
+                        {
+                          "url": "https://help.oneuptrader.com/article/486-no-more-daily-loss-limit-restrictions",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "No more daily loss limit restrictions!"
+                        },
+                        {
+                          "url": "https://www.oneuptrader.com/",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "BECOME A FULLY FUNDED TRADER"
+                        }
+                      ]
+                    },
+                    "trading_day_reset": {
+                      "status": "not_confirmed",
+                      "not_confirmed_reason": "partial",
+                      "quotes": [
+                        {
+                          "text": "Trading day starts at 5 PM CT and ends at 3:15 PM CT (not including holidays and weekends).",
+                          "language": "en",
+                          "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                          "accessed_at": "2026-10-23",
+                          "page_title": "Evaluation Rules & Parameters"
+                        }
+                      ],
+                      "research": {
+                        "searched_on": "2026-10-23",
+                        "sources": [
+                          {
+                            "url": "https://help.oneuptrader.com/article/385-evaluation-rules-parameters",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Evaluation Rules & Parameters"
+                          },
+                          {
+                            "url": "https://help.oneuptrader.com/article/390-permissible-products-times",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "Permissible Products / Times"
+                          },
+                          {
+                            "url": "https://www.oneuptrader.com/",
+                            "accessed_at": "2026-10-23",
+                            "page_title": "BECOME A FULLY FUNDED TRADER"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "excluded_plans": []
+}
