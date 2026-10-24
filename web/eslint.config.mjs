@@ -16,7 +16,7 @@ const featureBoundaries = features.map((feature) => ({
       {
         patterns: [
           {
-            group: ["@/app/*", ...features.filter((other) => other !== feature).map((other) => `@/features/${other}`), ...features.filter((other) => other !== feature).map((other) => `@/features/${other}/*`)],
+            group: ["@/app/*", "**/tests/qa", "**/tests/qa/**", ...features.filter((other) => other !== feature).map((other) => `@/features/${other}`), ...features.filter((other) => other !== feature).map((other) => `@/features/${other}/*`)],
             message: "Features import only from @/shared and their own folder.",
           },
         ],
@@ -47,20 +47,40 @@ export default defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [{ group: ["@/features/*", "@/app/*"], message: "Shared code never imports features or routes." }] },
+        {
+          patterns: [
+            { group: ["@/features/*", "@/app/*"], message: "Shared code never imports features or routes." },
+            { group: ["**/tests/qa", "**/tests/qa/**"], message: "Application code never imports tests/qa." },
+          ],
+        },
       ],
     },
   },
   ...featureBoundaries,
   {
-    files: ["**/*.test.{ts,tsx}", "e2e/**/*.ts", "src/test/**/*.{ts,tsx}"],
+    // QA-owned tests exercise a feature only through its public index, plus the shared layer.
+    files: ["tests/qa/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            { group: ["@/app/*", "@/features/*/*"], message: "tests/qa imports a feature only through @/features/<feature> (its index) and otherwise @/shared." },
+            { group: ["../*", "./*"], message: "tests/qa uses @/ aliases only (@/features/<feature>, @/shared/*, @/test/*)." },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["**/*.test.{ts,tsx}", "e2e/**/*.ts", "src/test/**/*.{ts,tsx}", "tests/qa/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
     },
   },
   {
     // Playwright fixtures name their callback `use`, which the hooks rule mistakes for a React hook.
-    files: ["e2e/**/*.ts"],
+    files: ["e2e/**/*.ts", "tests/qa/e2e/**/*.ts"],
     rules: { "react-hooks/rules-of-hooks": "off" },
   },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "src/shared/api/schema.gen.ts", "playwright-report/**", "test-results/**"]),

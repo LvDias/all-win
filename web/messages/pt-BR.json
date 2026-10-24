@@ -5,7 +5,17 @@
     "actions": {
       "cancel": "Cancelar",
       "retry": "Tentar novamente",
-      "use": "Usar"
+      "use": "Usar",
+      "close": "Fechar",
+      "back": "Voltar",
+      "done": "Concluir",
+      "copy": "Copiar",
+      "confirm": "Confirmar",
+      "save": "Salvar",
+      "refresh": "Atualizar lista",
+      "rename": "Renomear",
+      "revoke": "Revogar",
+      "create": "Criar"
     },
     "states": {
       "loading": "Carregando…",
@@ -16,6 +26,25 @@
       "network": "Sem conexão com o servidor. Tente de novo.",
       "failed": "Não foi possível concluir a ação.",
       "code": "Código: {code}"
+    },
+    "secret": {
+      "reveal": "Revelar",
+      "hide": "Ocultar",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "copyFailed": "Não foi possível copiar. O valor foi revelado e selecionado: copie manualmente.",
+      "hiddenSuffix": "oculto"
+    },
+    "otp": {
+      "label": "Código de 6 dígitos"
+    },
+    "status": {
+      "never": "Nunca"
+    },
+    "combobox": {
+      "choose": "Escolher",
+      "search": "Buscar: {label}",
+      "noResults": "Nenhum resultado."
     }
   },
   "language": {
@@ -34,7 +63,22 @@
   "home": {
     "title": "All Win",
     "intro": "Execução de ordens com segurança e transparência.",
-    "preferences": "Preferências"
+    "preferences": "Preferências",
+    "gettingStarted": {
+      "title": "Primeiros passos",
+      "description": "Duas etapas para começar a receber sinais.",
+      "source": {
+        "label": "Crie uma fonte de sinal"
+      },
+      "pairing": {
+        "label": "Pareie o NinjaTrader"
+      },
+      "done": "Concluído",
+      "todo": "Pendente",
+      "alertGuide": "Guia de alertas do TradingView",
+      "installGuide": "Como instalar o plugin",
+      "soon": "em breve"
+    }
   },
   "settings": {
     "preferences": {
@@ -74,32 +118,41 @@
   "errors": {
     "unknown": "Erro inesperado (código: {code})",
     "accounts": {
-      "opt_in_not_applicable": "Esta opção não se aplica a esta conta.",
+      "binding_open_position": "Há posição aberta. Feche a posição para trocar a conta vinculada.",
+      "delete_open_position": "Esta conta tem posição aberta e não pode ser excluída.",
+      "evaluation_not_applicable": "Esta conta não tem meta de avaliação.",
+      "firm_platform_required": "Escolha a plataforma da conta na firma.",
+      "firm_platform_unknown": "Esta plataforma não está disponível para o preset.",
+      "idempotency_key_reused": "Este envio já foi usado com outros dados. Recarregue o formulário.",
+      "lifecycle_transition_invalid": "Esta mudança não é permitida a partir do estado atual.",
+      "max_position_exceeds_preset": "O máximo desta conta na firma é menor que o valor informado.",
+      "name_taken": "Já existe uma conta com este nome.",
+      "opt_in_not_applicable": "Nenhuma escolha é necessária nesta conta.",
       "opt_in_required": "Escolha se esta conta aceita ordens automatizadas.",
-      "rule_version_changed": "As regras mudaram enquanto você revisava. Revise a versão atual e confirme de novo."
+      "platform_account_kind_not_allowed": "Contas live não são permitidas neste ambiente.",
+      "platform_account_taken": "Esta conta da plataforma já está vinculada a outra conta.",
+      "platform_account_unknown": "Esta conta da plataforma não foi encontrada nas suas conexões.",
+      "preset_version_unknown": "Esta versão do preset da firma não está mais disponível.",
+      "profile_size_invalid": "Este tamanho não está entre as opções.",
+      "profile_size_required": "Escolha o tamanho padrão de onde copiar o perfil.",
+      "rule_version_changed": "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha."
     },
     "auth": {
+      "channel_unavailable": "Você não tem um canal confirmado para isso.",
+      "code_invalid": "Código inválido ou expirado. Confira ou peça um novo.",
       "forbidden": "Você não tem acesso a esta página.",
-      "invalid_code": "Código inválido. Confira e tente de novo.",
-      "invalid_credentials": "E-mail ou senha incorretos.",
-      "invitation_invalid": "Este convite é inválido ou expirou.",
-      "password_breached": "Esta senha apareceu em vazamentos conhecidos. Escolha outra.",
-      "password_too_long": "A senha é longa demais. Use no máximo 128 caracteres.",
-      "password_too_short": "A senha é curta demais. Use pelo menos 12 caracteres.",
-      "pending_expired": "A verificação expirou. Entre de novo.",
-      "rate_limited": "Muitas tentativas. Aguarde um pouco e tente de novo.",
-      "reauth_failed": "Não foi possível confirmar sua identidade. Tente de novo.",
-      "reset_token_invalid": "Este link de redefinição é inválido ou expirou.",
-      "step_up_required": "Confirme sua identidade para continuar.",
-      "totp_already_enabled": "A verificação em duas etapas já está ativada.",
-      "totp_setup_expired": "A configuração expirou. Comece de novo.",
+      "invitation_invalid": "Este convite não é válido. Ele pode ter expirado ou já ter sido usado.",
+      "rate_limited": "Muitos pedidos. Aguarde um pouco e tente de novo.",
+      "step_up_channel_not_allowed": "Neste dispositivo novo, o código precisa ser confirmado no e-mail.",
+      "step_up_required": "Confirme com um código para continuar.",
       "unauthenticated": "Sua sessão expirou. Entre de novo."
     },
     "common": {
       "forbidden_origin": "A requisição foi bloqueada pela verificação de origem.",
-      "not_found": "Não encontrado.",
       "internal": "Erro inesperado no servidor. Tente de novo.",
-      "invalid_request": "A requisição não foi aceita. Confira os dados e tente de novo."
+      "invalid_request": "A requisição não foi aceita. Confira os dados e tente de novo.",
+      "not_found": "Não encontrado.",
+      "version_conflict": "Isto foi alterado em outro lugar. Recarregue para ver os valores atuais."
     },
     "connections": {
       "name_taken": "Você já tem uma conexão com este nome.",
@@ -117,13 +170,19 @@
       "source_mismatch": "A instrução não corresponde à fonte que a enviou.",
       "unsupported_instrument": "Instrumento não suportado.",
       "unsupported_media_type": "Tipo de conteúdo não suportado.",
-      "unsupported_version": "Versão da instrução não suportada."
+      "unsupported_version": "Versão da instrução não suportada.",
+      "signal_type_not_allowed_for_source": "O tipo de sinal não é permitido para esta fonte."
     },
     "invites": {
       "email_send_failed": "Não foi possível enviar o e-mail do convite.",
       "email_taken": "Já existe uma conta ou convite para este e-mail."
     },
     "me": {
+      "channel_change_closed": "Esta alteração não está mais aberta.",
+      "channel_change_pending": "Já existe uma troca de e-mail em andamento.",
+      "channel_change_too_soon": "Você trocou o e-mail há pouco. Tente de novo mais tarde.",
+      "channel_unchanged": "Este já é o seu e-mail atual.",
+      "invalid_channel_value": "Digite um e-mail válido.",
       "invalid_time_zone": "Fuso horário inválido. Escolha outro."
     },
     "pairing": {
@@ -143,5 +202,712 @@
     "sync": {
       "account_not_found_after_repair": "Não encontrada na nova instância."
     }
+  },
+  "accounts": {
+    "nav": "Contas",
+    "list": {
+      "title": "Contas",
+      "new": "Nova conta",
+      "loadError": "Não foi possível carregar suas contas.",
+      "search": "Buscar por nome",
+      "filters": {
+        "type": "Tipo",
+        "state": "Estado",
+        "all": "Todas",
+        "prop": "Prop",
+        "real": "Real",
+        "active": "Ativa",
+        "paused": "Pausada",
+        "disabled": "Desativada",
+        "choicePending": "Escolha pendente",
+        "clear": "Limpar filtros"
+      },
+      "empty": {
+        "title": "Você ainda não cadastrou contas.",
+        "body": "Contas recebem as ordens roteadas. Cadastre ao menos uma para começar.",
+        "pair": "Pareie o NinjaTrader para vincular contas."
+      },
+      "emptyFiltered": "Nenhuma conta com esses filtros.",
+      "columns": {
+        "name": "Nome",
+        "type": "Tipo",
+        "details": "Firma · plano · fase · tamanho",
+        "platformAccount": "Conta na plataforma",
+        "multiplier": "Mult.",
+        "maxPosition": "Máx. posição",
+        "state": "Estado",
+        "actions": "Ações"
+      },
+      "unbound": "Sem vínculo",
+      "contracts": "{count, plural, one {# contrato} other {# contratos}}",
+      "saving": "Salvando…",
+      "moreStates": "+{count}"
+    },
+    "type": {
+      "prop": "Prop",
+      "real": "Real"
+    },
+    "state": {
+      "active": "Ativa",
+      "paused": "Pausada",
+      "disabled": "Desativada",
+      "choicePending": "Escolha pendente",
+      "acceptsAutomation": "Aceita automação",
+      "noAutomation": "Sem automação",
+      "acceptsCopy": "Aceita replicação",
+      "noCopy": "Sem replicação"
+    },
+    "platformKind": {
+      "simulation": "Simulação",
+      "playback": "Playback",
+      "live": "Live",
+      "unknown": "Desconhecida"
+    },
+    "actions": {
+      "view": "Ver",
+      "edit": "Editar",
+      "pause": "Pausar",
+      "resume": "Retomar",
+      "disable": "Desativar",
+      "enable": "Ativar",
+      "delete": "Excluir",
+      "reload": "Recarregar",
+      "understood": "Entendi"
+    },
+    "form": {
+      "titleNew": "Nova conta",
+      "titleEdit": "Editar conta",
+      "save": "Salvar conta",
+      "cancel": "Cancelar",
+      "sections": {
+        "type": "Tipo",
+        "data": "Dados da conta",
+        "platform": "Conta na plataforma"
+      },
+      "kind": {
+        "prop": "Conta de prop firm",
+        "real": "Conta real em corretora",
+        "fixed": "Tipo: {kind}"
+      },
+      "fields": {
+        "name": "Nome",
+        "firm": "Firma",
+        "plan": "Plano",
+        "phase": "Fase",
+        "size": "Tamanho (USD)",
+        "maxPosition": "Máximo de contratos",
+        "maxPositionHelp": "Limite de contratos que o All Win envia a esta conta. Instruções acima disso são cortadas e registradas.",
+        "maxPositionShrink": "Posições abertas não são alteradas.",
+        "multiplier": "Multiplicador",
+        "multiplierHelp": "Quantidade executada = quantidade da instrução × multiplicador."
+      },
+      "binding": {
+        "label": "Conta no NinjaTrader",
+        "none": "Ainda sem vínculo",
+        "noConnections": "Nenhuma conexão pareada. Você pode salvar a conta agora e vincular depois.",
+        "pair": "Parear o NinjaTrader",
+        "taken": "Já vinculada a {name}.",
+        "liveBlocked": "Contas live não são permitidas neste ambiente.",
+        "disconnected": "Conexão desconectada: dados da última vez.",
+        "openPosition": "Há posição aberta. Feche a posição para trocar a conta vinculada.",
+        "oco": "Os stops e alvos desta conta dependem do NinjaTrader aberto."
+      },
+      "discard": {
+        "title": "Descartar alterações?",
+        "keep": "Continuar editando",
+        "confirm": "Descartar"
+      },
+      "errors": {
+        "required": "Obrigatório.",
+        "nameTooLong": "Use no máximo 80 caracteres.",
+        "sizeInvalid": "Informe um valor maior que zero com no máximo 2 casas decimais.",
+        "integerMin1": "Use um número inteiro maior ou igual a 1.",
+        "maxPositionInvalid": "Informe um número inteiro de contratos, 1 ou mais.",
+        "optInRequired": "Escolha se esta conta aceita ordens automatizadas.",
+        "ackRequired": "Confirme que leu a regra para aceitar.",
+        "summary": "Corrija os campos destacados.",
+        "sizeAmbiguous": "Digite a parte decimal explicitamente, por exemplo 25000,00 ou 2,5."
+      },
+      "success": {
+        "created": "Conta criada.",
+        "saved": "Conta salva."
+      },
+      "versionConflict": "Esta conta foi alterada em outro lugar. Recarregue para ver os valores atuais.",
+      "steps": {
+        "firm": "Firma e plano",
+        "optIn": "Ordens automatizadas"
+      },
+      "stepUpDescription": "aceitar ordens automatizadas na conta “{name}”",
+      "stepUpDescriptionEdit": "aceitar ordens automatizadas nesta conta",
+      "profileSize": {
+        "label": "Perfil inicial",
+        "help": "O tamanho da conta fica exatamente entre dois tamanhos padrão. Escolha de qual copiar os stops e alvos; o saldo e os limites usam o tamanho da conta."
+      },
+      "stepUpDescriptionBinding": "alterar a conta da plataforma vinculada a esta conta"
+    },
+    "optIn": {
+      "automation": {
+        "legend": "Ordens automatizadas nesta conta",
+        "help": "Fontes automatizadas: alertas do TradingView (webhook) e, no futuro, o motor de sinais do All Win. A replicação da conta master tem uma escolha própria.",
+        "allowed": "A {firm} permite negociação automatizada.",
+        "decline": {
+          "label": "Não aceitar ordens automatizadas",
+          "description": "Alertas do TradingView nunca serão enviados para esta conta. Se algum chegar, ele é ignorado e registrado na auditoria."
+        },
+        "accept": {
+          "label": "Aceitar ordens automatizadas, ciente do risco",
+          "description": "Alertas do TradingView poderão ser executados nesta conta conforme suas rotas."
+        },
+        "ack": "Li a regra oficial acima e entendo que posso perder esta conta.",
+        "required": "Escolha se esta conta aceita ordens automatizadas.",
+        "stance": {
+          "forbidden": "A {firm} proíbe negociação automatizada nas regras oficiais.",
+          "conditional": "A {firm} só permite negociação automatizada sob condições. Leia a regra.",
+          "unknown": "Não encontramos uma regra oficial da {firm} sobre automação.",
+          "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre automação."
+        },
+        "stanceSecond": "Alertas do TradingView executados automaticamente podem ser considerados automação.",
+        "genericFirm": "esta firma"
+      },
+      "copy": {
+        "legend": "Replicação da conta master nesta conta",
+        "allowed": "A {firm} permite a replicação de operações entre contas.",
+        "decline": {
+          "label": "Não aceitar replicação da conta master",
+          "description": "Esta conta não poderá ser seguidora de uma conta master."
+        },
+        "accept": {
+          "label": "Aceitar replicação, ciente do risco",
+          "description": "Operações da conta master poderão ser replicadas nesta conta."
+        },
+        "ack": "Li a regra oficial acima e entendo que posso perder esta conta.",
+        "required": "Escolha se esta conta aceita a replicação da conta master.",
+        "stance": {
+          "forbidden": "A {firm} proíbe a replicação de operações entre contas nas regras oficiais.",
+          "conditional": "A {firm} só permite a replicação sob condições. Leia a regra.",
+          "unknown": "Não encontramos uma regra oficial da {firm} sobre replicação.",
+          "not_confirmed": "As páginas oficiais da {firm} dizem coisas diferentes sobre replicação."
+        },
+        "stanceSecond": "A replicação da conta master para esta conta pode ser considerada cópia de operações pela firma."
+      },
+      "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",
+      "risk": "Risco: se a firma considerar isso uma violação, você pode perder esta conta. A decisão é sua; o All Win não decide isso por você.",
+      "conflicting": "As páginas oficiais divergem:",
+      "researched": "Pesquisamos as páginas oficiais em {date} e não encontramos uma regra sobre automação.",
+      "quote": {
+        "source": "{title} · acessado em {date}",
+        "open": "Ver página oficial da {firm} (abre em nova aba)",
+        "show": "Mostrar texto completo",
+        "hide": "Ocultar texto completo",
+        "view": "Ver regra oficial"
+      },
+      "ruleChanged": "A regra mudou com a sua seleção. Escolha de novo.",
+      "ruleStale": "A regra da firma foi atualizada enquanto você preenchia. Leia de novo e escolha.",
+      "rulesError": "Não foi possível carregar a regra da firma.",
+      "review": {
+        "title": "Revisar escolha de automação",
+        "previousChoice": "Sua escolha anterior: {choice}",
+        "accepted": "Aceitar",
+        "declined": "Não aceitar",
+        "previousText": "Texto anterior (versão {n})",
+        "now": "Revisar agora",
+        "change": "Alterar escolha"
+      }
+    },
+    "detail": {
+      "notFound": "Conta não encontrada.",
+      "backToList": "Voltar para as contas",
+      "loadError": "Não foi possível carregar esta conta.",
+      "cards": {
+        "data": "Dados",
+        "platform": "Conta na plataforma",
+        "automation": "Automação",
+        "copy": "Replicação",
+        "position": "Posição aberta"
+      },
+      "firmPlatform": "Plataforma na firma: {value}",
+      "createdAt": "Criada em {date}",
+      "chosenBy": "Escolhido por você em {date} · regra da {firm} versão {n}",
+      "openPosition": {
+        "yes": "Posição aberta: sim",
+        "no": "Posição aberta: não"
+      },
+      "link": "Vincular conta",
+      "pendingAutomation": "A regra da {firm} sobre automação mudou em {date} (versão {n}). Ordens automatizadas estão suspensas nesta conta até você revisar.",
+      "pendingCopy": "A regra da {firm} sobre replicação mudou em {date} (versão {n}). A replicação para esta conta está suspensa até você revisar.",
+      "pendingNoPrevious": "Esta conta ainda não tem escolha sobre ordens automatizadas. Elas ficam suspensas até você escolher.",
+      "whatChanged": {
+        "stance": "O que mudou: a posição da firma passou de {old} para {new}.",
+        "text": "O que mudou: o texto da regra oficial foi alterado. Motivo informado: {reason}."
+      },
+      "pausedNote": "Esta conta está pausada e não recebe instruções.",
+      "disabledNote": "Esta conta está desativada e não recebe instruções.",
+      "noConsistency": "Regra de consistência não confirmada — não acompanhada"
+    },
+    "stance": {
+      "allowed": "permitido",
+      "forbidden": "proibido",
+      "conditional": "condicional",
+      "unknown": "desconhecido",
+      "not_confirmed": "não confirmado"
+    },
+    "lifecycle": {
+      "pauseTitle": "Pausar {name}?",
+      "disableTitle": "Desativar {name}?",
+      "pauseConfirm": "Pausar conta",
+      "disableConfirm": "Desativar conta",
+      "pauseHelp": "Pausar = parada temporária que mantém toda a configuração.",
+      "disableHelp": "Desativar = conta desligada até ser reativada.",
+      "body": "Enquanto estiver {state}, esta conta não recebe nenhuma instrução nova, nem de saída (fechar). Posições e ordens abertas não são alteradas.",
+      "statePaused": "pausada",
+      "stateDisabled": "desativada",
+      "openPosition": "Esta conta tem posição aberta. Ela continuará aberta e sem o All Win para fechá-la.",
+      "paused": "Conta pausada.",
+      "resumed": "Conta retomada.",
+      "disabled": "Conta desativada.",
+      "enabled": "Conta ativada.",
+      "conflict": "A conta mudou em outro lugar."
+    },
+    "delete": {
+      "title": "Excluir conta {name}?",
+      "body": "A conta deixa de aparecer e não recebe mais instruções. O registro de auditoria e o histórico permanecem. Esta ação não pode ser desfeita.",
+      "removes": "Serão removidos: {routes, plural, =0 {} one {# rota} other {# rotas}}{both, select, yes { e } other {}}{links, plural, =0 {} one {# relação de replicação} other {# relações de replicação}}.",
+      "confirm": "Excluir conta",
+      "blockedTitle": "Não é possível excluir {name}",
+      "blocked": "Não é possível excluir {name}: há posição aberta. Feche a posição no NinjaTrader e tente de novo.",
+      "done": "Conta excluída."
+    }
+  },
+  "stepUp": {
+    "title": "Confirme com um código",
+    "description": "Para {action}, enviamos um novo código para o seu e-mail.",
+    "sent": "O código vale só para esta ação.",
+    "confirm": "Confirmar",
+    "actions": {
+      "unpair": "desparear a conexão “{name}”",
+      "pairingCode": "gerar um código de pareamento para “{name}”",
+      "connectionCreate": "criar a conexão “{name}”",
+      "sourceRotate": "trocar a URL da fonte “{name}”",
+      "sourceCreate": "criar a fonte “{name}”",
+      "invite": "convidar {email}"
+    },
+    "busy": "Conclua a confirmação aberta primeiro."
+  },
+  "auth": {
+    "login": {
+      "title": "Entrar",
+      "intro": "Digite seu e-mail. Enviaremos um código para você entrar. Não há senha.",
+      "email": "E-mail",
+      "remember": "Manter conectado",
+      "rememberHelp": "Por mais tempo neste dispositivo. Não use em computador compartilhado.",
+      "submit": "Enviar código",
+      "submitting": "Enviando…",
+      "inviteOnly": "Acesso somente por convite.",
+      "reason": {
+        "session_expired": "Sua sessão expirou. Entre de novo.",
+        "signed_out": "Você saiu da sua conta.",
+        "sessions_ended": "Suas sessões foram encerradas. Entre de novo."
+      },
+      "errors": {
+        "emailRequired": "Digite seu e-mail.",
+        "emailInvalid": "Digite um e-mail válido."
+      },
+      "rateLimited": "Muitos pedidos de código. Aguarde {time} e tente de novo.",
+      "failed": "Não foi possível conectar. Tente de novo."
+    },
+    "code": {
+      "title": "Digite o código",
+      "sent": "Se {email} estiver cadastrado, enviamos um código. Ele vale por {minutes} minutos e só funciona uma vez. Não chegou? Confira o spam ou peça outro.",
+      "newDevice": "Este é um dispositivo novo. Enviamos um aviso ao seu e-mail.",
+      "otherEmail": "Usar outro e-mail"
+    },
+    "invite": {
+      "title": "Criar conta",
+      "validating": "Validando o convite…",
+      "invalid": "Este convite não é válido. Ele pode ter expirado ou já ter sido usado. Peça um novo convite.",
+      "reloaded": "Se você recarregou esta página, abra o link do convite de novo.",
+      "signedInAs": "Você está conectado como {email}. Saia para aceitar este convite.",
+      "signOut": "Sair",
+      "stepDetails": "Seus dados",
+      "stepConfirm": "Confirmar e-mail",
+      "intro": "Você entra sempre com um código enviado ao seu e-mail. Não é preciso criar senha.",
+      "email": "E-mail",
+      "emailHelp": "Este é o e-mail do convite.",
+      "language": "Idioma",
+      "timeZone": "Fuso horário: {zone} ({offset})",
+      "timeZoneChange": "Alterar",
+      "submit": "Enviar código",
+      "submitting": "Enviando…",
+      "sent": "Enviamos um código para {email}. Digite-o para criar sua conta. Ele vale por {minutes} minutos. Não chegou? Confira o spam ou peça outro.",
+      "back": "Voltar",
+      "unknownOutcome": "Não sabemos se sua conta foi criada. Tente entrar com seu e-mail."
+    }
+  },
+  "nav": {
+    "home": "Início",
+    "connections": "Conexões",
+    "sources": "Fontes de sinal",
+    "ninjatrader": "NinjaTrader",
+    "settings": "Configurações",
+    "security": "Segurança",
+    "preferences": "Preferências",
+    "admin": "Administração",
+    "invites": "Convites",
+    "menu": "Abrir menu",
+    "signOut": "Sair",
+    "main": "Navegação principal",
+    "notFound": "Não encontrado.",
+    "signOutFailed": "Não foi possível sair. Sua sessão pode continuar ativa.",
+    "accounts": "Contas",
+    "userMenuName": "{email}, menu do usuário"
+  },
+  "security": {
+    "title": "Segurança",
+    "channels": {
+      "title": "Canais de entrada",
+      "description": "Você entra com um código enviado a um destes canais.",
+      "email": "E-mail",
+      "confirmed": "Confirmado",
+      "changeEmail": "Alterar e-mail",
+      "frozen": "Você trocou o e-mail há pouco. Uma nova troca fica disponível em {date}.",
+      "pending": "Troca de e-mail pendente: {email} passa a valer em {date}. Até lá, o e-mail atual continua valendo.",
+      "cancelChange": "Cancelar troca",
+      "cancelTitle": "Cancelar a troca de e-mail?",
+      "cancelBody": "O e-mail atual continua o mesmo. Avisaremos todos os canais.",
+      "cancelled": "Troca de e-mail cancelada.",
+      "note": "Alterar um canal exige um código no canal atual e outro no novo.",
+      "advice": "Proteja também a conta do seu e-mail (por exemplo, com a verificação em duas etapas do provedor): quem controla o e-mail controla o acesso."
+    },
+    "session": {
+      "title": "Sessão",
+      "signOut": "Sair",
+      "limits": "Sua sessão termina após {idle} sem uso ou {absolute} depois de entrar.",
+      "keepAlive": "Apenas deixar a tela aberta não mantém a sessão ativa."
+    },
+    "devices": {
+      "title": "Dispositivos e sessões",
+      "description": "Dispositivos de onde você entrou.",
+      "current": "Este dispositivo",
+      "firstSeen": "Primeiro acesso: {date}",
+      "lastSeen": "Último acesso: {date}",
+      "forget": "Esquecer dispositivo",
+      "forgetNamed": "Esquecer dispositivo {name}",
+      "forgetTitle": "Esquecer este dispositivo?",
+      "forgetBody": "As sessões dele serão encerradas. No próximo acesso a partir dele, você receberá o aviso de novo dispositivo.",
+      "forgotten": "Dispositivo esquecido.",
+      "signOutAll": "Sair de todos os dispositivos"
+    },
+    "signOutAll": {
+      "title": "Sair de todos os dispositivos?",
+      "body": "Todas as sessões, inclusive esta, serão encerradas e os dispositivos serão esquecidos. Você precisará entrar de novo com um código.",
+      "review": "Antes de sair, revise o que continua funcionando",
+      "notRevoked": "Isto não revoga as URLs de alertas nem as conexões do NinjaTrader. Se você suspeita de acesso indevido, revogue o que não reconhece.",
+      "activeSources": "{count, plural, one {# fonte ativa} other {# fontes ativas}} → Fontes de sinal",
+      "pairedConnections": "{count, plural, one {# conexão pareada} other {# conexões pareadas}} → NinjaTrader",
+      "confirm": "Sair de todos"
+    },
+    "email": {
+      "title": "Alterar e-mail",
+      "description": "Dois códigos: um para o e-mail atual e outro para o novo.",
+      "stepNew": "Novo e-mail",
+      "stepCurrent": "E-mail atual",
+      "stepNewCode": "Novo e-mail: código",
+      "stepDone": "Pronto",
+      "expiresIn": "Esta alteração expira em {time}",
+      "codesToBoth": "Vamos enviar um código para o e-mail atual ({current}) e outro para o novo. Os dois são necessários.",
+      "newLabel": "Novo e-mail",
+      "sendCodes": "Enviar códigos",
+      "codeCurrent": "Digite o código enviado para {email}.",
+      "codeNew": "Digite o código enviado para {email}.",
+      "completed": "E-mail alterado para {email}. Suas sessões em outros dispositivos foram encerradas. Avisamos o e-mail anterior.",
+      "onHold": "Alteração agendada. Seu e-mail atual continua valendo até {date}. Avisamos o e-mail atual.",
+      "finish": "Concluir",
+      "cancelled": "Alteração cancelada. Seu e-mail continua {email}."
+    }
+  },
+  "admin": {
+    "notFound": "Não encontrado.",
+    "link": {
+      "masked": "https://••••••••••••",
+      "done": "Concluir",
+      "guardTitle": "Fechar sem copiar o link?",
+      "guardBody": "Você ainda não copiou o link e ele não será mostrado de novo. Fechar mesmo assim?",
+      "guardBack": "Voltar e copiar",
+      "guardClose": "Fechar"
+    },
+    "invites": {
+      "title": "Convites",
+      "list": "Lista de convites",
+      "invite": "Convidar",
+      "emptyTitle": "Nenhum convite ainda",
+      "emptyBody": "Convide alguém para usar o All Win.",
+      "email": "E-mail",
+      "statusLabel": "Status",
+      "createdAt": "Criado em",
+      "expiresLabel": "Expira em",
+      "actions": "Ações",
+      "status": {
+        "pending": "Pendente",
+        "accepted": "Usado",
+        "expired": "Expirado",
+        "revoked": "Revogado"
+      },
+      "revokeFor": "Revogar o convite de {email}",
+      "revokeTitle": "Revogar o convite para {email}?",
+      "revokeBody": "O link deixará de funcionar.",
+      "revokedToast": "Convite revogado.",
+      "createTitle": "Novo convite",
+      "createBody": "O convite vale por 7 dias, serve para um único e-mail e só pode ser usado uma vez.",
+      "language": "Idioma do convite",
+      "createSubmit": "Criar convite",
+      "resultTitle": "Convite criado",
+      "sent": "Enviamos o convite para {email}.",
+      "manualDelivery": "O e-mail não foi enviado. Copie o link e envie você mesmo.",
+      "emailFailed": "Não foi possível enviar o e-mail. Copie o link e envie você mesmo. O convite continua válido.",
+      "linkLabel": "Link do convite",
+      "expiresAt": "Expira em {date}"
+    }
+  },
+  "sources": {
+    "title": "Fontes de sinal",
+    "description": "Cada fonte tem uma URL secreta. Cole-a no campo Webhook URL do alerta no TradingView.",
+    "new": "Nova fonte",
+    "showRevoked": "Mostrar revogadas",
+    "columns": {
+      "name": "Nome",
+      "type": "Tipo",
+      "url": "URL",
+      "status": "Status",
+      "created": "Criada em",
+      "lastSignal": "Último sinal",
+      "actions": "Ações"
+    },
+    "type": {
+      "tradingview": "TradingView"
+    },
+    "automated": "Automatizada",
+    "status": {
+      "active": "Ativa",
+      "revoked": "Revogada"
+    },
+    "urlAria": "URL secreta, oculta, identificador {keyId}",
+    "actions": {
+      "for": "Ações para {name}",
+      "rename": "Renomear",
+      "rotate": "Gerar nova URL",
+      "revoke": "Revogar"
+    },
+    "empty": {
+      "title": "Nenhuma fonte de sinal",
+      "text": "Crie uma fonte para receber os alertas do TradingView com segurança."
+    },
+    "name": {
+      "label": "Nome da fonte",
+      "placeholder": "Ex.: Strikes MNQ"
+    },
+    "create": {
+      "title": "Nova fonte",
+      "description": "Dê um nome para reconhecer esta fonte depois."
+    },
+    "rename": {
+      "title": "Renomear fonte",
+      "description": "O nome não muda a URL."
+    },
+    "unknownOutcome": "Não sabemos se a fonte foi criada. Atualize a lista antes de tentar de novo.",
+    "created": "Fonte criada.",
+    "rotated": "URL da fonte “{name}” trocada.",
+    "reveal": {
+      "titleCreated": "Copie a URL da fonte",
+      "titleRotated": "Copie a nova URL",
+      "description": "A URL é mostrada uma única vez.",
+      "warning": "Copie a URL agora. Por segurança, ela não será mostrada de novo. Se perdê-la, gere uma nova.",
+      "urlLabel": "URL secreta do webhook",
+      "step1": "No TradingView, abra o alerta → Notificações → Webhook URL.",
+      "step2": "Cole a URL.",
+      "step3": "Salve o alerta.",
+      "automation": "Ordens desta fonte são automatizadas. Contas de firmas que proíbem automação só as recebem se você aceitar isso na conta.",
+      "automationLink": "Ver contas",
+      "done": "Concluir",
+      "guardTitle": "Fechar sem copiar?",
+      "guard": "Você ainda não copiou a URL. Se fechar agora, precisará gerar uma nova. Fechar mesmo assim?",
+      "guardBack": "Voltar e copiar",
+      "guardClose": "Fechar"
+    },
+    "rotate": {
+      "title": "Gerar nova URL para “{name}”?",
+      "body": "A URL atual para de funcionar imediatamente. Alertas que chegarem com ela serão rejeitados e registrados na auditoria. Depois, cole a nova URL no alerta do TradingView.",
+      "confirm": "Gerar nova URL"
+    },
+    "revoke": {
+      "title": "Revogar a fonte “{name}”?",
+      "body": "Alertas com esta URL serão rejeitados. A fonte continua no histórico como revogada. Isso não pode ser desfeito; para voltar a receber sinais, crie uma nova fonte.",
+      "confirm": "Revogar fonte",
+      "toast": "Fonte “{name}” revogada."
+    }
+  },
+  "connections": {
+    "title": "Conexões NinjaTrader",
+    "new": "Nova conexão",
+    "showUnpaired": "Mostrar despareadas",
+    "columns": {
+      "name": "Nome",
+      "status": "Status",
+      "accounts": "Contas",
+      "plugin": "Plugin",
+      "lastSeen": "Última conexão",
+      "actions": "Ações"
+    },
+    "status": {
+      "awaiting_pairing": "Aguardando pareamento",
+      "connected": "Conectada",
+      "disconnected": "Desconectada",
+      "outdated": "Desatualizada",
+      "unpaired": "Despareada"
+    },
+    "notice": {
+      "disconnectedByUser": "Desconectada pelo usuário no plugin. O pareamento continua válido. Ordens para as contas desta instância não serão executadas até ele conectar de novo.",
+      "disconnectedNetwork": "O plugin perdeu a conexão. Ordens para as contas desta instância não serão executadas.",
+      "disconnected": "O plugin não está conectado. Ordens para as contas desta instância não serão executadas.",
+      "outdated": "Atualize o plugin para voltar a conectar."
+    },
+    "accountCount": "{count, plural, =0 {Nenhuma conta} one {# conta} other {# contas}}",
+    "accounts": {
+      "title": "Contas do NinjaTrader",
+      "none": "Nenhuma conta informada ainda.",
+      "bound": "Vinculada",
+      "unbound": "Não vinculada"
+    },
+    "details": {
+      "instance": "ID da instância:"
+    },
+    "actions": {
+      "for": "Ações para {name}",
+      "rename": "Renomear",
+      "newCode": "Gerar código de pareamento",
+      "move": "Mover para outra máquina",
+      "unpair": "Desparear"
+    },
+    "empty": {
+      "title": "Nenhum NinjaTrader conectado",
+      "step1": "Instale o plugin All Win no NinjaTrader 8.",
+      "step2": "Crie uma conexão aqui.",
+      "step3": "Digite o código de pareamento no plugin."
+    },
+    "name": {
+      "label": "Nome da conexão",
+      "placeholder": "Ex.: PC de casa, VPS Chicago"
+    },
+    "create": {
+      "title": "Nova conexão",
+      "description": "Dê um nome para reconhecer esta máquina depois."
+    },
+    "rename": {
+      "title": "Renomear conexão",
+      "description": "O nome não muda o pareamento."
+    },
+    "unknownOutcome": "Não sabemos se a conexão foi criada. Atualize a lista antes de tentar de novo.",
+    "pairing": {
+      "title": "Parear “{name}”",
+      "moveTitle": "Mover para outra máquina",
+      "share": "Digite este código no plugin do NinjaTrader.",
+      "codeLabel": "Código de pareamento",
+      "dontShare": "Não compartilhe este código.",
+      "expiresIn": "Expira em {time}",
+      "instructions": "No NinjaTrader: abra a janela All Win, clique em Parear e digite o código. Letras maiúsculas ou minúsculas, com ou sem hífen.",
+      "waiting": "Aguardando o plugin…",
+      "expired": "O código expirou.",
+      "oneMinute": "O código expira em 1 minuto.",
+      "newCode": "Gerar novo código",
+      "superseded": "Um código mais novo foi gerado para esta conexão. Este não vale mais.",
+      "locked": "O pareamento está temporariamente bloqueado por excesso de tentativas erradas. Aguarde alguns minutos e gere um novo código.",
+      "pairedTitle": "Conexão pareada",
+      "pairedDescription": "O plugin já está conectado.",
+      "paired": "“{name}” conectada. {count, plural, =0 {Nenhuma conta encontrada.} one {# conta encontrada:} other {# contas encontradas:}}",
+      "moved": "“{name}” agora está em outra máquina."
+    },
+    "move": {
+      "title": "Mover “{name}” para outra máquina?",
+      "body": "Você vai receber um novo código. Quando ele for usado, a instância atual será desconectada e não receberá mais ordens.",
+      "confirm": "Gerar código"
+    },
+    "unpair": {
+      "title": "Desparear “{name}”?",
+      "body": "O plugin desta instância será desconectado imediatamente e não receberá mais ordens. Para reconectar, crie uma nova conexão.",
+      "bound": "Estas contas ficarão fora de sincronia e deixarão de receber ordens: {accounts}.",
+      "openPositions": "Há posição aberta em: {accounts}. A posição continua aberta no NinjaTrader, sem monitoramento nem proteção de risco do All Win. Nada será fechado automaticamente.",
+      "acknowledge": "Entendo que a posição continuará aberta",
+      "confirm": "Desparear",
+      "toast": "“{name}” despareada."
+    }
+  },
+  "codeChallenge": {
+    "label": "Código de verificação",
+    "length": "({length} caracteres)",
+    "verify": "Verificar",
+    "resend": "Reenviar código",
+    "resendIn": "em {time}",
+    "resent": "Enviamos um novo código. O anterior deixou de valer.",
+    "resentAnnounce": "Novo código enviado",
+    "canResend": "Você já pode reenviar o código",
+    "newCode": "Pedir novo código",
+    "locked": "Peça um novo código para continuar.",
+    "expired": "Este código expirou. Peça um novo código para continuar.",
+    "deliveryFailed": "Não foi possível enviar o código. Tente de novo em instantes.",
+    "rateLimited": "Muitos pedidos. Aguarde {time} e tente de novo."
+  },
+  "stepper": {
+    "progress": "Etapa {current} de {total} · {label}",
+    "done": "concluída"
+  },
+  "forms": {
+    "back": "Voltar",
+    "continue": "Continuar",
+    "skip": "Pular etapa",
+    "cancel": "Cancelar",
+    "errorsSummary": "{count, plural, one {Corrija # campo para continuar.} other {Corrija # campos para continuar.}}",
+    "step": {
+      "announce": "Etapa {n} de {total}: {label}"
+    },
+    "review": {
+      "title": "Revisar",
+      "edit": "Editar {group}",
+      "editShort": "Editar",
+      "notSet": "Não definido",
+      "fixStep": "Corrija a etapa {n}"
+    },
+    "discard": {
+      "title": "Descartar alterações?",
+      "body": "O que você preencheu será perdido.",
+      "stay": "Continuar editando",
+      "confirm": "Descartar"
+    }
+  },
+  "status": {
+    "blocked": "Bloqueada até {time}",
+    "blockedByTarget": "Bloqueada até {time} · meta atingida",
+    "paused": "Pausada",
+    "disabled": "Desativada",
+    "outOfSync": "Fora de sincronia",
+    "connected": "Conectada",
+    "disconnected": "Desconectada",
+    "awaitingPairing": "Aguardando pareamento",
+    "outdated": "Desatualizada",
+    "unpaired": "Despareada",
+    "revoked": "Revogada",
+    "active": "Ativa",
+    "stale": "Sem dados recentes",
+    "acceptsAutomation": "Aceita automação",
+    "noAutomation": "Sem automação",
+    "choicePending": "Escolha pendente",
+    "riskWarning": "Alerta (80 %)",
+    "riskReached": "Limite atingido"
+  },
+  "firmRule": {
+    "summaryLabel": "Resumo do All Win (não é aconselhamento jurídico):",
+    "showFull": "Mostrar texto completo",
+    "showLess": "Mostrar menos",
+    "caption": "{firm} · {page} · acessado em {date}",
+    "viewPage": "Ver página oficial",
+    "newTab": "(abre em nova aba)"
   }
 }

@@ -23,6 +23,7 @@ describe("placeholders", () => {
   it("collects ICU arguments, including plural arms", () => {
     expect(placeholders("Code {code} for {zone}")).toEqual(["code", "zone"]);
     expect(placeholders("{n, plural, one {# item} other {# items}}")).toEqual(["n"]);
+    expect(placeholders("{a, plural, one {# x}}{both, select, yes { and } other {}}{b, plural, other {{c} y}}")).toEqual(["a", "b", "both", "c"]);
   });
 
   it("flags a catalog whose placeholders differ", () => {

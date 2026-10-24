@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { localeCookie, sessionCookie } from "@/shared/i18n/config";
+import { isLocaleExempt, splitLocalePath } from "@/shared/i18n/paths";
 import { decideRedirect } from "@/shared/i18n/redirect-decision";
 import { createNonce, securityHeaders } from "@/shared/security/headers";
 
@@ -23,6 +24,8 @@ export function proxy(request: NextRequest) {
 
   const response = target === null ? NextResponse.next({ request: { headers: requestHeaders } }) : NextResponse.redirect(new URL(target, request.url));
   for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
+  // Invite and reset links carry a token in the fragment: never leak the page URL to other origins (S3 spec §1).
+  if (isLocaleExempt(splitLocalePath(pathname).rest)) response.headers.set("Referrer-Policy", "no-referrer");
   return response;
 }
 

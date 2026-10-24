@@ -21,7 +21,7 @@ describe("parseDecimalInput", () => {
   });
 
   it("rejects the ambiguous 1.234 through scale validation", () => {
-    expect(parseDecimalInput("1.234", "pt-BR", { scale: 2 })).toEqual({ ok: false, reason: "scale" });
+    expect(parseDecimalInput("1.234", "pt-BR", { scale: 2 })).toEqual({ ok: false, reason: "ambiguous" });
   });
 
   it("validates tick multiples exactly", () => {
@@ -51,5 +51,37 @@ describe("parseDecimalInput", () => {
 
   it("keeps values beyond float precision exact", () => {
     expect(parseDecimalInput("9007199254740993.01", "en")).toEqual({ ok: true, value: "9007199254740993.01" });
+  });
+
+  describe("money fields refuse a pt-BR separator followed by exactly three digits (thousands or decimals?)", () => {
+    it.each(["2.500", "2,500", "999.999", "10,000"])("pt-BR %s is ambiguous", (text) => {
+      expect(parseDecimalInput(text, "pt-BR", { scale: 4 })).toEqual({ ok: false, reason: "ambiguous" });
+    });
+
+    it("still accepts the unambiguous forms", () => {
+      expect(parseDecimalInput("2500,00", "pt-BR", { scale: 2 })).toEqual({ ok: true, value: "2500" });
+      expect(parseDecimalInput("2,5", "pt-BR", { scale: 2 })).toEqual({ ok: true, value: "2.5" });
+      expect(parseDecimalInput("0,350", "pt-BR", { scale: 4 })).toEqual({ ok: true, value: "0.35" });
+      expect(parseDecimalInput("2500", "pt-BR", { scale: 2 })).toEqual({ ok: true, value: "2500" });
+      expect(parseDecimalInput("12.3456", "pt-BR", { scale: 4 })).toEqual({ ok: true, value: "12.3456" });
+    });
+
+    it("in en the dot is always the decimal point and the comma is rejected", () => {
+      expect(parseDecimalInput("2.500", "en", { scale: 4 })).toEqual({ ok: true, value: "2.5" });
+      expect(parseDecimalInput("2,500", "en", { scale: 4 })).toEqual({ ok: false, reason: "grouping" });
+    });
+
+    it("leaves fields without a scale (prices, distances) alone", () => {
+      expect(parseDecimalInput("21234.250", "pt-BR", { tick: "0.25" })).toEqual({ ok: true, value: "21234.25" });
+    });
+  });
+
+  it("returns a prefilled value verbatim when the text is unchanged, even if typed it would be ambiguous", () => {
+    expect(parseDecimalInput("1.125", "pt-BR", { scale: 4 })).toEqual({ ok: false, reason: "ambiguous" });
+    expect(parseDecimalInput("1.125", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: true, value: "1.125" });
+    expect(parseDecimalInput(" 1.125 ", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: true, value: "1.125" });
+    // Any edit goes back through the normal rules.
+    expect(parseDecimalInput("1.126", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: false, reason: "ambiguous" });
+    expect(parseDecimalInput("2.500", "pt-BR", { scale: 4, unchanged: "1.125" })).toEqual({ ok: false, reason: "ambiguous" });
   });
 });

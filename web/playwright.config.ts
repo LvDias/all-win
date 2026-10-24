@@ -3,7 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
 
 export default defineConfig({
-  testDir: "./e2e",
+  // Frontend smoke specs live in e2e/; QA specs with a mocked Core live in tests/qa/e2e/ (single writer per path).
+  testDir: ".",
+  testMatch: ["e2e/**/*.spec.ts", "tests/qa/e2e/**/*.spec.ts"],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI ? "github" : "list",

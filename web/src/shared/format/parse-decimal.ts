@@ -1,6 +1,6 @@
 import type { Locale } from "@/shared/i18n/config";
 
-export type ParseFailure = "empty" | "invalid" | "grouping" | "sign" | "scale" | "tick";
+export type ParseFailure = "empty" | "invalid" | "grouping" | "ambiguous" | "sign" | "scale" | "tick";
 export type ParseResult = { ok: true; value: string } | { ok: false; reason: ParseFailure };
 
 export type ParseOptions = {
@@ -9,6 +9,11 @@ export type ParseOptions = {
   scale?: number;
   /** Value must be a multiple of this decimal string (instrument tick, e.g. "0.25"). */
   tick?: string;
+  /**
+   * The value the field was prefilled with (the Core's own string). Text equal to it is returned verbatim: a value the user
+   * did not touch is never re-judged, so a Core amount such as "1.125" stays savable where typed "1.125" would be ambiguous.
+   */
+  unchanged?: string;
 };
 
 /**
@@ -18,6 +23,7 @@ export type ParseOptions = {
 export function parseDecimalInput(text: string, locale: Locale, options: ParseOptions = {}): ParseResult {
   const raw = text.trim();
   if (raw === "") return { ok: false, reason: "empty" };
+  if (options.unchanged !== undefined && raw === options.unchanged) return { ok: true, value: options.unchanged };
 
   const signMatch = /^[+-]/.exec(raw);
   if (signMatch && !options.allowSign) return { ok: false, reason: "sign" };
@@ -35,6 +41,10 @@ export function parseDecimalInput(text: string, locale: Locale, options: ParseOp
   if (intPart === "" || !/^\d+$/.test(intPart) || (dots + commas === 1 && !/^\d+$/.test(fracPart))) {
     return { ok: false, reason: "invalid" };
   }
+
+  // Money fields (`scale` set): in pt-BR "2.500" or "2,500" could be 2.5 or a thousands group (2500). A wrong guess sets a
+  // limit 1000x off, so the user must type the decimal part explicitly ("2500,00" or "2,5").
+  if (options.scale !== undefined && locale === "pt-BR" && dots + commas === 1 && fracPart.length === 3 && intPart.length <= 3 && !intPart.startsWith("0")) return { ok: false, reason: "ambiguous" };
 
   const integer = intPart.replace(/^0+(?=\d)/, "");
   const fraction = fracPart.replace(/0+$/, "");

@@ -19,14 +19,18 @@ export const networkErrorCode = "common.network";
 
 type ErrorBody = { error?: { code?: unknown; pointer?: unknown; retry_after_s?: unknown } };
 
-export async function apiFetch<T>(path: string, init?: { method?: string; body?: unknown; signal?: AbortSignal }): Promise<T> {
+export async function apiFetch<T>(path: string, init?: { method?: string; body?: unknown; headers?: Record<string, string>; signal?: AbortSignal }): Promise<T> {
   const url = new URL(path, window.location.origin);
   let response: Response;
   try {
     response = await fetch(url, {
       method: init?.method ?? "GET",
       credentials: "same-origin",
-      headers: init?.body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" },
+      headers: {
+        Accept: "application/json",
+        ...(init?.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...init?.headers,
+      },
       body: init?.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init?.signal,
     });
@@ -35,7 +39,11 @@ export async function apiFetch<T>(path: string, init?: { method?: string; body?:
     throw new ApiError({ code: networkErrorCode, status: 0 });
   }
 
-  if (response.ok) return (response.status === 204 ? undefined : await response.json()) as T;
+  if (response.ok) {
+    // 202/204 carry no body.
+    const text = await response.text();
+    return (text === "" ? undefined : JSON.parse(text)) as T;
+  }
 
   let body: ErrorBody = {};
   try {

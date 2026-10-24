@@ -37,13 +37,13 @@ test("the NEXT_LOCALE cookie wins over the browser", async ({ page, api, context
 
 test("signed-out visitor switches language: URL, lang, heading focus and cookie", async ({ page, api, context }) => {
   await api.signedOut();
-  await page.goto("/pt-BR");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("All Win");
+  await page.goto("/pt-BR/login");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Entrar");
   await page.getByRole("button", { name: /Idioma: Português/ }).click();
   await page.getByRole("menuitemradio", { name: "English" }).click();
-  await expect(page).toHaveURL(/\/en$/);
+  await expect(page).toHaveURL(/\/en\/login$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expect(page.getByRole("link", { name: "Preferences" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in");
   await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
   expect((await context.cookies()).find((c) => c.name === "NEXT_LOCALE")?.value).toBe("en");
 });
@@ -114,7 +114,9 @@ test("pages carry the security headers and a nonce on the framework scripts", as
   expect(headers["x-content-type-options"]).toBe("nosniff");
   expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
   expect(headers["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=()");
-  const scripts = await page.locator("script[src]").evaluateAll((nodes) => nodes.map((node) => (node as HTMLScriptElement).nonce));
-  expect(scripts.length).toBeGreaterThan(0);
-  expect(scripts.every((value) => value === nonce)).toBe(true);
+  // Only the scripts in the served HTML: chunks the Next runtime inserts later carry no nonce and are allowed by 'strict-dynamic'.
+  const html = (await response?.text()) ?? "";
+  const tags = html.match(/<script\b[^>]*\bsrc=[^>]*>/g) ?? [];
+  expect(tags.length).toBeGreaterThan(0);
+  expect(tags.every((tag) => tag.includes(`nonce="${nonce}"`))).toBe(true);
 });
