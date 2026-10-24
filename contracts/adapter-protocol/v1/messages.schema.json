@@ -1880,7 +1880,7 @@
                     "$ref": "#/$defs/money"
                   },
                   "high_water_above_start": {
-                    "description": "1.4+, trailing_intraday only. high_water − E_start, SIGNED. It may be negative with realized anchors: the high water includes unrealized peaks while E_start has no unrealized (e.g. +500 realized while another position carries −1000 open). The plugin's intraday peak = max(high_water_above_start, max(day) so far) is correct with either sign (Malha; Esquadro r5 §7.1).",
+                    "description": "1.4+, trailing_intraday only. high_water − E_start, SIGNED. It may be negative with realized anchors: the high water includes unrealized peaks while E_start has no unrealized (e.g. +500 realized while another position carries −1000 open). The plugin's intraday peak = max(high_water_above_start, max(day) so far) is correct with either sign (Malha; Esquadro r5 §7.1). The plugin must NOT require it to enforce: for trailing intraday, −room_to_floor = high_water_above_start − amount, so room_to_floor alone is enough (1.4.1, Crivo p2).",
                     "$ref": "#/$defs/money"
                   },
                   "lock_above_start": {
@@ -1954,7 +1954,7 @@
                 }
               },
               "day_reanchor": {
-                "description": "1.4+, reliable within limits (it travels in the account's versioned limits). Sent ONLY after the USER's explicit 'recomeçar a contagem de hoje' action in the web (Q92 c; audited; never automatic). The plugin applies it as P_reset = CashValue_now − day_realized_net_known, restarts Σgap_today at 0 (day_realized_net_known is net of the Core's EFFECTIVE commission) and then knows the day again. Watermark rule (Pêndulo W1): the plugin applies it if and only if (a) the last fill of THIS account that the adapter reported in THIS trading day, per its CURRENT journal, equals last_fill_id, or (b) the current journal has no fill reported in this trading day (whatever last_fill_id says). Otherwise it keeps the day unknown and waits for a newer version. After a journal_lost this still allows the re-anchor: the Core's value includes everything reported before the loss, and later fills are caught by the comparison. Fills never reported (lost with the outbox) are the unseen losses the user accepts when confirming (Q92 c). While a re-anchor is pending, the Core re-issues a newer version after each fill it receives from the account, until risk_state.reanchor_applied_version confirms it. An older or repeated version is ignored. It does not require a flat account: the open unrealized enters day through unrealized_now.",
+                "description": "1.4+, reliable within limits (it travels in the account's versioned limits). Sent ONLY after the USER's explicit 'recomeçar a contagem de hoje' action in the web (Q92 c; audited; never automatic). The plugin applies it as P_reset = CashValue_now − day_realized_net_known, restarts Σgap_today at 0 (day_realized_net_known is net of the Core's EFFECTIVE commission) and then knows the day again. Watermark rule (Pêndulo W1): the plugin applies it if and only if (a) the last fill of THIS account that the adapter reported in THIS trading day, per its CURRENT journal, equals last_fill_id, or (b) the current journal has no fill reported in this trading day (whatever last_fill_id says). Otherwise it keeps the day unknown and waits for a newer version. After a journal_lost this still allows the re-anchor: the Core's value includes everything reported before the loss, and later fills are caught by the comparison. Fills never reported (lost with the outbox) are the unseen losses the user accepts when confirming (Q92 c). While a re-anchor is pending, the Core re-issues a newer version after each fill it receives from the account, until risk_state.reanchor_applied_version confirms it. EVERY newer limits frame for the account carries the pending day_reanchor in its newest version, so latest-wins never drops it (1.4.1; Crivo p1, Pêndulo n2). An older or repeated version is ignored. It does not require a flat account: the open unrealized enters day through unrealized_now.",
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
@@ -1992,7 +1992,7 @@
           }
         }
       },
-      "description": "Latest-value-wins per account (Pêndulo L1): the Core drops an unacked limits frame when a newer version exists for the account, and never retransmits a 1.4 limits on a session below 1.4. It builds a new limits frame for that session instead, without drawdown."
+      "description": "Latest-value-wins per account (Pêndulo L1, n1): the Core drops an unacked limits frame only when EVERY account in it already has a newer version; otherwise it rebuilds the frame with the items that are still the newest. It never retransmits a 1.4 limits to a session below 1.4: it builds a new frame for that session, without drawdown."
     },
     "instruction_result": {
       "type": "object",
