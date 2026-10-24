@@ -65,6 +65,15 @@ impl RiskStore for Store {
         Ok(self.current(user, id))
     }
 
+    async fn anchor(
+        &self,
+        _: UserId,
+        _: Uuid,
+        _: DateTime<Utc>,
+    ) -> Result<(Option<Decimal>, Option<risk_enterprise::DrawdownTracker>), StoreError> {
+        Ok((None, None))
+    }
+
     async fn save_derivation(
         &self,
         user: UserId,
@@ -115,6 +124,7 @@ impl World {
             AccountInputs {
                 kind: AccountKind::Prop,
                 size_amount: Decimal::from(50_000),
+                max_position_qty: 2,
                 limits_version: version,
                 rules: RuleInputs {
                     rules: RiskRules {
@@ -283,4 +293,95 @@ async fn unknown_accounts_write_nothing() {
         Outcome::NoAccount
     );
     assert_eq!(w.store.writes(w.user, w.account), 0);
+}
+
+// ---- limits body (protocol 1.4) -------------------------------------------------------------
+
+#[tokio::test]
+async fn the_limits_body_carries_distances_from_the_realized_day_start() {
+    use crate::wire::{DayAnchor, limits_body};
+    use risk_enterprise::{Drawdown, DrawdownType, OnReach, TrailingLock};
+    let w = world();
+    w.set("500", 1, NOW);
+    DeriveLimits::new(w.deps())
+        .handle(w.user, w.account)
+        .await
+        .unwrap();
+    let mut l = w.store.current(w.user, w.account).unwrap();
+    l.in_force.drawdown = Some(Drawdown {
+        kind: DrawdownType::TrailingIntraday,
+        amount: LimitAmount::parse("2000").unwrap(),
+        lock: Some(TrailingLock::FloorReachesStart {
+            offset: risk_enterprise::NonNegativeMoney::parse("100").unwrap(),
+        }),
+    });
+    l.in_force.daily_profit_target = Some(LimitAmount::parse("800").unwrap());
+    l.in_force.on_reach = OnReach::FlattenAndBlock;
+    // The 52k/50k case: the size is 50 000 and today started at 50 300 realized.
+    let body = limits_body(
+        &l,
+        &DayAnchor {
+            current_start_at: utc("2026-11-02T22:00:00Z"),
+            e_start: dec("50300"),
+            tracker: None,
+        },
+    );
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "enforcement_enabled": false,
+            "max_position": 2,
+            "warning_threshold_pct": 80,
+            "trading_day": {"reset_local_time": "17:00", "time_zone": "America/New_York",
+                            "current_start_at": "2026-11-02T22:00:00Z"},
+            "daily_loss_limit": "500.00",
+            // Enforcement off: flatten_and_block acts as notify (Q63).
+            "daily_profit_target": {"amount": "800.00", "on_reach": "notify"},
+            "drawdown": {"type": "trailing_intraday", "amount": "2000.00",
+                         "floor_balance": "48000.00", "high_water_balance": "50000.00",
+                         "room_to_floor": "2300.00", "high_water_above_start": "-300.00",
+                         "lock_at_balance": "50100.00", "lock_above_start": "-200.00"}
+        })
+    );
+}
+
+#[test]
+fn money_keeps_two_decimals_and_exact_scale() {
+    use crate::wire::money;
+    assert_eq!(money(dec("500")), "500.00");
+    assert_eq!(money(dec("0.3125")), "0.3125");
+    assert_eq!(money(dec("-120.5")), "-120.50");
+    assert_eq!(money(dec("48000.0000")), "48000.00");
+}
+
+#[tokio::test]
+async fn current_limits_returns_only_derived_accounts_with_the_plugin_version() {
+    use crate::limits::CurrentLimits;
+    let w = world();
+    w.set("500", 1, NOW);
+    DeriveLimits::new(w.deps())
+        .handle(w.user, w.account)
+        .await
+        .unwrap();
+    let missing = Uuid::now_v7();
+    let found = CurrentLimits::new(w.deps())
+        .handle(w.user, &[w.account, missing])
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    let l = &found[&w.account];
+    assert_eq!((l.version, l.derived_from_version), (1, 1));
+    assert_eq!(l.body["daily_loss_limit"], "500.00");
+    assert_eq!(
+        l.body["trading_day"]["current_start_at"],
+        "2026-11-02T22:00:00Z"
+    );
+    // Another user's id list never reaches this user's limits.
+    assert!(
+        CurrentLimits::new(w.deps())
+            .handle(UserId::new_v7(), &[w.account])
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

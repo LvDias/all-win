@@ -123,11 +123,69 @@ fn derived(
         enforcement_enabled: stored.is_some_and(|s| s.enforcement_enabled),
         kind: inputs.kind,
         size_amount: inputs.size_amount,
+        max_position_qty: inputs.max_position_qty,
         in_force: derivation.in_force,
         scheduled: derivation.scheduled,
         scheduled_values: inputs.rules.rules,
         evaluation_start: inputs.evaluation_start,
         evaluation_earned_before: inputs.evaluation_earned_before,
+    }
+}
+
+/// One account's limits for the plugin: `version` is the plugin's token (monotonic, it moves at
+/// the reset too); `derived_from_version` is what routing's gate compares (ADR-0006 §3.3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DerivedLimits {
+    pub version: i32,
+    pub derived_from_version: i32,
+    pub body: serde_json::Value,
+}
+
+/// Query for the gateway's `limits` frame after a welcome (one call for every mapped account). An
+/// account without derived limits is absent: the plugin keeps its cache and routing's gate holds
+/// entries (`routing.limits_pending`).
+pub struct CurrentLimits {
+    deps: LimitsDeps,
+}
+
+impl CurrentLimits {
+    pub fn new(deps: LimitsDeps) -> Self {
+        Self { deps }
+    }
+
+    pub async fn handle(
+        &self,
+        user_id: UserId,
+        account_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, DerivedLimits>, RiskError> {
+        let d = &self.deps;
+        let now = d.clock.now();
+        let mut out = std::collections::HashMap::new();
+        for &account_id in account_ids {
+            let Some(limits) = d.store.limits(user_id, account_id).await.map_err(store)? else {
+                continue;
+            };
+            let day_start = limits.reset().day_at(now).starts_at;
+            let (e_start, tracker) = d
+                .store
+                .anchor(user_id, account_id, day_start)
+                .await
+                .map_err(store)?;
+            let anchor = crate::wire::DayAnchor {
+                current_start_at: day_start,
+                e_start: e_start.unwrap_or(limits.size_amount),
+                tracker,
+            };
+            out.insert(
+                account_id,
+                DerivedLimits {
+                    version: limits.version,
+                    derived_from_version: limits.derived_from_version,
+                    body: crate::wire::limits_body(&limits, &anchor),
+                },
+            );
+        }
+        Ok(out)
     }
 }
 

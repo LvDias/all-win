@@ -4,8 +4,11 @@
 
 pub mod limits;
 pub mod ports;
+pub mod wire;
 
-pub use limits::{DeriveLimits, LimitsDeps, Outcome, ResetTradingDay, RiskError};
+pub use limits::{
+    CurrentLimits, DeriveLimits, DerivedLimits, LimitsDeps, Outcome, ResetTradingDay, RiskError,
+};
 
 #[cfg(test)]
 mod tests;

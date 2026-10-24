@@ -8,7 +8,7 @@ use shared_kernel::UserId;
 use thiserror::Error;
 use uuid::Uuid;
 
-use risk_enterprise::{ResetTime, RiskRules, RuleInputs, Scheduled};
+use risk_enterprise::{DrawdownTracker, ResetTime, RiskRules, RuleInputs, Scheduled};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("{0}")]
@@ -36,6 +36,8 @@ pub enum AccountKind {
 pub struct AccountInputs {
     pub kind: AccountKind,
     pub size_amount: Decimal,
+    /// The account's maximum position (MNQ contracts; `limits.max_position`).
+    pub max_position_qty: u32,
     pub limits_version: i32,
     pub rules: RuleInputs,
     pub evaluation_start: Option<NaiveDate>,
@@ -64,6 +66,7 @@ pub struct StoredLimits {
     pub enforcement_enabled: bool,
     pub kind: AccountKind,
     pub size_amount: Decimal,
+    pub max_position_qty: u32,
     pub in_force: RiskRules,
     pub scheduled: Vec<Scheduled>,
     /// The input value of each scheduled kind, kept to show `pending_changes` and to apply it at
@@ -98,6 +101,17 @@ pub trait RiskStore: Send + Sync {
     /// Writes the derivation only if (`derived_from_version`, `effective_as_of`) is newer than the
     /// stored pair (else `StoreError::Stale`), with `risk.limits_derived` in the outbox, in one
     /// transaction. The reset step keeps `derived_from_version` and moves `effective_as_of`.
+    /// The day-start anchor of the plugin's drawdown distances: the realized equity at the start
+    /// of the trading day beginning at `day_start` (`trading_day.start_balance`; `None` before the
+    /// account's first trading day row) and the drawdown tracker (`None` before its first
+    /// observation).
+    async fn anchor(
+        &self,
+        user_id: UserId,
+        account_id: Uuid,
+        day_start: DateTime<Utc>,
+    ) -> Result<(Option<Decimal>, Option<DrawdownTracker>), StoreError>;
+
     async fn save_derivation(
         &self,
         user_id: UserId,

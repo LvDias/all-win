@@ -8,6 +8,7 @@ pub mod derivation;
 pub mod drawdown;
 pub mod evaluation;
 pub mod meter;
+pub mod position;
 pub mod rules;
 pub mod trading_day;
 pub mod values;
@@ -17,6 +18,7 @@ pub use derivation::{Derivation, LimitKind, RuleInputs, Scheduled, derive};
 pub use drawdown::DrawdownTracker;
 pub use evaluation::{EvaluationProgress, EvaluationState};
 pub use meter::{Meter, MeterState, consistency_share, live_net};
+pub use position::{FillEffect, Position, Reconciled, Side, apply_fill, reconcile, round_money};
 pub use rules::{
     DailyLoss, Drawdown, DrawdownType, OnReach, ResetTime, RiskRules, RuleKind, TrailingLock,
 };
