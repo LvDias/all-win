@@ -15,6 +15,8 @@ export function realAccount(over: Partial<Account> = {}): Account {
   return {
     id: ids.acc2,
     kind: "real",
+    bracket_mode: "individual",
+    sync: { state: "in_sync", version: 1, observable: true, reasons: [], reasons_total: 0 },
     display_name: "Conta real",
     size_amount: "25000.00",
     currency: "USD",

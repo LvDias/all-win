@@ -123,7 +123,7 @@ describe("AccountCreateStepper", () => {
   });
 
   it("offers bound platform accounts as disabled with the reason", async () => {
-    const { handlers } = accountHandlers([propAccount({ binding: { connection_id: ids.conn, connection_name: "Meu PC", connection_status: "connected", platform_account: "Sim102", kind: "simulation", oco_location: "local" } })]);
+    const { handlers } = accountHandlers([propAccount({ binding: { connection_id: ids.conn, connection_name: "Meu PC", connection_status: "connected", platform_account: "Sim102", kind: "simulation", oco_location: "local", activation: "active" } })]);
     server.use(connectionsHandler, ...handlers);
     const user = userEvent.setup();
     renderAccounts(<AccountCreateStepper />);

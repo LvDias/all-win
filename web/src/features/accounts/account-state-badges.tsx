@@ -8,7 +8,8 @@ import { hasPendingChoice } from "./lib/opt-in";
 /** Badges by F§7.2 priority, most severe first: pending choice, paused, disabled. Active shows none. */
 export function AccountStateBadges({ account, max = 2 }: { account: Account; max?: number }) {
   const t = useTranslations("accounts.state");
-  const items: StatusKind[] = [];
+  // The S5 states have no "blocked until" badge (that is risk, S13): the type excludes the two kinds that need a time.
+  const items: Exclude<StatusKind, "blocked" | "blockedByTarget">[] = [];
   if (hasPendingChoice(account)) items.push("choicePending");
   if (account.lifecycle_state === "paused") items.push("paused");
   if (account.lifecycle_state === "disabled") items.push("disabled");
