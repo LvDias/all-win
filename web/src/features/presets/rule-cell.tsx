@@ -32,7 +32,7 @@ export function SourceList({ sources }: { sources: (SourceRef & { title_note?: s
         return (
           <li key={`${index}|${source.url}`}>
             {href ? (
-              <a className="underline underline-offset-4" href={href} target="_blank" rel="noopener noreferrer">
+              <a className="relative underline underline-offset-4" href={href} target="_blank" rel="noopener noreferrer">
                 {text}
                 <span className="sr-only"> {t("newTab")}</span>
               </a>

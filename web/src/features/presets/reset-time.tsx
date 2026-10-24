@@ -19,10 +19,14 @@ export function ResetTime({ localTime, timeZone, publishedText }: { localTime: s
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span tabIndex={0} className="underline decoration-dotted underline-offset-4">{shown}</span>
+        {/* `relative`: the screen-reader text is absolutely positioned, and without a positioned parent inside the table's scroll box it
+            would stretch the PAGE sideways (WCAG 1.4.10 at 320 px). */}
+        <span tabIndex={0} className="relative underline decoration-dotted underline-offset-4">
+          {shown}
+          <span className="sr-only">{both}</span>
+        </span>
       </TooltipTrigger>
       <TooltipContent>{both}</TooltipContent>
-      <span className="sr-only">{both}</span>
     </Tooltip>
   );
 }

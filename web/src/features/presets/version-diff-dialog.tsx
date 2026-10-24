@@ -225,6 +225,9 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
               </div>
             )}
 
+            {/* TODO(6.2.0): getAccountPresetDiff gets an optional `firm_platform` query. Today an account without a platform (or with one the target does
+                not offer) gets rows=[] and firm_platform_required=true, so the rows of the chosen platform are not visible before the apply. Until then the
+                flow stays: choose the platform, then apply. With the query, re-read the diff for the chosen platform here and show its rows first. */}
             {data.firm_platform_required ? (
               <div className="grid gap-1.5">
                 <Label htmlFor={`${base}-platform`}>{t("platform")}</Label>
