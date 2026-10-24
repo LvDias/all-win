@@ -130,6 +130,88 @@
         }
       }
     },
+    "DetailsReactiveBlockAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "description": "`risk.reactive_block_action` (6.1.0, S15 AC-6): the cancel of a manual order while blocked (`risk_event` `blocked_order_cancelled`). A resulting position flattened while blocked is reported as `flattened` and recorded as `risk.flatten` (ADR-0004 §7 r6.1).",
+      "properties": {
+        "enforcement_id": {
+          "description": "The current block's `enforcement_id`; absent only when the Core never recorded that block.",
+          "$ref": "#/$defs/Uuid"
+        },
+        "action": {
+          "const": "order_cancelled"
+        },
+        "kind": {
+          "description": "The rule behind the block.",
+          "$ref": "#/$defs/RiskRuleKind"
+        },
+        "while_disconnected": {
+          "type": "boolean"
+        },
+        "platform_time": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "DetailsRiskEnforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enforcement_id",
+        "kind",
+        "limit",
+        "used",
+        "limits_version"
+      ],
+      "description": "`risk.blocked` (+ `trigger`) and `risk.flatten` (+ `action`), 6.1.0 (S15). `kind` / `limit` / `used` are those of the rule that triggered the block (S15 AC-5).",
+      "properties": {
+        "enforcement_id": {
+          "description": "The Core's id of one enforcement episode: one block until the reset of one account. The same value on the `risk.blocked` and every `risk.flatten` of that episode (the 2–3 entries of one limit breach), and on its `risk.reactive_block_action` and `risk.unblocked` entries, so S18 groups them without heuristics (Nanquim). A new block, even on the same day, gets a new id.",
+          "$ref": "#/$defs/Uuid"
+        },
+        "kind": {
+          "$ref": "#/$defs/RiskRuleKind"
+        },
+        "limit": {
+          "$ref": "#/$defs/Money"
+        },
+        "used": {
+          "$ref": "#/$defs/Money"
+        },
+        "limits_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "limit_reached",
+            "enabled_over_limit"
+          ],
+          "description": "With `risk.blocked`: `enabled_over_limit` = the user turned enforcement on while the limit was already exceeded today (S15 AC-8, Q61 a)."
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "flattened",
+            "orders_cancelled"
+          ],
+          "description": "With `risk.flatten`."
+        },
+        "while_disconnected": {
+          "type": "boolean",
+          "description": "The plugin acted while the Core was unreachable, on its cached limits (S15 AC-4)."
+        },
+        "platform_time": {
+          "description": "The connection's clock (Playback, S15 AC-7).",
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
     "DetailsRiskState": {
       "type": "object",
       "additionalProperties": false,
@@ -164,6 +246,30 @@
             "notify",
             "flatten_and_block"
           ]
+        }
+      }
+    },
+    "DetailsRiskUnblocked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ],
+      "description": "`risk.unblocked` (6.1.0, S15 AC-9).",
+      "properties": {
+        "enforcement_id": {
+          "description": "The ended block's `enforcement_id`; absent only when the Core never recorded that block.",
+          "$ref": "#/$defs/Uuid"
+        },
+        "reason": {
+          "const": "trading_day_reset"
+        },
+        "blocked_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "limits_version": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },
@@ -317,7 +423,7 @@
       "required": [
         "sync_version"
       ],
-      "description": "`sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored`.",
+      "description": "`sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved` and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored` after a disconnect, `reason` with `sync.restored` after a held reason is resolved (6.1.0).",
       "properties": {
         "sync_version": {
           "type": "integer",
@@ -745,6 +851,10 @@
         },
         "resolved_at": {
           "description": "Only in `resolved_reasons`.",
+          "$ref": "#/$defs/Timestamp"
+        },
+        "held_at_clear": {
+          "description": "Only on `sync.bracket_incomplete` (6.1.0): the time of the user's clear that kept this reason because its position was not fully covered (`clearAccountSync`). The account is then blocked for new entries only by protection, and returns to `in_sync` by itself once every held reason is resolved (Q101).",
           "$ref": "#/$defs/Timestamp"
         },
         "instrument_symbol": {
