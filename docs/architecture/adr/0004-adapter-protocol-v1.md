@@ -8,6 +8,7 @@
   - (r6, 2026-10-24; r5 review notes and Q93/Q98) §3 who builds `limits` and the latest-wins rule; §4 dead-letter erasure and retention, unreadable account, quarantine rules, deferred consumers under RLS; §6.2 `sync.command_unknown` triggers; §6.3 first-seen check on the durable receipt; §6.4 strict "covers" and protection of accepted positions (Q98 b); §7.1 Q93 decided, exact re-anchor watermark rule.
   - (r6.1, 2026-10-24; user decisions Q100 a, Q101 yes) §6.4 reasons held at a clear, automatic return to `in_sync`, coverage from the remaining quantity and the order state; §7 a reactive flatten while blocked is reported as `flattened`.
   - (r6.2, 2026-10-24; review notes on r6.1) §3 the test-build exception for missing limits (ADR-0006 rule 8); §6.4 which order states count as working, and where the remaining quantity comes from.
+  - (r6.3, 2026-10-24) §2 the V1 single-instance limit of the adapter endpoint (Bigorna); §6.2 the table order is the severity order.
 
   Acceptance deltas, recorded in `contracts/adapter-protocol/CHANGELOG.md`: §6.1 bracket integrity on local-OCO connections (NT8 profile F5); money type with 4 decimals (ALIGN-1); token formats (ALIGN-3); pairing limits and HMAC storage (ALIGN-4); Q18 unpairing; Q-N1 dollar rounding; `fill.operation` and `account_reset` (NT8 profile §6)
 - **Owner:** Software Architect
@@ -43,6 +44,7 @@ Connected-client adapters, such as the NinjaTrader 8 AddOn, run on the trader's 
   - The Core stores only `key_id` and a SHA-256 hash of the secret (high entropy, so no pepper is needed).
   - The token is **masked in every log**: only `key_id` is printed, same rule as ADR-0001 §5.
 - **One active session per connection** (per NinjaTrader instance). A new authenticated session for the same connection closes the old one with code `4004 superseded`.
+- **V1 limit: one Core instance serves `/adapter/v1` (r6.3, Bigorna).** The session state is per process: the session registry, supersede (4004), the flat-disconnect marker, a pending disconnect, the `limits` latest-wins state (§3) and the per-IP failure budget. Delivery is immediate inside that instance (an in-process wake-up), with the PostgreSQL poll tick (at most 250 ms) as the fallback. Running a second instance behind the same endpoint would break supersede and these rules, so V1 does not. Scaling out needs sticky routing by `connection_id` at the proxy plus a session lease in PostgreSQL; that is a future ADR.
 - **WebSocket close codes:**
 
 | Code | Meaning | Adapter behavior |
@@ -275,7 +277,7 @@ The Core keeps, per account, an **expected state**: position per contract and Al
 
 ### 6.2 Sync reason codes (r5)
 
-The canon has **21** codes. The protocol field is an open pattern; the HTTP contract uses a closed enum and receivers tolerate unknown codes. A new code is a minor version on both sides. Detail fields (adapter reason code, snapshot trigger, instrument and contract month from the wire) carry the specifics, never the code.
+The canon has **21** codes. **The table order is the severity order** (most severe first, r6.3), the same order as the HTTP `SyncReasonCode` enum; "most severe first" anywhere in this ADR or the contracts means this order. The protocol field is an open pattern; the HTTP contract uses a closed enum and receivers tolerate unknown codes. A new code is a minor version on both sides. Detail fields (adapter reason code, snapshot trigger, instrument and contract month from the wire) carry the specifics, never the code.
 
 | Trigger (§6, §6.1, §5) | Code |
 |---|---|
@@ -283,7 +285,6 @@ The canon has **21** codes. The protocol field is an open pattern; the HTTP cont
 | Both legs of a bracket filled (Q27) | `sync.bracket_double_fill` |
 | Open position with missing or `unknown` protection | `sync.bracket_incomplete` |
 | Local-OCO account with working protection while unobservable | `sync.bracket_integrity_unknown` |
-| Position flat, one leg filled, the other working (orphan cancelled) | `sync.bracket_orphan_leg` |
 | A report with status `unknown`; a frame moved to the intake dead-letter (§4); a quarantined report carrying an All Win `command_id` (§4, r6) | `sync.command_unknown` |
 | `command.position_changed` (U13); also a `nothing_to_reduce` that contradicts a non-flat expected position | `sync.position_changed` |
 | Reconnect or periodic snapshot differs (the trigger is a detail) | `sync.snapshot_mismatch` |
@@ -300,6 +301,7 @@ The canon has **21** codes. The protocol field is an open pattern; the HTTP cont
 | User disconnect in the plugin (4100) in that state | `sync.disconnected_by_user` |
 | User unpairs the connection (Q18) | `sync.connection_unpaired` |
 | Bound account not reported after a re-pair | `sync.account_not_found_after_repair` |
+| Position flat, one leg filled, the other working (orphan cancelled; informational, so last) | `sync.bracket_orphan_leg` |
 
 Not sync reasons, audited and alerted on their own:
 - `execution.unbound_activity`: a fill or non-flat snapshot on a venue account with no binding (ADR-0008); one entry per position change of (connection, platform account, instrument), not per fill.
@@ -466,4 +468,5 @@ Not sync reasons, audited and alerted on their own:
 - **Negative:**
   - The adapter needs a durable local store and careful restart logic, which is the biggest plugin risk and the reason the spike covers it.
   - The protocol is chattier than fire-and-forget, which is acceptable at this scale.
+  - V1 serves the adapter endpoint from a single Core instance (§2); horizontal scaling needs a later ADR.
 - **Reversibility:** the transport can change in a new major without touching the Core domain, because the `gateway` maps protocol messages to venue-neutral commands and reports.
