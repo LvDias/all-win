@@ -1,5 +1,5 @@
 // QA (Retina) — V1-S16 account side (AC-2 edited values, AC-3/AC-11 new version): AccountPresetPanel + version dialog, black box through the public index.
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,9 @@ import { renderApp } from "@/test/render";
 import { server } from "@/test/server";
 // render first: it installs the next/navigation mock before the feature loads.
 import { AccountPresetPanel, type RenderOptIn } from "@/features/presets";
+
+// Findings must not depend on host load: wait up to 8 s for async UI (the default 1 s flaked on a loaded CI host).
+configure({ asyncUtilTimeout: 8000 });
 
 const me = { id: "00000000-0000-4000-8000-000000000001", email: "t@example.com", locale: "pt-BR", time_zone: "UTC", is_platform_admin: false };
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
