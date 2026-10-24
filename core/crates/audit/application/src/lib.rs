@@ -116,6 +116,9 @@ pub fn rule_for(code: &str) -> Option<CodeRule> {
         "ingress.rejected" | "ingress.rate_limited" => rule(Rejected, true),
         // S7.
         "routing.subscription_changed" => rule(Info, true),
+        // S7 C1 (HTTP 5.2.0 `DetailsCommandSent`): an exit command routing committed and the
+        // gateway has not sent yet. Closed details {step, kind}.
+        "execution.command_requested" => rule(Info, true),
         // S7 decisions (`DetailsRoutingDecision`), one per (instruction, account), with the
         // outcomes each code may carry. Safe to display (Architect, 2026-10-23): the producer's
         // tests validate every emitted code against the contract, and the schema has no free

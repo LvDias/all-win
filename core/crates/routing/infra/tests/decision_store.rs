@@ -10,6 +10,7 @@
 )]
 
 use chrono::{TimeZone, Utc};
+use routing_application::commands::CommandsRequested;
 use routing_application::decisions::{DecisionRecord, DecisionStore, Leg};
 use routing_application::enterprise::decision::Outcome;
 use routing_application::enterprise::{AccountId, InstructionId, SourceId};
@@ -74,6 +75,7 @@ fn decision(user: UserId, instruction: InstructionId, account: AccountId) -> Dec
             json!({"actor":"system","details":{"reverse_closed_qty":3},
                    "refs":{"outcome":"partial","account_id":account,"account_name":"Apex 50k"}}),
         )),
+        commands: None,
     }
 }
 
@@ -105,6 +107,7 @@ async fn decisions_are_stored_once_with_their_audit_event_and_isolated() {
     );
     assert_eq!((i.position_effect, i.quantity), (None, Some(2)));
     assert_eq!(i.contract_month.as_deref(), Some("2026-12"));
+    assert_eq!(i.order, None, "no order: market");
     assert_eq!(
         i.expiry_base,
         Utc.with_ymd_and_hms(2026, 10, 23, 12, 0, 0).unwrap()
@@ -307,4 +310,34 @@ async fn reverse_legs_follow_the_two_step_rules() {
         err.to_string().contains("routing_decision_leg_key"),
         "{err}"
     );
+}
+
+/// C1: a leg's commands and its exit commands' audit entries go to the outbox in the decision's
+/// transaction, only with a new row (a redelivery requests nothing twice).
+#[tokio::test]
+async fn commands_are_requested_once_with_the_row() {
+    let Some((owner, app)) = app_pool().await else {
+        return;
+    };
+    let store = PgDecisionStore::new(app.clone());
+    let alice = user(&owner).await;
+    let iid = instruction(&owner, alice, SourceId::new_v7()).await;
+    let account = AccountId::new_v7();
+    let mut close = leg(alice, iid, account, Leg::Close);
+    close.commands = Some(CommandsRequested {
+        event: json!({"instruction_id": iid, "account_id": account,
+                      "commands": [{"kind": "flatten", "step": "flatten"}]}),
+        exit_audits: vec![json!({"actor": "system",
+                                 "details": {"step": "flatten", "kind": "flatten"}})],
+    });
+    assert_eq!(store.record(alice, &[close.clone()]).await.unwrap(), 1);
+    assert_eq!(store.record(alice, &[close]).await.unwrap(), 0);
+    let ev = events(&owner, alice).await;
+    let types: Vec<&str> = ev.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(
+        types,
+        ["execution.command_requested", "routing.commands_requested"],
+        "no routing entry for a close leg; exit entry before the commands"
+    );
+    assert_eq!(ev[1].1["commands"][0]["step"], "flatten");
 }

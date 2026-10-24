@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, source_id, message_id, signal_type, action, instrument_symbol, quantity,\n                      expiry_base, to_char(contract_month, 'YYYY-MM') AS contract_month,\n                      payload->>'position_effect' AS position_effect,\n                      payload->>'side' AS side\n                 FROM routing.instruction\n                WHERE user_id = $1 AND id = $2",
+  "query": "SELECT id, source_id, message_id, signal_type, action, instrument_symbol, quantity,\n                      expiry_base, to_char(contract_month, 'YYYY-MM') AS contract_month,\n                      payload->>'position_effect' AS position_effect,\n                      payload->>'side' AS side, payload->'order' AS \"order\"\n                 FROM routing.instruction\n                WHERE user_id = $1 AND id = $2",
   "describe": {
     "columns": [
       {
@@ -108,6 +108,12 @@
         "name": "side",
         "type_info": "Text",
         "origin": "Expression"
+      },
+      {
+        "ordinal": 11,
+        "name": "order",
+        "type_info": "Jsonb",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -127,8 +133,9 @@
       false,
       null,
       null,
+      null,
       null
     ]
   },
-  "hash": "07496a88326423e9d2ae49f6592c018cbdfacaa506cb3938d95bbec18333d486"
+  "hash": "c8da134947400fb40bd0f0129de92faaf8a2ee43b471949afde1f15a74159eb9"
 }

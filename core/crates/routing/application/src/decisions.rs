@@ -18,6 +18,7 @@ use routing_enterprise::{AccountId, InstructionId, RouteSignalType, SourceId, Uu
 use serde_json::{Map, Value, json};
 use shared_kernel::{Clock, UserId};
 
+use crate::commands::{CommandContext, CommandsRequested, Protection, commands_for};
 use crate::routes::{
     AccountDirectory, AccountFacts, PortError, RouteFilter, RouteStore, SourceDirectory,
     SourceFacts,
@@ -101,6 +102,24 @@ pub trait EntryGate: Send + Sync {
     }
 }
 
+/// Gate 9 and the commands' protection (S6 `BracketQuery`, adapter in `crates/app`): each
+/// account's stop/target profile for the contract in whole ticks. An absent account has no
+/// usable profile, and its entries are skipped with `routing.no_bracket_profile`.
+#[async_trait]
+pub trait BracketFor: Send + Sync {
+    async fn brackets(
+        &self,
+        user: UserId,
+        contract: &Contract,
+        accounts: &[AccountId],
+    ) -> Result<HashMap<AccountId, Protection>, PortError>;
+
+    /// The marker of a test-build fixed profile; `None` for the S6 query.
+    fn stand_in(&self) -> Option<&'static str> {
+        None
+    }
+}
+
 /// The four entry gates, in ADR-0003 §4.1 order.
 #[derive(Clone)]
 pub struct EntryGatePorts {
@@ -111,8 +130,8 @@ pub struct EntryGatePorts {
     /// 8: limits not yet derived (ADR-0006 §3.3).
     pub limits_pending: Arc<dyn EntryGate>,
     /// 9: no stop/target profile for the instrument (S6, Q43); the app adapter resolves the
-    /// symbol through the catalog.
-    pub no_bracket_profile: Arc<dyn EntryGate>,
+    /// symbol through the catalog. Its answer is also the commands' protection.
+    pub no_bracket_profile: Arc<dyn BracketFor>,
 }
 
 impl EntryGatePorts {
@@ -120,16 +139,23 @@ impl EntryGatePorts {
     /// its release checks (Vigia C3/C5).
     pub fn stand_ins(&self) -> Vec<&'static str> {
         [
-            ("out_of_sync", &self.out_of_sync),
-            ("risk_blocked", &self.risk_blocked),
-            ("limits_pending", &self.limits_pending),
-            ("no_bracket_profile", &self.no_bracket_profile),
+            ("out_of_sync", self.out_of_sync.stand_in()),
+            ("risk_blocked", self.risk_blocked.stand_in()),
+            ("limits_pending", self.limits_pending.stand_in()),
+            ("no_bracket_profile", self.no_bracket_profile.stand_in()),
         ]
         .into_iter()
-        .filter(|(_, gate)| gate.stand_in().is_some())
+        .filter(|(_, marker)| marker.is_some())
         .map(|(name, _)| name)
         .collect()
     }
+}
+
+/// The answers of gates 6–9 for the accounts, in ADR-0003 §4.1 order, and the profiles that
+/// gate 9 found (the commands' protection).
+struct GateAnswers {
+    barred: [HashMap<AccountId, bool>; 4],
+    protection: HashMap<AccountId, Protection>,
 }
 
 /// Gates 6–9 for the accounts, in ADR-0003 §4.1 order.
@@ -138,27 +164,30 @@ async fn entry_gates(
     user: UserId,
     contract: &Contract,
     accounts: &[AccountId],
-) -> Result<[HashMap<AccountId, bool>; 4], PortError> {
-    Ok([
-        ask(&*g.out_of_sync, "out_of_sync", user, contract, accounts).await?,
-        ask(&*g.risk_blocked, "risk_blocked", user, contract, accounts).await?,
-        ask(
-            &*g.limits_pending,
-            "limits_pending",
-            user,
-            contract,
-            accounts,
-        )
-        .await?,
-        ask(
-            &*g.no_bracket_profile,
-            "no_bracket_profile",
-            user,
-            contract,
-            accounts,
-        )
-        .await?,
-    ])
+) -> Result<GateAnswers, PortError> {
+    let out_of_sync = ask(&*g.out_of_sync, "out_of_sync", user, contract, accounts).await?;
+    let risk_blocked = ask(&*g.risk_blocked, "risk_blocked", user, contract, accounts).await?;
+    let limits_pending = ask(
+        &*g.limits_pending,
+        "limits_pending",
+        user,
+        contract,
+        accounts,
+    )
+    .await?;
+    // An account without a usable profile is absent: that is its answer (barred).
+    let protection = g
+        .no_bracket_profile
+        .brackets(user, contract, accounts)
+        .await?;
+    let no_bracket = accounts
+        .iter()
+        .map(|a| (*a, !protection.contains_key(a)))
+        .collect();
+    Ok(GateAnswers {
+        barred: [out_of_sync, risk_blocked, limits_pending, no_bracket],
+        protection,
+    })
 }
 
 /// Every account's answer from one gate; a missing answer is an error, never "not barred".
@@ -193,6 +222,8 @@ pub struct InstructionToRoute {
     /// `YYYY-MM`, when the instruction names its contract.
     pub contract_month: Option<String>,
     pub quantity: Option<i32>,
+    /// The instruction's `order` object; `None` = market.
+    pub order: Option<Value>,
     /// `min(sent_at, received_at)` (ADR-0003 §7).
     pub expiry_base: DateTime<Utc>,
 }
@@ -225,6 +256,9 @@ pub struct DecisionRecord {
     /// refs}`. A `close` leg has none: the pair gets its one decision entry with the opening
     /// (Compasso, 2026-10-23).
     pub audit: Option<(&'static str, Value)>,
+    /// C1: the leg's gateway commands (`routing.commands_requested`) and the
+    /// `execution.command_requested` entries of its exit commands, appended with the row.
+    pub commands: Option<CommandsRequested>,
 }
 
 /// Which part of a decision a row holds (`routing_decision.leg`; ADR-0003 §4.1 r4).
@@ -471,6 +505,7 @@ impl DecideInstruction {
                             position: None,
                             gates_unknown: false,
                         },
+                        None,
                     )
                 })
                 .collect();
@@ -549,7 +584,7 @@ impl DecideInstruction {
             // it, and the expired case below overrides it explicitly.
             let barred = |n: usize| {
                 answers
-                    .and_then(|g| g[n].get(&account.id).copied())
+                    .and_then(|g| g.barred[n].get(&account.id).copied())
                     .unwrap_or(true)
             };
             let facts = DecisionFacts {
@@ -577,6 +612,22 @@ impl DecideInstruction {
                     }
                 }
             }
+            let commands = |leg: Leg, decision: &Decision| {
+                commands_for(
+                    &CommandContext {
+                        instruction: &i,
+                        account_id: account.id,
+                        account_name: &account.display_name,
+                        contract: &contract,
+                        action,
+                        leg,
+                        created_at: now,
+                        expires_at,
+                        protection: answers.and_then(|g| g.protection.get(&account.id).copied()),
+                    },
+                    decision,
+                )
+            };
             // Entry gates asked but not answered (an exit never asks).
             let unanswered = gates.is_some() && answers.is_none();
             if unanswered && !expired {
@@ -599,6 +650,7 @@ impl DecideInstruction {
                             position: Some(position),
                             gates_unknown: false,
                         },
+                        commands(Leg::Close, &close),
                     ));
                 }
                 waiting.push((account.id, Waiting::EntryForGates));
@@ -617,6 +669,7 @@ impl DecideInstruction {
             if has_close_leg {
                 decision.steps.retain(|s| *s != decision::Step::Flatten);
             }
+            let leg_commands = commands(leg, &decision);
             out.push(record(
                 user,
                 &i,
@@ -632,6 +685,7 @@ impl DecideInstruction {
                     position: Some(position),
                     gates_unknown: unanswered,
                 },
+                leg_commands,
             ));
         }
         d.store.record(user, &out).await?;
@@ -674,6 +728,7 @@ fn record(
     now: DateTime<Utc>,
     leg: Leg,
     known: Known<'_>,
+    commands: Option<CommandsRequested>,
 ) -> DecisionRecord {
     let code = d.reason_code.unwrap_or("routing.routed");
     let outcome = match d.outcome {
@@ -779,6 +834,7 @@ fn record(
         gates_unknown: known.gates_unknown,
         expected_flat: d.expected_flat,
         audit: (leg != Leg::Close).then_some((code, payload)),
+        commands,
     }
 }
 

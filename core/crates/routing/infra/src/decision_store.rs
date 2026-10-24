@@ -3,6 +3,7 @@
 //! (ADR-0003 §4.1 r4), written with its audit event in one user-scoped transaction.
 
 use async_trait::async_trait;
+use routing_application::commands::{COMMAND_REQUESTED, COMMANDS_REQUESTED};
 use routing_application::decisions::{
     DecidedLeg, DecisionRecord, DecisionStore, InstructionToRoute, Leg,
 };
@@ -49,7 +50,7 @@ impl DecisionStore for PgDecisionStore {
             r#"SELECT id, source_id, message_id, signal_type, action, instrument_symbol, quantity,
                       expiry_base, to_char(contract_month, 'YYYY-MM') AS contract_month,
                       payload->>'position_effect' AS position_effect,
-                      payload->>'side' AS side
+                      payload->>'side' AS side, payload->'order' AS "order"
                  FROM routing.instruction
                 WHERE user_id = $1 AND id = $2"#,
             user.as_uuid(),
@@ -70,6 +71,7 @@ impl DecisionStore for PgDecisionStore {
             instrument_symbol: r.instrument_symbol,
             contract_month: r.contract_month,
             quantity: r.quantity,
+            order: r.order,
             expiry_base: r.expiry_base,
         }))
     }
@@ -164,21 +166,30 @@ impl DecisionStore for PgDecisionStore {
                 continue;
             }
             new += 1;
-            let Some((event_type, payload)) = &d.audit else {
-                continue;
-            };
-            sqlx::query!(
-                r#"INSERT INTO app.outbox (id, user_id, event_type, occurred_at, payload)
+            // The decision's entry, the exit commands' entries, then the commands (C1): one
+            // commit, so a waiting exit is visible before the gateway sends it.
+            let mut events: Vec<(&str, &serde_json::Value)> = Vec::new();
+            if let Some((code, payload)) = &d.audit {
+                events.push((code, payload));
+            }
+            if let Some(c) = &d.commands {
+                events.extend(c.exit_audits.iter().map(|a| (COMMAND_REQUESTED, a)));
+                events.push((COMMANDS_REQUESTED, &c.event));
+            }
+            for (event_type, payload) in events {
+                sqlx::query!(
+                    r#"INSERT INTO app.outbox (id, user_id, event_type, occurred_at, payload)
                    VALUES ($1, $2, $3, $4, $5)"#,
-                Uuid::now_v7(),
-                user.as_uuid(),
-                event_type,
-                d.decided_at,
-                payload,
-            )
-            .execute(&mut *tx)
-            .await
-            .map_err(port_error)?;
+                    Uuid::now_v7(),
+                    user.as_uuid(),
+                    event_type,
+                    d.decided_at,
+                    payload,
+                )
+                .execute(&mut *tx)
+                .await
+                .map_err(port_error)?;
+            }
         }
         tx.commit().await.map_err(port_error)?;
         Ok(new)

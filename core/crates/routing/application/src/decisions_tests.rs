@@ -6,6 +6,7 @@ use routing_enterprise::{LifecycleState, NotAccepted, OptIn, RouteId, SignalType
 use shared_kernel::clock::FixedClock;
 
 use super::*;
+use crate::commands::Protection;
 use crate::routes::{
     AccountSizing, CreateOutcome, RouteChange, RouteRecord, RouteUpdate, UpdateOutcome,
 };
@@ -213,6 +214,30 @@ impl EntryGate for Gate {
     }
 }
 
+/// As gate 9: a barred or silent account has no profile; the others have 40/80 ticks.
+#[async_trait]
+impl BracketFor for Gate {
+    async fn brackets(
+        &self,
+        user: UserId,
+        contract: &Contract,
+        accounts: &[AccountId],
+    ) -> Result<HashMap<AccountId, Protection>, PortError> {
+        let barred = EntryGate::barred(self, user, contract, accounts).await?;
+        Ok(barred
+            .into_iter()
+            .filter(|(_, barred)| !barred)
+            .map(|(a, _)| {
+                let p = Protection {
+                    stop_ticks: 40,
+                    target_ticks: 80,
+                };
+                (a, p)
+            })
+            .collect())
+    }
+}
+
 /// Gates 6–9 in ADR-0003 §4.1 order.
 #[derive(Default)]
 struct Gates([Arc<Gate>; 4]);
@@ -329,6 +354,7 @@ impl World {
                 instrument_symbol: "MNQ".into(),
                 contract_month: None,
                 quantity,
+                order: None,
                 expiry_base: at(0),
             },
         );
@@ -576,7 +602,11 @@ async fn an_entry_waits_while_a_gate_cannot_answer() {
             assert!(w.store.legs().is_empty());
             assert!(w.store.events.lock().unwrap().is_empty());
 
-            // An answer missing for one account is the same as no answer.
+            // An answer missing for one account is the same as no answer. Gate 9 answers
+            // with the profiles it found: an absent account has none (barred, not waiting).
+            if n == 3 {
+                continue;
+            }
             let w = world();
             w.set_instruction(action, side, quantity);
             *w.gates.0[n].silent_for.lock().unwrap() = Some(w.account);
