@@ -18,7 +18,7 @@ infra/scripts/allwin-heavy pnpm test
 
 ## What it does
 
-1. **Semaphore:** 4 slots (`ALLWIN_HEAVY_SLOTS`; temporary, until Monday 2026-10-26 by user decision because the load is ~8, then back to 3) (`flock` on `slot.1` ... `slot.4`) in `/srv/www/allwin.worktrees/.heavy-locks`
+1. **Semaphore:** 4 slots (`ALLWIN_HEAVY_SLOTS`; 4 until the end of 2026-10-25 by user decision because the load is ~8; **from 2026-10-26 the default is 3 again, automatically** (by date, in the script)) (`flock` on `slot.1` ... `slot.4`) in `/srv/www/allwin.worktrees/.heavy-locks`
    (group `devs`, setgid, mode 2770, files 0660), shared by all accounts. It waits (polling every 5 s, up to
    30 min, then exit 75) when both are taken. The slot is held until the command ends, even if the wrapper is killed.
 2. **systemd scope** (`systemd-run --user --scope`, no root): `CPUQuota=200%`, `CPUWeight=20`,
