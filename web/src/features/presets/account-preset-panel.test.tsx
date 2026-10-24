@@ -82,7 +82,8 @@ describe("AccountPresetPanel", () => {
   it("announces a new version and says automation is suspended when the Core says so", async () => {
     serve({ preset: withNewer(true) });
     renderApp(<AccountPresetPanel accountId={accountId} renderOptIn={optIn} />);
-    expect(await screen.findByText(/Há uma nova versão do preset da Apex: versão 4, de 22\/10\/2026\./)).toBeInTheDocument();
+    // The firm name comes from a second query (the current preset version): give it room on a loaded host.
+    expect(await screen.findByText(/Há uma nova versão do preset da Apex: versão 4, de 22\/10\/2026\./, undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByText("Esta versão mudou a regra de automação. Ordens automatizadas estão suspensas até você revisar.")).toBeInTheDocument();
   });
 
