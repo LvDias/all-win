@@ -154,6 +154,41 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Fact]
+        public void Reconnect_snapshot_sends_stop_price_and_limit_price_valid_against_the_current_contract()
+        {
+            // M1 check (Maestro 2026-10-24): adapter-sim once sent order.price for a bracket leg and the Core refused it.
+            using var h = Ready();
+            h.Deliver(Place(C1, Side.Buy, 1, protection: Individual()));
+            h.AckAll();
+            var stop = h.Platform.OrderByName(Sim101, "aw:" + C1 + ":s")!;
+            var target = h.Platform.OrderByName(Sim101, "aw:" + C1 + ":t")!;
+            h.Restart();
+            h.Connect();
+
+            var raw = h.Sink.RawFrames.Last(f => (string?)Newtonsoft.Json.Linq.JObject.Parse(f)["type"] == MessageTypes.PositionSnapshot);
+            Assert.True(Contracts.ContractFileSchema.IsValidAdapterFrame(raw), raw);
+            // Negative control: the adapter-sim defect (order.price instead of stop_price) is refused by the same validator.
+            Assert.False(Contracts.ContractFileSchema.IsValidAdapterFrame(raw.Replace("\"stop_price\"", "\"price\"")));
+            var payload = Newtonsoft.Json.Linq.JObject.Parse(raw)["payload"]!;
+            Assert.Equal("reconnect", (string?)payload["trigger"]);
+            var orders = payload["accounts"]![0]!["working_orders"]!;
+
+            var stopSpec = orders.Single(o => (string?)o["child_role"] == "stop")["order"]!;
+            Assert.Equal("stop", (string?)stopSpec["type"]);
+            Assert.Equal(Newtonsoft.Json.Linq.JTokenType.String, stopSpec["stop_price"]!.Type);   // money is a string on the wire
+            Assert.Equal(stop.StopPrice, decimal.Parse((string)stopSpec["stop_price"]!, System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Null(stopSpec["limit_price"]);
+            Assert.Null(stopSpec["price"]);
+
+            var targetSpec = orders.Single(o => (string?)o["child_role"] == "target")["order"]!;
+            Assert.Equal("limit", (string?)targetSpec["type"]);
+            Assert.Equal(Newtonsoft.Json.Linq.JTokenType.String, targetSpec["limit_price"]!.Type);
+            Assert.Equal(target.LimitPrice, decimal.Parse((string)targetSpec["limit_price"]!, System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Null(targetSpec["stop_price"]);
+            Assert.Null(targetSpec["price"]);
+        }
+
+        [Fact]
         public void Unknown_leg_after_restart_is_reported_and_marks_the_bracket_incomplete()
         {
             using var h = Ready(oco: false);

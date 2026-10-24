@@ -302,22 +302,51 @@ namespace NinjaTrader.NinjaScript.AddOns
             return a;
         }
 
-        /// <summary>Kind from Connection.Options.Mode/Provider (ADR-0005 N4): anything unreadable is unknown, so refused.</summary>
+        /// <summary>
+        /// ADR-0005 N4 (2026-10-24): the host only reads plain values (names from the real NT8 8.1.x metadata, exact Options
+        /// type, the PlaybackConnection identity); AccountClassifier decides. Any read that throws makes the account unknown.
+        /// </summary>
         public static PlatformAccountInfo Info(Account a)
         {
-            object connection = Prop(a, "Connection");
-            object options = Prop(connection, "Options");
-            string mode = Str(Prop(options, "Mode"));
-            string provider = Str(Prop(options, "Provider"));
-            bool? simulation = mode == null ? (bool?)null : mode == "Simulation";
+            var marks = new AccountMarks();
+            string connectionName = null;
+            string optionsType = null;
+            bool connected = false;
+            try
+            {
+                NinjaTrader.Cbi.Connection connection = a.Connection;
+                NinjaTrader.Cbi.ConnectOptions options = connection == null ? null : connection.Options;
+                marks.AccountProvider = a.Provider.ToString();
+                if (options != null)
+                {
+                    Type type = options.GetType();
+                    optionsType = type.FullName;
+                    // Exact type only: a subclass of SimulatorOptions/PlaybackOptions is not the local simulator.
+                    marks.OptionsExactlySimulator = type == typeof(NinjaTrader.Cbi.SimulatorOptions);
+                    marks.OptionsExactlyPlayback = type == typeof(NinjaTrader.Cbi.PlaybackOptions);
+                    marks.OptionsProvider = options.Provider.ToString();
+                    marks.Mode = options.Mode.ToString();
+                    marks.IsDemo = options.IsDemo;
+                    connectionName = options.Name;
+                }
+                marks.IsPlaybackConnection = connection != null && ReferenceEquals(connection, NinjaTrader.Cbi.Connection.PlaybackConnection);
+                connected = connection != null && connection.Status == NinjaTrader.Cbi.ConnectionStatus.Connected;
+            }
+            catch (Exception)
+            {
+                marks.ReadFailed = true;
+            }
             return new PlatformAccountInfo
             {
                 Name = a.Name,
-                ConnectionName = Str(Prop(options, "Name")),
-                Provider = provider,
-                Kind = AccountClassifier.Kind(simulation, provider),
-                OcoLocation = AccountClassifier.Oco(provider),
-                Connected = Str(Prop(connection, "Status")) == "Connected",
+                ConnectionName = connectionName,
+                Provider = marks.OptionsProvider,
+                AccountProvider = marks.AccountProvider,
+                OptionsType = optionsType,
+                Mode = marks.Mode,
+                Kind = AccountClassifier.Kind(marks),
+                OcoLocation = AccountClassifier.Oco(marks.OptionsProvider),
+                Connected = connected,
             };
         }
 
@@ -330,7 +359,9 @@ namespace NinjaTrader.NinjaScript.AddOns
 
         public static string Describe(PlatformAccountInfo i)
         {
-            return "account=" + i.Name + " connection=" + (i.ConnectionName ?? "?") + " provider=" + (i.Provider ?? "?")
+            // Names only, never balances (Pêndulo condition 3): enough to prove the N4 decision from the log.
+            return "account=" + i.Name + " connection=" + (i.ConnectionName ?? "?") + " account_provider=" + (i.AccountProvider ?? "?")
+                + " options_provider=" + (i.Provider ?? "?") + " options_type=" + (i.OptionsType ?? "?") + " mode=" + (i.Mode ?? "?")
                 + " kind=" + i.Kind + " oco=" + i.OcoLocation + " connected=" + i.Connected;
         }
 

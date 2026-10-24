@@ -20,6 +20,9 @@ namespace AllWin.Adapter.Core.Tests.Engine
     public sealed class RecordingSink : IFrameSink
     {
         public List<Envelope> Frames { get; } = new List<Envelope>();
+
+        /// <summary>The frames exactly as sent on the wire, for tests that check field names.</summary>
+        public List<string> RawFrames { get; } = new List<string>();
         public List<int> Closes { get; } = new List<int>();
 
         public void Send(string frame)
@@ -29,6 +32,7 @@ namespace AllWin.Adapter.Core.Tests.Engine
             // Second opinion from an independent JSON Schema implementation on every frame the engine sends.
             if (!Contracts.ReferenceSchema.IsValidAdapterFrame(frame)) throw new InvalidOperationException("Reference validator rejects an engine frame: " + frame);
             Frames.Add(decoded.Envelope!);
+            RawFrames.Add(frame);
         }
 
         public void Close(int code, string reason) => Closes.Add(code);

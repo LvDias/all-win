@@ -152,6 +152,43 @@ namespace AllWin.Adapter.Core.Tests.Engine
         }
 
         [Theory]
+        [InlineData(AccountKind.Simulation, true)]
+        [InlineData(AccountKind.Playback, true)]
+        [InlineData(AccountKind.Live, false)]
+        [InlineData(AccountKind.Unknown, false)]
+        public void Development_build_executes_only_on_simulation_or_playback(AccountKind kind, bool executes)
+        {
+            // ADR-0005 N4 (2026-10-24): every AccountKind is listed, so a new kind cannot slip through untested.
+            Assert.Equal(4, System.Enum.GetValues(typeof(AccountKind)).Length);
+            using var h = Ready(p => p.SetKind(Sim101, kind));
+            h.Deliver(Place(C1, Side.Buy, 1));
+            if (executes)
+            {
+                Assert.NotEmpty(h.Platform.CallLog);
+                Assert.Contains(h.Reports(C1), r => r.Status == ReportStatus.Filled);
+            }
+            else
+            {
+                Assert.Equal(ReasonCodes.CommandAccountNotSimulation, h.Reports(C1).Single().ReasonCode);
+                Assert.Empty(h.Platform.CallLog);
+            }
+        }
+
+        [Fact]
+        public void The_account_kind_is_read_again_before_every_command()
+        {
+            // ADR-0005 N4 point 3 (Esquadro): the decision never comes from a cache of the hello.
+            using var h = Ready();
+            h.Deliver(Place(C1, Side.Buy, 1));
+            Assert.Contains(h.Reports(C1), r => r.Status == ReportStatus.Filled);
+            h.Platform.SetKind(Sim101, AccountKind.Unknown);
+            h.Platform.CallLog.Clear();
+            h.Deliver(Place(C2, Side.Buy, 1));
+            Assert.Equal(ReasonCodes.CommandAccountNotSimulation, h.Reports(C2).Single().ReasonCode);
+            Assert.Empty(h.Platform.CallLog);
+        }
+
+        [Theory]
         [InlineData(AccountKind.Live)]
         [InlineData(AccountKind.Unknown)]
         public void Development_build_refuses_non_simulation_accounts_even_if_the_core_maps_them(AccountKind kind)

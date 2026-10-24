@@ -63,7 +63,16 @@ namespace AllWin.Adapter.Core.Platform
         /// <summary>Connection.Options.Provider name; part of the live-account consent key (ADR-0005 N11).</summary>
         public string? Provider { get; set; }
 
-        /// <summary>Derived by the host from Connection.Options.Mode and the provider (ADR-0005 N4); unknown on any doubt.</summary>
+        /// <summary>Account.Provider enum name, for the log (ADR-0005 N4).</summary>
+        public string? AccountProvider { get; set; }
+
+        /// <summary>Exact type of Account.Connection.Options (e.g. NinjaTrader.Cbi.SimulatorOptions), for the log.</summary>
+        public string? OptionsType { get; set; }
+
+        /// <summary>Connection.Options.Mode enum name, for the log; it never grants simulation (ADR-0005 N4).</summary>
+        public string? Mode { get; set; }
+
+        /// <summary>AccountClassifier.Kind over the marks the host read (ADR-0005 N4, 2026-10-24); unknown on any doubt.</summary>
         public AccountKind Kind { get; set; } = AccountKind.Unknown;
 
         /// <summary>Derived by the host from the provider (ADR-0005 N8).</summary>

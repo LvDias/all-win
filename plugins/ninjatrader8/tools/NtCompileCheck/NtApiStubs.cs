@@ -61,6 +61,29 @@ namespace NinjaTrader.Cbi
 
     public enum MarketPosition { Flat, Long, Short }
 
+    // Real NinjaTrader.Core.dll 8.1.x metadata (2026-10-24), subset: the members the host reads for ADR-0005 N4.
+    public enum Mode { Live = 0, Simulation = 1 }
+    public enum Provider { InteractiveBrokers = 8, Playback = 13, Simulator = 15, Provider1 = 20, Custom0 = 1000, Unknown = 9999 }
+    public enum ConnectionStatus { Disconnected = 0, Disconnecting = 1, ConnectionLost = 2, Connected = 3, Connecting = 4 }
+
+    public class ConnectOptions
+    {
+        public Mode Mode { get { throw new NotImplementedException(); } }
+        public Provider Provider { get { throw new NotImplementedException(); } }
+        public string Name { get { throw new NotImplementedException(); } }
+        public bool IsDemo { get { throw new NotImplementedException(); } }
+    }
+
+    public class SimulatorOptions : ConnectOptions { }
+    public class PlaybackOptions : ConnectOptions { }
+
+    public class Connection
+    {
+        public static Connection PlaybackConnection { get { throw new NotImplementedException(); } }
+        public ConnectOptions Options { get { throw new NotImplementedException(); } }
+        public ConnectionStatus Status { get { throw new NotImplementedException(); } }
+    }
+
     // Real NT8 type that collides with AllWin.Adapter.Core.Engine.LogLevel (CS0104 found in the user's NT8, 0.1.0-min import).
     public enum LogLevel { Alert, Error, Information, Warning }
 
@@ -138,6 +161,8 @@ namespace NinjaTrader.Cbi
     {
         public static Collection<Account> All { get { throw new NotImplementedException(); } }
         public string Name { get { throw new NotImplementedException(); } }
+        public Connection Connection { get { throw new NotImplementedException(); } }
+        public Provider Provider { get { throw new NotImplementedException(); } }
         public Collection<Execution> Executions { get { throw new NotImplementedException(); } }
         public Collection<Order> Orders { get { throw new NotImplementedException(); } }
         public Collection<Position> Positions { get { throw new NotImplementedException(); } }
