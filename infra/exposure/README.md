@@ -25,7 +25,7 @@ and `<DEV_SERVER_PUBLIC_IP>`.
 | Body cap | 64 KB at the edge |
 | Auth | the Core's own device-token check on `/adapter/v1` (token hashed at rest, per-token and per-IP limits in the Core) |
 | Client address (L-W2) | the Core's gateway trusts the **last** hop of `X-Forwarded-For`, correct only with exactly **one** trusted proxy in front: `caddy-adapter` **overwrites** the header with the real peer (`header_up X-Forwarded-For {remote_host}`), never appends a value sent by the client. Checked with a real Caddy: a forged `X-Forwarded-For: 1.2.3.4, 5.6.7.8` reached the backend as the peer address only (Caddy's default with no `trusted_proxies`). No second proxy or CDN in front, and no `trusted_proxies`, without revisiting this |
-| Not reachable | the main dev Caddy (stays on `127.0.0.1`, moved to 8444 while the gateway uses 8443), postgres, the Core's own port, the web |
+| Not reachable | the stack's own edge (stays on `127.0.0.1:18443`), postgres, the Core's own port, the web |
 
 ## TLS: how the plugin trusts the certificate without a public domain
 
@@ -80,8 +80,7 @@ infra/exposure/expose-open.sh <VPS_PUBLIC_IP>           # EXACTLY one argument: 
 ```
 
 `expose-open.sh` accepts exactly one argument and refuses any other (no `--dry-run`, no `--test-source`; the test-only variable is unset). To see the rules without
-applying anything, run `infra/exposure/expose-dry-run.sh <VPS_PUBLIC_IP>`, which never touches a rule, a container or the marker. `expose-open.sh` moves the dev edge from 8443 to 8444 (`CADDY_HTTPS_PORT=8444`) so 8443 is free for the gateway, and closes everything again if any step
-fails. The WebSocket frame size limit after the upgrade is the Core's (the 64 KB cap above applies to HTTP request bodies, not to WebSocket frames).
+applying anything, run `infra/exposure/expose-dry-run.sh <VPS_PUBLIC_IP>`, which never touches a rule, a container or the marker. `expose-open.sh` works on the **running Sunday stack only**: compose project `allwin-sunday`, the same files as the stack (`docker-compose.dev.yml` + `docker-compose.stack.yml` from `ALLWIN_STACK_DIR`, default `../compose`, plus `docker-compose.expose.yml`) and that stack's `.env`. It never creates another stack: `caddy-adapter` starts with `--no-deps`, and the Core container and the compose network (hence the gateway bridge for the firewall) are found by the `com.docker.compose.project` label and must be **exactly one each** (other Core containers on the host are ignored). The stack's own edge stays on its loopback port (18443), so 8443 is free for the gateway; if any step fails. The WebSocket frame size limit after the upgrade is the Core's (the 64 KB cap above applies to HTTP request bodies, not to WebSocket frames).
 
 ## Verify (from outside the server, not from the server)
 
