@@ -1,6 +1,6 @@
 # Prop Firm Preset Research — Format
 
-> **Owner:** Product Owner (Bússola @ Dev2) · **Applies to:** V1-R1, R2, R3 ([slice-plan.md](../release-1/slice-plan.md)) · **Date:** 2026-10-23 · **Rev.** 2 (platforms, automation classification, "not confirmed")
+> **Owner:** Product Owner (Bússola @ Dev2) · **Applies to:** V1-R1, R2, R3 ([slice-plan.md](../release-1/slice-plan.md)) · **Date:** 2026-10-24 · **Rev.** 3 (platforms, automation text, device fields, commission, `unknown` daily loss, `status` values, trailing lock)
 > Research files live in `docs/product/presets/research/`, owned and written only by the researcher ("Lupa"). The PO reviews each file before any preset is built from it.
 > Canonical rules: [product-vision.md §9, §12](../product-vision.md) — presets are never invented; each firm's rules are verified on official pages; anything unverifiable is reported to the user, who decides to delay that preset or release without it.
 
@@ -36,13 +36,14 @@
 |---|---|
 | Account size | As published (e.g. "50K"); also the nominal amount in USD |
 | Drawdown amount | Exact USD as published |
-| Drawdown type | One of: `trailing_intraday`, `trailing_eod`, `static`, `other` (describe). Include when/if it stops trailing (e.g., locks at starting balance + X) |
-| Daily loss limit | Exact USD, or `none` if the firm states there is none; also whether it is a hard breach or a soft "pause for the day" |
+| Drawdown type | One of: `trailing_intraday`, `trailing_eod`, `static`, `other` (describe). Include when/if it stops trailing (e.g., locks at starting balance + X); record the lock as published (the level it reaches and any offset) so the preset can carry a structured trailing lock only where the firm's text states it |
+| Daily loss limit | Exact USD, or `none` **only if the firm states there is none**; also whether it is a hard breach or a soft "pause for the day". When the firm does not say, use `kind: unknown` (never `none`, which would invent a rule; D8, [Decision 2026-10-24]) with an entry in the gaps list |
 | Profit target | Exact USD (evaluation phases); `none` where not applicable |
 | Consistency rule | Exact wording and threshold (e.g., "no day > 30% of total profit"), and the phase it applies to |
 | Max position size | Maximum contracts in **minis and micros** as published (state the mini:micro ratio if given); scaling rules if size depends on balance |
 | Minimum trading days | Number and the phase it applies to |
 | Payout / activation rules | Only if they change what the trader may do (e.g., buffer that changes drawdown); fees and prices are **not** needed |
+| Commission | The per-contract commission the firm publishes for the instrument, if any. If the firm publishes none, leave it **empty** (`not published by the firm`); the product then asks the user for a value and warns "commission not entered" (S16 AC-12, S13 AC-11; D9) |
 | Source | URL + access date for each value (a footnote per row is fine) |
 
 Money values are written exactly as published, as strings, with no rounding (e.g. `"2,500.00"` → `"2500.00"` in YAML). Never derive a value by arithmetic unless the firm publishes the formula; if you do apply the firm's formula, show it.
@@ -58,7 +59,8 @@ size_usd: "50000.00"
 instruments: [MNQ, NQ]
 platforms: [Rithmic, Tradovate]   # as published for this plan
 drawdown: { amount_usd: "0.00", type: trailing_intraday, stops_trailing_at: "<text or null>" }
-daily_loss_limit: { amount_usd: null, kind: none }   # kind: hard | soft_pause | none
+daily_loss_limit: { amount_usd: null, kind: none }   # kind: hard | soft_pause | none | unknown (unknown = not published; needs a gaps entry)
+commission_usd_per_contract: null     # null = not published by the firm; never estimate
 profit_target_usd: null
 consistency_rule: { text: null, threshold_pct: null }
 max_position: { minis: null, micros: null, scaling: null }
@@ -69,13 +71,14 @@ automated_trading_allowed: unknown   # yes | no | conditional | unknown
 automation_rule_text: null          # verbatim, shown in the opt-in warning
 vps_allowed: unknown                # yes | no | conditional | unknown
 personal_device_required: unknown   # yes | no | unknown
-status: unverified       # verified | partial | unverified | conflict (per field: not_confirmed)
+status: unverified       # block status: verified | partial | unverified | conflict
+                         # a field whose official pages conflict, or that is unpublished, is listed in not_confirmed_fields and ships as "not confirmed"
 not_confirmed_fields: []
 sources:
   - { field: drawdown, url: "https://...", accessed: "2026-10-23" }
 ```
 
-`null` means not found; `unknown` is allowed only together with an entry in the gaps list. The YAML is input for the preset seed (V1-S16); the Markdown text and sources are the evidence.
+`null` means not found; `unknown` is allowed only together with an entry in the gaps list. `automation_rule_text` is copied verbatim and is what the user sees in the opt-in warning; when the firm publishes no automation rule, the stance is `unknown` and the product shows its generic warning (S5 §5.1), never a rule the firm did not publish. `vps_allowed` and `personal_device_required` are information shown to the user (S-5); `unknown` is shown as "not published". Platforms the NinjaTrader 8 plugin cannot reach are recorded as published; the product marks them manual-tracking only (S16 AC-7). The YAML is input for the preset seed (V1-S16); the Markdown text and sources are the evidence.
 
 ## 6. Done criteria for one firm (maps to V1-R AC-1…AC-5)
 
