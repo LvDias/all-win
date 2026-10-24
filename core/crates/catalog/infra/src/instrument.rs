@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use catalog_application::CatalogError;
 use catalog_application::enterprise::Symbol;
 use catalog_application::enterprise::instrument::Instrument;
-use catalog_application::instrument::InstrumentReader;
+use catalog_application::instrument::{ContractReader, InstrumentReader};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -71,6 +72,29 @@ impl InstrumentReader for PgInstrumentRepository {
             "SELECT size_amount FROM catalog.standard_account_size ORDER BY size_amount"
         )
         .fetch_all(&self.pool)
+        .await
+        .map_err(|e| CatalogError(e.to_string()))
+    }
+}
+
+#[async_trait]
+impl ContractReader for PgInstrumentRepository {
+    async fn active_contract(
+        &self,
+        symbol: &str,
+        at: DateTime<Utc>,
+    ) -> Result<Option<String>, CatalogError> {
+        sqlx::query_scalar!(
+            r#"SELECT to_char(c.contract_month, 'YYYY-MM') AS "month!"
+                 FROM catalog.instrument_contract c
+                 JOIN catalog.instrument i ON i.id = c.instrument_id
+                WHERE i.symbol = $1 AND i.is_enabled AND c.active_from <= $2
+                ORDER BY c.active_from DESC
+                LIMIT 1"#,
+            symbol,
+            at
+        )
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| CatalogError(e.to_string()))
     }

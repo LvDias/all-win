@@ -9,6 +9,7 @@ pub mod identity;
 pub mod openapi;
 pub mod outbox;
 pub mod purge;
+pub mod routing;
 pub mod telemetry;
 pub mod unconsumed;
 pub mod wiring;

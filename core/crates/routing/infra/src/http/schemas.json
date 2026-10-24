@@ -1,0 +1,1258 @@
+{
+ "Route": {
+  "additionalProperties": false,
+  "properties": {
+   "account_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "created_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   },
+   "effective": {
+    "additionalProperties": false,
+    "allOf": [
+     {
+      "if": {
+       "properties": {
+        "status": {
+         "const": "receiving"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "reasons": {
+         "maxItems": 0
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "status": {
+         "const": "exits_only"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "reasons": {
+         "items": {
+          "properties": {
+           "blocks": {
+            "const": "entries_only"
+           }
+          }
+         },
+         "minItems": 1
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "status": {
+         "const": "not_receiving"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "reasons": {
+         "contains": {
+          "properties": {
+           "blocks": {
+            "const": "all_actions"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    ],
+    "description": "Computed by the Core from the account, source, connection, opt-in, sync and risk state; the UI renders it and never re-implements a gate.",
+    "properties": {
+     "computed_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "type": "string"
+     },
+     "reasons": {
+      "description": "Every reason that applies, most severe first (the Core's order follows the UI badge priority); empty with `receiving`.",
+      "items": {
+       "additionalProperties": false,
+       "allOf": [
+        {
+         "else": {
+          "properties": {
+           "blocks": {
+            "const": "all_actions"
+           }
+          }
+         },
+         "if": {
+          "properties": {
+           "code": {
+            "enum": [
+             "routing.out_of_sync",
+             "routing.risk_blocked",
+             "routing.no_bracket_profile",
+             "routing.limits_pending"
+            ]
+           }
+          }
+         },
+         "then": {
+          "properties": {
+           "blocks": {
+            "const": "entries_only"
+           }
+          }
+         }
+        },
+        {
+         "else": {
+          "not": {
+           "required": [
+            "lifecycle_state"
+           ]
+          }
+         },
+         "if": {
+          "properties": {
+           "code": {
+            "const": "routing.account_inactive"
+           }
+          }
+         },
+         "then": {
+          "required": [
+           "lifecycle_state"
+          ]
+         }
+        },
+        {
+         "else": {
+          "not": {
+           "required": [
+            "opt_in_state"
+           ]
+          }
+         },
+         "if": {
+          "properties": {
+           "code": {
+            "enum": [
+             "routing.automation_not_accepted",
+             "routing.copy_not_accepted"
+            ]
+           }
+          }
+         },
+         "then": {
+          "required": [
+           "opt_in_state"
+          ]
+         }
+        },
+        {
+         "else": {
+          "not": {
+           "required": [
+            "instrument_ids"
+           ]
+          }
+         },
+         "if": {
+          "properties": {
+           "code": {
+            "const": "routing.no_bracket_profile"
+           }
+          }
+         },
+         "then": {
+          "required": [
+           "instrument_ids"
+          ]
+         }
+        }
+       ],
+       "properties": {
+        "blocks": {
+         "description": "`entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`\n(exits still go through, S7 AC-8 / P1); `all_actions` for every other code (a paused or\ndisabled account receives no exit either). Fixed per code.\n",
+         "enum": [
+          "all_actions",
+          "entries_only"
+         ],
+         "type": "string"
+        },
+        "code": {
+         "description": "Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,\nin this order (F\u00a77.2 extended with the route-level states): `source_revoked`, `route_disabled`,\n`platform_unbound`, `out_of_sync`, `connection_disconnected`, `connection_checking`, `broker_disconnected`, `binding_pending`, `risk_blocked`, `limits_pending`,\n`no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.\nThis is a display order only. The instruction gates and their order are ADR-0003 \u00a74.1 (Esquadro's\nS7 delta, with ADR-0008): `account_inactive` \u2192 `platform_unbound` \u2192 `automation_not_accepted` \u2192\n`copy_not_accepted` \u2192 `signal_type_not_selected` \u2192 `out_of_sync` \u2192 `risk_blocked` \u2192\n`limits_pending` \u2192 `no_bracket_profile` \u2192 action rules \u2192 `expired` (entries only). The audit code of a skipped\ninstruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and\n`no_bracket_profile` block entries only. For a `reverse` the \u00a74.2 position check runs before the\nentry gates (Q74): position opposite \u2192 the close leg runs and the open is skipped with the gate\ncode; flat \u2192 skipped with the gate code; already on the reverse side \u2192 `routing.position_conflict`\n(rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction\nreaches the gates); `connection_disconnected` (every connection status other than `connected`:\ndisconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an\nentry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a\nprotective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as\nlate (ADR-0003 \u00a74.1, ADR-0004 T1). `connection_checking` (S11-03, 5.3.0) is route status only, like\n`connection_disconnected`. It covers the connection being `connected` while the mandatory reconnect\ncheck of the account has not finished. The window runs per mapped account, from `welcome` until the\nCore has evaluated the reconnect snapshot and the replayed outbox reports (ADR-0004 \u00a74 step 3,\n\u00a76.1 r5), or until the session ends. Meanwhile the Core sends no command to the account: entries\nkeep their TTL and expire if the window outlasts it, and exits wait. Nothing is skipped, and\n`AccountSync.observable` is false. Bounds (Esquadro, Crivo Q2; ADR-0004 r5; provisional values,\ntuned by Ferro and Pulso):\n- after 60 s without the evaluation there is an operational and user alert (\"verifica\u00e7\u00e3o da\n  conex\u00e3o n\u00e3o conclu\u00edda; ordens aguardando\"), and the route shows `connection_checking` with the\n  elapsed time;\n- after 5 min the Core closes the session (4000, `snapshot_timeout`). The adapter reconnects and\n  sends the snapshot again. It counts as a normal disconnect (ADR-0004 \u00a76), so an account with a\n  position becomes out of sync.\n`broker_disconnected` (5.3.0, ADR-0004 r5 \u00a76.3, Crivo m2) is route status only and never skips. A\nsnapshot reports `connected: false` (the platform lost its broker), so delivery to the account is\nHELD: entries keep their TTL and expire, and exits wait. Sending would only produce\n`command.account_not_simulation` and lose an exit. It ends with the next snapshot that reports\n`connected: true`, of any trigger, at reconnect or mid-session.\n`binding_pending` (5.3.0, Esquadro, Crivo R3 on r5) is route status only and never skips. It is\nshown when the account was bound or rebound while its connection's session is open: the binding\ntakes effect at the next handshake. Until then, entries expire by their TTL and exits wait. The web\nsays \"reconecte o plugin para ativar o v\u00ednculo\".\nNew codes may be added in a minor version; clients show a generic text for an unknown code.\n",
+         "enum": [
+          "routing.account_inactive",
+          "routing.source_revoked",
+          "routing.platform_unbound",
+          "routing.automation_not_accepted",
+          "routing.copy_not_accepted",
+          "routing.connection_disconnected",
+          "routing.connection_checking",
+          "routing.binding_pending",
+          "routing.broker_disconnected",
+          "routing.out_of_sync",
+          "routing.risk_blocked",
+          "routing.no_bracket_profile",
+          "routing.limits_pending",
+          "routing.route_disabled"
+         ],
+         "type": "string"
+        },
+        "instrument_ids": {
+         "description": "With `routing.no_bracket_profile` \u2014 the enabled instruments for which the account has no stop/target profile (profiles are per account \u00d7 instrument); entries in other instruments still go through.",
+         "items": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+         },
+         "minItems": 1,
+         "type": "array"
+        },
+        "lifecycle_state": {
+         "description": "With `routing.account_inactive` (`paused` or `disabled`), so the text can name it.",
+         "enum": [
+          "paused",
+          "disabled"
+         ],
+         "type": "string"
+        },
+        "opt_in_state": {
+         "description": "With `routing.automation_not_accepted` / `routing.copy_not_accepted`. `declined` = the state is `chosen` with choice `declined`; `pending_review` = the state is `pending_review`.",
+         "enum": [
+          "declined",
+          "pending_review"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "code",
+        "blocks"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "status": {
+      "description": "`receiving` = no reason; `exits_only` = only `entries_only` reasons; `not_receiving` = at least\none `all_actions` reason.\n",
+      "enum": [
+       "receiving",
+       "exits_only",
+       "not_receiving"
+      ],
+      "type": "string"
+     }
+    },
+    "required": [
+     "status",
+     "reasons",
+     "computed_at"
+    ],
+    "type": "object"
+   },
+   "id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "is_enabled": {
+    "type": "boolean"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "signal_types": {
+    "description": "At least one (S7 AC-2, Q-S7-1); an empty list gets 400 `common.invalid_request` with pointer `/signal_types`.",
+    "items": {
+     "description": "Selectable signal types of a TradingView route (ADR-0003). `master_account` belongs to follower routes (S19) and is not accepted here.",
+     "enum": [
+      "trigger",
+      "trade_plan",
+      "nq_trigger"
+     ],
+     "type": "string"
+    },
+    "minItems": 1,
+    "type": "array",
+    "uniqueItems": true
+   },
+   "source_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "updated_at": {
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "source_id",
+   "account_id",
+   "signal_types",
+   "is_enabled",
+   "effective",
+   "row_version",
+   "created_at",
+   "updated_at"
+  ],
+  "type": "object"
+ },
+ "RouteCandidates": {
+  "additionalProperties": false,
+  "properties": {
+   "candidates": {
+    "description": "Sorted by account `display_name`.",
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "account_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "blocking_reasons": {
+       "description": "Empty \u2192 selectable. Otherwise the option is shown disabled with these reasons, most severe\nfirst. Only `routing.automation_not_accepted` (automated source) and `routing.platform_unbound`\n(Q37) block creation; every other reason only affects `status_if_routed`.\n",
+       "items": {
+        "additionalProperties": false,
+        "allOf": [
+         {
+          "else": {
+           "properties": {
+            "blocks": {
+             "const": "all_actions"
+            }
+           }
+          },
+          "if": {
+           "properties": {
+            "code": {
+             "enum": [
+              "routing.out_of_sync",
+              "routing.risk_blocked",
+              "routing.no_bracket_profile",
+              "routing.limits_pending"
+             ]
+            }
+           }
+          },
+          "then": {
+           "properties": {
+            "blocks": {
+             "const": "entries_only"
+            }
+           }
+          }
+         },
+         {
+          "else": {
+           "not": {
+            "required": [
+             "lifecycle_state"
+            ]
+           }
+          },
+          "if": {
+           "properties": {
+            "code": {
+             "const": "routing.account_inactive"
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "lifecycle_state"
+           ]
+          }
+         },
+         {
+          "else": {
+           "not": {
+            "required": [
+             "opt_in_state"
+            ]
+           }
+          },
+          "if": {
+           "properties": {
+            "code": {
+             "enum": [
+              "routing.automation_not_accepted",
+              "routing.copy_not_accepted"
+             ]
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "opt_in_state"
+           ]
+          }
+         },
+         {
+          "else": {
+           "not": {
+            "required": [
+             "instrument_ids"
+            ]
+           }
+          },
+          "if": {
+           "properties": {
+            "code": {
+             "const": "routing.no_bracket_profile"
+            }
+           }
+          },
+          "then": {
+           "required": [
+            "instrument_ids"
+           ]
+          }
+         }
+        ],
+        "properties": {
+         "blocks": {
+          "description": "`entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`\n(exits still go through, S7 AC-8 / P1); `all_actions` for every other code (a paused or\ndisabled account receives no exit either). Fixed per code.\n",
+          "enum": [
+           "all_actions",
+           "entries_only"
+          ],
+          "type": "string"
+         },
+         "code": {
+          "description": "Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,\nin this order (F\u00a77.2 extended with the route-level states): `source_revoked`, `route_disabled`,\n`platform_unbound`, `out_of_sync`, `connection_disconnected`, `connection_checking`, `broker_disconnected`, `binding_pending`, `risk_blocked`, `limits_pending`,\n`no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.\nThis is a display order only. The instruction gates and their order are ADR-0003 \u00a74.1 (Esquadro's\nS7 delta, with ADR-0008): `account_inactive` \u2192 `platform_unbound` \u2192 `automation_not_accepted` \u2192\n`copy_not_accepted` \u2192 `signal_type_not_selected` \u2192 `out_of_sync` \u2192 `risk_blocked` \u2192\n`limits_pending` \u2192 `no_bracket_profile` \u2192 action rules \u2192 `expired` (entries only). The audit code of a skipped\ninstruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and\n`no_bracket_profile` block entries only. For a `reverse` the \u00a74.2 position check runs before the\nentry gates (Q74): position opposite \u2192 the close leg runs and the open is skipped with the gate\ncode; flat \u2192 skipped with the gate code; already on the reverse side \u2192 `routing.position_conflict`\n(rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction\nreaches the gates); `connection_disconnected` (every connection status other than `connected`:\ndisconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an\nentry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a\nprotective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as\nlate (ADR-0003 \u00a74.1, ADR-0004 T1). `connection_checking` (S11-03, 5.3.0) is route status only, like\n`connection_disconnected`. It covers the connection being `connected` while the mandatory reconnect\ncheck of the account has not finished. The window runs per mapped account, from `welcome` until the\nCore has evaluated the reconnect snapshot and the replayed outbox reports (ADR-0004 \u00a74 step 3,\n\u00a76.1 r5), or until the session ends. Meanwhile the Core sends no command to the account: entries\nkeep their TTL and expire if the window outlasts it, and exits wait. Nothing is skipped, and\n`AccountSync.observable` is false. Bounds (Esquadro, Crivo Q2; ADR-0004 r5; provisional values,\ntuned by Ferro and Pulso):\n- after 60 s without the evaluation there is an operational and user alert (\"verifica\u00e7\u00e3o da\n  conex\u00e3o n\u00e3o conclu\u00edda; ordens aguardando\"), and the route shows `connection_checking` with the\n  elapsed time;\n- after 5 min the Core closes the session (4000, `snapshot_timeout`). The adapter reconnects and\n  sends the snapshot again. It counts as a normal disconnect (ADR-0004 \u00a76), so an account with a\n  position becomes out of sync.\n`broker_disconnected` (5.3.0, ADR-0004 r5 \u00a76.3, Crivo m2) is route status only and never skips. A\nsnapshot reports `connected: false` (the platform lost its broker), so delivery to the account is\nHELD: entries keep their TTL and expire, and exits wait. Sending would only produce\n`command.account_not_simulation` and lose an exit. It ends with the next snapshot that reports\n`connected: true`, of any trigger, at reconnect or mid-session.\n`binding_pending` (5.3.0, Esquadro, Crivo R3 on r5) is route status only and never skips. It is\nshown when the account was bound or rebound while its connection's session is open: the binding\ntakes effect at the next handshake. Until then, entries expire by their TTL and exits wait. The web\nsays \"reconecte o plugin para ativar o v\u00ednculo\".\nNew codes may be added in a minor version; clients show a generic text for an unknown code.\n",
+          "enum": [
+           "routing.account_inactive",
+           "routing.source_revoked",
+           "routing.platform_unbound",
+           "routing.automation_not_accepted",
+           "routing.copy_not_accepted",
+           "routing.connection_disconnected",
+           "routing.connection_checking",
+           "routing.binding_pending",
+           "routing.broker_disconnected",
+           "routing.out_of_sync",
+           "routing.risk_blocked",
+           "routing.no_bracket_profile",
+           "routing.limits_pending",
+           "routing.route_disabled"
+          ],
+          "type": "string"
+         },
+         "instrument_ids": {
+          "description": "With `routing.no_bracket_profile` \u2014 the enabled instruments for which the account has no stop/target profile (profiles are per account \u00d7 instrument); entries in other instruments still go through.",
+          "items": {
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+         },
+         "lifecycle_state": {
+          "description": "With `routing.account_inactive` (`paused` or `disabled`), so the text can name it.",
+          "enum": [
+           "paused",
+           "disabled"
+          ],
+          "type": "string"
+         },
+         "opt_in_state": {
+          "description": "With `routing.automation_not_accepted` / `routing.copy_not_accepted`. `declined` = the state is `chosen` with choice `declined`; `pending_review` = the state is `pending_review`.",
+          "enum": [
+           "declined",
+           "pending_review"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "code",
+         "blocks"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "status_if_routed": {
+       "additionalProperties": false,
+       "allOf": [
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "const": "receiving"
+           }
+          }
+         },
+         "then": {
+          "properties": {
+           "reasons": {
+            "maxItems": 0
+           }
+          }
+         }
+        },
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "const": "exits_only"
+           }
+          }
+         },
+         "then": {
+          "properties": {
+           "reasons": {
+            "items": {
+             "properties": {
+              "blocks": {
+               "const": "entries_only"
+              }
+             }
+            },
+            "minItems": 1
+           }
+          }
+         }
+        },
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "const": "not_receiving"
+           }
+          }
+         },
+         "then": {
+          "properties": {
+           "reasons": {
+            "contains": {
+             "properties": {
+              "blocks": {
+               "const": "all_actions"
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ],
+       "description": "The status a new enabled route would have now (e.g. `exits_only` for an out-of-sync account).",
+       "properties": {
+        "computed_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        },
+        "reasons": {
+         "description": "Every reason that applies, most severe first (the Core's order follows the UI badge priority); empty with `receiving`.",
+         "items": {
+          "additionalProperties": false,
+          "allOf": [
+           {
+            "else": {
+             "properties": {
+              "blocks": {
+               "const": "all_actions"
+              }
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "enum": [
+                "routing.out_of_sync",
+                "routing.risk_blocked",
+                "routing.no_bracket_profile",
+                "routing.limits_pending"
+               ]
+              }
+             }
+            },
+            "then": {
+             "properties": {
+              "blocks": {
+               "const": "entries_only"
+              }
+             }
+            }
+           },
+           {
+            "else": {
+             "not": {
+              "required": [
+               "lifecycle_state"
+              ]
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "const": "routing.account_inactive"
+              }
+             }
+            },
+            "then": {
+             "required": [
+              "lifecycle_state"
+             ]
+            }
+           },
+           {
+            "else": {
+             "not": {
+              "required": [
+               "opt_in_state"
+              ]
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "enum": [
+                "routing.automation_not_accepted",
+                "routing.copy_not_accepted"
+               ]
+              }
+             }
+            },
+            "then": {
+             "required": [
+              "opt_in_state"
+             ]
+            }
+           },
+           {
+            "else": {
+             "not": {
+              "required": [
+               "instrument_ids"
+              ]
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "const": "routing.no_bracket_profile"
+              }
+             }
+            },
+            "then": {
+             "required": [
+              "instrument_ids"
+             ]
+            }
+           }
+          ],
+          "properties": {
+           "blocks": {
+            "description": "`entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`\n(exits still go through, S7 AC-8 / P1); `all_actions` for every other code (a paused or\ndisabled account receives no exit either). Fixed per code.\n",
+            "enum": [
+             "all_actions",
+             "entries_only"
+            ],
+            "type": "string"
+           },
+           "code": {
+            "description": "Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,\nin this order (F\u00a77.2 extended with the route-level states): `source_revoked`, `route_disabled`,\n`platform_unbound`, `out_of_sync`, `connection_disconnected`, `connection_checking`, `broker_disconnected`, `binding_pending`, `risk_blocked`, `limits_pending`,\n`no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.\nThis is a display order only. The instruction gates and their order are ADR-0003 \u00a74.1 (Esquadro's\nS7 delta, with ADR-0008): `account_inactive` \u2192 `platform_unbound` \u2192 `automation_not_accepted` \u2192\n`copy_not_accepted` \u2192 `signal_type_not_selected` \u2192 `out_of_sync` \u2192 `risk_blocked` \u2192\n`limits_pending` \u2192 `no_bracket_profile` \u2192 action rules \u2192 `expired` (entries only). The audit code of a skipped\ninstruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and\n`no_bracket_profile` block entries only. For a `reverse` the \u00a74.2 position check runs before the\nentry gates (Q74): position opposite \u2192 the close leg runs and the open is skipped with the gate\ncode; flat \u2192 skipped with the gate code; already on the reverse side \u2192 `routing.position_conflict`\n(rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction\nreaches the gates); `connection_disconnected` (every connection status other than `connected`:\ndisconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an\nentry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a\nprotective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as\nlate (ADR-0003 \u00a74.1, ADR-0004 T1). `connection_checking` (S11-03, 5.3.0) is route status only, like\n`connection_disconnected`. It covers the connection being `connected` while the mandatory reconnect\ncheck of the account has not finished. The window runs per mapped account, from `welcome` until the\nCore has evaluated the reconnect snapshot and the replayed outbox reports (ADR-0004 \u00a74 step 3,\n\u00a76.1 r5), or until the session ends. Meanwhile the Core sends no command to the account: entries\nkeep their TTL and expire if the window outlasts it, and exits wait. Nothing is skipped, and\n`AccountSync.observable` is false. Bounds (Esquadro, Crivo Q2; ADR-0004 r5; provisional values,\ntuned by Ferro and Pulso):\n- after 60 s without the evaluation there is an operational and user alert (\"verifica\u00e7\u00e3o da\n  conex\u00e3o n\u00e3o conclu\u00edda; ordens aguardando\"), and the route shows `connection_checking` with the\n  elapsed time;\n- after 5 min the Core closes the session (4000, `snapshot_timeout`). The adapter reconnects and\n  sends the snapshot again. It counts as a normal disconnect (ADR-0004 \u00a76), so an account with a\n  position becomes out of sync.\n`broker_disconnected` (5.3.0, ADR-0004 r5 \u00a76.3, Crivo m2) is route status only and never skips. A\nsnapshot reports `connected: false` (the platform lost its broker), so delivery to the account is\nHELD: entries keep their TTL and expire, and exits wait. Sending would only produce\n`command.account_not_simulation` and lose an exit. It ends with the next snapshot that reports\n`connected: true`, of any trigger, at reconnect or mid-session.\n`binding_pending` (5.3.0, Esquadro, Crivo R3 on r5) is route status only and never skips. It is\nshown when the account was bound or rebound while its connection's session is open: the binding\ntakes effect at the next handshake. Until then, entries expire by their TTL and exits wait. The web\nsays \"reconecte o plugin para ativar o v\u00ednculo\".\nNew codes may be added in a minor version; clients show a generic text for an unknown code.\n",
+            "enum": [
+             "routing.account_inactive",
+             "routing.source_revoked",
+             "routing.platform_unbound",
+             "routing.automation_not_accepted",
+             "routing.copy_not_accepted",
+             "routing.connection_disconnected",
+             "routing.connection_checking",
+             "routing.binding_pending",
+             "routing.broker_disconnected",
+             "routing.out_of_sync",
+             "routing.risk_blocked",
+             "routing.no_bracket_profile",
+             "routing.limits_pending",
+             "routing.route_disabled"
+            ],
+            "type": "string"
+           },
+           "instrument_ids": {
+            "description": "With `routing.no_bracket_profile` \u2014 the enabled instruments for which the account has no stop/target profile (profiles are per account \u00d7 instrument); entries in other instruments still go through.",
+            "items": {
+             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+             "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+           },
+           "lifecycle_state": {
+            "description": "With `routing.account_inactive` (`paused` or `disabled`), so the text can name it.",
+            "enum": [
+             "paused",
+             "disabled"
+            ],
+            "type": "string"
+           },
+           "opt_in_state": {
+            "description": "With `routing.automation_not_accepted` / `routing.copy_not_accepted`. `declined` = the state is `chosen` with choice `declined`; `pending_review` = the state is `pending_review`.",
+            "enum": [
+             "declined",
+             "pending_review"
+            ],
+            "type": "string"
+           }
+          },
+          "required": [
+           "code",
+           "blocks"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "status": {
+         "description": "`receiving` = no reason; `exits_only` = only `entries_only` reasons; `not_receiving` = at least\none `all_actions` reason.\n",
+         "enum": [
+          "receiving",
+          "exits_only",
+          "not_receiving"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "status",
+        "reasons",
+        "computed_at"
+       ],
+       "type": "object"
+      }
+     },
+     "required": [
+      "account_id",
+      "blocking_reasons",
+      "status_if_routed"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "manual_only": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "account_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "reason": {
+       "additionalProperties": false,
+       "description": "The preset's own explanation, verbatim with source and date (S16 AC-7, Q-S16-6); the UI frames it.",
+       "properties": {
+        "accessed_at": {
+         "description": "Date the page was read (YYYY-MM-DD).",
+         "format": "date",
+         "type": "string"
+        },
+        "language": {
+         "description": "BCP 47, e.g. 'en'.",
+         "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$",
+         "type": "string"
+        },
+        "page_title": {
+         "maxLength": 300,
+         "type": "string"
+        },
+        "section": {
+         "description": "Heading of the quoted part of the page, if any.",
+         "maxLength": 300,
+         "type": "string"
+        },
+        "text": {
+         "maxLength": 20000,
+         "minLength": 1,
+         "type": "string"
+        },
+        "url": {
+         "format": "uri",
+         "maxLength": 2048,
+         "pattern": "^https://",
+         "type": "string"
+        }
+       },
+       "required": [
+        "text",
+        "language",
+        "page_title",
+        "url",
+        "accessed_at"
+       ],
+       "type": "object"
+      }
+     },
+     "required": [
+      "account_id",
+      "reason"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "source_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "source_id",
+   "candidates",
+   "manual_only"
+  ],
+  "type": "object"
+ },
+ "RouteCreateRequest": {
+  "additionalProperties": false,
+  "properties": {
+   "account_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "is_enabled": {
+    "description": "Defaults to true.",
+    "type": "boolean"
+   },
+   "signal_types": {
+    "description": "At least one (S7 AC-2, Q-S7-1); an empty list gets 400 `common.invalid_request` with pointer `/signal_types`.",
+    "items": {
+     "description": "Selectable signal types of a TradingView route (ADR-0003). `master_account` belongs to follower routes (S19) and is not accepted here.",
+     "enum": [
+      "trigger",
+      "trade_plan",
+      "nq_trigger"
+     ],
+     "type": "string"
+    },
+    "minItems": 1,
+    "type": "array",
+    "uniqueItems": true
+   },
+   "source_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "step_up": {
+    "additionalProperties": false,
+    "description": "See `createRoute` (action `route_enable`, target = the account).",
+    "properties": {
+     "challenge_id": {
+      "description": "Sealed challenge token (auth policy \u00a73); opaque to clients. Never logged.",
+      "pattern": "^[A-Za-z0-9_-]{16,256}$",
+      "type": "string"
+     },
+     "code": {
+      "description": "The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,\nuppercase, O\u21920, I/L\u21921, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or\nmalformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400\n`common.invalid_request`, which counts no attempt and reveals nothing. Never logged.\n",
+      "maxLength": 32,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "challenge_id",
+     "code"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "source_id",
+   "account_id",
+   "signal_types"
+  ],
+  "type": "object"
+ },
+ "RouteList": {
+  "additionalProperties": false,
+  "properties": {
+   "routes": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "account_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "created_at": {
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      },
+      "effective": {
+       "additionalProperties": false,
+       "allOf": [
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "const": "receiving"
+           }
+          }
+         },
+         "then": {
+          "properties": {
+           "reasons": {
+            "maxItems": 0
+           }
+          }
+         }
+        },
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "const": "exits_only"
+           }
+          }
+         },
+         "then": {
+          "properties": {
+           "reasons": {
+            "items": {
+             "properties": {
+              "blocks": {
+               "const": "entries_only"
+              }
+             }
+            },
+            "minItems": 1
+           }
+          }
+         }
+        },
+        {
+         "if": {
+          "properties": {
+           "status": {
+            "const": "not_receiving"
+           }
+          }
+         },
+         "then": {
+          "properties": {
+           "reasons": {
+            "contains": {
+             "properties": {
+              "blocks": {
+               "const": "all_actions"
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ],
+       "description": "Computed by the Core from the account, source, connection, opt-in, sync and risk state; the UI renders it and never re-implements a gate.",
+       "properties": {
+        "computed_at": {
+         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+         "type": "string"
+        },
+        "reasons": {
+         "description": "Every reason that applies, most severe first (the Core's order follows the UI badge priority); empty with `receiving`.",
+         "items": {
+          "additionalProperties": false,
+          "allOf": [
+           {
+            "else": {
+             "properties": {
+              "blocks": {
+               "const": "all_actions"
+              }
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "enum": [
+                "routing.out_of_sync",
+                "routing.risk_blocked",
+                "routing.no_bracket_profile",
+                "routing.limits_pending"
+               ]
+              }
+             }
+            },
+            "then": {
+             "properties": {
+              "blocks": {
+               "const": "entries_only"
+              }
+             }
+            }
+           },
+           {
+            "else": {
+             "not": {
+              "required": [
+               "lifecycle_state"
+              ]
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "const": "routing.account_inactive"
+              }
+             }
+            },
+            "then": {
+             "required": [
+              "lifecycle_state"
+             ]
+            }
+           },
+           {
+            "else": {
+             "not": {
+              "required": [
+               "opt_in_state"
+              ]
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "enum": [
+                "routing.automation_not_accepted",
+                "routing.copy_not_accepted"
+               ]
+              }
+             }
+            },
+            "then": {
+             "required": [
+              "opt_in_state"
+             ]
+            }
+           },
+           {
+            "else": {
+             "not": {
+              "required": [
+               "instrument_ids"
+              ]
+             }
+            },
+            "if": {
+             "properties": {
+              "code": {
+               "const": "routing.no_bracket_profile"
+              }
+             }
+            },
+            "then": {
+             "required": [
+              "instrument_ids"
+             ]
+            }
+           }
+          ],
+          "properties": {
+           "blocks": {
+            "description": "`entries_only` for `out_of_sync`, `risk_blocked`, `no_bracket_profile` and `limits_pending`\n(exits still go through, S7 AC-8 / P1); `all_actions` for every other code (a paused or\ndisabled account receives no exit either). Fixed per code.\n",
+            "enum": [
+             "all_actions",
+             "entries_only"
+            ],
+            "type": "string"
+           },
+           "code": {
+            "description": "Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,\nin this order (F\u00a77.2 extended with the route-level states): `source_revoked`, `route_disabled`,\n`platform_unbound`, `out_of_sync`, `connection_disconnected`, `connection_checking`, `broker_disconnected`, `binding_pending`, `risk_blocked`, `limits_pending`,\n`no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.\nThis is a display order only. The instruction gates and their order are ADR-0003 \u00a74.1 (Esquadro's\nS7 delta, with ADR-0008): `account_inactive` \u2192 `platform_unbound` \u2192 `automation_not_accepted` \u2192\n`copy_not_accepted` \u2192 `signal_type_not_selected` \u2192 `out_of_sync` \u2192 `risk_blocked` \u2192\n`limits_pending` \u2192 `no_bracket_profile` \u2192 action rules \u2192 `expired` (entries only). The audit code of a skipped\ninstruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and\n`no_bracket_profile` block entries only. For a `reverse` the \u00a74.2 position check runs before the\nentry gates (Q74): position opposite \u2192 the close leg runs and the open is skipped with the gate\ncode; flat \u2192 skipped with the gate code; already on the reverse side \u2192 `routing.position_conflict`\n(rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction\nreaches the gates); `connection_disconnected` (every connection status other than `connected`:\ndisconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an\nentry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a\nprotective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as\nlate (ADR-0003 \u00a74.1, ADR-0004 T1). `connection_checking` (S11-03, 5.3.0) is route status only, like\n`connection_disconnected`. It covers the connection being `connected` while the mandatory reconnect\ncheck of the account has not finished. The window runs per mapped account, from `welcome` until the\nCore has evaluated the reconnect snapshot and the replayed outbox reports (ADR-0004 \u00a74 step 3,\n\u00a76.1 r5), or until the session ends. Meanwhile the Core sends no command to the account: entries\nkeep their TTL and expire if the window outlasts it, and exits wait. Nothing is skipped, and\n`AccountSync.observable` is false. Bounds (Esquadro, Crivo Q2; ADR-0004 r5; provisional values,\ntuned by Ferro and Pulso):\n- after 60 s without the evaluation there is an operational and user alert (\"verifica\u00e7\u00e3o da\n  conex\u00e3o n\u00e3o conclu\u00edda; ordens aguardando\"), and the route shows `connection_checking` with the\n  elapsed time;\n- after 5 min the Core closes the session (4000, `snapshot_timeout`). The adapter reconnects and\n  sends the snapshot again. It counts as a normal disconnect (ADR-0004 \u00a76), so an account with a\n  position becomes out of sync.\n`broker_disconnected` (5.3.0, ADR-0004 r5 \u00a76.3, Crivo m2) is route status only and never skips. A\nsnapshot reports `connected: false` (the platform lost its broker), so delivery to the account is\nHELD: entries keep their TTL and expire, and exits wait. Sending would only produce\n`command.account_not_simulation` and lose an exit. It ends with the next snapshot that reports\n`connected: true`, of any trigger, at reconnect or mid-session.\n`binding_pending` (5.3.0, Esquadro, Crivo R3 on r5) is route status only and never skips. It is\nshown when the account was bound or rebound while its connection's session is open: the binding\ntakes effect at the next handshake. Until then, entries expire by their TTL and exits wait. The web\nsays \"reconecte o plugin para ativar o v\u00ednculo\".\nNew codes may be added in a minor version; clients show a generic text for an unknown code.\n",
+            "enum": [
+             "routing.account_inactive",
+             "routing.source_revoked",
+             "routing.platform_unbound",
+             "routing.automation_not_accepted",
+             "routing.copy_not_accepted",
+             "routing.connection_disconnected",
+             "routing.connection_checking",
+             "routing.binding_pending",
+             "routing.broker_disconnected",
+             "routing.out_of_sync",
+             "routing.risk_blocked",
+             "routing.no_bracket_profile",
+             "routing.limits_pending",
+             "routing.route_disabled"
+            ],
+            "type": "string"
+           },
+           "instrument_ids": {
+            "description": "With `routing.no_bracket_profile` \u2014 the enabled instruments for which the account has no stop/target profile (profiles are per account \u00d7 instrument); entries in other instruments still go through.",
+            "items": {
+             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+             "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+           },
+           "lifecycle_state": {
+            "description": "With `routing.account_inactive` (`paused` or `disabled`), so the text can name it.",
+            "enum": [
+             "paused",
+             "disabled"
+            ],
+            "type": "string"
+           },
+           "opt_in_state": {
+            "description": "With `routing.automation_not_accepted` / `routing.copy_not_accepted`. `declined` = the state is `chosen` with choice `declined`; `pending_review` = the state is `pending_review`.",
+            "enum": [
+             "declined",
+             "pending_review"
+            ],
+            "type": "string"
+           }
+          },
+          "required": [
+           "code",
+           "blocks"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "status": {
+         "description": "`receiving` = no reason; `exits_only` = only `entries_only` reasons; `not_receiving` = at least\none `all_actions` reason.\n",
+         "enum": [
+          "receiving",
+          "exits_only",
+          "not_receiving"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "status",
+        "reasons",
+        "computed_at"
+       ],
+       "type": "object"
+      },
+      "id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "is_enabled": {
+       "type": "boolean"
+      },
+      "row_version": {
+       "minimum": 1,
+       "type": "integer"
+      },
+      "signal_types": {
+       "description": "At least one (S7 AC-2, Q-S7-1); an empty list gets 400 `common.invalid_request` with pointer `/signal_types`.",
+       "items": {
+        "description": "Selectable signal types of a TradingView route (ADR-0003). `master_account` belongs to follower routes (S19) and is not accepted here.",
+        "enum": [
+         "trigger",
+         "trade_plan",
+         "nq_trigger"
+        ],
+        "type": "string"
+       },
+       "minItems": 1,
+       "type": "array",
+       "uniqueItems": true
+      },
+      "source_id": {
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+       "type": "string"
+      },
+      "updated_at": {
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "source_id",
+      "account_id",
+      "signal_types",
+      "is_enabled",
+      "effective",
+      "row_version",
+      "created_at",
+      "updated_at"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "routes"
+  ],
+  "type": "object"
+ },
+ "RouteUpdateRequest": {
+  "additionalProperties": false,
+  "properties": {
+   "is_enabled": {
+    "type": "boolean"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "signal_types": {
+    "description": "At least one (S7 AC-2, Q-S7-1); an empty list gets 400 `common.invalid_request` with pointer `/signal_types`.",
+    "items": {
+     "description": "Selectable signal types of a TradingView route (ADR-0003). `master_account` belongs to follower routes (S19) and is not accepted here.",
+     "enum": [
+      "trigger",
+      "trade_plan",
+      "nq_trigger"
+     ],
+     "type": "string"
+    },
+    "minItems": 1,
+    "type": "array",
+    "uniqueItems": true
+   },
+   "step_up": {
+    "additionalProperties": false,
+    "description": "See `updateRoute` (action `route_enable`, target = the account).",
+    "properties": {
+     "challenge_id": {
+      "description": "Sealed challenge token (auth policy \u00a73); opaque to clients. Never logged.",
+      "pattern": "^[A-Za-z0-9_-]{16,256}$",
+      "type": "string"
+     },
+     "code": {
+      "description": "The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,\nuppercase, O\u21920, I/L\u21921, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or\nmalformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400\n`common.invalid_request`, which counts no attempt and reveals nothing. Never logged.\n",
+      "maxLength": 32,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "challenge_id",
+     "code"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "signal_types",
+   "is_enabled",
+   "row_version"
+  ],
+  "type": "object"
+ }
+}

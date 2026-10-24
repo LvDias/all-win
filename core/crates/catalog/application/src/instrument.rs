@@ -67,3 +67,36 @@ impl ListStandardSizes {
         self.reader.standard_account_sizes().await
     }
 }
+
+/// The rollover calendar (ADR-0003 P5, `catalog.instrument_contract`).
+#[async_trait]
+pub trait ContractReader: Send + Sync {
+    /// `YYYY-MM` of the contract active for the enabled instrument `symbol` at `at`: the row with
+    /// the latest `active_from <= at`. `None` for an unknown or disabled symbol, or before its
+    /// first row.
+    async fn active_contract(
+        &self,
+        symbol: &str,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<String>, CatalogError>;
+}
+
+/// Query for execution (routing's `ActiveContract` port, adapter in `crates/app`).
+#[derive(Clone)]
+pub struct ActiveContractQuery {
+    reader: Arc<dyn ContractReader>,
+}
+
+impl ActiveContractQuery {
+    pub fn new(reader: Arc<dyn ContractReader>) -> Self {
+        Self { reader }
+    }
+
+    pub async fn handle(
+        &self,
+        symbol: &str,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<String>, CatalogError> {
+        self.reader.active_contract(symbol, at).await
+    }
+}

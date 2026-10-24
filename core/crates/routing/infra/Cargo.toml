@@ -10,14 +10,22 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+access = { workspace = true, features = ["axum"] }
 async-trait.workspace = true
+axum.workspace = true
+chrono = { workspace = true, features = ["std", "serde"] }
+contracts.workspace = true
+jsonschema.workspace = true
 routing-application.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 shared-kernel = { workspace = true, features = ["sqlx"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "macros"] }
-uuid = { workspace = true, features = ["v7"] }
+tracing.workspace = true
+utoipa.workspace = true
+uuid = { workspace = true, features = ["v7", "serde"] }
 
 [dev-dependencies]
-chrono.workspace = true
 sqlx = { workspace = true, features = ["migrate"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { workspace = true, features = ["util"] }

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT to_char(c.contract_month, 'YYYY-MM') AS \"month!\"\n                 FROM catalog.instrument_contract c\n                 JOIN catalog.instrument i ON i.id = c.instrument_id\n                WHERE i.symbol = $1 AND i.is_enabled AND c.active_from <= $2\n                ORDER BY c.active_from DESC\n                LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "month!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c934759ea5acaa10827e94edcbbd06d090f88d312fcbd54d1bdde0a0c69e5d0d"
+}

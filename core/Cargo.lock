@@ -1923,13 +1923,21 @@ dependencies = [
 name = "routing-infra"
 version = "0.1.0"
 dependencies = [
+ "access",
  "async-trait",
+ "axum",
  "chrono",
+ "contracts",
+ "jsonschema",
  "routing-application",
+ "serde",
  "serde_json",
  "shared-kernel",
  "sqlx",
  "tokio",
+ "tower",
+ "tracing",
+ "utoipa",
  "uuid",
 ]
 
