@@ -21,6 +21,7 @@ import { useApplyPresetVersion, usePresetDiff, type ApplyPresetVersionRequest, t
 import { usePresetVersion } from "./api/use-presets";
 import type { SourceRef } from "./api/types";
 import { useRuleValueText } from "./lib/rule-value";
+import { ruleSetFor } from "./lib/preset-selection";
 import { emptyDraft, OtherValueEditor, parseOther, type OtherDraft } from "./other-value";
 
 type Row = PresetDiff["rows"][number];
@@ -77,8 +78,7 @@ export function VersionDiffDialog({ accountId, firm, targetId, rowVersion, accou
 
   const data = diff.data;
   // Never another platform's rules: a known platform picks its own set (or none); without one only a single or platform-less set applies.
-  const sets = target.data?.rule_sets ?? [];
-  const rules = (platform !== "" ? sets.find((set) => set.firm_platform === platform) : (sets.find((set) => set.firm_platform === undefined) ?? (sets.length === 1 ? sets[0] : undefined)))?.rules;
+  const rules = target.data ? ruleSetFor(target.data, platform)?.rules : undefined;
   // The answers are keyed by position in the platform's published values: another platform means another list.
   const changePlatform = (next: string) => {
     setPlatform(next);

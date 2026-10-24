@@ -23,8 +23,16 @@ export const requiredFields: readonly RuleField[] = ["max_position_qty", "drawdo
 const ruleFields: readonly RuleField[] = ["max_position_qty", "drawdown", "daily_loss_limit", "daily_profit_target", "trading_day_reset", "consistency_rule", "commission_per_contract_side", "evaluation_profit_target"];
 
 type RuleLike = { status: "verified" | "not_confirmed"; value?: unknown; published_values?: { value: unknown }[] };
-const ruleOf = (version: PresetVersion, platform: string, field: RuleField): RuleLike | undefined =>
-  (version.rule_sets.find((set) => (set.firm_platform ?? "") === platform) ?? version.rule_sets[0])?.rules[field] as RuleLike | undefined;
+
+/**
+ * The rule set that applies: the chosen platform's own, or, with no platform, the platform-less one. Never another
+ * platform's set (its values would be prefilled for an account they do not belong to), and a platform-specific preset
+ * has no set until a platform is chosen.
+ */
+export const ruleSetFor = (version: PresetVersion, platform: string) =>
+  version.rule_sets.find((set) => (set.firm_platform ?? "") === platform);
+
+const ruleOf = (version: PresetVersion, platform: string, field: RuleField): RuleLike | undefined => ruleSetFor(version, platform)?.rules[field] as RuleLike | undefined;
 
 export type FieldProblem = "unresolved" | "required" | "invalid";
 
@@ -40,6 +48,8 @@ export type PresetOutcome = {
   maxPositionDefault: number | null;
   ruleValues: Record<string, unknown>;
   valid: boolean;
+  /** True when no rule set applies yet: a platform-specific preset before a platform is chosen, or a platform without rules here. Nothing is prefilled and the preset cannot be saved. */
+  unavailable: boolean;
   problems: Partial<Record<RuleField, FieldProblem>>;
 };
 
@@ -47,6 +57,7 @@ export type PresetOutcome = {
 export function buildOutcome(version: PresetVersion, draft: PresetDraft, locale: Locale, label: string): PresetOutcome {
   const ruleValues: Record<string, unknown> = {};
   const problems: PresetOutcome["problems"] = {};
+  const unavailable = ruleSetFor(version, draft.firmPlatform) === undefined;
   let cap: number | null = null;
   let defaultQty: number | null = null;
   for (const field of ruleFields) {
@@ -99,7 +110,8 @@ export function buildOutcome(version: PresetVersion, draft: PresetDraft, locale:
     maxPositionCap: cap,
     maxPositionDefault: defaultQty,
     ruleValues,
-    valid: Object.keys(problems).length === 0,
+    valid: !unavailable && Object.keys(problems).length === 0,
+    unavailable,
     problems,
   };
 }

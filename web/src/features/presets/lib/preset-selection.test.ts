@@ -35,4 +35,29 @@ describe("buildOutcome", () => {
     expect(build(v)).toMatchObject({ valid: false, problems: { max_position_qty: "unresolved" } });
     expect(build(v, draft({ max_position_qty: { selected: "0", other: emptyDraft } }))).toMatchObject({ valid: true, maxPositionDefault: 40, maxPositionCap: 60, ruleValues: {} });
   });
+
+  describe("per-platform rule sets", () => {
+    const src = [{ url: "https://firm.example/a", accessed_at: "2026-10-18" }];
+    const rules = (contracts: number) => ({
+      ...version(ids.v50, "50000.00").rule_sets[0]?.rules,
+      max_position_qty: { status: "verified" as const, value: { contracts }, sources: src },
+    });
+    const base = version(ids.v50, "50000.00");
+    const twoPlatforms = { ...base, rule_sets: [{ firm_platform: "rithmic", rules: rules(40) }, { firm_platform: "tradovate", rules: rules(60) }] } as typeof base;
+    const withPlatform = (firmPlatform: string) => ({ ...draft(), firmPlatform });
+
+    it("is unavailable, not prefilled, and invalid before a platform is chosen (never the first platform's rules)", () => {
+      const outcome = buildOutcome(twoPlatforms, draft(), "pt-BR", "Apex");
+      expect(outcome).toMatchObject({ unavailable: true, valid: false, maxPositionCap: null, maxPositionDefault: null, ruleValues: {} });
+    });
+
+    it("uses exactly the chosen platform's set", () => {
+      expect(buildOutcome(twoPlatforms, withPlatform("tradovate"), "pt-BR", "Apex")).toMatchObject({ unavailable: false, valid: true, maxPositionCap: 60, firmPlatform: "tradovate" });
+      expect(buildOutcome(twoPlatforms, withPlatform("rithmic"), "pt-BR", "Apex")).toMatchObject({ maxPositionCap: 40 });
+    });
+
+    it("is unavailable for a platform the preset has no rules for", () => {
+      expect(buildOutcome(twoPlatforms, withPlatform("ninja"), "pt-BR", "Apex")).toMatchObject({ unavailable: true, valid: false });
+    });
+  });
 });

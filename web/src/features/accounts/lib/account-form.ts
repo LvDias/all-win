@@ -126,7 +126,7 @@ function parseBinding(value: string) {
 /** Builds the write body from validated values. Sizes stay decimal strings; no arithmetic. */
 export function toWriteBody(
   v: AccountFormValues,
-  ctx: { kind: AccountKind; locale: Locale; automationRuleVersionId?: string; preset?: PresetOutcome },
+  ctx: { kind: AccountKind; locale: Locale; automationRuleVersionId?: string; preset?: Pick<PresetOutcome, "presetVersionId" | "firmPlatform" | "ruleValues"> },
 ): Omit<AccountCreateBody, "kind"> {
   const size = parseDecimalInput(v.size, ctx.locale, { scale: 2 });
   const choice: OptInChoice | undefined = v.automationChoice === "" ? undefined : v.automationChoice;
@@ -178,6 +178,9 @@ export function fieldFromPointer(pointer: string | undefined): keyof AccountForm
       return "binding";
     case "/firm_name":
       return "firmName";
+    case "/preset_version_id":
+    case "/firm_platform":
+      return "presetVersionId";
     case "/plan_name":
       return "planName";
     case "/phase":

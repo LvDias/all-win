@@ -1193,7 +1193,8 @@
       "usePresetValue": "Use the preset value",
       "replaceTitle": "Replace your choices?",
       "replaceText": "Changing the selection replaces {count, plural, one {# value you chose or edited} other {# values you chose or edited}}. Continue?",
-      "continue": "Continue"
+      "continue": "Continue",
+      "platformUnavailable": "This preset has no rules for that platform. Choose another platform or register without a preset."
     }
   }
 }

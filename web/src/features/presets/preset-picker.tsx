@@ -19,7 +19,7 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import type { RuleField } from "./api/account-preset";
 import { useFirm, useFirms } from "./api/use-presets";
 import type { FirmDetail } from "./api/types";
-import { emptyPresetDraft, requiredFields, type PresetDraft } from "./lib/preset-selection";
+import { emptyPresetDraft, requiredFields, ruleSetFor, type PresetDraft } from "./lib/preset-selection";
 import { useRuleValueText } from "./lib/rule-value";
 import { emptyDraft, OtherValueEditor } from "./other-value";
 import { RuleCell, type Provenance } from "./rule-cell";
@@ -86,7 +86,7 @@ export function PresetPicker({ selection, onManual, error }: { selection: Preset
   if (firms.isPending) return <Skeleton className="h-40 w-full" />;
   if (firms.isError) return <ErrorState title={errorMessage(tc, firms.error).message} code={errorMessage(tc, firms.error).code} onRetry={() => void firms.refetch()} />;
 
-  const rules = version.data?.rule_sets.find((set) => (set.firm_platform ?? "") === draft.firmPlatform)?.rules ?? version.data?.rule_sets[0]?.rules;
+  const rules = version.data ? ruleSetFor(version.data, draft.firmPlatform)?.rules : undefined;
   const anyUnconfirmed = rules ? fieldsShown.some((f) => (rules[f as keyof typeof rules] as Provenance<unknown> | undefined)?.status === "not_confirmed") : false;
   const manualOnly = detail?.summary.manual_only;
 
@@ -124,6 +124,8 @@ export function PresetPicker({ selection, onManual, error }: { selection: Preset
 
       {version.isPending && draft.presetVersionId !== "" ? <Skeleton className="h-40 w-full" /> : null}
       {version.isError ? <ErrorState title={errorMessage(tc, version.error).message} code={errorMessage(tc, version.error).code} onRetry={() => void version.refetch()} /> : null}
+
+      {outcome?.unavailable && draft.firmPlatform !== "" ? <Alert tone="warning" role="status">{tp("platformUnavailable")}</Alert> : null}
 
       {version.data && rules && outcome && (!platformSpecific || draft.firmPlatform !== "") ? (
         <section className="space-y-4 rounded-lg border p-4" aria-labelledby={`${base}-preview`}>

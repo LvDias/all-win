@@ -1193,7 +1193,8 @@
       "usePresetValue": "Usar o valor do preset",
       "replaceTitle": "Substituir suas escolhas?",
       "replaceText": "Trocar a seleção substitui {count, plural, one {# valor que você escolheu ou editou} other {# valores que você escolheu ou editou}}. Continuar?",
-      "continue": "Continuar"
+      "continue": "Continuar",
+      "platformUnavailable": "Este preset não tem regras para essa plataforma. Escolha outra plataforma ou cadastre sem preset."
     }
   }
 }
