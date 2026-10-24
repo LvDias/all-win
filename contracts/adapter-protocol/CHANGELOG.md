@@ -1,5 +1,9 @@
 # Adapter protocol — changelog
 
+## 1.4.2 — 2026-10-24 (documentation only; no schema shape change, no version bump on the wire)
+- A `limits` frame that carries a new `day_reanchor` version also bumps that account's limits `version`, so a new re-anchor never travels under a version the plugin already saw (Pêndulo n3, decided by Esquadro).
+- The plugin still evaluates `day_reanchor.version` on its own, independent of the limits version (Elo; test T7j).
+
 ## 1.4.1 — 2026-10-24 (documentation only; no schema shape change, no version bump on the wire)
 - `limits` latest-wins: an unacked frame is dropped only when ALL its accounts have a newer version; otherwise it is rebuilt with the still-newest items (Pêndulo n1).
 - A pending `day_reanchor` is carried by every newer limits frame of the account (Crivo p1, Pêndulo n2).
