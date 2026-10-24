@@ -1,6 +1,6 @@
 # Migration register — Wave 1
 
-Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.24.
+Owner: Database Architect (Lastro). State as of 2026-10-24, data model rev. 16.25.
 
 This is the single list of migration versions: who owns each one, which hash was approved, where it is committed and whether it deletes data. The DDL lives in [wave1-data-model.md](wave1-data-model.md); the rules are in its §8 "Conventions".
 
@@ -43,7 +43,7 @@ Versions are `20261023` + the number shown. "Train" = `s/v1-sunday-integration--
 | 061510 | 10b | `risk_create_applied_fill` | Malha | patch `476fdeb64f1b`, file `5ee737c8d89a` | 712846c (`s/v1-s13-risk--core`) | committed, not in train | no |
 | 061520 | 10c | `risk_create_position` | Malha | patch `a0fbf81db57a` (both files), file diff `d79ab5259a19`; Esmeril and Prisma pending | 3f77c95 (`s/v1-s13-risk--core`) | committed, not in train | no |
 | 061530 | 10d | `risk_applied_fill_cost_basis` | Malha | same patch, file diff `ad02ac740de1` | 3f77c95 | committed, not in train | no (adds columns; S13 test databases with rows are recreated) |
-| 061540 | 10e | `risk_derivation_inputs_unknown_position` | Malha | — | — | assigned (rev. 16.24), not written | no (adds columns, drops a NOT NULL; S13 test databases with rows are recreated) |
+| 061540 | 10e | `risk_derivation_inputs_unknown_position` | Malha | — | — | assigned (rev. 16.24/16.25), not written | no (adds columns, drops a NOT NULL; S13 test databases with rows are recreated) |
 | 061600 | 9 | `gateway_create_delivery` | Bigorna | patch `e859c35d4212`, file `2fcbf535ff2a` | 1debc53 (`s/v1-s2-gateway--core`) | in train | no |
 | 061610 | 9b | `gateway_create_deferred_inbound` | Bigorna | patch `b1b2301bd1ec`, file `5941cb1a5515` | ecf44f6 (`s/v1-s2-gateway--core`) | in train | no |
 | 061620 | 9c | `gateway_create_intake_dead_letter` | Bigorna | — | — | assigned (rev. 16.16), not received | — |
