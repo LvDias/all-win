@@ -1181,7 +1181,7 @@
       "count": "{count, plural, =0 {Nenhum trade} one {# trade} other {# trades}}",
       "net": "P&L líquido",
       "secondary": "Bruto {gross} · Comissões {commission}",
-      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele o líquido é igual ao bruto.} other {# trades sem comissão informada: neles o líquido é igual ao bruto.}}",
+      "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele, o líquido é igual ao bruto.} other {# trades sem comissão informada: neles, o líquido é igual ao bruto.}}",
       "unavailable": "Totais indisponíveis"
     },
     "table": {

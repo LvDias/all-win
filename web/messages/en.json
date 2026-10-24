@@ -1181,7 +1181,7 @@
       "count": "{count, plural, =0 {No trades} one {# trade} other {# trades}}",
       "net": "Net P&L",
       "secondary": "Gross {gross} · Commissions {commission}",
-      "uncommissioned": "{count, plural, one {# trade without commission data: its net equals gross.} other {# trades without commission data: their net equals gross.}}",
+      "uncommissioned": "{count, plural, one {# trade has no commission entered: for it, net equals gross.} other {# trades have no commission entered: for those, net equals gross.}}",
       "unavailable": "Totals unavailable"
     },
     "table": {

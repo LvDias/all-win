@@ -85,7 +85,7 @@ describe("TradesPage", () => {
   it("warns that net equals gross for trades without commission data", async () => {
     serve([trade({ commission_source: "none" })], { uncommissioned_count: 3 });
     renderApp(<TradesPage />);
-    expect(await screen.findByText("3 trades sem comissão informada: neles o líquido é igual ao bruto.")).toBeInTheDocument();
+    expect(await screen.findByText("3 trades sem comissão informada: neles, o líquido é igual ao bruto.")).toBeInTheDocument();
   });
 
   it("labels the origin: source and signal, manual, platform without signal", async () => {
