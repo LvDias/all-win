@@ -3,7 +3,7 @@
 > **Owner:** Product Designer (Nanquim) · **Status:** proposed, PO review (Rumo) applied · **Revision:** 2 · **Date:** 2026-10-23
 > **Slice:** [V1-S15](../../product/release-1/slice-plan.md) AC-1 … AC-13 (slice-plan rev. 7 plus the decisions of 2026-10-23); vision §9 "Automatic enforcement". Web part only: the plugin panel (what the user sees in NinjaTrader, AC-6) is the Plugin Engineer's; this spec lists the data it shows (§9).
 > **Foundations and components:** [foundations.md](../foundations.md) (F§7.1 risk states, F§7.2 account states, F§6.4 time), [components.md](../components.md) (C§5 `RiskBanner`, C§6–C§8 notifications). **Related:** [S13](v1-s13-risk.md) (Risk tab, meters, rules; this spec adds the enforcement card and the blocked state), [S10](v1-s10-audit-log.md), [S18](v1-s18-notifications.md), [S5](v1-s5-automation-opt-in.md) §12 (step-up mechanics).
-> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9): `contracts/http/modules/risk.yaml` states that the enforcement controls are S15's; the enforcement operations are **not yet in the contract** (§9 lists what the screens need; names are **design proposals**). ADR-0004 carries the versioned `limits` and the enforcement `execution_report`s (`origin: local_enforcement`) and `risk_event`. **Where this spec and the contract differ, the contract wins.**
+> **Contract:** [HTTP contract 5.4.0 (draft)](../../../contracts/http/openapi.yaml) (draft by Compasso, not yet committed; header to the commit once it is): `contracts/http/modules/risk.yaml` states that the enforcement controls are S15's; the enforcement operations are **not yet in the contract** (§9 lists what the screens need; names are **design proposals**). ADR-0004 carries the versioned `limits` and the enforcement `execution_report`s (`origin: local_enforcement`) and `risk_event`. **Where this spec and the contract differ, the contract wins.**
 > **Surfaces:** Web (Frontend) and plugin (Plugin Engineer). The Core decides the state; the plugin enforces. QA owns the checks.
 > **Simulation only (X-7):** all verification uses Sim/Playback accounts.
 
@@ -65,7 +65,7 @@
 | Account currently **blocked** (turn-off only) | "Conta bloqueada até {time}: só dá para desligar depois do reset. O All Win continua recusando novas entradas." | PO decided (S15 AC-3, S14 AC-1) |
 | Data stale / error | switch disabled, `Sem dados recentes` | never toggle blind |
 
-**No early unlock by another door (Q82, proposed).** While the account is blocked, `Desvincular conta`, `Desparear instância` and `Desativar conta` (S5, S3) on that account are unavailable with the reason "Conta bloqueada até {time}: não dá para desvincular, desparear ou desativar antes do reset." The same text is returned by the Core for the plugin. **[Provisional, Q82 rec. (a): the default drawn; the user has not decided. If (b) is chosen, the block ends with the link and this paragraph, the error `risk.unlink_blocked_until_reset` and the plugin rule are removed.]** Reason: G7 would otherwise let unpairing or unlinking stop local enforcement.
+**No early unlock by another door (Q82 (a) [Decision 2026-10-24]).** While the account is blocked, `Desvincular conta`, `Desparear instância` and `Desativar conta` (S5, S3) on that account are unavailable with the reason "Conta bloqueada até {time}: não dá para desvincular, desparear ou desativar antes do reset." The same text is returned by the Core for the plugin. Reason: G7 would otherwise let unpairing or unlinking stop local enforcement.
 
 **States:** loading → skeleton of the card; error → `ErrorState` compact + retry; the switch applies only after the Core answers (no optimistic flip): while saving it shows spinner + "Salvando…" and `aria-busy`.
 
@@ -173,7 +173,7 @@ Events produced while the Core was unreachable arrive later and are shown with t
 | Actions taken: counts and list of flatten/cancel/reactive entries since the block | from the audit (S10) |
 | Account facts: binding, connection state, firm manual-only flag, account kind (sim/playback/live) | already in S5 |
 
-**Web writes:** `setAccountEnforcement(account_id, enabled, row_version)` (idempotent; no step-up, Q35); errors `risk.enforcement_blocked_until_reset` (turn-off while blocked), `risk.unlink_blocked_until_reset` (unpair, unlink or disable while blocked, Q82 provisional), `risk.enforcement_not_available` (+ reason), `common.version_conflict` (names proposed).
+**Web writes:** `setAccountEnforcement(account_id, enabled, row_version)` (idempotent; no step-up, Q35); errors `risk.enforcement_blocked_until_reset` (turn-off while blocked), `risk.unlink_blocked_until_reset` (unpair, unlink or disable while blocked, Q82 (a); error name still a proposal), `risk.enforcement_not_available` (+ reason), `common.version_conflict` (names proposed).
 
 **Events (SSE):** enforcement status changes, block start and end, plugin limits ack. Mobile background tabs refetch on return (F§9).
 
@@ -209,11 +209,7 @@ Events produced while the Core was unreachable arrive later and are shown with t
 | Q35 | Step-up for enforcement and limits | None: not in the S3 AC-10 list |
 | Q37 | Unbound account | Cannot turn enforcement on (AC-11) |
 
-**Proposed to the user, not decided (provisional):**
-
-| ID | Question | Spec default (provisional) |
-|---|---|---|
-| Q82 | While an account is blocked, refuse unpair / unlink / disable until the reset? | (a) refused with the reason (§3). Rumo's recommendation; AC-3 promises no early unlock via Web or plugin |
+| Q82 | While an account is blocked, unpair / unlink / disable | (a) **refused until the reset**, with the reason (§3); AC-3 promises no early unlock via Web or plugin (decided 2026-10-24) |
 
 ## 12. AC traceability
 

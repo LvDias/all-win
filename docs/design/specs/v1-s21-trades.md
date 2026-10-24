@@ -1,9 +1,10 @@
 # V1-S21 — Trade capture and trade list — Screen spec
 
-> **Owner:** Product Designer (Nanquim; written by Traço @ Dev3 in rev. 1, rev. 2/2b by Aquarela) · **Status:** proposed, PO review (Rumo) applied · **Revision:** 3 · **Date:** 2026-10-23
-> **Slice:** [V1-S21](../../product/release-1/slice-plan.md) AC-1 … AC-11 (slice-plan rev. 7 plus the decisions of 2026-10-23); vision §10; consumer: S22 (metrics). Touch points: S2/S5 (accounts, capture by the plugin), S7 (source and signal type), S10 (audit).
+> **Owner:** Product Designer (Nanquim; written by Traço @ Dev3 in rev. 1, rev. 2/2b by Aquarela) · **Status:** proposed, PO review (Rumo) applied · **Revision:** 4 · **Date:** 2026-10-24
+> **Slice:** [V1-S21](../../product/release-1/slice-plan.md) AC-1 … AC-13 (slice-plan rev. 7 plus the decisions of 2026-10-23/24); vision §10; consumer: S22 (metrics). Touch points: S2/S5 (accounts, capture by the plugin), S7 (source and signal type), S10 (audit).
 > **Foundations and components:** [foundations.md](../foundations.md) (F§6 numbers and time, F§7 status, F§10 feedback), [components.md](../components.md) (C§3 `EmptyState`, C§4 `DataTable`). **Related:** [S10](v1-s10-audit-log.md) (filters and time rules), [S6](v1-s6-stop-target-profiles.md) (price/tick input rules), [S18](v1-s18-notifications.md).
-> **Contract:** [HTTP contract 5.1.1](../../../contracts/http/openapi.yaml) (commit 7872ca9): `contracts/http/modules/trades.yaml` and the notes [s21-trades](../../architecture/contracts/s21-trades.md). Operations `listTrades`, `getTrade`, `getTradesSummary`, `createManualTrade`, `updateManualTrade`, `deleteManualTrade`, `previewManualTrade`. **Where this spec and the contract differ, the contract wins.**
+> **Contract:** [HTTP contract 5.4.0 (draft)](../../../contracts/http/openapi.yaml) (draft by Compasso, not yet committed; header to the commit once it is): `contracts/http/modules/trades.yaml` and the notes [s21-trades](../../architecture/contracts/s21-trades.md). Operations `listTrades`, `getTrade`, `getTradesSummary`, `createManualTrade`, `updateManualTrade`, `deleteManualTrade`, `previewManualTrade`. **Where this spec and the contract differ, the contract wins.**
+> **Rev. 4 (2026-10-24):** Q79 (a) / AC-12 archived accounts only with the `Arquivadas` filter; AC-13 / Q80 recovered-trade badge (`Trade.recovered`, Core-derived); configured-commission sentence reworded.
 > **Rev. 3 (2026-10-23, Rumo's PO review):** stale "provisional" tags replaced by decision cites (Q52–Q56, Q71); exact Q71 commission labels; AC-11 note on the entry form; Q79 (archived accounts) as a TODO; field names aligned to the contract (`pnl`, `gross_pnl`, `commission`, `commission_source`, `editable`).
 > **Rev. 2b (2026-10-23, Bisturi M2, S21 AC-1/AC-7, Q71, contract 4.3.0):** P&L is **net** (after commissions) with gross beside it; manual entry has an optional **Comissão** control in step 2; the "Calculado" block shows net first, gross, and where the commission came from; `/commission` maps to step 2. The earlier "gross, no commissions" text (Q54 rec. a) is removed.
 > **Rev. 2 (2026-10-23, user UX rule, F§10.1):** manual entry (S21-03) is a **step-by-step flow**: Trade · Entrada e saída · Excursões (opcional) · Revisar, with the "Calculado" block and `Salvar e registrar outro`. Edit (S21-04) stays one page with sections. Fields and validation follow the contract; the commission control was added in rev. 2b.
@@ -46,7 +47,7 @@ Sidebar: `Trades` and `Desempenho` (S22) after `Atividade`. (confirmed by Aquare
 | Filter | Component | Values |
 |---|---|---|
 | Período / Period | chips `Hoje`, `7 dias`, `30 dias`, `Personalizado` (two date pickers, zone shown) | default `30 dias`. Filters by **exit time** in the profile's time zone (AC-6, Q53) [Decision 2026-10-23] |
-| Conta / Account | multi-select `Combobox` including deleted accounts `(excluída)` | TODO Q79 (pending): whether trades of archived accounts stay in the list. Recommendation: kept, hidden by default, with an `Arquivadas` filter. Not hard-coded: the answer changes only that filter's default (S22 follows the same answer). |
+| Conta / Account | multi-select `Combobox` including deleted accounts `(excluída)` | Q79 (a), AC-12 [Decision 2026-10-24]: trades of archived accounts stay stored but appear **only with the archived filter**: a `Switch` "Incluir contas arquivadas" (off by default, in the URL as `archived=1`) next to the account `Combobox`; with it on, archived accounts are listed with `(arquivada)`. S22 uses the same control. |
 | Fonte / Source | multi-select: the user's sources (incl. revoked), plus `Manual` and `Plataforma (sem sinal)` | see §3.4 |
 | Tipo de sinal / Signal type | `Gatilhos`, `Trade Plan`, `Gatilhos NQ`, `Master` (only if the Core returns master trades, S19) | as S7/S10 |
 
@@ -83,6 +84,7 @@ The table scrolls horizontally inside its container with a sticky first column (
 | Master replication (S19, V1.1) | `Replicação · {master account}` | |
 | Entered by the user | `Manual` badge (neutral, `PencilLine`) | AC-3 |
 | Placed by the user directly in the platform and captured | `Plataforma (sem sinal)` (its own origin, distinct from `Manual`; label confirmed by the PO) | |
+| Recovered after NinjaTrader was off (Q80 (a), AC-13) | extra neutral badge `Recuperado` (text + `History` icon) beside the origin, tooltip "Recuperado ao reconectar o NinjaTrader." (en: "Recovered when NinjaTrader reconnected.") | Shown **only when the Core marks the trade as recovered**; the UI derives nothing. Until the spike closes (stance (b)) no trade carries it. Driven by `Trade.recovered` (boolean; absent = false; 5.4.0 draft): true when the trade was built from executions the plugin recovered from the platform history at startup or reconnect. MAE and MFE are absent on such a trade, so the list and detail show `—` "Não informado" (§4.4) |
 
 ### 3.5 States
 
@@ -139,7 +141,7 @@ The table scrolls horizontally inside its container with a sticky first column (
 
 - **Tempo na operação**, **P&L líquido**, **P&L bruto** and **Comissão** (when not typed) are not typed: after the required fields of step 2 are valid, a read-only block "Calculado" shows them under the fields of step 2 (so a typo is caught before the review) and again, from the same request, in the review. Values come from the Core preview (`previewManualTrade`; debounced 300 ms, re-run when the commission field changes; skeleton while loading; on failure "Não foi possível calcular agora. Você ainda pode salvar." and the Core computes at save). The browser does no arithmetic (X-3).
   - **Order:** `P&L líquido` (main, signed, `--pnl-*` plus sign) → `P&L bruto` → `Comissão` with its origin → `Tempo na operação`.
-  - **Commission origin** from `commission_source`: `manual` "digitada por você"; `configured` **"estimada a partir da configuração da conta"** (en: "estimated from account setting"): "Comissão por contrato {valor} × lado × quantidade × 2. Digite a comissão real para substituir." (Q71, AC-7 [Decision 2026-10-23]); `none` warning **"comissões não informadas"** (en: "commissions not entered"): zero commission, net = gross, "Defina a comissão por contrato da conta ou digite a comissão." This trade label (plural) is distinct from the account warning "comissão não informada" (singular, S13 AC-11); both strings stay exact.
+  - **Commission origin** from `commission_source`: `manual` "digitada por você"; `configured` **"estimada a partir da configuração da conta"** (en: "estimated from account setting"): "Comissão por contrato e por lado ({valor}) × quantidade × 2 lados. Digite a comissão real para substituir." (Q71, AC-7 [Decision 2026-10-23]); `none` warning **"comissões não informadas"** (en: "commissions not entered"): zero commission, net = gross, "Defina a comissão por contrato da conta ou digite a comissão." This trade label (plural) is distinct from the account warning "comissão não informada" (singular, S13 AC-11); both strings stay exact.
   - Typing a commission replaces the estimate; clearing the field returns to the Core's estimate.
   - Help: "Calculado a partir dos preços, da quantidade, do valor do tick do instrumento e da comissão."
 - **Note on the form (AC-11):** a persistent info `Alert` at the top of every step: "Trades manuais não alteram limites nem bloqueios." (en: "Manual trades do not change limits or blocks.")
@@ -223,7 +225,7 @@ Wrong manual entries would pollute S22, so they can be corrected. The detail pan
 
 **Closed by the PO (Rumo, 2026-10-23):** duration = exit − entry (derived); the P&L of a manual trade is exact arithmetic in the Core from prices, quantity and tick value; a trade placed directly in the platform without a signal has its own origin, distinct from `Manual`, labeled `Plataforma (sem sinal)`. Sidebar position: Aquarela (foundations §3.4).
 
-**Decided by the user (2026-10-23); Q79 is pending:**
+**Decided by the user (2026-10-23/24):**
 
 | ID | Question | Decision |
 |---|---|---|
@@ -233,7 +235,8 @@ Wrong manual entries would pollute S22, so they can be corrected. The detail pan
 | Q55 | MAE/MFE in manual entry | Optional; `—` and left out of the averages, with the count of trades that entered each average (S22) |
 | Q56 | Edit/delete manual trades | Allowed, audited before/after; captured trades are never editable |
 | Q71 | Manual-trade commission (AC-7) | Optional; blank → account commission per contract per side × quantity × 2, labeled "estimada a partir da configuração da conta"; none configured → zero, net = gross, "comissões não informadas" |
-| Q79 (**pending**) | Trades of archived accounts | TODO in §3.1; recommendation: kept, hidden by default, `Arquivadas` filter |
+| Q79 (a), AC-12 | Trades of archived accounts | Kept; shown only with the archived filter (§3.1) |
+| Q80 (AC-13) | Trades recovered after NinjaTrader was off | Stance (b) until spike E4/K15 and gap G1 are closed (no recovery); then (a): recovery at plugin start and on every connection restore, no duplicates. The `Recuperado` badge follows `Trade.recovered`, derived by the Core (§3.4) |
 | Q57 | What one "trade" is | One per entry with FIFO exits in individual mode; flat-to-flat in shared mode (the Core sends the trades; the UI shows what it receives) |
 
 Q52–Q57 and Q71 define the numbers that S22 reconciles with this list.
@@ -248,5 +251,7 @@ Q52–Q57 and Q71 define the numbers that S22 reconciles with this list.
 | AC-4 list and filter by account, date, source, signal type | §3.1 |
 | AC-5, AC-6, AC-7 MAE/MFE in USD, date filter by exit time, optional MAE/MFE and commission (Q71) | §3.1, §4.2, §4.4 |
 | AC-8 edit/delete manual trades | §4.5 |
+| AC-12 archived accounts only with the archived filter | §3.1 |
+| AC-13 recovered-trade label (Q80) | §3.4, §9 |
 | AC-11 manual trades never affect risk | §4.2 note |
 | X-2, X-3, X-6, X-8 | permissions, exact values, pt-BR/en, instants |
