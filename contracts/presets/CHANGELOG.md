@@ -1,5 +1,11 @@
 # Preset release — changelog
 
+## 1.2 — 2026-10-24 (additive minor; on top of 1.1.1)
+- **`not_confirmed_reason`** on every rule field (`rules.*` and `stored_only.min_trading_days`; Torno, Rumo's R3 recheck for BluSky, Earn2Trade, OneUp, Leeloo): `conflicting` (absent = this, so 1.0/1.1 files keep their meaning; ≥ 2 `published_values`), `partial` (verbatim `quotes` ≥ 1 + `research`; no `published_values`) and `not_published` (`research` only). Nothing is derived: a partial publication stays the firm's text. The status stays `not_confirmed`, so the Core's handling, the counts and HTTP `presets.value_not_confirmed` do not change. The shared rule is `$defs/provenance_shape`.
+- Diff (check 9) also compares the reason and the partial quotes' text; check 12 refuses the 1.2 fields in a 1.0/1.1 file.
+- HTTP exposes the reason, the quotes and the research on `PresetRules` fields in 6.3.0, so the web words the three cases differently (Rumo).
+- Fixtures: valid `release-1-2-not-confirmed-reasons.json`; invalid `nc-partial-without-quotes.json`, `nc-not-published-with-published-values.json`, `nc-not-published-without-research.json`, `nc-reason-on-verified.json`.
+
 ## 1.1.1 — 2026-10-24 (documentation only; no schema shape change)
 - README check 12 (Esmeril nit on 1.1): a `schema_version` "1.0" file that uses a 1.1 field (`trailing_lock`, `title_note`, a quote without `page_title`) is refused by the Core. The schema cannot gate nested objects on the root `schema_version`, so it is a Core check with a test per case (Torno). The `schema_version` description names the 1.1 fields.
 

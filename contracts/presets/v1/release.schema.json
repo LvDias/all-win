@@ -17,7 +17,7 @@
     "schema_version": {
       "type": "string",
       "pattern": "^1\\.[0-9]+$",
-      "description": "Major 1; a newer minor may add optional fields only. 1.1 adds drawdown trailing_lock (Q90) and title_note, with page_title optional on a quote; the Core accepts 1.0 and 1.1, and refuses a 1.0 file that uses a 1.1 field (README check 12)."
+      "description": "Major 1; a newer minor may add optional fields only. 1.1 adds drawdown trailing_lock (Q90) and title_note, with page_title optional on a quote; 1.2 adds not_confirmed_reason (with quotes and research on a rule field). The Core accepts 1.0, 1.1 and 1.2, and refuses a file that uses a field of a newer minor than it declares (README check 12)."
     },
     "firm": {
       "type": "object",
@@ -423,7 +423,7 @@
         "searched_on",
         "sources"
       ],
-      "description": "Where the publisher looked and found no rule (with `unknown`).",
+      "description": "Where the publisher looked and found no rule (with `unknown`), or the rest of a `partial` / a `not_published` field (1.2).",
       "properties": {
         "searched_on": {
           "type": "string",
@@ -497,7 +497,7 @@
         "verified",
         "not_confirmed"
       ],
-      "description": "`not_confirmed`: the firm's official pages disagree; ≥ 2 `published_values`, no `value`, never prefilled (S16 AC-5/AC-6)."
+      "description": "`not_confirmed`: the field cannot be prefilled from the firm's official pages (S16 AC-5/AC-6); never prefilled. `not_confirmed_reason` (1.2) says why: the pages disagree (≥ 2 `published_values`), a partial publication (verbatim `quotes` + `research`), or not published at all (`research` only)."
     },
     "rule_text": {
       "type": "object",
@@ -995,38 +995,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1074,38 +1062,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1153,38 +1129,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1232,38 +1196,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1311,38 +1263,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1390,38 +1330,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1469,38 +1397,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1548,38 +1464,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         }
@@ -1878,38 +1782,26 @@
                   }
                 }
               }
+            },
+            "not_confirmed_reason": {
+              "$ref": "#/$defs/not_confirmed_reason"
+            },
+            "quotes": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/quote"
+              },
+              "description": "1.2, with `not_confirmed_reason` `partial`: the firm's verbatim partial text."
+            },
+            "research": {
+              "$ref": "#/$defs/research",
+              "description": "1.2, with `partial` / `not_published`: where the publisher looked."
             }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "status": {
-                    "const": "verified"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "value",
-                  "sources"
-                ],
-                "not": {
-                  "required": [
-                    "published_values"
-                  ]
-                }
-              },
-              "else": {
-                "required": [
-                  "published_values"
-                ],
-                "not": {
-                  "required": [
-                    "value"
-                  ]
-                }
-              }
+              "$ref": "#/$defs/provenance_shape"
             }
           ]
         },
@@ -1923,6 +1815,178 @@
           "description": "Verbatim payout or activation rules that change what the trader may do (research format §4)."
         }
       }
+    },
+    "not_confirmed_reason": {
+      "enum": [
+        "conflicting",
+        "partial",
+        "not_published"
+      ],
+      "description": "1.2 (Torno, Rumo's R3 recheck). Only with `not_confirmed`; absent = `conflicting`, so 1.0/1.1 files keep their meaning. `conflicting`: the official pages disagree, ≥ 2 `published_values`. `partial`: the firm published only part of the value (e.g. a reset time with no time zone, a daily loss amount without saying hard or soft): the verbatim text in `quotes`, where the rest was searched for in `research`, never a structured or derived value. `not_published`: nothing found (e.g. a knowledge base behind a login): `research` only. The Core handles all three as `not_confirmed`: never prefilled, a required field needs the user's own value."
+    },
+    "provenance_shape": {
+      "description": "1.2: the provenance rules of every rule field (`not_confirmed_reason`).",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value",
+              "sources"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "published_values"
+                  ]
+                },
+                {
+                  "required": [
+                    "not_confirmed_reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "quotes"
+                  ]
+                },
+                {
+                  "required": [
+                    "research"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_confirmed"
+              },
+              "not_confirmed_reason": {
+                "const": "conflicting"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "published_values"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "value"
+                  ]
+                },
+                {
+                  "required": [
+                    "quotes"
+                  ]
+                },
+                {
+                  "required": [
+                    "research"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_confirmed"
+              },
+              "not_confirmed_reason": {
+                "const": "partial"
+              }
+            },
+            "required": [
+              "status",
+              "not_confirmed_reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "quotes",
+              "research"
+            ],
+            "properties": {
+              "quotes": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "value"
+                  ]
+                },
+                {
+                  "required": [
+                    "published_values"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_confirmed"
+              },
+              "not_confirmed_reason": {
+                "const": "not_published"
+              }
+            },
+            "required": [
+              "status",
+              "not_confirmed_reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "research"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "value"
+                  ]
+                },
+                {
+                  "required": [
+                    "published_values"
+                  ]
+                },
+                {
+                  "required": [
+                    "quotes"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }
