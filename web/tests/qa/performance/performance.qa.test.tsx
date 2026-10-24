@@ -51,7 +51,8 @@ describe("AC-1 / AC-3 figures", () => {
     expect(sum.getByText(/33[.,]3\s?%/)).toBeInTheDocument();
     expect(sum.getByText(/1 vitórias · 1 derrotas · 1 zero/)).toBeInTheDocument();
   });
-  it("gross average IS drawn beside the net average (PO: literal AC-3), from avg_gross_pnl, exact Core string, never computed", async () => {
+  // S1 - CONTRACT-BLOCKED 5.4.0 (avg_gross_pnl types not frozen). Remove .skip when the types are in.
+  it.skip("S1 gross average IS drawn beside the net average (PO: literal AC-3), from avg_gross_pnl, exact Core string, never computed - CONTRACT-BLOCKED 5.4.0", async () => {
     serve(); renderApp(<PerformancePage />);
     const sum = await summary();
     const card = sum.getByText("P&L médio por trade (líquido)").closest("div")!;
@@ -59,6 +60,7 @@ describe("AC-1 / AC-3 figures", () => {
     expect(card).toHaveTextContent(/bruto/i);
     expect(card).toHaveTextContent(/US\$\s3,77/); // avg_gross_pnl
   });
+  // S1 (groups) - CONTRACT-BLOCKED 5.4.0
   it("gross average also in each group row, and absent avg_gross_pnl shows an em dash, not 0", async () => {
     const f = figures(); delete (f as Record<string, unknown>).avg_gross_pnl;
     serve(perf({ groups: [group({}, f)] })); renderApp(<PerformancePage />);
@@ -104,11 +106,26 @@ describe("Q55 basis line and AC-5 empties", () => {
     await screen.findAllByText("MAE médio");
     expect(document.body.textContent).not.toMatch(/NaN|undefined/);
   });
-  it.skip("no trades (AC-5 delta, PENDING PO approval: not decided, not asserted): count 0 and net/gross totals US$ 0,00 shown; averages and rates are em dashes; sentence 'Nenhum trade neste filtro.'", async () => {
+  it("AC-5 (decided 2026-10-24): filter with no trades keeps the summary - count 0 and net/gross totals US$ 0,00, averages/rates/ratios '—' - says 'Nenhum trade neste filtro.' and replaces only the breakdown by the filtered empty state with Limpar filtros", async () => {
+    navigation.search = "signal=trigger";
     serve(empty); renderApp(<PerformancePage />);
+    const sum = await summary();
     expect(await screen.findByText("Nenhum trade neste filtro.")).toBeInTheDocument();
-    expect(document.body.textContent).toMatch(/US\$\s0,00/);
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(4);
+    expect(sum.getByText("Trades").closest("div")).toHaveTextContent(/\b0\b/);
+    expect(sum.getAllByText(/US\$\s0,00/).length).toBeGreaterThan(0);
+    expect(sum.getAllByText("—").length).toBeGreaterThanOrEqual(5); // net avg, gross avg, win rate, time, MAE, MFE
+    expect(document.body.textContent).not.toMatch(/NaN|0,0\s?%/);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Limpar filtros" }).length).toBeGreaterThan(0);
+  });
+  // Q79 - CONTRACT-BLOCKED 5.4.0 (include_archived not in the contract yet). Remove .skip when it is.
+  it.skip("Q79 archived accounts are excluded by default; 'Incluir contas arquivadas' switch, off by default, in the URL and sent to the Core - CONTRACT-BLOCKED 5.4.0", async () => {
+    serve(); renderApp(<PerformancePage />);
+    const sw = await screen.findByRole("switch", { name: "Incluir contas arquivadas" });
+    expect(sw).not.toBeChecked();
+    expect(calls[calls.length - 1]!.searchParams.get("include_archived")).not.toBe("true");
+    await userEvent.setup().click(sw);
+    expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("archived"));
   });
   it("no trades with filters: totals 0, averages/rates '—', says there are no trades, never offers to create", async () => {
     navigation.search = `account=${uuid(100)}`;

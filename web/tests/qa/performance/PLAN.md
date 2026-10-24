@@ -30,3 +30,7 @@ Worked example of the metric definitions (§3.4 "QA checks a worked example"), r
 2. Public API assumed: `PerformancePage` exported from `@/features/performance`, route `/[locale]/performance`, request `GET /api/v1/performance`. If Frontend names differ, only the import line changes.
 3. 5.4.0 field name for gross average assumed `avg_gross_pnl` (on figures and groups).
 4. The test file has the extension `.pending` so neither vitest nor tsc/eslint collect it (a missing import would break `pnpm typecheck`) until the feature exists; drop the `.pending` suffix then.
+
+## Status after 2ecc182 (2026-10-24)
+- S1 gross average: CONTRACT-BLOCKED (5.4.0 `avg_gross_pnl` types not frozen yet). AC-5 empty figures DECIDED (Nanquim da8344a7fb42, approved by Rumo): test un-skipped. Q79 DECIDED (a): archived excluded by default, switch "Incluir contas arquivadas" in the URL (S22 and S21 AC-12) - test added, contract-blocked (`include_archived`).
+- NOTE for S21: b26f535 has no archived switch (S21 AC-12) - needs the same contract field; not a defect of that SHA at its contract (5.1.1).
