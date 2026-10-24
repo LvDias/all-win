@@ -71,3 +71,6 @@ with `header_up X-Forwarded-For {remote_host}`. Do not add a second proxy or CDN
 **Mailpit authentication.** The host is shared, so Mailpit's UI and API (`127.0.0.1:8025`) need basic auth: an htpasswd file on the host (mode 600, outside
 the repository, path in `ALLWIN_MAILPIT_AUTH_FILE`), mounted read-only as `MP_UI_AUTH_FILE`. SMTP (`127.0.0.1:1025`) stays unauthenticated and loopback only.
 Readers use the credential through a file, never on a command line or in a message: `curl -K <credential.curlrc> http://127.0.0.1:8025/api/v1/messages`.
+
+**Before any staging use:** pin the base images by digest (`ubuntu:24.04`, `node:24-alpine`, `caddy:2.10-alpine`, `postgres:16-alpine`, `axllent/mailpit:v1.27`); the tags are
+mutable. The runtime Dockerfiles and the overlay use tags only for the loopback Sunday stack.
