@@ -29,12 +29,12 @@ export function usePerformance(query: PerformanceQuery) {
   });
 }
 
-/** Whether the user has any trade at all, to tell "first use" from "this filter matches nothing". Only asked when the page is empty. */
+/** Whether the user has any trade at all (archived accounts included), to tell "first use" from "this filter matches nothing". Only asked when the page is empty. */
 export function useHasAnyTrade(enabled: boolean) {
   return useQuery({
     queryKey: ["trades", "any"],
     enabled,
-    queryFn: ({ signal }) => apiFetch<TradesSummary>("/api/v1/trades/summary", { signal }),
+    queryFn: ({ signal }) => apiFetch<TradesSummary>("/api/v1/trades/summary?include_archived=true", { signal }),
   });
 }
 

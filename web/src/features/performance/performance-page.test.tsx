@@ -175,6 +175,20 @@ describe("PerformancePage", () => {
     expect(navigation.replace).toHaveBeenCalledWith(expect.stringContaining("sort=win_rate"));
   });
 
+  it("the first-use probe counts trades of archived accounts too", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get("*/api/v1/performance", () => HttpResponse.json(performance({ totals: figures({ trade_count: 0 }), groups: [] }))),
+      http.get("*/api/v1/trades/summary", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ as_of: "2026-10-23T14:00:00Z", count: 3, total_pnl: "1.00", pnl_basis: "net", total_gross_pnl: "1.00", total_commission: "0.00" });
+      }),
+    );
+    renderApp(<PerformancePage />);
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    expect(urls.every((url) => url.includes("include_archived=true"))).toBe(true);
+  });
+
   it("first use is told apart from a filter that matches nothing", async () => {
     serve(performance({ totals: figures({ trade_count: 0, win_count: 0, loss_count: 0, breakeven_count: 0, total_pnl: "0.00", total_gross_pnl: "0.00", total_commission: "0.00", avg_pnl: undefined, win_rate: undefined, avg_duration_seconds: undefined, avg_mae: undefined, mae_sample_count: 0, avg_mfe: undefined, mfe_sample_count: 0 }), groups: [] }));
     server.use(http.get("*/api/v1/trades/summary", () => HttpResponse.json({ as_of: "2026-10-23T14:00:00Z", count: 0, total_pnl: "0.00", pnl_basis: "net", total_gross_pnl: "0.00", total_commission: "0.00" })));
