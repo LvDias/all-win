@@ -572,7 +572,8 @@
     "notFound": "Not found.",
     "signOutFailed": "Could not sign out. Your session may still be active.",
     "accounts": "Accounts",
-    "userMenuName": "{email}, user menu"
+    "userMenuName": "{email}, user menu",
+    "presets": "Presets"
   },
   "security": {
     "title": "Security",
