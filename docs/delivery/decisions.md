@@ -191,3 +191,11 @@
 - **Q96 yes:** "restart today's count" (Q92 re-anchor) requires the step-up code (added to the Q35 set).
 - **Repeated in this message (unchanged):** Q91 (a), Q92 (c), S17-a, S17-b, S17-d, take/stop alerts recorded only.
 - **Canonical docs:** integrations/tradingview guide + Pine (S17-c input, Plugin Engineer); ADR-0004 / protocol 1.4 (Q93, Architect); presets (Q94, PO); auth policy step-up set + HTTP 5.3.0/5.4.0 (Q95/Q96, Architect/Compasso).
+
+## 2026-10-24 — NT8 tests are manual by the user over RDP; Q97; blocked page titles
+- **Windows test VPS (decision):** testing inside NinjaTrader 8 is done manually by the user over RDP. The VPS setup stops at its current state: Tailscale joined, tailnet policy (default deny, tags tag:allwin-dev / tag:allwin-nt8), Tailnet Lock (the Mac is the signer; VPS and dev server signed) and RDP restricted to the tailnet stay as they are. NOT done: sshd is not started, Install-AllWinTestHost.ps1 is not run, Lock-Firewall.ps1 is set aside (RDP is already tailnet-only), and agents get no access to the VPS.
+- **Per test round, the team delivers:** (1) a package ready to import in NinjaTrader (preferably a NinjaScript Add-On import file for Tools → Import → NinjaScript Add-On), with the version in the file name; (2) a short numbered test script (step → expected result) written by QA [Plugins], grouping as many checks as possible per round, always on Sim101 / Playback; (3) which logs are needed (NT8 folder) and how the user returns them (e.g. through the RDP shared folder).
+- **Consequence:** S2 and the first end-to-end test (M1) are re-planned around manual rounds; the Maestro reports the schedule impact. Rejected: agents operating NT8 over SSH (the previous Phase 2 plan, steps 8–12 of infra/windows-test-host/README.md).
+- **Q97 (a):** Apex V1 presets cover the evaluations only; Performance Accounts (PA, tiered max position and DLL) are registered by hand.
+- **Page titles of firm pages that block automated access (Apex, Take Profit Trader):** left blank, with a note and the link. Nothing is derived from the URL.
+- **Canonical docs:** slice-plan S2/M1 (PO); NT8 spike plan / ADR-0005 test approach (Architect); infra/windows-test-host README (DevOps, Phase 2 parked); presets release format, page_title/note (Compasso, presets 1.1); presets (PO).
