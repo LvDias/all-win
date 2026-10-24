@@ -1,6 +1,7 @@
 # Wave 1 data model — ingest (S1), identity (S3), accounts core (S5–S7)
 
-- **Status:** Accepted (2026-10-24), rev. 16.17 (c78563c); **rev. 16.18 proposed** (Q95/Q96): forward migration #2f `…061810` widens the `one_time_code` action and target `CHECK`s for `account_sync_clear` and `trading_day_restart` (§4, §8).
+- **Status:** Accepted (2026-10-24), rev. 16.18 (5162063); **rev. 16.19 proposed**: `routing_decision.outcome` narrowed to the HTTP 5.2.0 terms (no `rejected`) in the unmerged `…061200` (Ferro, patch 6f3a77829e95) (§6.2).
+- Rev. 16.18 (5162063) (Q95/Q96): forward migration #2f `…061810` widens the `one_time_code` action and target `CHECK`s for `account_sync_clear` and `trading_day_restart` (§4, §8).
 - Rev. 16.17 (c78563c) (Esmeril L1–L3 on 16.16, Crivo via Esquadro): a dead-letter re-process keeps the original `received_at`; a discard needs a reason; decisions are final (trigger); "never purged" yields to Q13-b erasure (§6.3).
 - Rev. 16.16 (d7ae7cf): `gateway.intake_dead_letter` (#9c `…061620`, Bigorna; ADR-0004 r5 §4, Esquadro): the only copy of a frame, never purged before an operator decision, recovery by Core re-process (§6.3, §6.5, §8); 061300 and 061310 authorized by the user on 2026-10-24 (§8).
 - Rev. 16.15 (187f218) (Ferro; Esmeril nits on 16.14): the `instruction_purge_receipt_hash` statement trigger clears the receipt hash on every instruction delete (§6.1, §6.5, §8); a duplicated sentence removed.
@@ -1357,7 +1358,7 @@ CREATE TABLE routing.routing_decision (
   account_id         uuid NOT NULL,                      -- cross-module id
   account_name       text NOT NULL,                      -- snapshot
   leg                text NOT NULL DEFAULT 'whole' CHECK (leg IN ('whole','close','open')),  -- rev. 16.8: two-step reverse
-  outcome            text NOT NULL CHECK (outcome IN ('routed','capped','skipped','rejected','refused','expired')),
+  outcome            text NOT NULL CHECK (outcome IN ('routed','capped','skipped','refused','expired')),  -- rev. 16.19: HTTP 5.2.0 terms
   reason_code        text,                               -- e.g. 'routing.quantity_capped'
   multiplier         integer NOT NULL,                   -- snapshots used for the decision
   max_position_qty   integer NOT NULL,
@@ -1373,7 +1374,7 @@ CREATE UNIQUE INDEX routing_decision_leg_key ON routing.routing_decision
 -- committed at once ('close'); the opening is decided later, idempotently ('open': opened, close-only with the
 -- gate's code, or routing.expired). A one-step decision is 'whole'. 'whole' and 'close' exclude each other, and a
 -- pair has at most one 'open'; an 'open' row only after a 'close' row is a Core rule plus a DB test. Still
--- append-only. The outcome list narrows (no 'rejected') in the same unmerged …061200 once contract 5.2.0 freezes.
+-- append-only. The outcome list narrowed (no 'rejected') in the same unmerged …061200 when contract 5.2.0 froze (dc89d1b; rev. 16.19; position_conflict is 'refused'). A disposable DB that applied the old file is recreated, never patched.
 -- rev. 16.8.1 (Esmeril N3): inserts name the expression index, ON CONFLICT (instruction_id, account_id,
 -- (CASE leg WHEN 'open' THEN 'open' ELSE 'first' END)) DO NOTHING; the edit keeps RLS and REVOKE UPDATE/DELETE.
 -- Audit: one decision entry per (instruction, account), written at step 2 or by the TTL sweeper (expired
