@@ -64,6 +64,23 @@ pub trait PositionFor: Send + Sync {
     ) -> Result<ExpectedPosition, PortError>;
 }
 
+/// The kind of the platform account behind a routed account, from its latest handshake
+/// (gateway `venue_account.kind`). No binding or no venue account reads `Unknown`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountKind {
+    Simulation,
+    Playback,
+    Live,
+    Unknown,
+}
+
+/// Query port owned by the gateway, read at each decision that needs it, never cached
+/// (Vigia C2). An error never reads as a simulation account.
+#[async_trait]
+pub trait AccountKindOf: Send + Sync {
+    async fn kind(&self, user: UserId, account: AccountId) -> Result<AccountKind, PortError>;
+}
+
 /// One entry-only gate of the decision (ADR-0003 §4.1 gates 6–9), answered per account:
 /// `true` = barred for entries. Required: every gate must answer for every account, or the
 /// instruction's decision fails and is retried (fail closed; Architect, 2026-10-23). Until its
@@ -77,6 +94,11 @@ pub trait EntryGate: Send + Sync {
         contract: &Contract,
         accounts: &[AccountId],
     ) -> Result<HashMap<AccountId, bool>, PortError>;
+
+    /// The marker of a test-build stand-in ([`crate::dev_stubs`]); `None` for a real gate.
+    fn stand_in(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 /// The four entry gates, in ADR-0003 §4.1 order.
@@ -91,6 +113,23 @@ pub struct EntryGatePorts {
     /// 9: no stop/target profile for the instrument (S6, Q43); the app adapter resolves the
     /// symbol through the catalog.
     pub no_bracket_profile: Arc<dyn EntryGate>,
+}
+
+impl EntryGatePorts {
+    /// The gates answered by a test-build stand-in, by name: the app's startup warning and
+    /// its release checks (Vigia C3/C5).
+    pub fn stand_ins(&self) -> Vec<&'static str> {
+        [
+            ("out_of_sync", &self.out_of_sync),
+            ("risk_blocked", &self.risk_blocked),
+            ("limits_pending", &self.limits_pending),
+            ("no_bracket_profile", &self.no_bracket_profile),
+        ]
+        .into_iter()
+        .filter(|(_, gate)| gate.stand_in().is_some())
+        .map(|(name, _)| name)
+        .collect()
+    }
 }
 
 /// Gates 6–9 for the accounts, in ADR-0003 §4.1 order.
