@@ -1398,6 +1398,7 @@
       "avgMfe": "MFE médio",
       "percent": "{value} %",
       "counts": "{wins} vitórias · {losses} derrotas · {zero} zero",
+      "grossBeside": "bruto {value}",
       "secondary": "Bruto {gross} · Comissões {commission}",
       "basis": "Base: {k} de {n} trades",
       "uncommissioned": "{count, plural, one {# trade sem comissão informada: nele, o líquido é igual ao bruto.} other {# trades sem comissão informada: neles, o líquido é igual ao bruto.}}"

@@ -214,6 +214,19 @@ function PnlText({ value, className }: { value: string; className?: string }) {
   return <span className={cn("tabular-nums", !zero && (negative ? "text-status-danger" : "text-status-success"), className)}>{formatSignedMoney(value, locale)}</span>;
 }
 
+/** The net average with the gross beside it (S22 AC-3). The gross comes from the Core, never derived here. */
+function AvgPnl({ net, gross, className }: { net: string | undefined; gross: string | undefined; className?: string }) {
+  const t = useTranslations("performance.figures");
+  const { locale } = useDisplay();
+  if (net === undefined) return <>{"—"}</>;
+  return (
+    <>
+      <PnlText value={net} className={className} />
+      {gross !== undefined ? <span className="block text-xs text-muted-foreground">{t("grossBeside", { value: formatSignedMoney(gross, locale) })}</span> : null}
+    </>
+  );
+}
+
 /** The seven figures. `—`, never 0, when the Core sends no value. */
 function Figures({ totals }: { totals: PerformanceFigures }) {
   const t = useTranslations("performance.figures");
@@ -223,7 +236,7 @@ function Figures({ totals }: { totals: PerformanceFigures }) {
   const cards: { key: string; label: string; definition: string; value: ReactNode; note?: ReactNode }[] = [
     { key: "trades", label: t("trades"), definition: d("trades"), value: formatCount(String(totals.trade_count), locale) },
     { key: "total", label: t("totalPnl"), definition: d("totalPnl"), value: <PnlText value={totals.total_pnl} className="text-lg font-semibold" />, note: t("secondary", { gross: formatSignedMoney(totals.total_gross_pnl, locale), commission: formatMoney(totals.total_commission, locale) }) },
-    { key: "avg", label: t("avgPnl"), definition: d("avgPnl"), value: totals.avg_pnl !== undefined ? <PnlText value={totals.avg_pnl} className="text-lg font-semibold" /> : dash },
+    { key: "avg", label: t("avgPnl"), definition: d("avgPnl"), value: <AvgPnl net={totals.avg_pnl} gross={totals.avg_gross_pnl} className="text-lg font-semibold" /> },
     {
       key: "win",
       label: t("winRate"),
@@ -328,7 +341,9 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
                 ) : null}
               </dd>
               <dt className="text-muted-foreground">{t("figures.avgPnl")}</dt>
-              <dd>{figures.avg_pnl !== undefined ? <PnlText value={figures.avg_pnl} /> : dash}</dd>
+              <dd>
+                <AvgPnl net={figures.avg_pnl} gross={figures.avg_gross_pnl} />
+              </dd>
               <dt className="text-muted-foreground">{t("figures.winRate")}</dt>
               <dd>{figures.win_rate !== undefined ? t("figures.percent", { value: formatDecimal(figures.win_rate, locale, 1) }) : dash}</dd>
               <dt className="text-muted-foreground">{t("figures.avgDuration")}</dt>
@@ -379,7 +394,9 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
               <PnlText value={group.figures.total_pnl} />
               <Bar ratio={group.bar_ratio} negative={group.figures.total_pnl.startsWith("-")} />
             </TableCell>
-            <TableCell>{group.figures.avg_pnl !== undefined ? <PnlText value={group.figures.avg_pnl} /> : dash}</TableCell>
+            <TableCell>
+              <AvgPnl net={group.figures.avg_pnl} gross={group.figures.avg_gross_pnl} />
+            </TableCell>
             <TableCell>{group.figures.win_rate !== undefined ? t("figures.percent", { value: formatDecimal(group.figures.win_rate, locale, 1) }) : dash}</TableCell>
             <TableCell className="whitespace-nowrap">{group.figures.avg_duration_seconds !== undefined ? formatDuration(group.figures.avg_duration_seconds) : dash}</TableCell>
             <TableCell title={group.figures.mae_sample_count < group.figures.trade_count ? t("figures.basis", { k: group.figures.mae_sample_count, n: group.figures.trade_count }) : undefined}>{f(group.figures.avg_mae, (v) => formatMoney(v, locale))}</TableCell>
@@ -394,7 +411,9 @@ function Breakdown({ data, desktop, sort, order, onSort, tradesQuery, groupBy }:
           <TableCell>
             <PnlText value={data.totals.total_pnl} />
           </TableCell>
-          <TableCell>{data.totals.avg_pnl !== undefined ? <PnlText value={data.totals.avg_pnl} /> : dash}</TableCell>
+          <TableCell>
+            <AvgPnl net={data.totals.avg_pnl} gross={data.totals.avg_gross_pnl} />
+          </TableCell>
           <TableCell>{data.totals.win_rate !== undefined ? t("figures.percent", { value: formatDecimal(data.totals.win_rate, locale, 1) }) : dash}</TableCell>
           <TableCell className="whitespace-nowrap">{data.totals.avg_duration_seconds !== undefined ? formatDuration(data.totals.avg_duration_seconds) : dash}</TableCell>
           <TableCell>{f(data.totals.avg_mae, (v) => formatMoney(v, locale))}</TableCell>

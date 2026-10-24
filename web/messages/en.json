@@ -1398,6 +1398,7 @@
       "avgMfe": "Avg MFE",
       "percent": "{value}%",
       "counts": "{wins} wins · {losses} losses · {zero} zero",
+      "grossBeside": "gross {value}",
       "secondary": "Gross {gross} · Commissions {commission}",
       "basis": "Based on {k} of {n} trades",
       "uncommissioned": "{count, plural, one {# trade has no commission entered: for it, net equals gross.} other {# trades have no commission entered: for those, net equals gross.}}"

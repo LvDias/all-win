@@ -20,6 +20,7 @@ const figures = (overrides: Record<string, unknown> = {}) => ({
   total_commission: "29.50",
   uncommissioned_count: 0,
   avg_pnl: "32.05",
+  avg_gross_pnl: "35.00",
   win_rate: "60.0",
   avg_duration_seconds: 750,
   avg_mae: "11.25",
@@ -187,6 +188,22 @@ describe("PerformancePage", () => {
     renderApp(<PerformancePage />);
     await waitFor(() => expect(urls.length).toBeGreaterThan(0));
     expect(urls.every((url) => url.includes("include_archived=true"))).toBe(true);
+  });
+
+  it("shows the gross average beside the net one, from the Core, in the cards and in the Total row", async () => {
+    serve(performance());
+    renderApp(<PerformancePage />);
+    await screen.findAllByText("P&L médio por trade (líquido)");
+    const gross = screen.getAllByText(/^bruto /);
+    expect(gross.length).toBeGreaterThanOrEqual(1);
+    expect(gross[0]).toHaveTextContent(/35[.,]00/);
+  });
+
+  it("shows no gross average when the Core sends none, and never computes one", async () => {
+    serve(performance({ totals: figures({ avg_gross_pnl: undefined }), groups: [] }));
+    renderApp(<PerformancePage />);
+    await screen.findAllByText("P&L médio por trade (líquido)");
+    expect(screen.queryByText(/^bruto /)).not.toBeInTheDocument();
   });
 
   it("first use is told apart from a filter that matches nothing", async () => {
