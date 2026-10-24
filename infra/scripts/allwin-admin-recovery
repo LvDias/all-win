@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Operator recovery command, run ON THE HOST (never inside the container):
+#   infra/scripts/allwin-admin-recovery [args of `allwin-core admin recovery`]
+# Passes the operator's identity to the Core, which writes it ONLY to the operator log (tracing target "operator"),
+# never to the user-visible audit. The Core refuses --break-glass without ALLWIN_OPERATOR_LOGIN.
+#   ALLWIN_OPERATOR_LOGIN          login user of the session (logname: utmp, not $USER)
+#   ALLWIN_OPERATOR_SSH_CONNECTION $SSH_CONNECTION (client ip/port, server ip/port)
+#   ALLWIN_OPERATOR_SSH_KEY        SHA256 fingerprint of the key that authenticated, from $SSH_USER_AUTH (sshd: ExposeAuthInfo yes)
+# Compose file and env file: ALLWIN_COMPOSE_FILE / ALLWIN_COMPOSE_ENV_FILE (default: the dev stack under infra/compose).
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../compose" && pwd)"
+compose_file="${ALLWIN_COMPOSE_FILE:-$here/docker-compose.dev.yml}"
+env_file="${ALLWIN_COMPOSE_ENV_FILE:-$here/.env}"
+[ -f "$compose_file" ] || { echo "allwin-admin-recovery: compose file not found: $compose_file" >&2; exit 1; }
+[ -f "$env_file" ] || { echo "allwin-admin-recovery: env file not found: $env_file" >&2; exit 1; }
+
+# Only the three operator variables are forwarded, and only from this session; anything inherited is replaced.
+unset ALLWIN_OPERATOR_LOGIN ALLWIN_OPERATOR_SSH_CONNECTION ALLWIN_OPERATOR_SSH_KEY
+
+clean() { printf '%s' "$1" | tr -d '\000-\037\177'; }
+
+if login="$(logname 2>/dev/null)" && [ -n "$login" ]; then
+  export ALLWIN_OPERATOR_LOGIN="$(clean "$login")"
+fi
+if [ -n "${SSH_CONNECTION:-}" ]; then
+  export ALLWIN_OPERATOR_SSH_CONNECTION="$(clean "$SSH_CONNECTION")"
+fi
+if [ -n "${SSH_USER_AUTH:-}" ] && [ -r "$SSH_USER_AUTH" ]; then
+  # First "publickey <type> <base64>" line; ssh-keygen prints "<bits> SHA256:<fp> <comment> (<type>)".
+  key_line="$(sed -n 's/^publickey //p' "$SSH_USER_AUTH" | head -n 1)"
+  if [ -n "$key_line" ] && fp="$(printf '%s\n' "$key_line" | ssh-keygen -l -f - 2>/dev/null | awk '{print $2}')" \
+     && [[ "$fp" == SHA256:* ]]; then
+    export ALLWIN_OPERATOR_SSH_KEY="$(clean "$fp")"
+  fi
+fi
+
+tty_flag=()
+[ -t 0 ] || tty_flag=(-T)   # no terminal (pipe, cron): do not ask docker for a TTY
+exec docker compose -f "$compose_file" --env-file "$env_file" exec "${tty_flag[@]}" \
+  -e ALLWIN_OPERATOR_LOGIN -e ALLWIN_OPERATOR_SSH_CONNECTION -e ALLWIN_OPERATOR_SSH_KEY \
+  core allwin-core admin recovery "$@"

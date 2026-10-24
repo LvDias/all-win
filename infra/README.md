@@ -24,3 +24,25 @@ Log capture for QA: `scripts/dev-stack.sh logs caddy core` (container stdout; no
 - Plugin: `dotnet test plugins/ninjatrader8 --nologo -v q`.
 - Web: `pnpm check` (lint, typecheck, i18n parity, API drift, Vitest).
 
+
+## Operator recovery (break-glass)
+
+Run the Core's operator command **on the host**, through the wrapper, never directly in the container:
+
+```bash
+infra/scripts/allwin-admin-recovery [args of `allwin-core admin recovery`]
+```
+
+The wrapper forwards three variables, replacing anything inherited: `ALLWIN_OPERATOR_LOGIN` (`logname`, the login user from
+utmp, not `$USER`), `ALLWIN_OPERATOR_SSH_CONNECTION` (`$SSH_CONNECTION`) and `ALLWIN_OPERATOR_SSH_KEY` (the SHA256
+fingerprint of the key that authenticated, read from the file `$SSH_USER_AUTH`). The Core writes them **only to the operator
+log** (tracing target `operator`, server side), never to the user-visible audit, and refuses `--break-glass` without
+`ALLWIN_OPERATOR_LOGIN`. The compose file and env file default to the dev stack; for another host set
+`ALLWIN_COMPOSE_FILE` and `ALLWIN_COMPOSE_ENV_FILE`.
+
+**Production host (operator/user decision, documented here, not changed by this repository):** set `ExposeAuthInfo yes` in
+`sshd_config` so `$SSH_USER_AUTH` exists, and `LogLevel VERBOSE`, which makes sshd log the fingerprint of the key used. That
+log line, correlated by time and `change_id`, is the strong evidence; the variables above are the convenience copy.
+
+**Runbook line:** break-glass trusts whoever has a shell on the host. It raises an alert and an e-mail notice, and the 72-hour
+wait and the notices to the user still apply.
