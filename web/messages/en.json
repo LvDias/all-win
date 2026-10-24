@@ -361,7 +361,7 @@
         "manual": "Register without a preset",
         "cancelChange": "Keep the current setup",
         "backToCurrent": "Go back to the account's preset",
-        "attachNotice": "Attaching a preset puts this account in review: automated orders stay suspended until you read the firm's rule and choose again."
+        "attachNotice": "Attaching the preset suspends this account's automated orders until you review and choose."
       }
     },
     "optIn": {

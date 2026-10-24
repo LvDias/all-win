@@ -361,7 +361,7 @@
         "manual": "Cadastrar sem preset",
         "cancelChange": "Manter como está",
         "backToCurrent": "Voltar ao preset da conta",
-        "attachNotice": "Anexar um preset coloca esta conta em revisão: as ordens automatizadas ficam suspensas até você ler a regra da firma e escolher de novo."
+        "attachNotice": "Ao anexar o preset, as ordens automatizadas desta conta ficam suspensas até você revisar e escolher."
       }
     },
     "optIn": {

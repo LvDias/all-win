@@ -99,7 +99,7 @@ describe("AccountFormPage (edit)", () => {
       const user = userEvent.setup();
       renderAccounts(<AccountFormPage accountId={acc.id} preset={slot(outcome())} />);
       await user.click(await screen.findByRole("button", { name: "Escolher um preset da firma" }));
-      expect(screen.getByText(/Anexar um preset coloca esta conta em revisão/)).toBeInTheDocument();
+      expect(screen.getByText("Ao anexar o preset, as ordens automatizadas desta conta ficam suspensas até você revisar e escolher.")).toBeInTheDocument();
       expect(screen.getByText("picker aberto")).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "Salvar conta" }));
       await waitFor(() => expect(calls.update).toHaveLength(1));
