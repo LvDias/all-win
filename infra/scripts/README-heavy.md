@@ -128,3 +128,22 @@ is shown to waiting jobs, for example the end time). While it exists, **new** jo
 the wait does not count against `ALLWIN_HEAVY_WAIT_S`; running jobs are never killed and finish normally. A PAUSE **expires by itself**: it is ignored once the end time in its first line (`until HH:MM`) has passed, or once the file is older
 than 2 hours; waiting jobs say so once. While it is in force, waiting jobs repeat the message every 5 minutes with the file's age and owner.
 The 2 hours count from the file's modification time, so `touch PAUSE` (or rewriting it) restarts them. Deleting the file releases the queue. `ALLWIN_HEAVY_IGNORE_PAUSE=1` makes a job ignore the pause; only the account doing the measurement uses it.
+
+## Queue, lanes and `--status`
+
+Jobs wait in an ordered queue instead of polling for a free slot. On entry the wrapper writes a ticket `LOCK_DIR/queue/<lane>.<ns>.<user>.<pid>`
+(user, working directory, the first 120 characters of the command). A ticket is live while `/proc/<pid>` exists, so tickets of dead processes are
+skipped and removed. The oldest live ticket of the highest lane takes the next free slot; **lane `sunday` goes before `normal`**, first come first served
+inside a lane. Nothing is reserved: when no `sunday` ticket waits, capacity is not wasted.
+
+* **Sunday lane:** `allwin-heavy --lane sunday <command>` (or `ALLWIN_HEAVY_LANE=sunday`). Only worktrees listed in `LOCK_DIR/LANE.sunday` may use it
+  (one entry per line: an absolute path prefix, a name under `/srv/www/allwin.worktrees`, or `*/name` for any directory called `name`; `#` starts a comment).
+  The list belongs to the Maestro; anyone else asking for the lane runs as `normal` and gets a one-line notice, so nobody promotes themselves.
+  Remove the file and the lane has no effect.
+* **Waiting:** the wait messages show the position (`position 3 of 5`). A `normal` job gives up (exit 75) only after `ALLWIN_HEAVY_WAIT_S` (default 1800 s)
+  **without progress**: the clock restarts whenever its position improves, so 75 means starved. The `sunday` lane waits without a limit.
+* **`allwin-heavy --status`** (read-only) shows the running jobs (slot, user, lane, age, working directory, command) and the queue in service order.
+* **`pnpm install --offline --frozen-lockfile`** is not queued (it is mostly I/O and not in the heavy list): it runs at once with `nice -n 19` and `ionice -c3`.
+  `pnpm build`, `vitest`, `tsc` and `eslint` stay inside the wrapper.
+* **Hold time:** on the Sunday path use the default slot target with the compile cache; keep `--fresh-target` for verdict runs (a cold clippy holds a slot for
+  ~35 minutes, a warm one a few). Tests: `infra/scripts/test-heavy-queue.sh`.

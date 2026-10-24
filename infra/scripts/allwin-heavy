@@ -3,6 +3,10 @@
 # under a host-wide 4-slot semaphore (temporarily; 3 normally), a CPU quota and low CPU/IO priority. See infra/scripts/README-heavy.md.
 #   allwin-heavy cargo test --workspace
 #   allwin-heavy --fresh-target cargo test --workspace   (QA verdict run: private target per SHA, removed after)
+#   allwin-heavy --lane sunday cargo build ...          (priority lane; only for worktrees listed in LOCK_DIR/LANE.sunday, set by the Maestro)
+#   allwin-heavy --status                                (read-only: running jobs and the queue, in order)
+# Jobs enter a FIFO queue of tickets: the oldest live ticket of the highest lane (sunday before normal) takes the next free slot.
+# `pnpm install --offline --frozen-lockfile` is not queued: it runs at once with nice 19 and ionice idle.
 set -euo pipefail
 
 # 3 slots (the temporary 4-slot setting was withdrawn on 2026-10-24: load 36/27/19, above the ~12 the user set as the condition).
@@ -12,11 +16,28 @@ LOCK_DIR="${ALLWIN_HEAVY_LOCK_DIR:-/srv/www/allwin.worktrees/.heavy-locks}"
 CPU_QUOTA="${ALLWIN_HEAVY_CPU_QUOTA:-200%}"
 WAIT_MAX="${ALLWIN_HEAVY_WAIT_S:-1800}"   # seconds to wait for a slot
 
-FRESH=0
-if [ "${1:-}" = "--fresh-target" ]; then FRESH=1; shift; fi
+FRESH=0; STATUS=0; LANE="${ALLWIN_HEAVY_LANE:-normal}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --fresh-target) FRESH=1; shift ;;
+    --lane) LANE="${2:-}"; [ -n "$LANE" ] || { echo "allwin-heavy: --lane needs a name" >&2; exit 2; }; shift 2 ;;
+    --status) STATUS=1; shift ;;
+    *) break ;;
+  esac
+done
 [ "${ALLWIN_HEAVY_FRESH_TARGET:-0}" = 1 ] && FRESH=1
+[[ "$LANE" =~ ^(normal|sunday)$ ]] || { echo "allwin-heavy: lane must be normal or sunday" >&2; exit 2; }
 
-[ $# -gt 0 ] || { echo "usage: allwin-heavy <command> [args...]" >&2; exit 2; }
+# pnpm install --offline --frozen-lockfile is mostly I/O and not in the heavy list: no queue, no slot, lowest priority.
+if [ "$STATUS" = 0 ] && [ "${1:-}" = pnpm ] && [ "${2:-}" = install ]; then
+  off=0 froz=0; for a in "$@"; do case "$a" in --offline) off=1 ;; --frozen-lockfile) froz=1 ;; esac; done
+  if [ "$off" = 1 ] && [ "$froz" = 1 ]; then
+    echo "allwin-heavy: pnpm install --offline --frozen-lockfile runs outside the queue (nice 19, ionice idle)" >&2
+    exec nice -n 19 ionice -c3 "$@"
+  fi
+fi
+
+[ "$STATUS" = 1 ] || [ $# -gt 0 ] || { echo "usage: allwin-heavy [--fresh-target] [--lane sunday] <command> [args...] | --status" >&2; exit 2; }
 [[ "$SLOTS" =~ ^[1-9][0-9]?$ ]] || { echo "allwin-heavy: ALLWIN_HEAVY_SLOTS must be 1..99" >&2; exit 2; }
 
 # Shared lock dir for every account in group devs (setgid 2770); lock files are 0660.
@@ -25,7 +46,75 @@ if [ "${1:-}" = "--fresh-target" ]; then FRESH=1; shift; fi
   || { echo "allwin-heavy: lock dir $LOCK_DIR is missing, a symlink or not writable" >&2; exit 1; }
 chmod 2770 -- "$LOCK_DIR" 2>/dev/null || true
 
-# Take any free slot; poll every 5 seconds. The slot is held by this shell's fd until the command ends
+QUEUE="$LOCK_DIR/queue"
+( umask 007; mkdir -p -- "$QUEUE" ) 2>/dev/null || true
+
+# Live tickets in service order: lane sunday before normal, then by arrival (nanoseconds). A ticket is live while /proc/<pid> exists
+# (works across accounts); tickets of dead processes are removed. Prints "<rank><ns> <ticket file>".
+queue_live() {
+  local f b lane ns user pid rank
+  for f in "$QUEUE"/*; do
+    [ -e "$f" ] || continue
+    b="${f##*/}"; IFS=. read -r lane ns user pid <<<"$b"
+    if [[ ! "$pid" =~ ^[0-9]+$ || ! "$ns" =~ ^[0-9]+$ ]]; then rm -f -- "$f" 2>/dev/null; continue; fi
+    if [ ! -d "/proc/$pid" ]; then rm -f -- "$f" 2>/dev/null; continue; fi
+    case "$lane" in sunday) rank=0 ;; *) rank=1 ;; esac
+    printf '%s%s %s\n' "$rank" "$ns" "$f"
+  done | sort
+}
+field() { sed -n "s/^$1=//p" "$2" 2>/dev/null | head -n 1; }   # field <key> <file>
+
+if [ "$STATUS" = 1 ]; then
+  now="$(date +%s)"
+  echo "slots ($SLOTS), lanes: sunday before normal, then first come first served"
+  for i in $(seq 1 "$SLOTS"); do
+    info="$LOCK_DIR/slot.$i.info"; pid=""; [ -f "$info" ] && pid="$(field pid "$info")"
+    if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+      printf '  slot.%s  RUNNING  %s  lane %s  %s min  pid %s  %s | %s\n' "$i" "$(field user "$info")" "$(field lane "$info")" \
+        "$(( (now - $(field start "$info" || echo "$now")) / 60 ))" "$pid" "$(field cwd "$info")" "$(field cmd "$info")"
+    else
+      printf '  slot.%s  free or running outside the tickets (no live record)\n' "$i"
+    fi
+  done
+  echo "queue (service order):"
+  n=0
+  while read -r _ f; do
+    n=$((n+1)); t="$(stat -c %Y "$f" 2>/dev/null || echo "$now")"
+    printf '  %2s  lane %-6s  %s min  %s  %s | %s\n' "$n" "$(field lane "$f")" "$(( (now - t) / 60 ))" "$(field user "$f")" "$(field cwd "$f")" "$(field cmd "$f")"
+  done < <(queue_live)
+  [ "$n" -gt 0 ] || echo "  (empty)"
+  [ -e "$LOCK_DIR/PAUSE" ] && echo "PAUSE in force: $(head -n 1 "$LOCK_DIR/PAUSE" | head -c 200 | tr -d '\000-\037')"
+  exit 0
+fi
+
+# Lane check: the sunday lane is only for worktrees listed (one per line) in LOCK_DIR/LANE.sunday. A line is an absolute path prefix, a name
+# under /srv/www/allwin.worktrees, or "*/name" (any directory called name). Anyone else asking for it runs in the normal lane.
+if [ "$LANE" = sunday ]; then
+  cwd_real="$(pwd -P)"; allowed=0
+  while IFS= read -r entry; do
+    entry="${entry%%#*}"; entry="${entry//[[:space:]]/}"; [ -n "$entry" ] || continue
+    case "$entry" in
+      \*/*) nm="${entry#*/}"; case "$cwd_real/" in *"/$nm/"*) allowed=1 ;; esac ;;
+      /*) pre="${entry%/}" ;;
+      *) pre="/srv/www/allwin.worktrees/$entry" ;;
+    esac
+    case "$entry" in \*/*) ;; *) if [ "$cwd_real" = "$pre" ] || [[ "$cwd_real" == "$pre"/* ]]; then allowed=1; fi ;; esac
+    [ "$allowed" = 1 ] && break
+  done < <(cat "$LOCK_DIR/LANE.sunday" 2>/dev/null || true)
+  if [ "$allowed" != 1 ]; then
+    echo "allwin-heavy: lane sunday is not allowed for $cwd_real (not in LANE.sunday); running in the normal lane" >&2; LANE=normal
+  fi
+fi
+
+# Ticket: written on entry, removed when the job takes a slot or the wrapper dies.
+user_safe="$(id -un | tr -c 'a-z0-9_-' '_')"
+ticket="$QUEUE/$LANE.$(date +%s%N).$user_safe.$$"
+( umask 007; printf 'user=%s\nlane=%s\ncwd=%s\ncmd=%s\n' "$(id -un)" "$LANE" "$(pwd -P)" "$(printf '%s ' "$@" | head -c 120 | tr -d '\000-\037')" > "$ticket" )
+trap 'rm -f -- "$ticket"' EXIT
+trap 'exit 130' INT TERM
+last_pos=0
+
+# Wait for the ticket's turn, then take any free slot. The slot is held by this shell's fd until the command ends
 # (the child inherits it too, so the slot stays taken even if this wrapper is killed).
 waited=0 announced=0 paused_said=0 stale_said=0 pause_last=0 held=""
 while [ -z "$held" ]; do
@@ -54,20 +143,37 @@ while [ -z "$held" ]; do
       sleep 5; continue
     fi
   fi
-  for i in $(seq 1 "$SLOTS"); do
-    f="$LOCK_DIR/slot.$i"
-    ( umask 007; : >> "$f" ) 2>/dev/null || true
-    exec {fd}>>"$f" || continue
-    if flock -n "$fd"; then held="$i"; break; fi
-    exec {fd}>&-
-  done
-  [ -n "$held" ] && break
-  if [ "$announced" = 0 ]; then
-    echo "allwin-heavy: all $SLOTS slots busy, waiting (max ${WAIT_MAX}s)..." >&2; announced=1
+  # Position in the queue (a vanished ticket is written again).
+  [ -e "$ticket" ] || ( umask 007; printf 'user=%s\nlane=%s\ncwd=%s\ncmd=%s\n' "$(id -un)" "$LANE" "$(pwd -P)" "re-queued" > "$ticket" )
+  pos=0; total=0
+  while read -r _ qf; do total=$((total+1)); [ "$qf" = "$ticket" ] && pos=$total; done < <(queue_live)
+  [ "$pos" -ge 1 ] || { sleep 1; continue; }
+  if [ "$pos" -eq 1 ]; then
+    for i in $(seq 1 "$SLOTS"); do
+      f="$LOCK_DIR/slot.$i"
+      ( umask 007; : >> "$f" ) 2>/dev/null || true
+      exec {fd}>>"$f" || continue
+      if flock -n "$fd"; then held="$i"; break; fi
+      exec {fd}>&-
+    done
+    [ -n "$held" ] && break
   fi
-  [ "$waited" -lt "$WAIT_MAX" ] || { echo "allwin-heavy: gave up waiting for a slot" >&2; exit 75; }
-  sleep 5; waited=$((waited + 5))
+  # Waiting. A normal job gives up after WAIT_MAX seconds without progress: the clock restarts whenever its position improves, so exit 75
+  # means starved, not unlucky. The sunday lane waits without a limit.
+  if [ "$last_pos" -eq 0 ] || [ "$pos" -lt "$last_pos" ]; then waited=0; fi
+  if [ "$pos" != "$last_pos" ]; then
+    if [ "$pos" -eq 1 ]; then why="next in line, all $SLOTS slots busy"; else why="position $pos of $total"; fi
+    if [ "$LANE" = sunday ]; then lim=""; else lim=" (gives up after ${WAIT_MAX}s without progress)"; fi
+    echo "allwin-heavy: waiting, lane $LANE, $why$lim" >&2
+    last_pos="$pos"
+  fi
+  if [ "$LANE" != sunday ] && [ "$waited" -ge "$WAIT_MAX" ]; then echo "allwin-heavy: gave up waiting for a slot (starved: ${WAIT_MAX}s without progress)" >&2; exit 75; fi
+  sleep 3; waited=$((waited + 3))
 done
+# The slot is ours: the ticket goes away and a record tells --status what runs here (stale records are recognized by their pid).
+rm -f -- "$ticket"
+( umask 007; printf 'pid=%s\nuser=%s\nlane=%s\nstart=%s\ncwd=%s\ncmd=%s\n' "$$" "$(id -un)" "$LANE" "$(date +%s)" "$(pwd -P)" \
+    "$(printf '%s ' "$@" | head -c 120 | tr -d '\000-\037')" > "$LOCK_DIR/slot.$held.info" ) 2>/dev/null || true
 
 # Defaults that keep the build small; the caller can override any of them.
 umask 002   # files created under the shared toolchain and caches stay group-writable (group devs)
@@ -159,6 +265,7 @@ if [ "$FRESH" = 1 ] && [ "$SLOT_TARGET" != 1 ]; then
   case "$CARGO_TARGET_DIR" in "$TARGET_ROOT"/verify-*) ;; *) echo "allwin-heavy: unexpected target dir" >&2; exit 1 ;; esac
 fi
 cleanup() {
+  rm -f -- "$LOCK_DIR/slot.$held.info"
   if [ "$SCCACHE_ON" = 1 ]; then
     "$SCCACHE_BIN" --stop-server >/dev/null 2>&1 || true
     rm -f -- "$SCCACHE_SERVER_UDS"
