@@ -1,0 +1,18 @@
+{
+  "protocol_version": "1.4",
+  "msg_id": "0192b3c4-0000-7000-8000-000000001404",
+  "type": "risk_state",
+  "sent_at": "2026-10-22T14:31:06.120Z",
+  "payload": {
+    "account_id": "0192b3c4-0000-7000-8000-000000000001",
+    "as_of": "2026-10-22T15:20:00.500Z",
+    "realized_pnl": "-500.00",
+    "unrealized_pnl": "-312.50",
+    "daily_loss_remaining": "187.50",
+    "drawdown_remaining": "1687.50",
+    "balance": "49187.50",
+    "commissions_today": "12.40",
+    "commission_source": "mixed",
+    "day_state": "unknown"
+  }
+}
