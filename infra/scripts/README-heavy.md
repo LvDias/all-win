@@ -120,4 +120,4 @@ For a planned performance measurement the SRE creates the file `/srv/www/allwin.
 is shown to waiting jobs, for example the end time). While it exists, **new** jobs wait with `paused for SRE quiet window` and
 the wait does not count against `ALLWIN_HEAVY_WAIT_S`; running jobs are never killed and finish normally. A PAUSE **expires by itself**: it is ignored once the end time in its first line (`until HH:MM`) has passed, or once the file is older
 than 2 hours; waiting jobs say so once. While it is in force, waiting jobs repeat the message every 5 minutes with the file's age and owner.
-Deleting the file releases the queue. `ALLWIN_HEAVY_IGNORE_PAUSE=1` makes a job ignore the pause; only the account doing the measurement uses it.
+The 2 hours count from the file's modification time, so `touch PAUSE` (or rewriting it) restarts them. Deleting the file releases the queue. `ALLWIN_HEAVY_IGNORE_PAUSE=1` makes a job ignore the pause; only the account doing the measurement uses it.
