@@ -1,0 +1,107 @@
+{
+ "presets.value_restored": {
+  "additionalProperties": false,
+  "properties": {
+   "change": {
+    "additionalProperties": false,
+    "description": "One changed field; values are strings, absent when empty. Scalars as their string form (money as\ndecimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string\namounts, e.g. `{\"amount\":\"2000.00\",\"type\":\"static\"}`.\n",
+    "properties": {
+     "field": {
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_.]*$",
+      "type": "string"
+     },
+     "new": {
+      "maxLength": 1000,
+      "type": "string"
+     },
+     "old": {
+      "maxLength": 1000,
+      "type": "string"
+     }
+    },
+    "required": [
+     "field"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "change"
+  ],
+  "type": "object"
+ },
+ "presets.version_applied": {
+  "additionalProperties": false,
+  "properties": {
+   "changes": {
+    "items": {
+     "additionalProperties": false,
+     "description": "One changed field; values are strings, absent when empty. Scalars as their string form (money as\ndecimal strings); object values (e.g. a drawdown) as compact JSON with sorted keys and string\namounts, e.g. `{\"amount\":\"2000.00\",\"type\":\"static\"}`.\n",
+     "properties": {
+      "field": {
+       "maxLength": 64,
+       "pattern": "^[a-z][a-z0-9_.]*$",
+       "type": "string"
+      },
+      "new": {
+       "maxLength": 1000,
+       "type": "string"
+      },
+      "old": {
+       "maxLength": 1000,
+       "type": "string"
+      }
+     },
+     "required": [
+      "field"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "from_preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "from_version_number": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "kept_fields": {
+    "description": "Edited fields the user kept (`keep_mine`).",
+    "items": {
+     "description": "Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.",
+     "enum": [
+      "max_position_qty",
+      "drawdown",
+      "daily_loss_limit",
+      "daily_profit_target",
+      "trading_day_reset",
+      "consistency_rule",
+      "commission_per_contract_side",
+      "evaluation_profit_target"
+     ],
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "to_preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "to_version_number": {
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "from_preset_version_id",
+   "to_preset_version_id",
+   "from_version_number",
+   "to_version_number",
+   "changes"
+  ],
+  "type": "object"
+ }
+}

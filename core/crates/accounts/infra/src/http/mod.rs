@@ -3,6 +3,7 @@
 //! 409 → 422. Error bodies follow the contract `Error` schema.
 
 pub mod dto;
+pub mod presets;
 pub mod schemas;
 pub mod validate;
 

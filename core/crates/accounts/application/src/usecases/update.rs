@@ -4,30 +4,24 @@
 use access::{Caller, RequestOrigin, StepUpAction};
 
 use accounts_enterprise::{
-    Account, AccountKind, Binding, Choice, OptInKind, OptInState, PropSelection, RuleOrigin,
+    AccountKind, Binding, Choice, OptInKind, OptInState, PropSelection, RuleOrigin,
 };
 
 use crate::commands::{CommissionInput, UpdateAccount};
 use crate::deps::AccountsDeps;
 use crate::error::{AccountsError, Refusals};
 use crate::events::AccountsEvent;
-use crate::ports::{AccountWrite, CommissionWrite, CurrentRule, RuleSelection};
+use crate::ports::{AccountWrite, CommissionWrite};
+use crate::presets::account_ops::{fill_writes, leave_preset_writes, max_position_writes};
 use crate::usecases::audit;
-use crate::usecases::opt_in_error;
 use crate::usecases::support::{
-    applicable, bound_platform_account, current_rules, kind_index, local_date, port_err,
+    OptInPlan, bound_platform_account, current_rules, local_date, plan_opt_ins, port_err,
     resolve_binding, resolve_selection, rule_selection_of, store_err, view,
 };
 use crate::views::AccountView;
 
 pub struct UpdateAccountUseCase {
     deps: AccountsDeps,
-}
-
-/// How one kind's opt-in moves with this request.
-enum OptInPlan {
-    Keep,
-    Set(OptInState, Option<(Choice, CurrentRule)>),
 }
 
 impl UpdateAccountUseCase {
@@ -95,11 +89,12 @@ impl UpdateAccountUseCase {
             (Some(_), Some(old)) => new_venue != Some(old),
         };
 
-        let plans = self.plan_opt_ins(
+        let plans = plan_opt_ins(
             &stored,
-            &cmd,
+            &cmd.opt_ins,
             stored_rules.as_ref(),
-            new_rules.as_ref(),
+            new_rules.as_ref().map(|(rules, _)| rules),
+            d.clock.now(),
             &mut refusals,
         );
 
@@ -163,16 +158,54 @@ impl UpdateAccountUseCase {
         if cmd.rule_values.is_some() && !selection_changed {
             refusals.push(AccountsError::RuleValuesWithoutSelectionChange);
         }
+        let now = d.clock.now();
+        // S16: the rows follow the selection (only deviations from the preset are stored).
+        let stored_is_preset = matches!(stored.selection, Some(PropSelection::Preset { .. }));
+        let rows = match resolved.as_ref() {
+            Some(r) if r.preset.is_some() || stored_is_preset => d
+                .store
+                .rule_values(user, stored.id)
+                .await
+                .map_err(store_err)?,
+            _ => Vec::new(),
+        };
+        let rule_writes = match resolved.as_ref() {
+            Some(r) => {
+                let max = cmd.max_position_qty.value();
+                let writes = match (&r.preset, selection_changed) {
+                    (Some(facts), true) => fill_writes(
+                        facts,
+                        &r.selection,
+                        cmd.rule_values.as_ref(),
+                        max,
+                        &rows,
+                        now,
+                    ),
+                    (Some(facts), false) if cmd.max_position_qty != stored.max_position_qty => {
+                        max_position_writes(facts, &r.selection, max, &rows, now)
+                    }
+                    (None, true) if stored_is_preset => Ok(leave_preset_writes(&rows)),
+                    // The schema refuses them without a preset (400); kept as a guard.
+                    (None, _) if cmd.rule_values.is_some() => Err(AccountsError::InvalidRequest {
+                        pointer: "/rule_values".into(),
+                    }),
+                    _ => Ok(Vec::new()),
+                };
+                match writes {
+                    Ok(w) => w,
+                    Err(e) => {
+                        refusals.push(e);
+                        Vec::new()
+                    }
+                }
+            }
+            None => Vec::new(),
+        };
         refusals.first()?;
         let Some(resolved) = resolved else {
             return Err(AccountsError::Internal("unresolved selection".into()));
         };
-        if cmd.rule_values.is_some() {
-            // Only with a changed preset selection (S16); unreachable before S16's catalog.
-            return Err(AccountsError::Internal("rule_values need S16".into()));
-        }
 
-        let now = d.clock.now();
         let mut next = stored.clone();
         next.display_name = cmd.display_name.clone();
         if resolved.has_evaluation_target && next.evaluation_start.is_none() {
@@ -213,12 +246,13 @@ impl UpdateAccountUseCase {
         };
         let changes = audit::changes(&stored, before_binding, &next, after_binding);
         let opt_in_changed = next.automation != stored.automation || next.copy != stored.copy;
-        if changes.is_empty() && !opt_in_changed {
+        if changes.is_empty() && !opt_in_changed && rule_writes.is_empty() {
             // A request that changes nothing is not audited.
             return view(d, user, stored).await;
         }
 
-        let limits = stored.limits_inputs_differ(&next);
+        // Rule values feed the derived limits too (ADR-0006): any changed row bumps them.
+        let limits = stored.limits_inputs_differ(&next) || !rule_writes.is_empty();
         next.row_version = stored.row_version + 1;
         if limits {
             next.limits_version = stored.limits_version + 1;
@@ -284,74 +318,14 @@ impl UpdateAccountUseCase {
             .save(AccountWrite {
                 account: next.clone(),
                 expected_row_version: stored.row_version,
+                expected_limits_version: stored.limits_version,
                 commission,
+                rule_values: rule_writes,
                 events,
             })
             .await
             .map_err(store_err)?;
         view(d, user, next).await
-    }
-
-    /// Opt-in moves of this request (D16): a kind whose rule version this request changes is
-    /// re-selected (its choice is then required if the new version needs one); otherwise a sent
-    /// choice is a later change, as `setAccountOptIn`.
-    fn plan_opt_ins(
-        &self,
-        stored: &Account,
-        cmd: &UpdateAccount,
-        stored_rules: Option<&[CurrentRule; 2]>,
-        new_rules: Option<&([CurrentRule; 2], RuleSelection)>,
-        refusals: &mut Refusals,
-    ) -> Vec<OptInPlan> {
-        let now = self.deps.clock.now();
-        OptInKind::ALL
-            .into_iter()
-            .map(|kind| {
-                let request = cmd.opt_ins.get(kind);
-                let Some((rules, _)) = new_rules else {
-                    if stored.kind == AccountKind::Real && request.is_some() {
-                        refusals.push(AccountsError::OptInNotApplicable { kind });
-                    }
-                    return OptInPlan::Keep;
-                };
-                let current = &rules[kind_index(kind)];
-                let version_changes =
-                    stored_rules.is_none_or(|s| s[kind_index(kind)].rule.id != current.rule.id);
-                if version_changes && kind == OptInKind::Automation {
-                    return match OptInState::select(&current.rule, applicable(kind), request, now) {
-                        Ok(state) => {
-                            let choice = match state {
-                                OptInState::Chosen(c) => Some((c.choice, current.clone())),
-                                _ => None,
-                            };
-                            OptInPlan::Set(state, choice)
-                        }
-                        Err(e) => {
-                            refusals.push(opt_in_error(kind, e));
-                            OptInPlan::Keep
-                        }
-                    };
-                }
-                // `copy` is never required here; a follower whose copy version changes goes to
-                // pending_review through the follower flow (S7/S19), not this form.
-                let Some(request) = request else {
-                    return OptInPlan::Keep;
-                };
-                match stored
-                    .opt_in(kind)
-                    .choose(&current.rule, applicable(kind), request, now)
-                {
-                    Ok(Some(state)) => {
-                        OptInPlan::Set(state, Some((request.choice, current.clone())))
-                    }
-                    Ok(None) => OptInPlan::Keep,
-                    Err(e) => {
-                        refusals.push(opt_in_error(kind, e));
-                        OptInPlan::Keep
-                    }
-                }
-            })
-            .collect()
     }
 }
 

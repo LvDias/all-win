@@ -870,7 +870,9 @@ async fn a_refused_write_leaves_no_row_and_no_event() {
         .save(AccountWrite {
             account: next,
             expected_row_version: stored.row_version,
+            expected_limits_version: stored.limits_version,
             commission: CommissionWrite::Set(RuleOrigin::SetByUser),
+            rule_values: Vec::new(),
             events,
         })
         .await;

@@ -1,0 +1,101 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT field, origin, value, chose, chosen_at, is_unset, saved_at\n           FROM accounts.account_rule_value WHERE user_id = $1 AND account_id = $2 ORDER BY field",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "field",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account_rule_value",
+            "name": "field"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "origin",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account_rule_value",
+            "name": "origin"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "value",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "accounts.account_rule_value",
+            "name": "value"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "chose",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts.account_rule_value",
+            "name": "chose"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "chosen_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account_rule_value",
+            "name": "chosen_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "is_unset",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "accounts.account_rule_value",
+            "name": "is_unset"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "saved_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounts.account_rule_value",
+            "name": "saved_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "59faebe280f1c93f019ef8be2252130338524d366d1eee7888eb73db85f22dcf"
+}

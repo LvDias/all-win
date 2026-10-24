@@ -424,3 +424,20 @@ fn not_material_waits_for_the_accounts_path() {
         run(&v2, Some(&stored), open)
     );
 }
+
+#[test]
+fn schema_versions_1_0_and_1_1() {
+    let mut v = parse(V1);
+    v["schema_version"] = json!("1.1");
+    v["plans"][0]["phases"][0]["sizes"][0]["rule_sets"][0]["rules"]["drawdown"]["value"]["trailing_lock"] =
+        json!({"mode": "floor_reaches_start"});
+    assert!(run(&v, None, POLICY).is_ok(), "{:?}", run(&v, None, POLICY));
+    v["schema_version"] = json!("1.0");
+    assert!(
+        problems(&v, None)
+            .iter()
+            .any(|p| matches!(p, ImportProblem::Invalid(m) if m.contains("trailing_lock")))
+    );
+    v["schema_version"] = json!("1.2");
+    assert!(problems(&v, None).contains(&ImportProblem::UnsupportedSchemaVersion("1.2".into())));
+}

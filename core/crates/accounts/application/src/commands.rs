@@ -5,9 +5,11 @@ use chrono::NaiveDate;
 use serde_json::Value;
 use uuid::Uuid;
 
+use accounts_enterprise::preset_values::account::ApplyChoice;
 use accounts_enterprise::{
     AccountId, AccountKind, AccountName, ChoiceRequest, ConnectionId, FirmPlatform, LifecycleState,
-    ManualText, MaxPositionQty, MoneyAmount, Multiplier, OptInKind, PresetVersionId, SizeAmount,
+    ManualText, MaxPositionQty, MoneyAmount, Multiplier, OptInKind, PresetVersionId, RuleField,
+    SizeAmount,
 };
 
 /// The prop selection as sent; `None` for a real account.
@@ -131,5 +133,27 @@ pub struct RestartEvaluation {
     pub account_id: AccountId,
     pub evaluation_start: NaiveDate,
     pub evaluation_earned_before: Option<MoneyAmount>,
+    pub row_version: i32,
+}
+
+/// `applyPresetVersion` (S16 AC-3, AC-11).
+#[derive(Debug, Clone)]
+pub struct ApplyPresetVersion {
+    pub account_id: AccountId,
+    pub target_preset_version_id: PresetVersionId,
+    pub row_version: i32,
+    pub firm_platform: Option<FirmPlatform>,
+    pub choices: Vec<(RuleField, ApplyChoice)>,
+    pub rule_values: Option<Value>,
+    pub max_position_qty: Option<MaxPositionQty>,
+    pub opt_ins: OptInChoices,
+    pub step_up: Option<StepUpProof>,
+}
+
+/// `restorePresetValue` (S16-04).
+#[derive(Debug, Clone, Copy)]
+pub struct RestorePresetValue {
+    pub account_id: AccountId,
+    pub field: RuleField,
     pub row_version: i32,
 }

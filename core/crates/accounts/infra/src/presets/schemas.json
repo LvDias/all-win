@@ -1,0 +1,864 @@
+{
+ "AccountPresetState": {
+  "additionalProperties": false,
+  "properties": {
+   "account_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "fields": {
+    "items": {
+     "additionalProperties": false,
+     "allOf": [
+      {
+       "else": {
+        "not": {
+         "anyOf": [
+          {
+           "required": [
+            "chose"
+           ]
+          },
+          {
+           "required": [
+            "chosen_at"
+           ]
+          }
+         ]
+        }
+       },
+       "if": {
+        "properties": {
+         "origin": {
+          "const": "chosen_from_conflict"
+         }
+        }
+       },
+       "then": {
+        "required": [
+         "chose",
+         "chosen_at",
+         "account_value"
+        ]
+       }
+      },
+      {
+       "else": {
+        "required": [
+         "account_value"
+        ]
+       },
+       "if": {
+        "properties": {
+         "origin": {
+          "const": "unresolved"
+         }
+        }
+       },
+       "then": {
+        "not": {
+         "required": [
+          "account_value"
+         ]
+        }
+       }
+      }
+     ],
+     "properties": {
+      "account_value": {
+       "description": "The account's value (typed by `field`, as in `PresetRuleValues`; for `max_position_qty` a `MaxPositionValue`). Absent with `unresolved`.",
+       "type": "object"
+      },
+      "chose": {
+       "description": "With `chosen_from_conflict`.",
+       "enum": [
+        "published_value",
+        "other_value"
+       ],
+       "type": "string"
+      },
+      "chosen_at": {
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+       "type": "string"
+      },
+      "field": {
+       "description": "Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.",
+       "enum": [
+        "max_position_qty",
+        "drawdown",
+        "daily_loss_limit",
+        "daily_profit_target",
+        "trading_day_reset",
+        "consistency_rule",
+        "commission_per_contract_side",
+        "evaluation_profit_target"
+       ],
+       "type": "string"
+      },
+      "origin": {
+       "description": "`preset` = the preset's verified value; `edited` = the user changed it (badge `Editado`);\n`chosen_from_conflict` = the user resolved a not-confirmed value (Q-S16-3: stored with the time\nand whether one of the published values or another value was chosen); `unresolved` = an optional\nnot-confirmed field left open (not tracked).\n",
+       "enum": [
+        "preset",
+        "edited",
+        "chosen_from_conflict",
+        "unresolved"
+       ],
+       "type": "string"
+      },
+      "preset_value": {
+       "description": "The preset version's rule for this field (typed by `field`, as in `PresetRules`).",
+       "type": "object"
+      }
+     },
+     "required": [
+      "field",
+      "origin"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "firm_platform": {
+    "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+    "type": "string"
+   },
+   "newer_version": {
+    "additionalProperties": false,
+    "properties": {
+     "preset_version_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     },
+     "release": {
+      "additionalProperties": false,
+      "properties": {
+       "published_at": {
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+        "type": "string"
+       },
+       "verified_on": {
+        "format": "date",
+        "type": "string"
+       },
+       "version_number": {
+        "minimum": 1,
+        "type": "integer"
+       }
+      },
+      "required": [
+       "version_number",
+       "published_at",
+       "verified_on"
+      ],
+      "type": "object"
+     },
+     "suspends": {
+      "description": "True when it changed the automation or copy stance or its material text, so the opt-in is already `pending_review` (Q-S5-3).",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "preset_version_id",
+     "release",
+     "suspends"
+    ],
+    "type": "object"
+   },
+   "preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "release": {
+    "additionalProperties": false,
+    "properties": {
+     "published_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "type": "string"
+     },
+     "verified_on": {
+      "format": "date",
+      "type": "string"
+     },
+     "version_number": {
+      "minimum": 1,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "version_number",
+     "published_at",
+     "verified_on"
+    ],
+    "type": "object"
+   },
+   "row_version": {
+    "description": "The account's `row_version`.",
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "account_id",
+   "preset_version_id",
+   "release",
+   "fields",
+   "row_version"
+  ],
+  "type": "object"
+ },
+ "ApplyPresetVersionRequest": {
+  "additionalProperties": false,
+  "allOf": [
+   {
+    "not": {
+     "properties": {
+      "choices": {
+       "required": [
+        "drawdown"
+       ]
+      },
+      "rule_values": {
+       "required": [
+        "drawdown"
+       ]
+      }
+     },
+     "required": [
+      "choices",
+      "rule_values"
+     ]
+    }
+   },
+   {
+    "not": {
+     "properties": {
+      "choices": {
+       "required": [
+        "daily_loss_limit"
+       ]
+      },
+      "rule_values": {
+       "required": [
+        "daily_loss_limit"
+       ]
+      }
+     },
+     "required": [
+      "choices",
+      "rule_values"
+     ]
+    }
+   },
+   {
+    "not": {
+     "properties": {
+      "choices": {
+       "required": [
+        "daily_profit_target"
+       ]
+      },
+      "rule_values": {
+       "required": [
+        "daily_profit_target"
+       ]
+      }
+     },
+     "required": [
+      "choices",
+      "rule_values"
+     ]
+    }
+   },
+   {
+    "not": {
+     "properties": {
+      "choices": {
+       "required": [
+        "trading_day_reset"
+       ]
+      },
+      "rule_values": {
+       "required": [
+        "trading_day_reset"
+       ]
+      }
+     },
+     "required": [
+      "choices",
+      "rule_values"
+     ]
+    }
+   },
+   {
+    "not": {
+     "properties": {
+      "choices": {
+       "required": [
+        "consistency_rule"
+       ]
+      },
+      "rule_values": {
+       "required": [
+        "consistency_rule"
+       ]
+      }
+     },
+     "required": [
+      "choices",
+      "rule_values"
+     ]
+    }
+   }
+  ],
+  "description": "A field appears in `choices` or in `rule_values`, never in both (400 otherwise).",
+  "properties": {
+   "choices": {
+    "additionalProperties": false,
+    "description": "For each edited field of the diff, keep the user's value or take the new preset value.",
+    "properties": {
+     "commission_per_contract_side": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     },
+     "consistency_rule": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     },
+     "daily_loss_limit": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     },
+     "daily_profit_target": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     },
+     "drawdown": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     },
+     "evaluation_profit_target": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     },
+     "max_position_qty": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     },
+     "trading_day_reset": {
+      "enum": [
+       "keep_mine",
+       "use_preset"
+      ],
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "firm_platform": {
+    "description": "Required when the target has platform-specific rules and the account has no platform yet, or to change it (`PresetDiff.firm_platform_required`).",
+    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+    "type": "string"
+   },
+   "max_position_qty": {
+    "description": "Maximum position in contracts, one number per account in V1 (Q-A1). Mandatory (S5 AC-3).",
+    "maximum": 10000,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "opt_ins": {
+    "additionalProperties": false,
+    "description": "The `opt_ins` property of `createAccount` / `updateAccount` / `applyPresetVersion` (atomic with the\nsave). Required kinds: on create, `automation` when its rule version needs a choice; on update and\napply, only `automation`, and only when that request changes the automation rule version and the\nnew version needs a choice. Otherwise 422 `accounts.opt_in_required` with `pointer`\n`/opt_ins/automation`, and nothing is saved. `copy` is never required by these operations (it is\nchosen in the follower flow, S7/S19); it may be sent when the UI shows it. A stale `rule_version_id` gives 409\n`accounts.rule_version_changed`. The step-up (when a choice is `accepted` and changes the stored\nstate) happens before the single save, so cancelling it saves nothing.\n",
+    "minProperties": 1,
+    "properties": {
+     "automation": {
+      "additionalProperties": false,
+      "properties": {
+       "choice": {
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version whose text was displayed (`RuleVersion.id`).",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "choice",
+       "rule_version_id"
+      ],
+      "type": "object"
+     },
+     "copy": {
+      "additionalProperties": false,
+      "properties": {
+       "choice": {
+        "enum": [
+         "accepted",
+         "declined"
+        ],
+        "type": "string"
+       },
+       "rule_version_id": {
+        "description": "Rule version whose text was displayed (`RuleVersion.id`).",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "choice",
+       "rule_version_id"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "object"
+   },
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   },
+   "rule_values": {
+    "additionalProperties": false,
+    "description": "The account's own value for a rule field, sent when it differs from the preset value (edited, S16\nAC-2) or resolves a not-confirmed field (chosen among the published values or typed, S16 AC-6).\n`max_position_qty` is not here: it is the account's top-level field (S5).\n",
+    "minProperties": 1,
+    "properties": {
+     "consistency_rule": {
+      "additionalProperties": false,
+      "properties": {
+       "text": {
+        "description": "The firm's wording (not translated).",
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+       },
+       "threshold_pct": {
+        "pattern": "^[0-9]{1,3}(\\.[0-9]{1,2})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "text"
+      ],
+      "type": "object"
+     },
+     "daily_loss_limit": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "else": {
+         "required": [
+          "amount"
+         ]
+        },
+        "if": {
+         "properties": {
+          "kind": {
+           "const": "none"
+          }
+         }
+        },
+        "then": {
+         "not": {
+          "required": [
+           "amount"
+          ]
+         }
+        }
+       }
+      ],
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       },
+       "kind": {
+        "enum": [
+         "hard",
+         "soft_pause",
+         "none"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "type": "object"
+     },
+     "daily_profit_target": {
+      "additionalProperties": false,
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "amount"
+      ],
+      "type": "object"
+     },
+     "drawdown": {
+      "additionalProperties": false,
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "type": {
+           "const": "other"
+          }
+         }
+        },
+        "then": {
+         "required": [
+          "description"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "type": {
+           "enum": [
+            "static",
+            "other"
+           ]
+          }
+         }
+        },
+        "then": {
+         "not": {
+          "required": [
+           "trailing_lock"
+          ]
+         }
+        }
+       }
+      ],
+      "properties": {
+       "amount": {
+        "description": "Non-negative money as a decimal string, exactly as published (X-3).",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       },
+       "description": {
+        "description": "Required for `other`.",
+        "maxLength": 500,
+        "type": "string"
+       },
+       "stops_trailing_at": {
+        "description": "When it stops trailing, as published (the firm's text; the Core never interprets it).",
+        "maxLength": 300,
+        "type": "string"
+       },
+       "trailing_lock": {
+        "additionalProperties": false,
+        "allOf": [
+         {
+          "if": {
+           "properties": {
+            "mode": {
+             "const": "never"
+            }
+           }
+          },
+          "then": {
+           "not": {
+            "required": [
+             "offset"
+            ]
+           }
+          }
+         }
+        ],
+        "description": "5.4.0 (Q90 a, user; Esquadro, Torno, Malha). Where a TRAILING drawdown stops trailing:\n- `floor_reaches_start`: while floor < size_amount + `offset`, the floor trails as before. When it\n  reaches that value it locks there for the life of the evaluation. The base is the account's real\n  size (`size_amount`, Q73), not the nearest standard size.\n- `never`: the floor never stops trailing.\nAbsent = the Q90 interim: the floor keeps trailing and the UI shows \"regra de trava não\nmodelada\". The publisher fills it from the research; ambiguous text makes the whole drawdown\n`not_confirmed`, never a guessed lock. Side effects such as \"and the daily loss limit is removed\"\nare out of scope (published text only). Allowed only for `trailing_intraday` / `trailing_eod`.\nA `restartEvaluation` with a new start resets the lock with the evaluation (Malha). Changes follow\nQ48:\n- adding a lock or lowering `offset` loosens, so it applies from the next trading day\n  (`pending_changes` `drawdown_lock_changed`);\n- removing it (`never`, or absent) or raising `offset` tightens, so it applies at once.\nRemoving a lock that already locked makes the floor trail again from the current high water.\n",
+        "properties": {
+         "mode": {
+          "enum": [
+           "floor_reaches_start",
+           "never"
+          ],
+          "type": "string"
+         },
+         "offset": {
+          "description": "With `floor_reaches_start` only; absent = `0.00`, so the floor locks at `size_amount` (Crivo n2).",
+          "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+          "type": "string"
+         }
+        },
+        "required": [
+         "mode"
+        ],
+        "type": "object"
+       },
+       "type": {
+        "enum": [
+         "trailing_intraday",
+         "trailing_eod",
+         "static",
+         "other"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "type",
+       "amount"
+      ],
+      "type": "object"
+     },
+     "evaluation_profit_target": {
+      "additionalProperties": false,
+      "properties": {
+       "amount": {
+        "description": "Net profit to reach since the evaluation start, > 0.",
+        "pattern": "^[0-9]{1,14}(\\.[0-9]{1,4})?$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "amount"
+      ],
+      "type": "object"
+     },
+     "trading_day_reset": {
+      "additionalProperties": false,
+      "properties": {
+       "local_time": {
+        "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+        "type": "string"
+       },
+       "published_text": {
+        "description": "As published, e.g. \"5:00 PM ET\".",
+        "maxLength": 100,
+        "type": "string"
+       },
+       "time_zone": {
+        "description": "IANA time zone name, validated by the Core against its tz database.",
+        "maxLength": 64,
+        "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+        "type": "string"
+       }
+      },
+      "required": [
+       "local_time",
+       "time_zone"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "object"
+   },
+   "step_up": {
+    "additionalProperties": false,
+    "description": "Required when an `opt_ins` choice is `accepted` and changes the stored state (action `account_opt_in_accept`, target = this account).",
+    "properties": {
+     "challenge_id": {
+      "description": "Sealed challenge token (auth policy §3); opaque to clients. Never logged.",
+      "pattern": "^[A-Za-z0-9_-]{16,256}$",
+      "type": "string"
+     },
+     "code": {
+      "description": "The code as typed. The Core normalizes it per the code format (U16; format 1: trim, drop spaces and `-`,\nuppercase, O→0, I/L→1, then exactly 8 Crockford Base32 characters). Within 32 characters, non-ASCII or\nmalformed input is a wrong attempt (`auth.code_invalid`); more than 32 characters is 400\n`common.invalid_request`, which counts no attempt and reveals nothing. Never logged.\n",
+      "maxLength": 32,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "challenge_id",
+     "code"
+    ],
+    "type": "object"
+   },
+   "target_preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "target_preset_version_id",
+   "row_version"
+  ],
+  "type": "object"
+ },
+ "PresetDiff": {
+  "additionalProperties": false,
+  "properties": {
+   "account_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "firm_platform_required": {
+    "description": "True when the target has platform-specific rules and the account must name (or confirm) its `firm_platform` in the apply request.",
+    "type": "boolean"
+   },
+   "firm_platforms": {
+    "description": "The target's firm platforms (with `firm_platform_required`).",
+    "items": {
+     "description": "Code of the firm-side platform when the preset has platform-specific rules (e.g. `rithmic`, `tradovate`); the options come from the preset version (S16). Not the execution platform.",
+     "pattern": "^[a-z][a-z0-9_]{0,31}$",
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "from_preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "opt_in_changes": {
+    "additionalProperties": false,
+    "description": "The new rule version per kind when it differs from the account's current one; then the apply request needs `opt_ins` for that kind if a choice is required.",
+    "properties": {
+     "automation": {
+      "oneOf": [
+       {
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "copy": {
+      "oneOf": [
+       {
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "automation",
+     "copy"
+    ],
+    "type": "object"
+   },
+   "rows": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "account_value": {
+       "description": "Typed by `field`; absent when unresolved.",
+       "type": "object"
+      },
+      "cap_conflict": {
+       "description": "`max_position_qty` only: the new cap is below the account's value; apply is refused until the body lowers it.",
+       "type": "boolean"
+      },
+      "current_preset_value": {
+       "description": "The current version's rule (typed by `field`).",
+       "type": "object"
+      },
+      "edited": {
+       "description": "The user had edited this field (\"Você editou este valor\").",
+       "type": "boolean"
+      },
+      "field": {
+       "description": "Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.",
+       "enum": [
+        "max_position_qty",
+        "drawdown",
+        "daily_loss_limit",
+        "daily_profit_target",
+        "trading_day_reset",
+        "consistency_rule",
+        "commission_per_contract_side",
+        "evaluation_profit_target"
+       ],
+       "type": "string"
+      },
+      "new_preset_value": {
+       "description": "The target version's rule (typed by `field`); absent when the field was removed.",
+       "type": "object"
+      },
+      "requires_choice": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "field",
+      "edited",
+      "requires_choice",
+      "cap_conflict"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "to_preset_version_id": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "account_id",
+   "from_preset_version_id",
+   "to_preset_version_id",
+   "rows",
+   "opt_in_changes",
+   "firm_platform_required"
+  ],
+  "type": "object"
+ },
+ "RestorePresetValueBody": {
+  "additionalProperties": false,
+  "properties": {
+   "row_version": {
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "row_version"
+  ],
+  "type": "object"
+ },
+ "RuleField": {
+  "description": "Required to save an account (S16 AC-6) — `max_position_qty`, `drawdown`, `daily_loss_limit`, `trading_day_reset`.",
+  "enum": [
+   "max_position_qty",
+   "drawdown",
+   "daily_loss_limit",
+   "daily_profit_target",
+   "trading_day_reset",
+   "consistency_rule",
+   "commission_per_contract_side",
+   "evaluation_profit_target"
+  ],
+  "type": "string"
+ }
+}

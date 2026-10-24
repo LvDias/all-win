@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM accounts.account_rule_value WHERE user_id = $1 AND account_id = $2 AND field = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "84ccb2b628f0cd253fd9eac694e49e1c6fdadb4d07c6473ec3d61ade6f678837"
+}

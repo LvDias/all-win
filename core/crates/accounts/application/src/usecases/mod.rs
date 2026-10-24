@@ -473,7 +473,9 @@ async fn save(
         .save(AccountWrite {
             account: next,
             expected_row_version: stored.row_version,
+            expected_limits_version: stored.limits_version,
             commission: CommissionWrite::Unchanged,
+            rule_values: Vec::new(),
             events,
         })
         .await

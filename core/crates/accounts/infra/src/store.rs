@@ -10,6 +10,7 @@ use shared_kernel::UserId;
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+use accounts_application::enterprise::preset_values::AccountRuleValue;
 use accounts_application::enterprise::{
     Account, AccountId, AccountKind, AccountName, Binding, Choice, FirmId, FirmPlatform,
     LifecycleState, ManualText, MaxPositionQty, MoneyAmount, Multiplier, OptInState, PendingReason,
@@ -21,6 +22,7 @@ use accounts_application::ports::{
 };
 
 use crate::outbox;
+use crate::presets::rule_values::{read_rule_values, write_rule_values};
 
 #[derive(Clone)]
 pub struct PgAccountStore {
@@ -218,6 +220,19 @@ impl AccountStore for PgAccountStore {
         Ok(taken)
     }
 
+    async fn rule_values(
+        &self,
+        user_id: UserId,
+        id: AccountId,
+    ) -> Result<Vec<AccountRuleValue>, StoreError> {
+        let mut tx = self.begin_for(user_id).await?;
+        let rows = read_rule_values(&mut tx, user_id, id)
+            .await
+            .map_err(other)?;
+        tx.commit().await.map_err(other)?;
+        Ok(rows)
+    }
+
     async fn evaluation_target(
         &self,
         user_id: UserId,
@@ -302,6 +317,9 @@ impl AccountStore for PgAccountStore {
         if a.commission_per_contract_side.is_some() {
             write_commission(&mut tx, a, origin_of(a), a.created_at).await?;
         }
+        write_rule_values(&mut tx, a.user_id, a.id, &new.rule_values, a.created_at)
+            .await
+            .map_err(other)?;
         crate::profiles::insert_initial_copies(
             &mut tx,
             a.user_id,
@@ -333,7 +351,8 @@ impl AccountStore for PgAccountStore {
                  updated_at = $27, archived_at = $28, row_version = row_version + 1,
                  limits_changed_at = CASE WHEN limits_version <> $29 THEN $27 ELSE limits_changed_at END,
                  limits_version = $29, evaluation_start = $30, evaluation_earned_before = $31
-               WHERE user_id = $1 AND id = $2 AND row_version = $3 AND archived_at IS NULL"#,
+               WHERE user_id = $1 AND id = $2 AND row_version = $3 AND archived_at IS NULL
+                 AND ($32::int4 IS NULL OR limits_version = $32)"#,
             a.user_id.as_uuid(),
             a.id.as_uuid(),
             write.expected_row_version,
@@ -365,6 +384,8 @@ impl AccountStore for PgAccountStore {
             a.limits_version,
             a.evaluation_start,
             a.evaluation_earned_before.map(|m| m.value()),
+            // Rows computed from the stored rows also need the limits version they were read at.
+            (!write.rule_values.is_empty()).then_some(write.expected_limits_version),
         )
         .execute(&mut *tx)
         .await
@@ -378,6 +399,9 @@ impl AccountStore for PgAccountStore {
                 write_commission(&mut tx, a, origin, a.updated_at).await?;
             }
         }
+        write_rule_values(&mut tx, a.user_id, a.id, &write.rule_values, a.updated_at)
+            .await
+            .map_err(other)?;
         for e in &write.events {
             outbox::insert(&mut tx, a.user_id, e).await.map_err(other)?;
         }

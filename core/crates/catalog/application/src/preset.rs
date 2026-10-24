@@ -145,9 +145,12 @@ pub struct PresetVersionFacts {
     pub has_evaluation_target: bool,
     /// S16 AC-7 reason (RuleQuote) when the preset is for manual tracking only.
     pub manual_only: Option<Value>,
-    /// `(firm_platform, PresetRules)`.
+    /// `(firm_platform, PresetRules)` as the contract shows them (without the release files'
+    /// quotes).
     pub rule_sets: Vec<(Option<String>, Value)>,
     pub release_version_number: i32,
+    pub release_published_at: DateTime<Utc>,
+    pub release_verified_on: NaiveDate,
 }
 
 fn contracts_of(v: &Value) -> Option<i64> {
@@ -686,9 +689,11 @@ impl<'a> FirmView<'a> {
             manual_only: v.manual_only.clone(),
             rule_sets: sets
                 .iter()
-                .map(|s| (s.firm_platform.clone(), s.rules.clone()))
+                .map(|s| (s.firm_platform.clone(), without_source_quotes(&s.rules)))
                 .collect(),
             release_version_number: release.version_number,
+            release_published_at: release.published_at,
+            release_verified_on: release.verified_on,
         })
     }
 

@@ -79,7 +79,7 @@ pub struct ImportPolicy {
 /// Why a file is refused. Every problem found is reported (the import never stops at the first).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ImportProblem {
-    #[error("schema_version {0} is newer than this Core reads (1.0)")]
+    #[error("schema_version {0} is not one this Core reads (1.0, 1.1)")]
     UnsupportedSchemaVersion(String),
     #[error("version_number {got}: expected {expected}")]
     VersionNotNext { expected: i32, got: i32 },
@@ -212,11 +212,17 @@ pub fn plan_import(
         };
     }
     let mut p = Vec::new();
-    // A Core that reads 1.0 refuses a newer minor (README, "Versioning").
-    if file.schema_version != "1.0" {
-        p.push(ImportProblem::UnsupportedSchemaVersion(
-            file.schema_version.clone(),
-        ));
+    // This Core reads 1.0 and 1.1 (1.1 adds drawdown trailing_lock, Q90) and refuses a newer minor
+    // (README, "Versioning"). A 1.0 file cannot use a 1.1 field.
+    match file.schema_version.as_str() {
+        "1.1" => {}
+        "1.0" if has_key(raw, "trailing_lock") => {
+            p.push(ImportProblem::Invalid(
+                "trailing_lock needs schema_version 1.1".into(),
+            ));
+        }
+        "1.0" => {}
+        other => p.push(ImportProblem::UnsupportedSchemaVersion(other.to_owned())),
     }
     // 1–2. A new slug is a new firm at version 1; otherwise exactly the stored one + 1.
     let expected = stored.map_or(1, |f| f.latest.version_number.saturating_add(1));
@@ -425,6 +431,14 @@ fn check_domains(file: &ReleaseFile, raw: &Value, p: &mut Vec<ImportProblem>) {
         if !ok {
             p.push(ImportProblem::ForeignDomain(host));
         }
+    }
+}
+
+fn has_key(v: &Value, key: &str) -> bool {
+    match v {
+        Value::Object(m) => m.contains_key(key) || m.values().any(|c| has_key(c, key)),
+        Value::Array(items) => items.iter().any(|c| has_key(c, key)),
+        _ => false,
     }
 }
 

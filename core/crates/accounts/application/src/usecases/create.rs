@@ -14,6 +14,7 @@ use crate::deps::AccountsDeps;
 use crate::error::{AccountsError, Refusals};
 use crate::events::AccountsEvent;
 use crate::ports::{CreateKeyRecord, InitialProfileError, NewAccount, StoreError};
+use crate::presets::account_ops::fill_writes;
 use crate::usecases::audit;
 use crate::usecases::support::{
     applicable, current_rules, kind_index, resolve_binding, resolve_selection, store_err, today,
@@ -169,15 +170,39 @@ impl CreateAccountUseCase {
             None => Vec::new(),
         };
 
+        // S16: a preset account stores only its deviations from the preset, and every required
+        // not-confirmed field must be resolved (AC-2, AC-6).
+        let rule_values = match resolved.as_ref() {
+            Some(r) => match &r.preset {
+                Some(facts) => match fill_writes(
+                    facts,
+                    &r.selection,
+                    cmd.rule_values.as_ref(),
+                    cmd.max_position_qty.value(),
+                    &[],
+                    now,
+                ) {
+                    Ok(w) => w,
+                    Err(e) => {
+                        refusals.push(e);
+                        Vec::new()
+                    }
+                },
+                // The schema refuses them without a preset (400); kept as a guard.
+                None if cmd.rule_values.is_some() => {
+                    return Err(AccountsError::InvalidRequest {
+                        pointer: "/rule_values".into(),
+                    });
+                }
+                None => Vec::new(),
+            },
+            None => Vec::new(),
+        };
+
         refusals.first()?;
         let Some(resolved) = resolved else {
             return Err(AccountsError::Internal("unresolved selection".into()));
         };
-        if cmd.rule_values.is_some() {
-            // Without a preset the schema refuses them (400); with one, the preset is unknown
-            // before S16 (422 above). Reached only once S16 publishes presets: never dropped.
-            return Err(AccountsError::Internal("rule_values need S16".into()));
-        }
 
         let evaluation_start = match (resolved.has_evaluation_target, cmd.evaluation_start) {
             (_, Some(date)) => Some(date),
@@ -254,6 +279,7 @@ impl CreateAccountUseCase {
             idempotency_key: cmd.idempotency_key,
             request_hash: cmd.request_hash,
             initial_profiles: profiles,
+            rule_values,
             events,
         };
         match d.store.create(new).await {

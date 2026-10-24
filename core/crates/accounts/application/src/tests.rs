@@ -39,6 +39,17 @@ struct Db {
     events: Vec<AccountsEvent>,
     commission_writes: Vec<CommissionWrite>,
     targets: HashMap<AccountId, MoneyAmount>,
+    rule_values: HashMap<AccountId, Vec<preset_values::AccountRuleValue>>,
+}
+
+impl Db {
+    fn write_rule_values(&mut self, id: AccountId, writes: Vec<RuleValueWrite>) {
+        let rows = self.rule_values.entry(id).or_default();
+        for w in writes {
+            rows.retain(|r| r.field != w.field);
+            rows.extend(w.row);
+        }
+    }
 }
 
 #[derive(Default, Clone)]
@@ -106,6 +117,20 @@ impl AccountStore for MemStore {
                 && a.binding.map(|b| b.venue_account_id) == Some(venue)
         }))
     }
+    async fn rule_values(
+        &self,
+        _: UserId,
+        id: AccountId,
+    ) -> Result<Vec<preset_values::AccountRuleValue>, StoreError> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .rule_values
+            .get(&id)
+            .cloned()
+            .unwrap_or_default())
+    }
     async fn evaluation_target(
         &self,
         _: UserId,
@@ -119,16 +144,20 @@ impl AccountStore for MemStore {
         db.keys
             .insert((a.user_id, new.idempotency_key), (a.id, new.request_hash));
         db.events.extend(new.events);
+        db.write_rule_values(a.id, new.rule_values);
         db.accounts.insert(a.id, a);
         Ok(())
     }
     async fn save(&self, w: AccountWrite) -> Result<(), StoreError> {
         let mut db = self.0.lock().unwrap();
         let current = db.accounts.get(&w.account.id).unwrap();
-        if current.row_version != w.expected_row_version {
+        if current.row_version != w.expected_row_version
+            || (!w.rule_values.is_empty() && current.limits_version != w.expected_limits_version)
+        {
             return Err(StoreError::VersionConflict);
         }
         db.events.extend(w.events);
+        db.write_rule_values(w.account.id, w.rule_values);
         db.commission_writes.push(w.commission);
         db.accounts.insert(w.account.id, w.account);
         Ok(())
@@ -984,8 +1013,28 @@ impl PresetCatalog for TargetPreset {
             superseded_by: None,
             manual_only: false,
             release_version_number: 1,
-            rule_sets: vec![],
+            release_published_at: Utc.with_ymd_and_hms(2026, 10, 1, 12, 0, 0).unwrap(),
+            release_verified_on: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
+            rule_sets: vec![target_rule_set()],
         }))
+    }
+}
+
+fn target_rule_set() -> PresetRuleSet {
+    let src =
+        serde_json::json!([{"url": "https://firm.example/rules", "accessed_at": "2026-09-30"}]);
+    let v = |value: serde_json::Value| serde_json::json!({"status": "verified", "value": value, "sources": src});
+    let wire = serde_json::json!({
+        "max_position_qty": v(serde_json::json!({"contracts": 50})),
+        "drawdown": v(serde_json::json!({"type": "trailing_eod", "amount": "2500.00"})),
+        "daily_loss_limit": v(serde_json::json!({"kind": "none"})),
+        "trading_day_reset": v(serde_json::json!({"local_time": "17:00", "time_zone": "America/New_York"})),
+        "evaluation_profit_target": v(serde_json::json!({"amount": "3000.00"})),
+    });
+    PresetRuleSet {
+        firm_platform: None,
+        rules: preset_values::PresetRules::from_wire(&wire).unwrap(),
+        wire,
     }
 }
 
@@ -1088,13 +1137,34 @@ fn emitted_types_cover_every_event() {
         },
         AccountsEvent::EvaluationRestarted {
             account_id: id,
-            account_name: name,
+            account_name: name.clone(),
             at: now,
             old_start: None,
             new_start: now.date_naive(),
             old_earned_before: None,
             new_earned_before: None,
             profit_target: MoneyAmount::new(dec("1")).unwrap(),
+        },
+        AccountsEvent::PresetVersionApplied {
+            account_id: id,
+            account_name: name.clone(),
+            at: now,
+            from_preset_version_id: PresetVersionId::from_uuid(Uuid::now_v7()),
+            to_preset_version_id: PresetVersionId::from_uuid(Uuid::now_v7()),
+            from_version_number: 1,
+            to_version_number: 2,
+            changes: vec![],
+            kept_fields: vec![],
+        },
+        AccountsEvent::PresetValueRestored {
+            account_id: id,
+            account_name: name.clone(),
+            at: now,
+            change: crate::events::FieldChange {
+                field: "drawdown",
+                old: None,
+                new: None,
+            },
         },
         AccountsEvent::LimitsChanged {
             account_id: id,
@@ -1172,4 +1242,627 @@ async fn accounts_for_venues_returns_only_the_users_live_bound_accounts() {
             .is_empty(),
         "archived (and released) accounts are absent"
     );
+}
+
+// ---- S16 per-account preset operations (Torno) ------------------------------------------------
+
+mod preset_ops {
+    use serde_json::{Value, json};
+
+    use accounts_enterprise::preset_values::account::{ApplyChoice, FieldOrigin};
+    use accounts_enterprise::preset_values::{AccountRuleValue, PresetRules};
+
+    use super::*;
+    use crate::presets::account_ops::{
+        AccountPresetView, ApplyPresetVersionUseCase, GetAccountPreset, GetAccountPresetDiff,
+        RestorePresetValueUseCase,
+    };
+
+    #[derive(Default, Clone)]
+    struct Catalog(Arc<Mutex<HashMap<PresetVersionId, PresetFacts>>>);
+
+    #[async_trait]
+    impl PresetCatalog for Catalog {
+        async fn version(&self, id: PresetVersionId) -> Result<Option<PresetFacts>, PortError> {
+            Ok(self.0.lock().unwrap().get(&id).cloned())
+        }
+    }
+
+    const AUTOMATION: Uuid = Uuid::from_u128(0xa1);
+    const COPY: Uuid = Uuid::from_u128(0xc1);
+
+    /// The same opt-in rule versions for every preset version, unless one overrides automation.
+    #[derive(Default, Clone)]
+    struct Rules(Arc<Mutex<HashMap<PresetVersionId, (RuleVersionId, FirmStance)>>>);
+
+    #[async_trait]
+    impl RuleVersions for Rules {
+        async fn current(
+            &self,
+            selection: &RuleSelection,
+            kind: OptInKind,
+        ) -> Result<Option<CurrentRule>, PortError> {
+            let RuleSelection::Preset {
+                preset_version_id, ..
+            } = selection
+            else {
+                return GenericRules.current(selection, kind).await;
+            };
+            let over = self.0.lock().unwrap().get(preset_version_id).copied();
+            let (id, stance) = match (kind, over) {
+                (OptInKind::Automation, Some(o)) => o,
+                (OptInKind::Automation, None) => {
+                    (RuleVersionId::from_uuid(AUTOMATION), FirmStance::Allowed)
+                }
+                (OptInKind::Copy, _) => (RuleVersionId::from_uuid(COPY), FirmStance::Allowed),
+            };
+            Ok(Some(CurrentRule {
+                rule: RuleVersionRef { id, kind, stance },
+                sources: vec![],
+            }))
+        }
+    }
+
+    fn verified(value: Value) -> Value {
+        json!({"status": "verified", "value": value,
+               "sources": [{"url": "https://firm.example/rules", "accessed_at": "2026-09-30"}]})
+    }
+
+    fn conflict(a: Value, b: Value) -> Value {
+        let src = json!([{"url": "https://firm.example/rules", "accessed_at": "2026-09-30"}]);
+        json!({"status": "not_confirmed",
+               "published_values": [{"value": a, "sources": src}, {"value": b, "sources": src}]})
+    }
+
+    fn rules(drawdown: Value) -> Value {
+        json!({
+            "max_position_qty": verified(json!({"contracts": 50})),
+            "drawdown": drawdown,
+            "daily_loss_limit": verified(json!({"kind": "none"})),
+            "trading_day_reset": verified(json!({"local_time": "17:00", "time_zone": "America/New_York"})),
+        })
+    }
+
+    fn facts(id: PresetVersionId, preset_id: Uuid, number: i32, wire: Value) -> PresetFacts {
+        PresetFacts {
+            preset_version_id: id,
+            firm_id: FirmId::from_uuid(Uuid::from_u128(0xf1)),
+            firm_name: "Topstep".into(),
+            plan_name: "Trading Combine".into(),
+            phase: "evaluation".into(),
+            size_amount: SizeAmount::new(dec("50000")).unwrap(),
+            max_position_qty: MaxPositionQty::new(50).ok(),
+            firm_platforms: vec![],
+            is_current: true,
+            preset_id,
+            has_evaluation_target: false,
+            max_position_cap: None,
+            superseded_by: None,
+            manual_only: false,
+            release_version_number: number,
+            release_published_at: Utc
+                .with_ymd_and_hms(2026, 10, number as u32, 12, 0, 0)
+                .unwrap(),
+            release_verified_on: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
+            rule_sets: vec![PresetRuleSet {
+                firm_platform: None,
+                rules: PresetRules::from_wire(&wire).unwrap(),
+                wire,
+            }],
+        }
+    }
+
+    fn static_dd(amount: &str) -> Value {
+        json!({"type": "static", "amount": amount})
+    }
+
+    struct Fixture {
+        w: World,
+        catalog: Catalog,
+        rules: Rules,
+        v1: PresetVersionId,
+        v2: PresetVersionId,
+    }
+
+    /// v1 (drawdown 2000 static) is current; `publish_v2` adds v2 (drawdown 2500 static).
+    fn fixture(v1_drawdown: Value) -> Fixture {
+        let mut w = world();
+        let catalog = Catalog::default();
+        let rule_versions = Rules::default();
+        let preset = Uuid::from_u128(0x77);
+        let v1 = PresetVersionId::from_uuid(Uuid::now_v7());
+        let v2 = PresetVersionId::from_uuid(Uuid::now_v7());
+        catalog
+            .0
+            .lock()
+            .unwrap()
+            .insert(v1, facts(v1, preset, 1, rules(v1_drawdown)));
+        w.deps.presets = Arc::new(catalog.clone());
+        w.deps.rules = Arc::new(rule_versions.clone());
+        Fixture {
+            w,
+            catalog,
+            rules: rule_versions,
+            v1,
+            v2,
+        }
+    }
+
+    impl Fixture {
+        fn publish_v2(&self) {
+            let mut c = self.catalog.0.lock().unwrap();
+            let v2 = facts(
+                self.v2,
+                Uuid::from_u128(0x77),
+                2,
+                rules(verified(static_dd("2500.00"))),
+            );
+            let v1 = c.get_mut(&self.v1).unwrap();
+            v1.is_current = false;
+            v1.superseded_by = Some(self.v2);
+            c.insert(self.v2, v2);
+        }
+
+        fn create_cmd(&self, rule_values: Option<Value>) -> CreateAccount {
+            let mut c = prop("Combine 1", None);
+            c.selection = SelectionInput::Preset {
+                preset_version_id: self.v1,
+                firm_platform: None,
+            };
+            c.size_amount = None;
+            c.rule_values = rule_values;
+            c
+        }
+
+        fn rows(&self, id: AccountId) -> Vec<AccountRuleValue> {
+            self.w
+                .db
+                .0
+                .lock()
+                .unwrap()
+                .rule_values
+                .get(&id)
+                .cloned()
+                .unwrap_or_default()
+        }
+
+        fn events(&self) -> Vec<AccountsEvent> {
+            self.w.db.0.lock().unwrap().events.clone()
+        }
+
+        async fn get(
+            &self,
+            caller: &Caller,
+            id: AccountId,
+        ) -> Result<AccountPresetView, AccountsError> {
+            GetAccountPreset::new(self.w.deps.clone())
+                .handle(caller, id)
+                .await
+        }
+
+        fn apply_cmd(&self, a: &Account) -> ApplyPresetVersion {
+            ApplyPresetVersion {
+                account_id: a.id,
+                target_preset_version_id: self.v2,
+                row_version: a.row_version,
+                firm_platform: None,
+                choices: vec![],
+                rule_values: None,
+                max_position_qty: None,
+                opt_ins: OptInChoices::default(),
+                step_up: None,
+            }
+        }
+
+        async fn apply(&self, cmd: ApplyPresetVersion) -> Result<AccountPresetView, AccountsError> {
+            ApplyPresetVersionUseCase::new(self.w.deps.clone())
+                .handle(&self.w.me, &origin(), cmd)
+                .await
+        }
+
+        async fn restore(
+            &self,
+            a: &Account,
+            field: RuleField,
+        ) -> Result<AccountPresetView, AccountsError> {
+            RestorePresetValueUseCase::new(self.w.deps.clone())
+                .handle(
+                    &self.w.me,
+                    RestorePresetValue {
+                        account_id: a.id,
+                        field,
+                        row_version: a.row_version,
+                    },
+                )
+                .await
+        }
+
+        fn account(&self, id: AccountId) -> Account {
+            self.w
+                .db
+                .0
+                .lock()
+                .unwrap()
+                .accounts
+                .get(&id)
+                .cloned()
+                .unwrap()
+        }
+    }
+
+    fn origin_of(v: &AccountPresetView, field: RuleField) -> FieldOrigin {
+        v.fields
+            .iter()
+            .find(|f| f.view.field == field)
+            .unwrap()
+            .view
+            .origin
+    }
+
+    /// An account on v1 with an edited drawdown (1500) and its maximum (3 < 50) edited.
+    async fn edited(f: &Fixture) -> Account {
+        let v = created(
+            &f.w,
+            f.create_cmd(Some(json!({"drawdown": static_dd("1500.00")}))),
+        )
+        .await;
+        v.account
+    }
+
+    #[tokio::test]
+    async fn create_with_a_preset_stores_only_the_deviations() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        let mut fields: Vec<(RuleField, RuleOrigin)> =
+            f.rows(a.id).iter().map(|r| (r.field, r.origin)).collect();
+        fields.sort_by_key(|(field, _)| field.as_str());
+        assert_eq!(
+            fields,
+            [
+                (RuleField::Drawdown, RuleOrigin::Edited),
+                (RuleField::MaxPositionQty, RuleOrigin::Edited),
+            ]
+        );
+
+        // The preset's own value is not stored.
+        let same = created(
+            &f.w,
+            CreateAccount {
+                display_name: AccountName::parse("Combine 2").unwrap(),
+                idempotency_key: Uuid::now_v7(),
+                ..f.create_cmd(Some(json!({"drawdown": static_dd("2000.00")})))
+            },
+        )
+        .await;
+        assert!(
+            f.rows(same.account.id)
+                .iter()
+                .all(|r| r.field != RuleField::Drawdown)
+        );
+    }
+
+    #[tokio::test]
+    async fn create_refuses_an_unresolved_required_conflict() {
+        let f = fixture(conflict(static_dd("2000.00"), static_dd("2500.00")));
+        let e = create(&f.w, f.create_cmd(None)).await.unwrap_err();
+        assert_eq!(
+            e,
+            AccountsError::RequiredFieldUnresolved {
+                field: RuleField::Drawdown
+            }
+        );
+        assert_eq!(e.pointer().as_deref(), Some("/rule_values/drawdown"));
+        assert!(
+            f.w.db.0.lock().unwrap().accounts.is_empty(),
+            "nothing saved"
+        );
+
+        // Resolved with a published value: recorded as chosen.
+        let v = created(
+            &f.w,
+            f.create_cmd(Some(json!({"drawdown": static_dd("2500.00")}))),
+        )
+        .await;
+        let row = f
+            .rows(v.account.id)
+            .into_iter()
+            .find(|r| r.field == RuleField::Drawdown)
+            .unwrap();
+        assert_eq!(row.origin, RuleOrigin::ChosenFromConflict);
+        assert_eq!(
+            row.chose.map(|(c, _)| c),
+            Some(preset_values::Chose::PublishedValue)
+        );
+    }
+
+    #[tokio::test]
+    async fn get_shows_each_origin_and_the_newer_version() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        let v = f.get(&f.w.me, a.id).await.unwrap();
+        assert_eq!(v.preset_version_id, f.v1);
+        assert_eq!(origin_of(&v, RuleField::Drawdown), FieldOrigin::Edited);
+        assert_eq!(
+            origin_of(&v, RuleField::DailyLossLimit),
+            FieldOrigin::Preset
+        );
+        assert!(v.newer_version.is_none());
+        let preset_value = &v
+            .fields
+            .iter()
+            .find(|x| x.view.field == RuleField::Drawdown)
+            .unwrap()
+            .preset_value;
+        assert_eq!(preset_value.as_ref().unwrap()["value"]["amount"], "2000.00");
+
+        f.publish_v2();
+        let v = f.get(&f.w.me, a.id).await.unwrap();
+        let newer = v.newer_version.unwrap();
+        assert_eq!(
+            (newer.preset_version_id, newer.release.version_number),
+            (f.v2, 2)
+        );
+        assert!(!newer.suspends, "same opt-in rule versions");
+
+        // Another user's account, and an account without a preset: 404.
+        assert_eq!(
+            f.get(&f.w.other, a.id).await.unwrap_err(),
+            AccountsError::NotFound
+        );
+        let manual = created(&f.w, prop("Manual", Some(Choice::Declined))).await;
+        assert_eq!(
+            f.get(&f.w.me, manual.account.id).await.unwrap_err(),
+            AccountsError::NotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn diff_lists_the_edited_field_and_refuses_an_older_target() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        f.publish_v2();
+        let diff = GetAccountPresetDiff::new(f.w.deps.clone());
+        let d = diff.handle(&f.w.me, a.id, f.v2).await.unwrap();
+        let rows: Vec<(RuleField, bool, bool)> = d
+            .rows
+            .iter()
+            .map(|r| (r.row.field, r.row.edited, r.row.requires_choice))
+            .collect();
+        assert_eq!(rows, [(RuleField::Drawdown, true, true)]);
+        assert_eq!(d.opt_in_changes, [None, None]);
+        assert_eq!(
+            d.rows[0].new_preset_value.as_ref().unwrap()["value"]["amount"],
+            "2500.00"
+        );
+
+        let e = diff.handle(&f.w.me, a.id, f.v1).await.unwrap_err();
+        assert_eq!(e.code(), "presets.version_not_newer");
+        assert_eq!(
+            e.pointer().as_deref(),
+            Some("/query/target_preset_version_id")
+        );
+        assert_eq!(
+            diff.handle(&f.w.other, a.id, f.v2).await.unwrap_err(),
+            AccountsError::NotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_needs_a_choice_for_an_edited_field_then_audits_one_save() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        f.publish_v2();
+        let before = f.events().len();
+
+        let e = f.apply(f.apply_cmd(&a)).await.unwrap_err();
+        assert_eq!(
+            e,
+            AccountsError::ChoiceRequired {
+                field: RuleField::Drawdown
+            }
+        );
+        assert_eq!(e.pointer().as_deref(), Some("/choices/drawdown"));
+        assert_eq!(f.events().len(), before, "nothing saved");
+
+        let mut cmd = f.apply_cmd(&a);
+        cmd.choices = vec![(RuleField::Drawdown, ApplyChoice::UsePreset)];
+        let v = f.apply(cmd).await.unwrap();
+        assert_eq!(v.preset_version_id, f.v2);
+        assert_eq!(origin_of(&v, RuleField::Drawdown), FieldOrigin::Preset);
+        assert!(f.rows(a.id).iter().all(|r| r.field != RuleField::Drawdown));
+        let stored = f.account(a.id);
+        assert_eq!(stored.limits_version, a.limits_version + 1);
+        assert_eq!(stored.row_version, a.row_version + 1);
+
+        let new_events = &f.events()[before..];
+        let types: Vec<&str> = new_events.iter().map(AccountsEvent::event_type).collect();
+        assert_eq!(
+            types,
+            [
+                "presets.version_applied",
+                "account.limits_changed",
+                "account.changed"
+            ]
+        );
+        let p = new_events[0].payload();
+        assert_eq!(p["actor"], "user");
+        assert_eq!(p["details"]["from_version_number"], 1);
+        assert_eq!(p["details"]["to_version_number"], 2);
+        assert_eq!(
+            p["details"]["changes"],
+            json!([{"field": "drawdown",
+                    "old": "{\"amount\":\"1500.00\",\"type\":\"static\"}",
+                    "new": "{\"amount\":\"2500.00\",\"type\":\"static\"}"}])
+        );
+        assert!(p["details"].get("kept_fields").is_none());
+    }
+
+    #[tokio::test]
+    async fn apply_keep_mine_keeps_the_row_and_names_it() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        f.publish_v2();
+        let mut cmd = f.apply_cmd(&a);
+        cmd.choices = vec![(RuleField::Drawdown, ApplyChoice::KeepMine)];
+        let v = f.apply(cmd).await.unwrap();
+        assert_eq!(origin_of(&v, RuleField::Drawdown), FieldOrigin::Edited);
+        let applied = f
+            .events()
+            .into_iter()
+            .find(|e| e.event_type() == "presets.version_applied")
+            .unwrap()
+            .payload();
+        assert_eq!(applied["details"]["kept_fields"], json!(["drawdown"]));
+        assert_eq!(applied["details"]["changes"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn apply_refuses_stale_superseded_and_older_targets() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        f.publish_v2();
+        let mut cmd = f.apply_cmd(&a);
+        cmd.choices = vec![(RuleField::Drawdown, ApplyChoice::UsePreset)];
+        cmd.row_version += 1;
+        assert_eq!(
+            f.apply(cmd).await.unwrap_err(),
+            AccountsError::VersionConflict
+        );
+
+        let mut cmd = f.apply_cmd(&a);
+        cmd.target_preset_version_id = f.v1;
+        assert_eq!(
+            f.apply(cmd).await.unwrap_err(),
+            AccountsError::VersionNotNewer {
+                pointer: "/target_preset_version_id"
+            }
+        );
+
+        // v3 published meanwhile: v2 is superseded.
+        f.catalog
+            .0
+            .lock()
+            .unwrap()
+            .get_mut(&f.v2)
+            .unwrap()
+            .superseded_by = Some(PresetVersionId::from_uuid(Uuid::now_v7()));
+        let mut cmd = f.apply_cmd(&a);
+        cmd.choices = vec![(RuleField::Drawdown, ApplyChoice::UsePreset)];
+        assert_eq!(
+            f.apply(cmd).await.unwrap_err(),
+            AccountsError::VersionSuperseded
+        );
+
+        let mut cmd = f.apply_cmd(&a);
+        cmd.account_id = created(&f.w, prop("Manual", Some(Choice::Declined)))
+            .await
+            .account
+            .id;
+        assert_eq!(f.apply(cmd).await.unwrap_err(), AccountsError::NotFound);
+    }
+
+    #[tokio::test]
+    async fn apply_asks_the_opt_in_again_when_the_version_changes_its_rule() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        f.publish_v2();
+        let new_rule = RuleVersionId::from_uuid(Uuid::from_u128(0xa2));
+        f.rules
+            .0
+            .lock()
+            .unwrap()
+            .insert(f.v2, (new_rule, FirmStance::Conditional));
+        let d = GetAccountPresetDiff::new(f.w.deps.clone())
+            .handle(&f.w.me, a.id, f.v2)
+            .await
+            .unwrap();
+        assert_eq!(d.opt_in_changes, [Some(new_rule), None]);
+
+        let mut cmd = f.apply_cmd(&a);
+        cmd.choices = vec![(RuleField::Drawdown, ApplyChoice::UsePreset)];
+        assert_eq!(
+            f.apply(cmd.clone()).await.unwrap_err(),
+            AccountsError::OptInRequired {
+                kind: OptInKind::Automation
+            }
+        );
+
+        cmd.opt_ins.automation = Some(ChoiceRequest {
+            choice: Choice::Accepted,
+            rule_version_id: new_rule,
+        });
+        assert!(matches!(
+            f.apply(cmd.clone()).await.unwrap_err(),
+            AccountsError::Access(AccessError::StepUpRequired)
+        ));
+        cmd.step_up = proof();
+        f.apply(cmd).await.unwrap();
+        assert_eq!(
+            f.w.gate.0.lock().unwrap().last().copied(),
+            Some((StepUpAction::AccountOptInAccept, Some(a.id.as_uuid())))
+        );
+        assert!(f.account(a.id).has_accepted_automation());
+        assert!(
+            f.events()
+                .iter()
+                .any(|e| e.event_type() == "accounts.opt_in_chosen")
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_takes_the_preset_value_once_and_audits_it() {
+        let f = fixture(verified(static_dd("2000.00")));
+        let a = edited(&f).await;
+        let v = f.restore(&a, RuleField::Drawdown).await.unwrap();
+        assert_eq!(origin_of(&v, RuleField::Drawdown), FieldOrigin::Preset);
+        let restored = f.events().last().cloned();
+        assert_eq!(restored.map(|e| e.event_type()), Some("account.changed"));
+        let audit = f
+            .events()
+            .into_iter()
+            .find(|e| e.event_type() == "presets.value_restored")
+            .unwrap()
+            .payload();
+        assert_eq!(audit["details"]["change"]["field"], "drawdown");
+        assert_eq!(
+            audit["details"]["change"]["new"],
+            "{\"amount\":\"2000.00\",\"type\":\"static\"}"
+        );
+
+        // Not edited any more: a no-op, not audited.
+        let a = f.account(a.id);
+        let count = f.events().len();
+        f.restore(&a, RuleField::Drawdown).await.unwrap();
+        assert_eq!(f.events().len(), count);
+
+        // The maximum takes the preset's contracts.
+        let v = f.restore(&a, RuleField::MaxPositionQty).await.unwrap();
+        assert_eq!(f.account(a.id).max_position_qty.value(), 50);
+        assert_eq!(
+            origin_of(&v, RuleField::MaxPositionQty),
+            FieldOrigin::Preset
+        );
+
+        // Stale row_version: 409.
+        assert_eq!(
+            f.restore(&a, RuleField::Drawdown).await.unwrap_err(),
+            AccountsError::VersionConflict
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_refuses_a_not_confirmed_preset_value() {
+        let f = fixture(conflict(static_dd("2000.00"), static_dd("2500.00")));
+        let v = created(
+            &f.w,
+            f.create_cmd(Some(json!({"drawdown": static_dd("2500.00")}))),
+        )
+        .await;
+        assert_eq!(
+            f.restore(&v.account, RuleField::Drawdown)
+                .await
+                .unwrap_err(),
+            AccountsError::ValueNotConfirmed
+        );
+    }
 }

@@ -7,10 +7,11 @@ use chrono_tz::Tz;
 use thiserror::Error;
 use uuid::Uuid;
 
+use accounts_enterprise::preset_values::AccountRuleValue;
 use accounts_enterprise::profile::AccountBracketProfile;
 use accounts_enterprise::{
     Account, AccountId, AccountKind, ConnectionId, FirmId, FirmPlatform, MaxPositionQty,
-    MoneyAmount, OptInKind, PresetVersionId, RuleOrigin, RuleVersionRef, SizeAmount,
+    MoneyAmount, OptInKind, PresetVersionId, RuleField, RuleOrigin, RuleVersionRef, SizeAmount,
     VenueAccountId,
 };
 use shared_kernel::UserId;
@@ -59,6 +60,14 @@ pub enum CommissionWrite {
     Unset(RuleOrigin),
 }
 
+/// The desired `account_rule_value` row of one field: `None` removes it (the value comes from the
+/// preset again). The use case passes only the rows that change something (Malha, S16 (2)).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleValueWrite {
+    pub field: RuleField,
+    pub row: Option<AccountRuleValue>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewAccount {
     pub account: Account,
@@ -66,6 +75,8 @@ pub struct NewAccount {
     pub request_hash: [u8; 32],
     /// Initial stop/target profiles copied in the same transaction (S6, Torno).
     pub initial_profiles: Vec<AccountBracketProfile>,
+    /// The rows a preset account needs (S16 AC-2, AC-6), written after the account.
+    pub rule_values: Vec<RuleValueWrite>,
     pub events: Vec<AccountsEvent>,
 }
 
@@ -75,7 +86,13 @@ pub struct NewAccount {
 pub struct AccountWrite {
     pub account: Account,
     pub expected_row_version: i32,
+    /// The stored `limits_version`. With `rule_values`, the save also requires it: S13's
+    /// `putAccountRiskRules` writes rule values without `row_version` (5.4.0), so `row_version`
+    /// alone does not protect the diff the rows were computed from.
+    pub expected_limits_version: i32,
     pub commission: CommissionWrite,
+    /// Changed rows only; written after the account, in the same transaction.
+    pub rule_values: Vec<RuleValueWrite>,
     pub events: Vec<AccountsEvent>,
 }
 
@@ -111,6 +128,13 @@ pub trait AccountStore: Send + Sync {
 
     /// The account's evaluation target, if it has one (rule value `evaluation_profit_target`,
     /// or its preset's; S13b).
+    /// The account's `account_rule_value` rows (S16; empty for an unknown account).
+    async fn rule_values(
+        &self,
+        user_id: UserId,
+        id: AccountId,
+    ) -> Result<Vec<AccountRuleValue>, StoreError>;
+
     async fn evaluation_target(
         &self,
         user_id: UserId,
@@ -121,7 +145,8 @@ pub trait AccountStore: Send + Sync {
     /// transaction.
     async fn create(&self, new: NewAccount) -> Result<(), StoreError>;
 
-    /// Writes the new state if `row_version` still matches (bumping it), with the events.
+    /// Writes the new state if `row_version` still matches (bumping it), with its rule values and
+    /// the events.
     async fn save(&self, write: AccountWrite) -> Result<(), StoreError>;
 }
 
@@ -189,6 +214,8 @@ pub struct PresetFacts {
     /// S16 AC-7: manual tracking only (no routing).
     pub manual_only: bool,
     pub release_version_number: i32,
+    pub release_published_at: DateTime<Utc>,
+    pub release_verified_on: chrono::NaiveDate,
     /// One set without `firm_platform`, or one per firm platform. The adapter converts the
     /// published documents; one that does not convert is a `PortError` (fail closed).
     pub rule_sets: Vec<PresetRuleSet>,
@@ -199,6 +226,9 @@ pub struct PresetFacts {
 pub struct PresetRuleSet {
     pub firm_platform: Option<FirmPlatform>,
     pub rules: accounts_enterprise::preset_values::PresetRules,
+    /// The same rules as the contract's `PresetRules` (without the release files' quotes), shown
+    /// as `preset_value` / the diff's preset values.
+    pub wire: serde_json::Value,
 }
 
 #[async_trait]

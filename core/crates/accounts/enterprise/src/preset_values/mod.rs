@@ -8,10 +8,13 @@
 
 use std::str::FromStr;
 
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
+pub mod account;
+
+use crate::rule_value::{RuleField, RuleOrigin};
 use crate::values::MoneyAmount;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -28,6 +31,8 @@ pub struct SourceRef {
     pub url: String,
     pub accessed_at: NaiveDate,
     pub page_title: Option<String>,
+    /// Why the title is blank (presets 1.1 / HTTP 6.0.0), only without `page_title`.
+    pub title_note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,9 +96,22 @@ pub enum DrawdownType {
 pub struct Drawdown {
     pub kind: DrawdownType,
     pub amount: MoneyAmount,
+    /// The firm's published text (Q90: information; the structure is `trailing_lock`).
     pub stops_trailing_at: Option<String>,
     /// Required for `other`.
     pub description: Option<String>,
+    /// Where a trailing drawdown stops trailing (presets 1.1, HTTP 5.4.0; Q90 a). `None`: not
+    /// modelled (the interim: it keeps trailing, with a warning).
+    pub trailing_lock: Option<TrailingLock>,
+}
+
+/// `DrawdownValue.trailing_lock` (Q90 a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrailingLock {
+    /// The floor locks at the account's `size_amount` + `offset` (the real size, Q73).
+    FloorReachesStart { offset: Option<MoneyAmount> },
+    /// It never stops trailing.
+    Never,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +150,12 @@ pub struct PresetRules {
 }
 
 impl PresetRules {
+    /// A published rule set (the contract's `PresetRules`, e.g. a `&serde_json::Value`).
+    pub fn from_wire<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Self, PresetRulesError> {
+        let raw = RawPresetRules::deserialize(d).map_err(|e| bad(e.to_string()))?;
+        Self::try_from(raw)
+    }
+
     /// The not-confirmed fields, by contract name (they need the user's choice before saving).
     pub fn not_confirmed_fields(&self) -> Vec<&'static str> {
         let mut out = Vec::new();
@@ -187,6 +211,8 @@ pub struct RawSource {
     /// The release file's import evidence; not part of `SourceRef`, dropped.
     #[serde(default)]
     pub quote: Option<String>,
+    #[serde(default)]
+    pub title_note: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -226,6 +252,16 @@ pub struct RawDrawdown {
     pub stops_trailing_at: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub trailing_lock: Option<RawTrailingLock>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawTrailingLock {
+    pub mode: String,
+    #[serde(default)]
+    pub offset: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -300,7 +336,11 @@ fn source(raw: RawSource, what: &str) -> Result<SourceRef, PresetRulesError> {
     if !raw.url.starts_with("https://") {
         return Err(bad(format!("{what} source url")));
     }
+    if raw.page_title.is_some() && raw.title_note.is_some() {
+        return Err(bad(format!("{what} source title_note with page_title")));
+    }
     Ok(SourceRef {
+        title_note: raw.title_note,
         url: raw.url,
         accessed_at: NaiveDate::parse_from_str(&raw.accessed_at, "%Y-%m-%d")
             .map_err(|_| bad(format!("{what} accessed_at")))?,
@@ -363,11 +403,32 @@ fn drawdown(r: RawDrawdown) -> Result<Drawdown, PresetRulesError> {
         "other" if r.description.is_some() => DrawdownType::Other,
         _ => return Err(bad("drawdown type")),
     };
+    let trailing_lock = match r.trailing_lock {
+        None => None,
+        Some(_)
+            if !matches!(
+                kind,
+                DrawdownType::TrailingIntraday | DrawdownType::TrailingEod
+            ) =>
+        {
+            return Err(bad("trailing_lock on a drawdown that does not trail"));
+        }
+        Some(l) => Some(match (l.mode.as_str(), l.offset) {
+            ("never", None) => TrailingLock::Never,
+            ("floor_reaches_start", offset) => TrailingLock::FloorReachesStart {
+                offset: offset
+                    .map(|o| money(&o, "trailing_lock offset"))
+                    .transpose()?,
+            },
+            _ => return Err(bad("trailing_lock")),
+        }),
+    };
     Ok(Drawdown {
         kind,
         amount: money(&r.amount, "drawdown amount")?,
         stops_trailing_at: r.stops_trailing_at,
         description: r.description,
+        trailing_lock,
     })
 }
 
@@ -466,6 +527,288 @@ impl TryFrom<RawPresetRules> for PresetRules {
     }
 }
 
+// ---- the account's own rule values (accounts.account_rule_value) ------------------------------
+
+/// What happens when the profit target is reached (S13; Q3, Q49, Q63).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfitTargetOnReach {
+    Notify,
+    FlattenAndBlock,
+}
+
+impl ProfitTargetOnReach {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Notify => "notify",
+            Self::FlattenAndBlock => "flatten_and_block",
+        }
+    }
+}
+
+/// One stored rule value, typed by its field. `max_position_qty` has none (the account's
+/// top-level column holds it; its row only records the origin).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuleValue {
+    Drawdown(Drawdown),
+    DailyLossLimit(DailyLoss),
+    DailyProfitTarget(MoneyAmount),
+    TradingDayReset(TradingDayReset),
+    ConsistencyRule(Consistency),
+    ProfitTargetOnReach(ProfitTargetOnReach),
+    /// Greater than 0, at most 100, one decimal (Q-S13-7).
+    ConsistencyThresholdPct(Decimal),
+    CommissionPerContractSide(MoneyAmount),
+    EvaluationProfitTarget(MoneyAmount),
+}
+
+impl RuleValue {
+    pub fn field(&self) -> RuleField {
+        match self {
+            Self::Drawdown(_) => RuleField::Drawdown,
+            Self::DailyLossLimit(_) => RuleField::DailyLossLimit,
+            Self::DailyProfitTarget(_) => RuleField::DailyProfitTarget,
+            Self::TradingDayReset(_) => RuleField::TradingDayReset,
+            Self::ConsistencyRule(_) => RuleField::ConsistencyRule,
+            Self::ProfitTargetOnReach(_) => RuleField::ProfitTargetOnReach,
+            Self::ConsistencyThresholdPct(_) => RuleField::ConsistencyThresholdPct,
+            Self::CommissionPerContractSide(_) => RuleField::CommissionPerContractSide,
+            Self::EvaluationProfitTarget(_) => RuleField::EvaluationProfitTarget,
+        }
+    }
+
+    /// Parses the stored (or requested) JSON object of `field`. `max_position_qty` has no value.
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        field: RuleField,
+        d: D,
+    ) -> Result<Self, PresetRulesError> {
+        let e = |m: D::Error| bad(format!("{} value: {m}", field.as_str()));
+        Ok(match field {
+            RuleField::MaxPositionQty => return Err(bad("max_position_qty has no stored value")),
+            RuleField::Drawdown => {
+                Self::Drawdown(drawdown(RawDrawdown::deserialize(d).map_err(e)?)?)
+            }
+            RuleField::DailyLossLimit => {
+                Self::DailyLossLimit(daily_loss(RawDailyLoss::deserialize(d).map_err(e)?)?)
+            }
+            RuleField::DailyProfitTarget => Self::DailyProfitTarget(money(
+                &RawAmount::deserialize(d).map_err(e)?.amount,
+                "daily_profit_target",
+            )?),
+            RuleField::TradingDayReset => {
+                Self::TradingDayReset(reset(RawReset::deserialize(d).map_err(e)?)?)
+            }
+            RuleField::ConsistencyRule => {
+                Self::ConsistencyRule(consistency(RawConsistency::deserialize(d).map_err(e)?)?)
+            }
+            RuleField::ProfitTargetOnReach => {
+                Self::ProfitTargetOnReach(match RawMode::deserialize(d).map_err(e)?.mode.as_str() {
+                    "notify" => ProfitTargetOnReach::Notify,
+                    "flatten_and_block" => ProfitTargetOnReach::FlattenAndBlock,
+                    _ => return Err(bad("profit_target_on_reach mode")),
+                })
+            }
+            RuleField::ConsistencyThresholdPct => Self::ConsistencyThresholdPct(threshold_pct(
+                &RawPct::deserialize(d).map_err(e)?.pct,
+            )?),
+            RuleField::CommissionPerContractSide => Self::CommissionPerContractSide(money(
+                &RawAmount::deserialize(d).map_err(e)?.amount,
+                "commission",
+            )?),
+            RuleField::EvaluationProfitTarget => Self::EvaluationProfitTarget(money(
+                &RawAmount::deserialize(d).map_err(e)?.amount,
+                "evaluation target",
+            )?),
+        })
+    }
+
+    /// The JSON object as stored and shown (money as strings, X-3).
+    pub fn to_wire(&self) -> WireValue {
+        let amount = |m: &MoneyAmount| WireValue::Amount {
+            amount: m.to_wire(),
+        };
+        match self {
+            Self::Drawdown(d) => WireValue::Drawdown {
+                kind: match d.kind {
+                    DrawdownType::TrailingIntraday => "trailing_intraday",
+                    DrawdownType::TrailingEod => "trailing_eod",
+                    DrawdownType::Static => "static",
+                    DrawdownType::Other => "other",
+                },
+                amount: d.amount.to_wire(),
+                stops_trailing_at: d.stops_trailing_at.clone(),
+                description: d.description.clone(),
+                trailing_lock: d.trailing_lock.as_ref().map(|l| match l {
+                    TrailingLock::Never => WireLock {
+                        mode: "never",
+                        offset: None,
+                    },
+                    TrailingLock::FloorReachesStart { offset } => WireLock {
+                        mode: "floor_reaches_start",
+                        offset: offset.as_ref().map(MoneyAmount::to_wire),
+                    },
+                }),
+            },
+            Self::DailyLossLimit(l) => match l {
+                DailyLoss::Hard(m) => WireValue::DailyLoss {
+                    kind: "hard",
+                    amount: Some(m.to_wire()),
+                },
+                DailyLoss::SoftPause(m) => WireValue::DailyLoss {
+                    kind: "soft_pause",
+                    amount: Some(m.to_wire()),
+                },
+                DailyLoss::None => WireValue::DailyLoss {
+                    kind: "none",
+                    amount: None,
+                },
+            },
+            Self::DailyProfitTarget(m)
+            | Self::CommissionPerContractSide(m)
+            | Self::EvaluationProfitTarget(m) => amount(m),
+            Self::TradingDayReset(r) => WireValue::Reset {
+                local_time: r.local_time.format("%H:%M").to_string(),
+                time_zone: r.time_zone.clone(),
+                published_text: r.published_text.clone(),
+            },
+            Self::ConsistencyRule(c) => WireValue::Consistency {
+                text: c.text.clone(),
+                threshold_pct: c.threshold_pct.map(|t| t.normalize().to_string()),
+            },
+            Self::ProfitTargetOnReach(m) => WireValue::Mode { mode: m.as_str() },
+            Self::ConsistencyThresholdPct(p) => WireValue::Pct {
+                pct: {
+                    let mut v = p.normalize();
+                    v.rescale(1);
+                    v.to_string()
+                },
+            },
+        }
+    }
+}
+
+/// `RuleValue` as its JSON object (serialize with serde).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
+pub enum WireValue {
+    Drawdown {
+        #[serde(rename = "type")]
+        kind: &'static str,
+        amount: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        stops_trailing_at: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        trailing_lock: Option<WireLock>,
+    },
+    DailyLoss {
+        kind: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        amount: Option<String>,
+    },
+    Amount {
+        amount: String,
+    },
+    Reset {
+        local_time: String,
+        time_zone: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        published_text: Option<String>,
+    },
+    Consistency {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        threshold_pct: Option<String>,
+    },
+    Mode {
+        mode: &'static str,
+    },
+    Pct {
+        pct: String,
+    },
+}
+
+/// `trailing_lock` as its JSON object.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct WireLock {
+    pub mode: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMode {
+    mode: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPct {
+    pct: String,
+}
+
+/// `^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$`, greater than 0 (Q-S13-7).
+fn threshold_pct(text: &str) -> Result<Decimal, PresetRulesError> {
+    let (int, frac) = text.split_once('.').unwrap_or((text, ""));
+    let shape = !int.is_empty()
+        && int.len() <= 3
+        && int.bytes().all(|b| b.is_ascii_digit())
+        && frac.len() <= 1
+        && frac.bytes().all(|b| b.is_ascii_digit())
+        && !(text.contains('.') && frac.is_empty());
+    let value = Decimal::from_str(text)
+        .ok()
+        .filter(|_| shape)
+        .ok_or_else(|| bad("consistency_threshold_pct"))?;
+    if value <= Decimal::ZERO || value > Decimal::from(100) {
+        return Err(bad("consistency_threshold_pct range"));
+    }
+    Ok(value)
+}
+
+/// `chose` of a value resolving a not-confirmed field (Q-S16-3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chose {
+    PublishedValue,
+    OtherValue,
+}
+
+impl Chose {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PublishedValue => "published_value",
+            Self::OtherValue => "other_value",
+        }
+    }
+}
+
+/// One `accounts.account_rule_value` row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountRuleValue {
+    pub field: RuleField,
+    pub origin: RuleOrigin,
+    /// `None` for `max_position_qty` and for a tombstone (`is_unset`).
+    pub value: Option<RuleValue>,
+    pub is_unset: bool,
+    /// With `chosen_from_conflict` only, with `chosen_at`.
+    pub chose: Option<(Chose, DateTime<Utc>)>,
+    /// This field's own save time ('latest save wins', ADR-0006 §3.7).
+    pub saved_at: DateTime<Utc>,
+}
+
+impl AccountRuleValue {
+    /// Same stored meaning (origin, value, unset, choice) regardless of when it was saved: a
+    /// write of the same thing changes nothing (Q48 effective_from must not move by itself).
+    pub fn same_as(&self, other: &Self) -> bool {
+        self.field == other.field
+            && self.origin == other.origin
+            && self.value == other.value
+            && self.is_unset == other.is_unset
+            && self.chose.map(|(c, _)| c) == other.chose.map(|(c, _)| c)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
@@ -518,7 +861,7 @@ mod tests {
     macro_rules! example {
         ($name:literal) => {
             include_str!(concat!(
-                "../../../../../contracts/presets/v1/examples/valid/",
+                "../../../../../../contracts/presets/v1/examples/valid/",
                 $name
             ))
         };
@@ -544,6 +887,72 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn trailing_lock_shapes() {
+        let mut v = base();
+        v["drawdown"] = verified(json!({"type": "trailing_eod", "amount": "2000.00",
+            "trailing_lock": {"mode": "floor_reaches_start", "offset": "100.00"}}));
+        let r = parse(v).unwrap();
+        assert!(matches!(
+            r.drawdown.verified().and_then(|d| d.trailing_lock.clone()),
+            Some(TrailingLock::FloorReachesStart { offset: Some(_) })
+        ));
+        let lock = |l: Value, kind: &str| {
+            let mut v = base();
+            v["drawdown"] =
+                verified(json!({"type": kind, "amount": "2000.00", "trailing_lock": l}));
+            parse(v)
+        };
+        assert!(lock(json!({"mode": "never"}), "trailing_intraday").is_ok());
+        assert!(
+            lock(
+                json!({"mode": "never", "offset": "1.00"}),
+                "trailing_intraday"
+            )
+            .is_err(),
+            "never has no offset"
+        );
+        assert!(
+            lock(json!({"mode": "floor_reaches_start"}), "static").is_err(),
+            "static does not trail"
+        );
+        assert!(lock(json!({"mode": "sometimes"}), "trailing_eod").is_err());
+        assert!(
+            lock(
+                json!({"mode": "floor_reaches_start", "offset": 100}),
+                "trailing_eod"
+            )
+            .is_err(),
+            "money as number"
+        );
+        // Round trip through the stored form.
+        let value = RuleValue::deserialize(
+            RuleField::Drawdown,
+            json!({"type": "trailing_eod", "amount": "2000.00",
+                    "trailing_lock": {"mode": "floor_reaches_start", "offset": "100.00"}}),
+        )
+        .unwrap();
+        let wire = serde_json::to_value(value.to_wire()).unwrap();
+        assert_eq!(
+            wire["trailing_lock"],
+            json!({"mode": "floor_reaches_start", "offset": "100.00"})
+        );
+        assert_eq!(
+            RuleValue::deserialize(RuleField::Drawdown, &wire).unwrap(),
+            value
+        );
+    }
+
+    #[test]
+    fn a_source_may_carry_a_title_note_instead_of_a_title() {
+        let mut v = base();
+        v["max_position_qty"]["sources"] = json!([{"url": "https://firm.example/rules", "accessed_at": "2026-10-20",
+            "title_note": "title not retrieved: site blocks automated access, 2026-10-24"}]);
+        assert!(parse(v.clone()).is_ok());
+        v["max_position_qty"]["sources"][0]["page_title"] = json!("Rules");
+        assert!(parse(v).is_err(), "a note only without a title");
     }
 
     #[test]

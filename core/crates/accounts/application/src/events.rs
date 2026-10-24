@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 
 use accounts_enterprise::{
     AccountId, AccountName, Choice, FirmStance, LifecycleState, MoneyAmount, OptInKind,
-    RuleVersionId, VenueAccountId,
+    PresetVersionId, RuleField, RuleVersionId, VenueAccountId,
 };
 
 use crate::ports::{RouteRef, RuleSource};
@@ -90,6 +90,25 @@ pub enum AccountsEvent {
         new_earned_before: Option<MoneyAmount>,
         profit_target: MoneyAmount,
     },
+    /// S16 `applyPresetVersion` (Torno): `changes` name the rule fields (`PRESET_AUDITED_FIELDS`).
+    PresetVersionApplied {
+        account_id: AccountId,
+        account_name: AccountName,
+        at: DateTime<Utc>,
+        from_preset_version_id: PresetVersionId,
+        to_preset_version_id: PresetVersionId,
+        from_version_number: i32,
+        to_version_number: i32,
+        changes: Vec<FieldChange>,
+        kept_fields: Vec<RuleField>,
+    },
+    /// S16 `restorePresetValue` (Torno).
+    PresetValueRestored {
+        account_id: AccountId,
+        account_name: AccountName,
+        at: DateTime<Utc>,
+        change: FieldChange,
+    },
     LimitsChanged {
         account_id: AccountId,
         at: DateTime<Utc>,
@@ -114,24 +133,28 @@ pub enum AccountsEvent {
 }
 
 /// Audited event types (the audit consumer registers these).
-pub const AUDIT_EVENT_TYPES: [&str; 6] = [
+pub const AUDIT_EVENT_TYPES: [&str; 8] = [
     "accounts.created",
     "accounts.updated",
     "accounts.archived",
     "accounts.lifecycle_changed",
     "accounts.opt_in_chosen",
     "accounts.evaluation_restarted",
+    "presets.version_applied",
+    "presets.value_restored",
 ];
 
 /// Every type this module writes to the outbox (the app's `emitted_event_types()`). The last
 /// four have no consumer in this wave (allowlisted as `from_now`, Esquadro decision (b)).
-pub const EMITTED_EVENT_TYPES: [&str; 10] = [
+pub const EMITTED_EVENT_TYPES: [&str; 12] = [
     "accounts.created",
     "accounts.updated",
     "accounts.archived",
     "accounts.lifecycle_changed",
     "accounts.opt_in_chosen",
     "accounts.evaluation_restarted",
+    "presets.version_applied",
+    "presets.value_restored",
     "account.limits_changed",
     "account.binding_changed",
     "account.changed",
@@ -147,6 +170,8 @@ impl AccountsEvent {
             Self::LifecycleChanged { .. } => "accounts.lifecycle_changed",
             Self::OptInChosen { .. } => "accounts.opt_in_chosen",
             Self::EvaluationRestarted { .. } => "accounts.evaluation_restarted",
+            Self::PresetVersionApplied { .. } => "presets.version_applied",
+            Self::PresetValueRestored { .. } => "presets.value_restored",
             Self::LimitsChanged { .. } => "account.limits_changed",
             Self::BindingChanged { .. } => "account.binding_changed",
             Self::Changed { .. } => "account.changed",
@@ -162,6 +187,8 @@ impl AccountsEvent {
             | Self::LifecycleChanged { at, .. }
             | Self::OptInChosen { at, .. }
             | Self::EvaluationRestarted { at, .. }
+            | Self::PresetVersionApplied { at, .. }
+            | Self::PresetValueRestored { at, .. }
             | Self::LimitsChanged { at, .. }
             | Self::BindingChanged { at, .. }
             | Self::Changed { at, .. }
@@ -245,6 +272,30 @@ impl AccountsEvent {
                 }
                 Value::Object(d)
             }
+            Self::PresetVersionApplied {
+                from_preset_version_id,
+                to_preset_version_id,
+                from_version_number,
+                to_version_number,
+                changes: c,
+                kept_fields,
+                ..
+            } => {
+                // `DetailsPresetApplied` (HTTP 6.0.0).
+                let mut d = json!({
+                    "from_preset_version_id": from_preset_version_id.as_uuid(),
+                    "to_preset_version_id": to_preset_version_id.as_uuid(),
+                    "from_version_number": from_version_number,
+                    "to_version_number": to_version_number,
+                    "changes": changes(c),
+                });
+                if let (false, Some(d)) = (kept_fields.is_empty(), d.as_object_mut()) {
+                    let kept: Vec<&str> = kept_fields.iter().map(|f| f.as_str()).collect();
+                    d.insert("kept_fields".into(), json!(kept));
+                }
+                d
+            }
+            Self::PresetValueRestored { change, .. } => json!({"change": change.to_json()}),
             _ => return self.notice_payload(),
         };
         let (account_id, account_name) = self.audit_refs().unwrap_or_default();
@@ -284,6 +335,16 @@ impl AccountsEvent {
                 ..
             }
             | Self::EvaluationRestarted {
+                account_id,
+                account_name,
+                ..
+            }
+            | Self::PresetVersionApplied {
+                account_id,
+                account_name,
+                ..
+            }
+            | Self::PresetValueRestored {
                 account_id,
                 account_name,
                 ..

@@ -5,17 +5,18 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 
 use accounts_enterprise::{
-    Account, AccountKind, MaxPositionQty, OptInKind, PresetVersionId, PropSelection, SizeAmount,
-    VenueAccountId,
+    Account, AccountKind, Choice, MaxPositionQty, OptInKind, OptInState, PresetVersionId,
+    PropSelection, SizeAmount, VenueAccountId,
 };
 use shared_kernel::UserId;
 
-use crate::commands::{BindingRef, SelectionInput};
+use crate::commands::{BindingRef, OptInChoices, SelectionInput};
 use crate::deps::AccountsDeps;
 use crate::error::{AccountsError, Refusals};
 use crate::ports::{
     BindingView, CurrentRule, PortError, PresetFacts, RuleSelection, StoreError, VenueKind,
 };
+use crate::usecases::opt_in_error;
 use crate::views::{AccountView, OptInView, PropView};
 
 pub(crate) fn store_err(e: StoreError) -> AccountsError {
@@ -102,6 +103,8 @@ pub(crate) struct ResolvedSelection {
     pub rules: Option<RuleSelection>,
     /// The resolved rules carry an evaluation target (only presets, S16).
     pub has_evaluation_target: bool,
+    /// The selected preset version (S16: its rules fill the account's rule values).
+    pub preset: Option<PresetFacts>,
 }
 
 /// Resolves the selection against the catalog, pushing 422s. `None` when the selection cannot
@@ -127,6 +130,7 @@ pub(crate) async fn resolve_selection(
             size: manual_size()?,
             rules: None,
             has_evaluation_target: false,
+            preset: None,
         })),
         (
             AccountKind::Prop,
@@ -144,6 +148,7 @@ pub(crate) async fn resolve_selection(
             size: manual_size()?,
             rules: Some(RuleSelection::Generic),
             has_evaluation_target: false,
+            preset: None,
         })),
         (
             AccountKind::Prop,
@@ -208,6 +213,7 @@ pub(crate) async fn resolve_selection(
                     firm_platform: firm_platform.clone(),
                 }),
                 has_evaluation_target: facts.has_evaluation_target,
+                preset: Some(facts),
             }))
         }
         (AccountKind::Prop, SelectionInput::None) => Err(AccountsError::InvalidRequest {
@@ -397,4 +403,69 @@ pub(crate) async fn bound_platform_account(
         || b.venue_account_id.as_uuid().to_string(),
         |v| v.platform_account.clone(),
     )))
+}
+
+/// How one kind's opt-in moves with a request.
+pub(crate) enum OptInPlan {
+    Keep,
+    Set(OptInState, Option<(Choice, CurrentRule)>),
+}
+
+/// Opt-in moves of this request (D16): a kind whose rule version this request changes is
+/// re-selected (its choice is then required if the new version needs one); otherwise a sent
+/// choice is a later change, as `setAccountOptIn`.
+pub(crate) fn plan_opt_ins(
+    stored: &Account,
+    requests: &OptInChoices,
+    stored_rules: Option<&[CurrentRule; 2]>,
+    new_rules: Option<&[CurrentRule; 2]>,
+    now: chrono::DateTime<chrono::Utc>,
+    refusals: &mut Refusals,
+) -> Vec<OptInPlan> {
+    OptInKind::ALL
+        .into_iter()
+        .map(|kind| {
+            let request = requests.get(kind);
+            let Some(rules) = new_rules else {
+                if stored.kind == AccountKind::Real && request.is_some() {
+                    refusals.push(AccountsError::OptInNotApplicable { kind });
+                }
+                return OptInPlan::Keep;
+            };
+            let current = &rules[kind_index(kind)];
+            let version_changes =
+                stored_rules.is_none_or(|s| s[kind_index(kind)].rule.id != current.rule.id);
+            if version_changes && kind == OptInKind::Automation {
+                return match OptInState::select(&current.rule, applicable(kind), request, now) {
+                    Ok(state) => {
+                        let choice = match state {
+                            OptInState::Chosen(c) => Some((c.choice, current.clone())),
+                            _ => None,
+                        };
+                        OptInPlan::Set(state, choice)
+                    }
+                    Err(e) => {
+                        refusals.push(opt_in_error(kind, e));
+                        OptInPlan::Keep
+                    }
+                };
+            }
+            // `copy` is never required here; a follower whose copy version changes goes to
+            // pending_review through the follower flow (S7/S19), not this form.
+            let Some(request) = request else {
+                return OptInPlan::Keep;
+            };
+            match stored
+                .opt_in(kind)
+                .choose(&current.rule, applicable(kind), request, now)
+            {
+                Ok(Some(state)) => OptInPlan::Set(state, Some((request.choice, current.clone()))),
+                Ok(None) => OptInPlan::Keep,
+                Err(e) => {
+                    refusals.push(opt_in_error(kind, e));
+                    OptInPlan::Keep
+                }
+            }
+        })
+        .collect()
 }

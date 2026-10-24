@@ -2,7 +2,7 @@
 //! defines one, and the check precedence of the S5 contract (§3): 404 → step-up → 409 → 422.
 
 use access::AccessError;
-use accounts_enterprise::{OptInKind, RuleVersionId};
+use accounts_enterprise::{OptInKind, RuleField, RuleVersionId};
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Eq, Error)]
@@ -61,6 +61,22 @@ pub enum AccountsError {
     EvaluationNotApplicable { field: Option<&'static str> },
     #[error("accounts.evaluation_start_invalid")]
     EvaluationStartInvalid,
+    /// 409 `presets.version_superseded`: a newer version than the target was published.
+    #[error("presets.version_superseded")]
+    VersionSuperseded,
+    /// 422 `presets.version_not_newer`; `pointer`: `/target_preset_version_id` (apply) or
+    /// `/query/target_preset_version_id` (diff).
+    #[error("presets.version_not_newer")]
+    VersionNotNewer { pointer: &'static str },
+    /// 422 `presets.choice_required` (`/choices/<field>`).
+    #[error("presets.choice_required")]
+    ChoiceRequired { field: RuleField },
+    /// 422 `presets.required_field_unresolved` (`/rule_values/<field>`).
+    #[error("presets.required_field_unresolved")]
+    RequiredFieldUnresolved { field: RuleField },
+    /// 422 `presets.value_not_confirmed`.
+    #[error("presets.value_not_confirmed")]
+    ValueNotConfirmed,
     /// 500 `common.internal`; the detail is logged, never returned.
     #[error("common.internal")]
     Internal(String),
@@ -102,6 +118,11 @@ impl AccountsError {
             }
             Self::EvaluationNotApplicable { .. } => "accounts.evaluation_not_applicable",
             Self::EvaluationStartInvalid => "accounts.evaluation_start_invalid",
+            Self::VersionSuperseded => "presets.version_superseded",
+            Self::VersionNotNewer { .. } => "presets.version_not_newer",
+            Self::ChoiceRequired { .. } => "presets.choice_required",
+            Self::RequiredFieldUnresolved { .. } => "presets.required_field_unresolved",
+            Self::ValueNotConfirmed => "presets.value_not_confirmed",
             Self::Internal(_) => "common.internal",
         }
     }
@@ -118,7 +139,8 @@ impl AccountsError {
             | Self::BindingOpenPosition
             | Self::RuleVersionChanged { .. }
             | Self::DeleteOpenPosition
-            | Self::LifecycleTransitionInvalid => 409,
+            | Self::LifecycleTransitionInvalid
+            | Self::VersionSuperseded => 409,
             Self::Internal(_) => 500,
             _ => 422,
         }
@@ -143,6 +165,11 @@ impl AccountsError {
             Self::RuleValuesWithoutSelectionChange => "/rule_values",
             Self::EvaluationStartInvalid => "/evaluation_start",
             Self::EvaluationNotApplicable { field: Some(f) } => f,
+            Self::VersionNotNewer { pointer } => pointer,
+            Self::ChoiceRequired { field } => return Some(format!("/choices/{}", field.as_str())),
+            Self::RequiredFieldUnresolved { field } => {
+                return Some(format!("/rule_values/{}", field.as_str()));
+            }
             _ => return None,
         };
         Some(p.to_owned())
@@ -171,6 +198,12 @@ impl AccountsError {
             Self::UseApplyVersion => 20,
             Self::RuleValuesWithoutSelectionChange => 21,
             Self::EvaluationNotApplicable { .. } => 22,
+            // S16 apply: the version, then the choices (presets.yaml order).
+            Self::VersionSuperseded => 6,
+            Self::VersionNotNewer { .. } => 23,
+            Self::ChoiceRequired { .. } => 24,
+            Self::RequiredFieldUnresolved { .. } => 25,
+            Self::ValueNotConfirmed => 26,
             _ => 30,
         };
         (self.http_status(), index)
