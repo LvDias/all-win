@@ -1,6 +1,8 @@
 # NinjaTrader 8 spike plan and Windows build/test access (Q15)
 
-- **Status:** rev. 6 (2026-10-23).
+- **Status:** rev. 7.1 (2026-10-24).
+  - **rev. 7.1, review notes on rev. 7 (Crivo, Vigia, Pêndulo):** development-only switches compiled out of every other build, with a packaging check (§8, E12); `net48` and `netstandard2.0` from the same source (§8); package and fake-Core hashes checked by the user, explicit loopback bind (§8); "Export diagnostics" by allowlist with a token scan (§8, ADR-0005 N12); NT8's own logs checked for live connections before return; optional user-only round RX for Rithmic plug-in mode; K1/K2 rows and §6.4 updated for manual rounds.
+  - **rev. 7, user decision 2026-10-24: tests inside NinjaTrader 8 are MANUAL, run by the user over RDP.** The VPS stays as it is: Tailscale, the tailnet policy, Tailnet Lock and RDP restricted to the tailnet. Agents get **no access** to the VPS: `sshd` is not started, `Install-AllWinTestHost.ps1` is not run, and `Lock-Firewall.ps1` is set aside. The dev server stays in the tailnet; only the dev → VPS:22 rule goes. What this cancels and what stays is in §8.
   - rev. 6, from the actual state: the user already installed Tailscale on the VPS and the Mac, and the VPS joined **untagged** through the user's login. The checklist now:
     - applies the policy first;
     - tags the VPS `tag:allwin-nt8` and renames it from the admin console, with **no auth key at all**;
@@ -33,7 +35,7 @@
 
 ## 1. Goal and timebox
 
-Retire the plugin risks before V1-S2 is implemented, and leave a **repeatable build → deploy → test loop** on the Windows machine.
+Retire the plugin risks before V1-S2 is implemented, through **manual test rounds** that the user runs over RDP (§8): the team delivers an import package, a numbered script and the list of logs to return.
 
 - **Spike code is throwaway.** Branch `s/v1-spike-nt8--plugin`, under `plugins/ninjatrader8/spike/`; never merged as product code.
 - **Timebox:** 3 agent-days after the machine is ready. Going over is escalated to the Maestro.
@@ -56,13 +58,13 @@ Retire the plugin risks before V1-S2 is implemented, and leave a **repeatable bu
 
 | # | Question | Experiment | Done when |
 |---|---|---|---|
-| K1 | Start NT8 remotely in the interactive session; behavior of the 8.1.8.4 login screen | **E1** | Window appears after `schtasks /run`; the login need is documented |
-| K2 | Hot source loop: auto-compile, AddOn re-instantiation, where compile errors appear (logs readable over SSH?), does `AllWin.Adapter.Core` source compile under NT's compiler | **E2** | Edit → save → compiled and reloaded within a minute, without a restart; errors visible from the shell |
+| K1 | ~~Start NT8 remotely~~ **Cancelled (rev. 7):** the user starts NT8 and logs in | ~~E1~~ | — (cancelled) |
+| K2 | Source import (rev. 7.1, manual): does a source-form package compile and load on import without a restart, where do compile errors appear, does the host source compile under NT's compiler | **E2** | The user imports the round's source package: it compiles and loads without a restart, or the compile errors are captured from the NinjaScript output and the NT8 log the user returns |
 | K3 | Packaged build: `net48` multi-target of `AllWin.Adapter.Core` + host DLL, copy and restart, then zip + `AdditionalReferences.txt` import on a clean profile | **E3** | Both load; import on a clean profile works |
 | K4 | Accounts with Mode/Provider (simulation guard, `oco_location`), market entry → OCO bracket from the fill, event sequence including partial fills and `Operation.Remove`, `Order.Name` reference surviving a restart, `OrderEntry.Automated` | **E4** | Scripted scenario passes 10/10; the restart keeps the `Name` association |
 | K5 | Playback clock: `PlaybackConnection.Now` vs `Core.Globals.Now`; `SimulationAccountReset` on rewind | **E5** | Clock source chosen for S15; rewind handling documented |
-| K6 | Access path works and nothing is exposed: T-checks (a)–(e) for T1. E6 (reverse tunnel with the inbound rule disabled) applies only if the fallback B is used | **T-checks / E6** | All T-checks pass |
-| K7 | Maestri app with a Windows host (only if the user wants option C later) | **E7** | Optional |
+| K6 | ~~Agent access path~~ **Cancelled (rev. 7):** no agent access. Only the user's own check stays: RDP is reachable only over the tailnet (§6.5) | — | RDP not reachable from the internet |
+| K7 | ~~Maestri app with a Windows host~~ **Cancelled (rev. 7)** | — | — |
 | K8 | Reactive block timing | **E8** | p50/p95 over 20 trials |
 | K9 | WebSocket under load beside order traffic: UI freeze or broker disconnect? | **E9** | 1 h soak, no freeze or drop |
 | K10 | Does Global Simulation Mode block NinjaScript `Account.Submit` to non-sim accounts? | **E10** | Only if safely testable; otherwise skipped. Never create a live account |
@@ -81,9 +83,7 @@ Retire the plugin risks before V1-S2 is implemented, and leave a **repeatable bu
 ## 5. Deliverables
 
 1. `plugins/ninjatrader8/docs/spike-report.md` (Plugin Engineer): K1–K13 with evidence and measured numbers, plus proposed ADR deltas. If deltas are needed, the Architect issues them.
-2. Repeatable loop scripts:
-   - `plugins/ninjatrader8/tools/` (Plugin Engineer): build, deploy-source, deploy-package, start/stop NT8, collect logs and screenshots, run scenarios.
-   - `infra/windows-test-host/` (DevOps): host setup and tunnel task.
+2. **Per test round (rev. 7, §8):** the import package, the numbered script and the log-collection script. The former agent-side loop scripts (`plugins/ninjatrader8/tools/` start/stop/deploy over SSH, `infra/windows-test-host/`) no longer apply.
 3. Fake-Core scenario harness: entry → fill → bracket, partial fills, reject, disconnect/reconnect, expiry, flatten/block, orphan cleanup, bracket integrity.
 4. Draft install guide for the user (S3 "Como instalar o plugin").
 
@@ -185,9 +185,9 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
 
 ### 6.4 W3 — NT8 restarts (decided)
 
-- The user types the NT8 password when NT8 must restart; the hot source loop keeps restarts rare.
+- The user types the NT8 password when NT8 must restart. From rev. 7 **every** start and restart of NT8 is done by the user; there is no remote start.
 - Windows auto-logon stays off.
-- The `allwin-agent` desktop session stays alive by **disconnecting** RDP rather than signing out, so `schtasks /it` can start NT8 in it (E1 verifies on Server 2025).
+- ~~The `allwin-agent` desktop session stays alive by **disconnecting** RDP rather than signing out, so `schtasks /it` can start NT8 in it (E1 verifies on Server 2025).~~ Obsolete from rev. 7: there is no remote start (§8).
 
 ### 6.5 W4 — Setup checklist
 
@@ -256,10 +256,58 @@ There is no reason to avoid Tailscale here. Its one structural trade-off is trus
 - **CI runner (D):** can be added later on the same VPS as a regression gate, once the GitHub remote and push authorization exist.
 - **The reverse tunnel (B):** stays documented as the fallback if Tailscale is rejected (T2).
 
-## 7. Spike sequence (after the machine is ready)
+## 7. Spike sequence (superseded by §8 in rev. 7)
 
 1. **Day 1:** T-checks (§6.5), then E1 (access and start), E2 (hot loop), E3 (packaging), K12 store basics.
 2. **Day 2:** E4 (orders, events, names, guard), E9 (socket soak), E11 (bracket integrity), E12 (crash).
 3. **Day 3:** E5 (Playback clock), E8 (block timing), E13 (latency), E14 (commissions), E10 if safe; then the report.
 
 **Exit gate:** the report is reviewed by the Architect and QA; ADR deltas, if any, are issued; V1-S2 starts.
+
+## 8. Manual test rounds (rev. 7, user decision 2026-10-24)
+
+**What changes.** Nothing in the protocol, the Core or the plugin architecture. Only the way the plugin host is tested changes: the user runs every NT8 test by hand over RDP, always on Sim101 or Playback with the Simulated Data Feed. Agents never touch the VPS.
+
+**Cancelled:** K1/E1 (remote start with `schtasks`), K6 T-checks for agent access and E6, K7/E7, the agent-side loop scripts (`tools/` start, stop and deploy over SSH; `infra/windows-test-host/`), `sshd` on the VPS, the tailnet rule dev → VPS:22, and the agent-driven hot source loop. The rule that only the user restarts NT8 (§6.4) becomes the general rule.
+
+**Still run, now by the user, one round at a time:**
+
+| Experiment | What the user does | What answers it |
+|---|---|---|
+| E2/E3 (K2/K3) | Import the round's package (Tools → Import → NinjaScript Add-On); note whether it compiles and loads without a restart, and whether the packaged form loads after a restart | Import result + NT8 log |
+| E4 + K15 | Start the looping scenario of the local fake Core with one action (10 repetitions); restart NT8 once and check that the `Order.Name` association and the day's executions survive | Plugin journal and log |
+| E5 | Playback at 1× and Max, Go To, rewind | Plugin log (clocks, `SimulationAccountReset`) |
+| E8, E13 | Start the looping scenario (≥ 20 trials) with one action. The plugin logs every stage with a monotonic high-resolution time and UTC: for E13, frame received → journaled → Submit → OrderUpdate accepted → ExecutionUpdate → report written → ack; for E8, the execution that crosses the limit → block set → cancel/flatten Submit. The platform leg comes from the NT8 callback times, not `Execution.Time`. The fake Core logs its send/receive on the same host clock. Note whether an RDP session was active | Plugin and fake-Core logs |
+| E9 | Start the self-repeating soak scenario and leave it for 1 h | Plugin log, NT8 log |
+| E11 | NT8 cannot move prices while closed, so the case is reproduced with the plugin unobservable instead: (a) stop the plugin while NT8 runs, move the price through the stop with the Simulated Data Feed controls, start the plugin; (b) in Playback, move past the stop while the plugin is stopped | Plugin journal and log (ADR-0004 §6.1 cases) |
+| E12 | A random Task Manager kill cannot hit the windows that matter, so development builds get fault-injection switches ("crash at step X", set by the fake-Core scenario or a dev-only menu): after the journal write and before Submit; after Submit and before "submitted" is journaled; before the ack. The user starts each case with one action and restarts NT8. **Development builds only (rev. 7.1, Crivo L1, Vigia L1):** see "Development-only capabilities" below | Journal: no duplicate execution, per window |
+| RX | **Optional, user-only (rev. 7.1, Pêndulo n3):** a TPT account in Rithmic plug-in mode. The user connects it and the plugin only observes: the connection kind and provider it reports, `oco_location`, and the account classification. Orders only if the account is classified as simulation; never on a live account | Plugin log (`[INF]` lines for the connection) |
+| E14 | Run with and without a commission template | Plugin log (commission at the event and later) |
+| E10 | Skipped unless safely testable; never with a live account | — |
+| D1/D2, K12 token storage | Run the exact PowerShell commands in the script (`icacls` on the plugin folders, a search of the logs for the token) | Command output in the round's zip |
+| D3 | Optional and user-only: needs a second Windows user on the VPS | — |
+
+**What the team delivers for each round:**
+1. **An import package:** a NinjaScript Add-On import file named with its version (for example `AllWin-NT8-0.3.1-round2.zip`). Development rounds prefer the **source** form, which NT8 compiles on import without a restart. Milestone rounds use the packaged DLL form, which needs one restart by the user. The Plugin Engineer chooses the form and states it.
+2. **A short numbered script** from QA Plugins: step → expected result, with as many checks per round as fit, Sim101/Playback only. The script also says when a restart is needed.
+3. **The logs to return and how:** the plugin window's "Export diagnostics" (ADR-0005 N12) zips the plugin logs and a journal copy (never the token or consent files). The user adds the NT8 `log`/`trace` files of the day (`Documents\NinjaTrader 8\log` and `\trace`) and the fake-Core transcript. The user returns them through the RDP-redirected drive; the Maestro names the drop location on the dev side.
+   - **NT8's own logs (rev. 7.1, Vigia I1):** they can name the user's other connections and account numbers, possibly live ones. The script asks the user to check them, or the collection step keeps only the Sim101/Playback lines, before returning. Nothing from a live connection goes into the drop.
+   - **The drop on the dev side (Vigia I2):** group-restricted (like the review folders: group only, no world access) with a retention rule, because it holds journals and transcripts of simulated trading.
+4. **Hashes (rev. 7.1, Vigia L2; Crivo nit):** the SHA-256 of the package and of the fake-Core exe do **not** travel in the script or anywhere on the RDP-redirected drive. The Maestro sends them to the user in the round message, a separate channel, so the check catches substitution on the drive as well as corruption. The user checks them with `Get-FileHash` before the import and before starting the exe, and stops on a mismatch.
+
+**Development-only capabilities (rev. 7.1; Crivo L1, Vigia L1, Pêndulo n2).** The fault-injection switches, the dev-only menu and the fake-Core scenario hooks exist only in development builds. They are removed by a **compile-time constant**, never a runtime flag: the same constant that separates release and development builds (ADR-0005 N11). Milestone and release packages are built without it. A packaging check fails the build when a non-development package contains any such entry point (type, menu item or scenario handler). A crash switch in a user's plugin could cause duplicated or unknown orders.
+
+**One source for both targets (rev. 7.1, Crivo L2).** `AllWin.Adapter.Core` builds for `netstandard2.0` (the Linux tests) and `net48` (the package, ADR-0005 N9) from the same source. No `#if` changes logic between the two targets; a target-specific shim, if ever needed, is listed and reviewed. The round scripts exercise the `net48` critical paths inside NT8: journal write and replay, dedupe of `command_id`, staleness guard, and the flatten proof report.
+
+**User decisions (2026-10-24):** no agents on the VPS; focus on finishing the plugin. **M1 waits for the staging host (option B)**: no port is opened now, and the dev server stays in the tailnet with no rule towards the VPS.
+
+**Rounds (from the Plugin Engineer's plan):** R0 probe (import format, platform facts: E3, E4, K15, `Order.Name` across a restart, E14; one Market order on Sim101 is allowed, simulation only); R1 (S2 AC-1, AC-4, AC-5, AC-6, window, strings, token configuration); R2 (AC-2, AC-3, flatten with its proof report, restart recovery and reconnect catch-up, duplicates and stale commands); 1–2 repair rounds. M1 end to end comes later, on staging. Every round is a new package and an NT8 restart by the user. The package layout is ADR-0005 N9 and the local files are N12.
+
+**Protocol version for the rounds:** the fake Core negotiates 1.2, which is the Core's minimum (ADR-0004 §9), so R0–R2 run at 1.2. The plugin must reach **1.4 before M1**: with a session below 1.4 the Core skips the entries of every account with a drawdown rule (ADR-0004 §7.1), and the rollout order is plugin first. The plugin's 1.3 contract tests that are red on `main` are fixed in the S2 branch before it merges.
+
+**Local fake Core.** Without network changes the plugin cannot reach the dev server. It is shipped as a self-contained `win-x64` exe that the user starts on the VPS, on loopback `127.0.0.1` only, with no port opened. It binds `127.0.0.1` explicitly, never `0.0.0.0` or any address, so Windows does not offer to open a firewall rule; if a firewall prompt ever appears, the user cancels it (Vigia L2); it writes a transcript the user returns. The scenarios therefore run against the scripted fake Core shipped in the package, on loopback: development builds only, ADR-0005, with the owner-only token file.
+- Its scenarios **loop by themselves** (E4 ×10, E8/E13 ≥ 20 trials, the E9 soak), so each run is one user action.
+- Two things cannot be measured on the VPS: the Core relay round trip (A4) and Core → plugin over the real network. They, and the M1 end-to-end test with the real Core, wait for the staging host (user decision B). That needs no VPS change.
+
+**Exit gate:** the same as §7. The spike report is written by the Plugin Engineer from the returned logs and reviewed by the Architect and QA, and ADR deltas are issued if needed.
+
