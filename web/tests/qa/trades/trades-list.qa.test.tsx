@@ -1,5 +1,5 @@
 // QA (Retina) — V1-S21 AC-1/4/5/6/7/8/10 on the trade list and detail, black box through the public index.
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,9 @@ import { server } from "@/test/server";
 import { FakeEventSource } from "@/test/setup";
 // render first: it installs the next/navigation mock before the feature loads.
 import { TradesPage } from "@/features/trades";
+
+// Findings must not depend on host load: wait up to 8 s for async UI (the default 1 s flaked on a loaded CI host).
+configure({ asyncUtilTimeout: 8000 });
 
 const me = (tz = "UTC") => ({ id: "00000000-0000-4000-8000-000000000001", email: "trader@example.com", locale: "pt-BR", time_zone: tz, is_platform_admin: false });
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;

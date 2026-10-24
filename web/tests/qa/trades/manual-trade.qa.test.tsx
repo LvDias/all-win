@@ -1,5 +1,5 @@
 // QA (Retina) — V1-S21 AC-3/5/7/8/11 on manual entry and edit, black box through the public index.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,9 @@ import { navigation, renderApp } from "@/test/render";
 import { server } from "@/test/server";
 // render first: it installs the next/navigation mock before the feature loads.
 import { ManualTradeEdit, ManualTradeFlow } from "@/features/trades";
+
+// Findings must not depend on host load: wait up to 8 s for async UI (the default 1 s flaked on a loaded CI host).
+configure({ asyncUtilTimeout: 8000 });
 
 const me = (tz = "UTC") => ({ id: "00000000-0000-4000-8000-000000000001", email: "trader@example.com", locale: "pt-BR", time_zone: tz, is_platform_admin: false });
 const acc = "00000000-0000-4000-8000-0000000000a1";

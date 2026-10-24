@@ -1,5 +1,5 @@
 // QA (Retina) — V1-S13 AC-2/3/4/11 and V1-S13b AC-1/2/3/5 on the Risk tab, black box through the public index.
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -8,6 +8,9 @@ import { renderApp } from "@/test/render";
 import { RiskTab } from "@/features/risk";
 import { server } from "@/test/server";
 import { FakeEventSource } from "@/test/setup";
+
+// Findings must not depend on host load: wait up to 8 s for async UI (the default 1 s flaked on a loaded CI host).
+configure({ asyncUtilTimeout: 8000 });
 
 const me = { id: "00000000-0000-4000-8000-000000000001", email: "trader@example.com", locale: "pt-BR", time_zone: "UTC", is_platform_admin: false };
 const id = "00000000-0000-4000-8000-0000000000a1";

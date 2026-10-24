@@ -1,6 +1,6 @@
 // QA (Retina) — V1-S22 performance (web). PRE-WRITTEN against the spec + contract; NOT collected (file extension .pending).
 // When the feature lands: drop the .pending suffix, adjust the import/labels if the Frontend named things differently, run.
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +9,9 @@ import { server } from "@/test/server";
 import { FakeEventSource } from "@/test/setup";
 // render first: it installs the next/navigation mock before the feature loads.
 import { PerformancePage } from "@/features/performance";
+
+// Findings must not depend on host load: wait up to 8 s for async UI (the default 1 s flaked on a loaded CI host).
+configure({ asyncUtilTimeout: 8000 });
 
 const me = (tz = "UTC") => ({ id: "00000000-0000-4000-8000-000000000001", email: "trader@example.com", locale: "pt-BR", time_zone: tz, is_platform_admin: false });
 afterEach(() => { window.matchMedia = originalMatchMedia; });

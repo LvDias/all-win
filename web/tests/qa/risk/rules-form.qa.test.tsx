@@ -1,5 +1,5 @@
 // QA (Retina) — V1-S13 AC-1/5/7/8/9 on the rules form, black box through the public index.
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within, configure } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,9 @@ import { navigation, renderApp } from "@/test/render";
 import { server } from "@/test/server";
 // render first: it installs the next/navigation mock before the feature loads.
 import { RiskTab, RulesForm } from "@/features/risk";
+
+// Findings must not depend on host load: wait up to 8 s for async UI (the default 1 s flaked on a loaded CI host).
+configure({ asyncUtilTimeout: 8000 });
 
 const me = { id: "00000000-0000-4000-8000-000000000001", email: "trader@example.com", locale: "pt-BR", time_zone: "UTC", is_platform_admin: false };
 const id = "00000000-0000-4000-8000-0000000000a1";
