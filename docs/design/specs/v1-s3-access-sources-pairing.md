@@ -372,7 +372,10 @@ The consequence wording stays the same in every case.
    - Countdown: "Expira em 9:41" from the server's `expires_at` (`aria-live=off`; a polite announcement only at 1 min left and at expiry).
    - Instructions: "No NinjaTrader: abra a janela All Win, clique em Parear e digite o código. Letras maiúsculas ou minúsculas, com ou sem hífen." **[Menu path to validate with the Plugin Engineer after the NT8 spike]**
    - Waiting indicator: "Aguardando o plugin…" with a spinner (static text under reduced motion).
-   - **Paired** (SSE `connection.paired`): success state with `CircleCheck`: "“{name}” conectada. {n} contas encontradas: Sim101, …" + `Vincular contas` (→ S5) and `Concluir`. Focus moves to the success heading.
+   - **Paired** (SSE `connection.paired`; its `visible_accounts` is not used for the count, because accounts arrive after the plugin's `hello` and the list is rebuilt when the connection is `connected` (Core behavior reported by the Frontend, 2026-10-24; not yet stated in the contract: documentation request to the Architect, Q-S3-P1)): success state with `CircleCheck`. Focus moves to the success heading.
+     - Until the connection is `connected`: heading "“{name}” pareada" / "“{name}” paired"; below it, in a separate `role="status"` line, "Buscando contas…" / "Looking for accounts…" with a spinner (static text under reduced motion). Only `Concluir`.
+     - When `connected`: heading "“{name}” conectada" / "“{name}” connected"; the status line shows the real count (ICU plural): "1 conta encontrada: Sim101" / "1 account found: Sim101" · "{n} contas encontradas: Sim101, …" / "{n} accounts found: Sim101, …" · "Nenhuma conta encontrada." / "No accounts found." (only after `connected`). Only the status line is announced; focus does not move again. `Vincular contas` (→ S5) appears when n ≥ 1; `Concluir` is always there.
+     - No timeout (provisional, 2026-10-24): if the plugin drops before `connected`, the line stays "Buscando contas…"; the user can close, and the list row shows the real status.
    - **Expired:** "O código expirou." + `Gerar novo código` (→ `newPairingCode`).
    - **Code invalidated** (SSE `connection.pairing_code_invalidated`, by `reason`):
      - `superseded`: a newer code was generated for this connection (e.g. in another tab or by "Mover para outra máquina"). Info `Alert`: "Um código mais novo foi gerado para esta conexão. Este não vale mais." + `Gerar novo código`. The displayed code is replaced by "—" and the countdown stops.
@@ -495,6 +498,7 @@ Removed with the password model (no longer in the contract): `auth.password_*`, 
 | Q-D | S3-01 channel choice from deployment channels (policy §2/§3): resolved | — | Resolved by the policy |
 | M2 / M3 | 72 h hold for a channel change from a new device; persistence step-up by e-mail on new devices | User | Designed as provisional (S3-05, S3-04) |
 | Q-G | Should the S3-06 delivery notice ("código não enviado") also be a push/notification? | PO | No: account notice only (S18 AC-3) |
+| Q-S3-P1 | Document on `connection.paired` that `visible_accounts` may be empty (accounts arrive after `hello`; the list is rebuilt on `connected`) | Architect | The dialog counts accounts only after `connected` (§ pairing step 2) |
 | — | Terms/privacy acceptance at sign-up | User (vision §12) | Slot reserved |
 
 Resolved by policy rev. 2: step-up for channel change (the two codes), "e-mail in use" never revealed, notice to the old address, where the challenge lives (sealed token, kept in memory), no outage banner on public pages, "sign out of all devices" inside S3 (provisional). Resolved earlier and still valid: Architect items in [contract notes §2](../../architecture/contracts/s3-access-sources-pairing.md) for sources, pairing and re-pairing.

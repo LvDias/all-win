@@ -89,7 +89,7 @@
 
 **Purpose:** set the rules (AC-1, AC-4, AC-5). **Layout:** single column, max 720 px, `Card` sections, sticky footer `Cancelar` / `Salvar regras`. On submit: focus the first invalid field; summary `Alert` when ≥ 3 errors (F§10).
 
-**Prop accounts** open with the preset's values filled (S16 AC-2) and the provenance marks of F§7.4: verified (source popover), `Não confirmado` (not prefilled, `ConflictPicker`), `Editado` (with `Restaurar valor do preset`). **Real accounts** have no preset: fields start empty, no marks.
+**Prop accounts** open with the preset's values filled (S16 AC-2) and the provenance marks of F§7.4: verified (source popover), `Não confirmado` (not prefilled; control by reason, S5 §9.2), `Editado` (with `Restaurar valor do preset`). **Real accounts** have no preset: fields start empty, no marks.
 
 ### 4.1 Section "Perda e drawdown"
 
@@ -128,11 +128,11 @@
 
 - Shows the firm's rule **verbatim** (`FirmRuleQuote`, F§7.4) and the tracked threshold (`Input`, percent 0–100, integer or one decimal per the preset; edited values get `Editado`).
 - Help: "O All Win acompanha esta regra e avisa aos 80 %, mas não bloqueia a conta." / "All Win tracks this rule and warns at 80%, but never blocks the account."
-- Not confirmed: `ConflictPicker`; unresolved → saved as not tracked ("Regra de consistência não confirmada — não acompanhada."). Real accounts: section absent.
+- Not confirmed: control by reason (S5 §9.2); unresolved → saved as not tracked ("Regra de consistência não confirmada — não acompanhada."). Real accounts: section absent.
 
 ### 4.4 Section "Dia de trading"
 
-**Day start unknown (Q92 c, user 2026-10-24).** When the plugin cannot establish where the trading day started (platform closed at the boundary, no proven reconstruction) the Core blocks new automated entries (exits pass) and reports `routing.risk_blocked` with `risk_detail: day_unknown` (6.0.0 draft, TODO until published). The Risk tab shows a `warning` `Alert`: "O All Win não sabe quando o dia de trading começou. Novas entradas automáticas estão bloqueadas; saídas continuam." / "All Win doesn't know when the trading day started. New automated entries are blocked; exits continue." and the button `Reiniciar contagem de hoje`. It never happens automatically. The `AlertDialog` "Reiniciar a contagem de hoje?" says: "A contagem do dia recomeça agora. Perdas que o All Win não viu podem ficar de fora, e os limites podem ficar folgados demais." Buttons `Cancelar` / `Reiniciar contagem` (destructive-neutral); busy and disabled after the first click. **Step-up (Q96 yes):** action `trading_day_restart`, operation `restartTradingDayCount` (HTTP 6.0.0 draft, optional `Idempotency-Key`, TODO until published), reactive 403 `auth.step_up_required` → `StepUpDialog` → one resend (F§8.2). Success: toast "Contagem reiniciada." and the block lifts; audit entry with who and when. This is distinct from the S13b evaluation restart.
+**Day start unknown (Q92 c, user 2026-10-24).** When the plugin cannot establish where the trading day started (platform closed at the boundary, no proven reconstruction) the Core blocks new automated entries (exits pass) and reports `routing.risk_blocked` with `risk_detail: day_unknown` (HTTP 6.0.0, committed on `d/contracts-s8`, not yet in `main`). The Risk tab shows a `warning` `Alert`: "O All Win não sabe quando o dia de trading começou. Novas entradas automáticas estão bloqueadas; saídas continuam." / "All Win doesn't know when the trading day started. New automated entries are blocked; exits continue." and the button `Reiniciar contagem de hoje`. It never happens automatically. The `AlertDialog` "Reiniciar a contagem de hoje?" says: "A contagem do dia recomeça agora. Perdas que o All Win não viu podem ficar de fora, e os limites podem ficar folgados demais." Buttons `Cancelar` / `Reiniciar contagem` (destructive-neutral); busy and disabled after the first click. **Step-up (Q96 yes):** action `trading_day_restart`, operation `restartTradingDayCount` (HTTP 6.0.0, committed on `d/contracts-s8`, not yet in `main`; optional `Idempotency-Key`), reactive 403 `auth.step_up_required` → `StepUpDialog` → one resend (F§8.2). Success: toast "Contagem reiniciada." and the block lifts; audit entry with who and when. This is distinct from the S13b evaluation restart.
 
 **Position across the day boundary (Q93 a):** a position carried across the boundary counts its whole unrealized P&L in the day being measured. Help line under the day block: "Uma posição aberta na virada do dia conta todo o P&L não realizado no dia medido." / "A position open at the day boundary counts its whole unrealized P&L in the day being measured."
 
@@ -200,7 +200,7 @@ No step-up in V1 (the S3 list excludes it); if the Architect's wider list (Q35: 
 | `risk.consistency_warning` | "{account}: regra de consistência a {percent} % do limite" | current value, threshold |
 | `routing.risk_blocked` | S7 / S10 catalog | |
 
-S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
+S15 adds `risk.flatten`, `risk.blocked`, `risk.unblocked` and `risk.reactive_block_action` (S10 catalog; HTTP 6.1.0, registry 1.6.0). `enforcement_id` (HTTP 6.1.0, committed on `d/contracts-s8`, not yet in `main`) links `risk.blocked`, `risk.flatten`, `risk.reactive_block_action` and `risk.unblocked` of the same block; S10 can group them by it (S15 owns the screen).
 
 ---
 
@@ -290,7 +290,7 @@ S15 adds `risk.flatten` and `risk.blocked` (S10 catalog).
 - Source line for the target (from the preset): "Meta da firma: US$ 6.000,00 · fonte {page title}, verificado em {date}" with the F§7.4 popover.
 - Actions: `Ajustar contagem` (S13b-02).
 - **Header line (PO, Q-S13b-2):** the account detail header shows "Avaliação: faltam {remaining}"; **hidden** when the target is not confirmed or absent.
-- **Not confirmed or absent target (AC-3):** the card shows no progress and says why: "A meta desta avaliação não está confirmada nas páginas oficiais da firma, então não mostramos o progresso." with `Resolver` (S16 `ConflictPicker`) — the product never picks a value. **Absent target on an evaluation account** (the preset has no published evaluation target): the card is shown with the explanation "Esta avaliação não tem meta publicada, então não mostramos o progresso." (no `Resolver`, there is nothing to resolve). A funded or live phase has no card.
+- **Not confirmed or absent target (AC-3):** the card shows no progress and says why: "A meta desta avaliação não está confirmada, então não mostramos o progresso." / "This evaluation's target is not confirmed, so we don't show progress." with `Resolver` / `Resolve`, which opens the same control by reason as S16 §5 / S5 §9.2 (reason from `PresetRules.not_confirmed_reason`; HTTP 6.3.0 **TODO** until committed): `conflicting` → `ConflictPicker`; `partial` or `not_published` → the field only. The product never picks a value. **Absent target on an evaluation account** (the preset has no published evaluation target): the card is shown with the explanation "Esta avaliação não tem meta publicada, então não mostramos o progresso." / "This evaluation has no published target, so we don't show progress." (no `Resolver`). **No field to type a target in V1** (Rumo, 2026-10-24; provisional until the user decides), although the contract allows the user to type one. A funded or live phase has no card. **The card is driven by `AccountRisk.evaluation_target_status`** (HTTP 5.4.0 / 6.0.0, committed on `d/contracts-s8`, not yet in `main`): `set` → progress card from `evaluation`; `not_confirmed` → the "não está confirmada" text with `Resolver`; `absent` → the "não tem meta publicada" text; field missing → no card (not an evaluation account).
 - Stale data: `Sem dados recentes` badge (F§7.2) like the meters; `as_of` shown as absolute time.
 - Net-commission note (keeps the user from being misled): `commission_source = none` → "Comissão não informada: o acumulado pode estar acima do real."; `configured` or `mixed` (estimated from the configured minimum) → "Comissão estimada pelo mínimo configurado: o acumulado pode estar acima do real." `platform` and `manual`: no note.
 

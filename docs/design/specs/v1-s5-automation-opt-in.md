@@ -170,13 +170,23 @@ The form is long by the F§10.1 tests (up to 15 controls, 5 sections, and the ch
 
 Help under *Máximo de contratos*: "Limite de contratos que o All Win envia a esta conta. Instruções acima disso são cortadas e registradas." (vision §8). Under *Multiplicador*: "Quantidade executada = quantidade da instrução × multiplicador." (S7 AC-3).
 
+**Money input feedback (size of a real account, F§6.3).** Nothing is guessed. After a valid entry the field description (`aria-describedby`) reads "Entendido como {value}" / "Read as {value}", formatted by the locale formatter (no arithmetic). Errors per parse result (examples follow the locale: pt-BR `25000,00`, en `25000.00`):
+
+| Result | pt-BR | en |
+|---|---|---|
+| ambiguous (e.g. pt-BR "25.000") | "Não dá para saber se o ponto em “{input}” separa milhar ou decimais. Digite sem separador de milhar, por exemplo 25000,00." | "We can't tell whether the separator in “{input}” marks thousands or decimals. Type it without a thousands separator, for example 25000.00." |
+| thousands separator | "Digite sem separador de milhar, por exemplo 25000,00." | "Type it without a thousands separator, for example 25000.00." |
+| more than 2 decimals | "Use no máximo 2 casas decimais." | "Use at most 2 decimal places." |
+| zero or negative | "O tamanho precisa ser maior que zero." | "The size must be greater than zero." |
+| not a number | "Digite um valor em dólares, por exemplo 25000,00." | "Enter an amount in dollars, for example 25000.00." |
+
 For any account (**real or prop**) whose size is not a standard size, on an **exact tie** between two standard sizes (S6 **Q60 c / Q73 b**, decided; contract 5.1.1) the form shows a required `RadioGroup` "Copiar o perfil de stop/alvo de qual tamanho?" with the two candidates (from `getNearestProfileSize`; nothing preselected; sent as `profile_size`). Otherwise a read-only line: "Perfil de stop/alvo inicial: tamanho padrão mais próximo ({size})." (value from the Core; the profile itself is S6).
 
 ### 4.3 Step 4 "Conta na plataforma" (link, AC-1)
 
 - `Select` "Conta no NinjaTrader" grouped by connection (`Connection.name`, with its status badge F§7.2). Options come from `visible_accounts` of the user's paired connections, label `{platform_account}` + kind badge.
 - Options already bound to another All Win account: disabled, "Já vinculada a {account name}." (one platform account ↔ at most one account).
-- **Bind or rebind while the plugin session is open (Architect, S2 gateway X2):** the new binding takes effect at the **next handshake** of that connection. If the connection is `connected` when the user saves, show under the field before saving and as a persistent `Alert` (info) on the account detail card 3 until the connection reconnects: "Vale quando o plugin reconectar. Até lá, esta conta não recebe ordens." / "Takes effect when the plugin reconnects. Until then, this account receives no orders." Meanwhile commands for a newly bound account stay pending: **entries expire by TTL** (reported as missed) and **exits wait for the next handshake**. The account card shows the badge `Vínculo pendente` / `Binding pending` (neutral, `Clock`) until the connection's next `welcome` includes it. It is driven by `AccountBinding.activation` (`active` | `pending_handshake`, contract 5.4.0 draft): `pending_handshake` shows the badge and the notice; `active` clears them. Live update by the account SSE event; the web computes nothing. (Contract 5.4.0 is a draft: **TODO** until published.)
+- **Bind or rebind while the plugin session is open (Architect, S2 gateway X2):** the new binding takes effect at the **next handshake** of that connection. If the connection is `connected` when the user saves, show under the field before saving and as a persistent `Alert` (info) on the account detail card 3 until the connection reconnects: "Vale quando o plugin reconectar. Até lá, esta conta não recebe ordens." / "Takes effect when the plugin reconnects. Until then, this account receives no orders." Meanwhile commands for a newly bound account stay pending: **entries expire by TTL** (reported as missed) and **exits wait for the next handshake**. The account card shows the badge `Vínculo pendente` / `Binding pending` (neutral, `Clock`) until the connection's next `welcome` includes it. It is driven by `AccountBinding.activation` (`active` | `pending_handshake`, HTTP 6.0.0, committed on `d/contracts-s8`, not yet in `main`): `pending_handshake` shows the badge and the notice; `active` clears them. Live update by the account SSE event; the web computes nothing.
 - **Unbind while the session is open:** routing stops creating commands for the account at once (gate 2) and the plugin ignores it until the next welcome; the same notice shows "Desvinculada. O plugin deixa de usar a conta quando reconectar." The existing rule for an open position (blocked, Q38) still applies.
 - `live` / `unknown` kinds outside production: disabled, "Contas live não são permitidas neste ambiente." / "Live accounts are not allowed in this environment."
 - Read-only line after choice: "Conexão de ordens: {local | servidor | desconhecida}" with the S9 limit text (S9 AC-4) when `oco_location` is `local` or `unknown`: "Os stops e alvos desta conta dependem do NinjaTrader aberto." / "This account's stops and targets depend on NinjaTrader staying open."
@@ -226,7 +236,7 @@ One reusable component `OptInSection` with `kind: "automation" | "copy"`. It ren
 | Real account | No section. No question |
 | Prop, `allowed` | Compact info line + `FirmRuleQuote` collapsed behind `Ver regra oficial`. No question. automation: "A {firm} permite negociação automatizada." · copy: "A {firm} permite a replicação de operações entre contas." |
 | Prop, `forbidden` · `conditional` · `unknown` · `not_confirmed` | **Required choice** (§5.3), nothing preselected |
-| Prop without a preset (before S16) | **[Provisional, Q40 rec. (a)]** Firm, plan and phase are free text and the maximum position is typed. The stance is treated as `unknown`, so the choice is **required** with the generic warning of the `unknown` summary and no quote ("Não encontramos uma regra oficial da {firm} sobre automação."). Attaching a preset later gives `pending_review` (§7) |
+| Prop without a preset (before S16) | **[Q40 a, decided 2026-10-23e]** Firm, plan and phase are free text and the maximum position is typed. The stance is treated as `unknown`, so the choice is **required** with the generic warning of the `unknown` summary and no quote ("Não encontramos uma regra oficial da {firm} sobre automação."). Attaching a preset later gives `pending_review` (§7) |
 
 The section appears only after firm, plan, phase, size and firm platform (when relevant) are selected, because the rule version depends on them. The `automation` section is part of the S5 form. The **`copy` section is not part of the S5 create/edit form**: it appears when the account is added as a follower (§5.6, D13).
 
@@ -330,9 +340,11 @@ Drawn for Q26 option (b), **approved for a stance change**. A material change of
 - **Routing:** these accounts show the pending reason (S7 spec).
 - **Interaction with S16 AC-3** (a new preset version is applied only if the user chooses): the design assumes the stance/text change suspends **even before** the user applies the new version to the account **[confirmed by PO: S5 AC-11, Q26b]**.
 
-## 7. Prop accounts created before S16, or when a preset is attached (D15, Q41 provisional)
+## 7. Prop accounts created before S16, or when a preset is attached (D15, Q41 a)
 
-When S16 lands (or the user attaches a preset to a prop account), existing prop accounts whose stance needs a choice show `state = pending_review` with no previous choice: badge `Escolha pendente`, same detail alert (copy: "Esta conta ainda não tem escolha sobre ordens automatizadas. Elas ficam suspensas até você escolher.") and `Revisar agora`. Sim-only today, so no real account is affected. **[provisional, Q41 rec. (a): attaching a preset gives `pending_review`; user decides]**
+When S16 lands (or the user attaches a preset to a prop account), existing prop accounts whose stance needs a choice show `state = pending_review` with no previous choice: badge `Escolha pendente`, same detail alert (copy: "Esta conta ainda não tem escolha sobre ordens automatizadas. Elas ficam suspensas até você escolher.") and `Revisar agora`. Sim-only today, so no real account is affected.
+
+**Attaching a preset on edit (Q41 a, decided 2026-10-23e):** before saving, the form shows a warning `Alert`: "Ao anexar o preset, as ordens automatizadas desta conta ficam suspensas até você revisar e escolher." / "Attaching the preset suspends this account's automated orders until you review and choose." After saving, the account is `pending_review` with the text above, the badge `Escolha pendente` and `Revisar agora`.
 
 ---
 
@@ -365,11 +377,17 @@ The preset picker, versioning and `FirmRuleQuote` data are defined in the S16 sp
 
 ### 9.2 "Not confirmed" values (O7, O8)
 - Preset options with not-confirmed items stay selectable; each shows "{n} itens não confirmados" in warning text. A firm with no verified data is not listed.
-- Each not-confirmed field uses F§7.4: `Não confirmado` badge, warning border, **no prefilled value**, `ConflictPicker` with each published value (source, date) plus "Outro valor" (input with the field's normal validation). Nothing chosen for the user.
-- Required fields (max position, drawdown, daily loss limit, reset time) block save; the error summary lists them: "Resolva os valores não confirmados: Drawdown, Regra de consistência."
+- Each not-confirmed field uses F§7.4: `Não confirmado` badge, warning border, **no prefilled value**. Nothing is chosen by the product. The lead lines and the control depend on the **reason** the preset gives (`not_confirmed_reason` in preset release schema 1.2, committed on `d/contracts-presets` 035e1b1; how HTTP exposes it, 6.3.0, is **TODO** until committed):
+
+  | Reason | Lead lines pt-BR / en | Control |
+  |---|---|---|
+  | `conflicting` | "As páginas da firma divergem." / "The firm's pages disagree." + "Escolha um dos valores publicados ou informe outro." / "Choose one of the published values or enter another." | `ConflictPicker`: each published value with source and date, plus `Outro valor` (input with the field's normal validation). No preselection. |
+  | `partial` | "Publicação parcial: a firma publica apenas “{text}”" / "Partial publication: the firm publishes only “{text}”" (the text in a `FirmRuleQuote`, in the firm's language, untranslated) + "É só informação e não pode ser selecionada. Informe o valor completo." / "This is information only and can't be selected. Enter the complete value." | The field only (no radios). |
+  | `not_published` | "Não publicado pela firma" / "Not published by the firm" + "Pesquisado em {date}: {sources}" / "Searched on {date}: {sources}" + "Informe o valor da sua conta." / "Enter your account's value." | The field only (no radios). |
+- Required fields (max position, drawdown, daily loss limit, reset time) block save; the error summary lists them: "Resolva os valores não confirmados: Drawdown, Horário de reset." / "Resolve the values that are not confirmed: Drawdown, Reset time."
 - Optional or informational fields (e.g. consistency rule) can be saved unresolved; the detail shows `Não confirmado`, and they are not used for warnings until resolved **[confirmed by PO, Q-S5-5]**; the detail shows "Regra de consistência não confirmada — não acompanhada" / "Consistency rule not confirmed — not tracked".
-- A resolved value is stored as the user's own value with provenance "chosen among conflicting values" and audited like any account edit.
-- Summary `Alert` (info) below the form when the preset has any: "{n} regras desta firma não estão confirmadas porque as páginas oficiais divergem. Os valores marcados como “Não confirmado” precisam da sua escolha."
+- A resolved value is stored as the user's own value and audited like any account edit. Provenance: `conflicting` → "chosen among conflicting values"; `partial` and `not_published` → "entered by the user". On the account it shows the badge `Definido por você` / `Set by you` (neutral, `PencilLine`), not `Editado`: there is no preset value to restore. Popover: "Escolhido por você entre valores divergentes em {date}" / "Chosen by you among conflicting values on {date}" (`conflicting`) or "Informado por você em {date}" / "Entered by you on {date}" (`partial`, `not_published`), plus `Revisar` / `Review`, which reopens the same control (S16 §5). *(Design decision 2026-10-24, reversible: replace the badge with `Editado` if Q-S16-3 decides otherwise.)*
+- Summary `Alert` (info) below the form when the preset has any: "{n} regras desta firma não estão confirmadas (divergentes, parciais ou não publicadas). Os valores marcados como “Não confirmado” precisam do seu valor." / "{n} rules of this firm are not confirmed (conflicting, partial or not published). Values marked “Not confirmed” need your value."
 - Note: the max position is **required** in S5 AC-3, so a `not_confirmed` max position must be resolved before saving.
 
 ---
