@@ -56,7 +56,7 @@
 | Meter | Label pt-BR / en | Value shown | Notes |
 |---|---|---|---|
 | Daily loss | Perda diária / Daily loss | `US$ 820,00 de US$ 1.000,00 · 82 %` | `warning` ≥ 80 %, `reached` at the limit |
-| Drawdown | Drawdown ({type}) | `used / limit`, type label under it | Type: `Trailing intradiário`, `Trailing fim do dia`, `Estático`. For trailing types the Core also sends the current floor ("Piso atual: US$ …") |
+| Drawdown | Drawdown ({type}) | `used / limit`, type label under it | Type: `Trailing intradiário`, `Trailing fim do dia`, `Estático`. For trailing types the Core also sends the current floor ("Piso atual: US$ …"). **Q90 (a), user 2026-10-24:** the point where a firm stops trailing (`stops_trailing_at`) becomes a structured rule modelled by the Core. **Interim, until the field exists:** the card keeps showing the trailing floor and adds a `warning` line "A firma pode parar de ajustar o piso (trailing) em um ponto fixo. Confira a regra oficial." / "The firm may stop trailing the floor at a fixed point. Check the official rule." Contract field: request to the Architect. |
 | Daily profit target | Meta de lucro diária / Daily profit target | progress toward the target, success color | At target: `Meta atingida` (success). With "flatten and block" chosen, it follows the blocked rule above |
 | Consistency | Regra de consistência / Consistency rule | "Maior dia: 28 % do lucro total (limite da firma: 30 %)" + meter of that ratio | `warning` at 80 % of the threshold; never `reached` (never red/blocking). Tracking only |
 
@@ -122,7 +122,7 @@
 - **Prefilled from the preset** when the firm publishes it, with the provenance mark of F§7.4 (verified popover with source and date, `Editado` when changed, `Restaurar valor do preset`); when the firm does not publish it the field is empty and shows the warning below. Real accounts have no preset: empty, no marks.
 - Help: "O All Win usa, em cada execução, o maior valor entre a comissão informada pela plataforma e este valor × quantidade. Os limites usam o resultado líquido." / "For each fill, All Win uses the greater of the platform-reported commission and this value × quantity. Limits use the net result."
 - **Empty:** inline warning "Comissão não informada. Sem ela o resultado líquido é igual ao bruto e os limites podem ficar folgados demais." (account-level wording; the per-trade label of S21 is "comissões não informadas", keep both exact).
-- **Effect on save [Proposal, Q85 to the user; not a decided rule]:** a **higher** value applies at once; a **lower** value (or clearing it) applies from the next trading day, because it would loosen the net limits (contract `AccountRisk.pending_commission_change`). The form says so under the field: "Uma comissão menor vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the pending line. The Core publishes a new limits version (S13 pending flow, `limits_pending` states as elsewhere).
+- **Effect on save [Decided by the user 2026-10-24, Q85 (a)]:** a **higher** value applies at once; a **lower** value (or clearing it) applies from the next trading day, because it would loosen the net limits (contract `AccountRisk.pending_commission_change`). The form says so under the field: "Uma comissão menor vale a partir do próximo dia de trading ({time zone})." After saving, the Risk tab shows the pending line. The Core publishes a new limits version (S13 pending flow, `limits_pending` states as elsewhere).
 
 ### 4.3 Section "Regra de consistência" (prop accounts only)
 
@@ -131,6 +131,12 @@
 - Not confirmed: `ConflictPicker`; unresolved → saved as not tracked ("Regra de consistência não confirmada — não acompanhada."). Real accounts: section absent.
 
 ### 4.4 Section "Dia de trading"
+
+**Day start unknown (Q92 c, user 2026-10-24).** When the plugin cannot establish where the trading day started (platform closed at the boundary, no proven reconstruction) the Core blocks new automated entries (exits pass) and reports `routing.risk_blocked` with `risk_detail: day_unknown` (6.0.0 draft, TODO until published). The Risk tab shows a `warning` `Alert`: "O All Win não sabe quando o dia de trading começou. Novas entradas automáticas estão bloqueadas; saídas continuam." / "All Win doesn't know when the trading day started. New automated entries are blocked; exits continue." and the button `Reiniciar contagem de hoje`. It never happens automatically. The `AlertDialog` "Reiniciar a contagem de hoje?" says: "A contagem do dia recomeça agora. Perdas que o All Win não viu podem ficar de fora, e os limites podem ficar folgados demais." Buttons `Cancelar` / `Reiniciar contagem` (destructive-neutral); busy and disabled after the first click. **Step-up (Q96 yes):** action `trading_day_restart`, operation `restartTradingDayCount` (HTTP 6.0.0 draft, optional `Idempotency-Key`, TODO until published), reactive 403 `auth.step_up_required` → `StepUpDialog` → one resend (F§8.2). Success: toast "Contagem reiniciada." and the block lifts; audit entry with who and when. This is distinct from the S13b evaluation restart.
+
+**Position across the day boundary (Q93 a):** a position carried across the boundary counts its whole unrealized P&L in the day being measured. Help line under the day block: "Uma posição aberta na virada do dia conta todo o P&L não realizado no dia medido." / "A position open at the day boundary counts its whole unrealized P&L in the day being measured."
+
+**Holidays (Q89 b, user 2026-10-24):** holidays count as normal trading days. Next to the day block, a help line states the limitation: "Feriados contam como dias normais de trading. O All Win não ajusta o dia para feriados." / "Holidays count as normal trading days. All Win doesn't adjust the day for holidays."
 
 Read-only block: "Reset do dia: {time} ({zone})" with source. Prop: from the preset (value shown with the provenance mark; **the prop account may edit the reset time of its own copy, marked `Editado` (PO, S16 AC-2, S13 AC-4)**). Real: "Fechamento da sessão CME" (**no editing**, PO). The display zone follows the user's profile (F§6.4); the firm's zone appears in the tooltip.
 

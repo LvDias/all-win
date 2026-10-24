@@ -1,7 +1,7 @@
 # V1-S16 — Prop firm presets: model and UI — Screen spec
 
 > **Owner:** Product Designer (Traço @ Dev3) · **Status:** proposed, pending PO review · **Revision:** 1 · **Date:** 2026-10-23
-> **Slice:** [V1-S16](../../product/release-1/slice-plan.md) AC-1 … AC-12 (slice-plan rev. 8); touch points: S5 (account form, opt-ins, Q40–Q42), S7 (stance in routing, manual-only), S13 (rules editing), S18 (notification).
+> **Slice:** [V1-S16](../../product/release-1/slice-plan.md) AC-1 … AC-12 (slice-plan rev. 9); touch points: S5 (account form, opt-ins, Q40–Q42), S7 (stance in routing, manual-only), S13 (rules editing), S18 (notification).
 > **Foundations:** [foundations.md](../foundations.md) (F§7.4 provenance, `FirmRuleQuote`, `ConflictPicker`; F§5 terms) · **Related:** [S5 spec](v1-s5-automation-opt-in.md) §5, §6, §9; [S7 spec](v1-s7-routing.md) §6, §7.
 > **Contract:** [HTTP contract 3.4.1](../../../contracts/http/openapi.yaml) (commit 721e0bc): `contracts/http/modules/presets.yaml` and the notes [s16-presets.md](../../architecture/contracts/s16-presets.md): `listFirms`, `getFirm`, `listFirmReleases`, `getPresetVersion`, `getOptInRules`, `getRuleVersion`, `getAccountPreset`, `getAccountPresetDiff`, `applyPresetVersion`, `restorePresetValue`. **Where this spec and the contract differ, the contract wins.**
 > **Data source:** [preset-research-format.md](../../product/presets/preset-research-format.md) (fields and YAML), research files in `docs/product/presets/research/`, conflicts in [r1](../../product/presets/r1-conflicts-for-user.md) / [r2](../../product/presets/r2-conflicts-for-user.md). 
@@ -127,7 +127,7 @@ For a firm whose platforms cannot be reached by any V1 output (for example Topst
 - **Picker:** the same `Alert` appears when the firm is chosen, before the user fills the rest; the form still saves normally. Link `Ver regra oficial`.
 - **Account detail:** the same `Alert` stays at the top; `Rotas` tab shows the S7 §7 explanation; the platform-account binding is optional (Q37, S5 AC-12).
 - The account never appears in routing or as master/follower choices (S7 AC-7b).
-- **Driven by preset data, not by a firm flag:** the manual-only state, its reason and the `Alert` come from the preset (and the platform of the preset when the rule differs by platform). Research decision S-R3-4 (pending) may make "manual-only" apply **per platform**, not per firm: the UI must read it per preset so that change needs no redesign.
+- **Driven by preset data, not by a firm flag:** the manual-only state, its reason and the `Alert` come from the preset (and the platform of the preset when the rule differs by platform). Research decision S-R3-4 (user 2026-10-24, option (a); the preset data carries the outcome) may apply "manual-only" **per platform**, not per firm: the UI reads it per preset so that needs no redesign.
 
 ---
 
@@ -143,7 +143,21 @@ For a firm whose platforms cannot be reached by any V1 output (for example Topst
 | `unknown` | Desconhecida / Unknown | neutral, `CircleHelp` |
 | `not_confirmed` | Não confirmada / Not confirmed | warning, `CircleHelp` |
 
-For **VPS/server**: `allowed` / `forbidden` / `conditional` / `unknown`, plus `not_confirmed` when the firm's pages conflict (PO, S16 AC-5/AC-8), with the same badges (`Permitido` / `Proibido` / …). For **personal device required**: contract values `required` / `not_required` / `unknown` → `Exigido` / `Não exigido` / `Desconhecido` (neutral/warning). **`not_confirmed` for this subject is not in contract 5.1.1** (`presets.yaml` enum is `required`, `not_required`, `unknown`); S16 AC-5 says every conflicting field ships as not confirmed, so this is a **contract request to the Architect (Q-S16-7)**; until it exists the UI shows `Desconhecido` plus the published conflicting texts, never a chosen value. Verbatim text, source and date as for the other stances. *(Value names in the contract: Architect.)*
+For **VPS/server**: `allowed` / `forbidden` / `conditional` / `unknown`, plus `not_confirmed` when the firm's pages conflict (PO, S16 AC-5/AC-8), with the same badges (`Permitido` / `Proibido` / …). For **personal device required**: contract values `required` / `not_required` / `unknown` → `Exigido` / `Não exigido` / `Desconhecido` (neutral/warning). **`not_confirmed` for this subject is not in contract 5.1.1** (`presets.yaml` enum is `required`, `not_required`, `unknown`); S16 AC-5 says every conflicting field ships as not confirmed, so this is a **contract request to the Architect (Q-S16-7)**; until it exists the UI shows `Desconhecido` **with the notice "As páginas oficiais divergem sobre este ponto." / "The official pages disagree on this point."** and the published conflicting texts, so the user sees a disagreement and not only an unknown; never a chosen value. Verbatim text, source and date as for the other stances. *(Value names in the contract: Architect.)*
+
+**Fixed summary per value** (the "Resumo do All Win"; `{firm}` = firm name; automation and copy for all five values are in [S5 §5.3](v1-s5-automation-opt-in.md); `allowed` for those two uses the S5 §5.1 lines). VPS/server and personal device, which S5 does not cover:
+
+| Subject, value | pt-BR | en |
+|---|---|---|
+| VPS `allowed` | "A {firm} permite o uso de VPS/servidor." | "{firm} allows using a VPS/server." |
+| VPS `forbidden` | "A {firm} proíbe o uso de VPS/servidor nas regras oficiais." | "{firm} prohibits using a VPS/server in its official rules." |
+| VPS `conditional` | "A {firm} só permite VPS/servidor sob condições. Leia a regra." | "{firm} only allows a VPS/server under conditions. Read the rule." |
+| VPS `unknown` | "Não encontramos uma regra oficial da {firm} sobre VPS/servidor." | "We found no official {firm} rule about a VPS/server." |
+| VPS `not_confirmed` | "As páginas oficiais da {firm} dizem coisas diferentes sobre VPS/servidor." | "{firm}'s official pages disagree about a VPS/server." |
+| Device `required` | "A {firm} exige que as ordens saiam do seu dispositivo pessoal." | "{firm} requires orders to come from your personal device." |
+| Device `not_required` | "A {firm} não exige dispositivo pessoal." | "{firm} does not require a personal device." |
+| Device `unknown` | "Não encontramos uma regra oficial da {firm} sobre dispositivo pessoal." | "We found no official {firm} rule about a personal device." |
+| Device, conflicting pages (Q-S16-7) | badge `Desconhecido` + "As páginas oficiais divergem sobre este ponto." | "The official pages disagree on this point." (all quotes shown; no value chosen) |
 
 `StanceBlock` = heading + badge + All Win summary (labeled "Resumo do All Win (não é aconselhamento jurídico)") + `FirmRuleQuote`(s) + the verification line "Verificado em {date}". Used by the catalog, the picker, the S5 opt-in section and the S7 route dialog (in compact form).
 
@@ -201,7 +215,7 @@ On any screen that shows an account rule copied from a preset (S13 risk tab, acc
 
 **Closed by the user (Q46, 2026-10-23e):** the evaluation profit target is shown with source and date for evaluation phases; minimum trading days and payout rules are stored and not shown in V1.
 
-**Decided by the user (2026-10-23e), no longer provisional:** Q37 the platform link is optional (S5 AC-12; an unlinked account is tracked manually only and never receives routing, automation or enforcement; manual-only firms cannot be linked); Q40 before the catalog a prop account's firm, plan and phase are free text and the stance is "unknown" (S5 AC-15); Q41 attaching a preset later puts the account in review pending (S5 AC-16); Q42 a material text change flagged by the publisher with a reason suspends automated sources until the user confirms again (S16 AC-11).
+**Decided by the user (2026-10-23e), no longer provisional:** Q37 the platform link is optional (S5 AC-12; an unlinked account is tracked manually only and never receives routing, automation or enforcement; manual-only firms cannot be linked); Q40 before the catalog a prop account's firm, plan and phase are free text and the stance is "unknown" (S5 AC-15); Q41 attaching a preset later puts the account in review pending (S5 AC-16); Q42 a material text change flagged by the publisher with a reason suspends automated sources until the user confirms again (S5 AC-11).
 
 ## 11. Accessibility
 
@@ -225,6 +239,7 @@ On any screen that shows an account rule copied from a preset (S13 risk tab, acc
 | AC-8 VPS rule and personal device recorded and shown | §4.1, §7 |
 | AC-9 excluded plans registered manually | §4.2, §5 footer |
 | AC-10 evaluation profit target shown with source and date | §4.2, S13 §12 |
-| AC-11 new version changing a stance suspends automation until confirmed | §8.2 |
+| S5 AC-11 new version changing a stance suspends automation until confirmed | §8.2 |
+| AC-11 applying a new version is done field by field, nothing preselected, one notification per firm | §8.2 |
 | AC-12 commission per contract per side, prefill, empty + warning | §4.2, S13 §4.2b |
 | X-3, X-5, X-6 | strings for money, audit of apply/restore (S10 catalog), pt-BR/en |

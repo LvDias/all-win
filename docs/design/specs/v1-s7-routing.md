@@ -63,7 +63,7 @@ PageHeader: Roteamento                                         [Adicionar conta]
 | Situação / Status | see S7-03: `Recebe` (success) or `Não recebe agora` (neutral/warning) + the reason |
 | Ações | kebab: `Configurar` (opens S7-02), `Remover rota` |
 
-**Turning the switch** off saves immediately, toast "Rota desativada." / on: "Rota ativada." **Turning on may need a step-up** (Q35 decided; contract `createRoute` / `updateRoute`, `x-step-up: conditional`, action `route_enable`, target = the account): required when the source is automated and the route becomes enabled and the account's automation was **not** accepted with a step-up (a real account, or an opt-in that is `not_required`). **The flow is reactive:** the web sends the request; if the Core answers 403 `auth.step_up_required` the `StepUpDialog` (C§9, F§8.2) opens and the original request is sent again once with `challenge_id` + `code`; cancel leaves the switch off. The web does not decide the condition; it only reacts to that answer. Turning off and creating a route that starts disabled never need it. The same applies to `Ativar rota` in the S7-02 dialog when it saves an enabled route. Failure: switch returns, toast with code. While saving, the switch is `aria-busy` and disabled. The route's saved signal types are kept when switched off. Turning **on** is unavailable while the account is ineligible (§5.2, Q67 provisional); turning off is always allowed.
+**Turning the switch** off saves immediately, toast "Rota desativada." / on: "Rota ativada." **Turning on may need a step-up** (Q35 decided; Q87 (a), user 2026-10-24: no narrowing, every route switch-on asks when the server setting is on; contract `createRoute` / `updateRoute`, `x-step-up: conditional`, action `route_enable`, target = the account): **as decided (Q35, S3 AC-10): with the server setting on, every route switched on needs a fresh code for `route_enable` (target = the account), no reuse window.** Contract 5.1.1 (QA Security M1, before Q35) narrows it to automated sources whose account automation was not accepted with a step-up; Q87 (a) is decided; the contract alignment is in the 5.2.0 draft. The UI is the same either way: it reacts to the 403. **The flow is reactive:** the web sends the request; if the Core answers 403 `auth.step_up_required` the `StepUpDialog` (C§9, F§8.2) opens and the original request is sent again once with `challenge_id` + `code`; cancel leaves the switch off. The web does not decide the condition; it only reacts to that answer. Turning off and creating a route that starts disabled never need it. The same applies to `Ativar rota` in the S7-02 dialog when it saves an enabled route. Failure: switch returns, toast with code. While saving, the switch is `aria-busy` and disabled. The route's saved signal types are kept when switched off. Turning **on** is unavailable while the account is ineligible (§5.2, Q67 b decided, S7 AC-9); turning off is always allowed.
 
 **States**
 
@@ -124,7 +124,7 @@ For an **automated** source (`is_automated`), an account whose `automation` opt-
 
 The control is **disabled but focusable** (`aria-disabled="true"`), with `Lock`; the reason is inline on touch layouts and a `Tooltip` on pointer layouts (also on focus and tap, F§9), and is the control's `aria-describedby`.
 
-### 5.2 Existing route that became inactive **[Provisional, Q67 rec. (b); user decides]**
+### 5.2 Existing route that became inactive (Q67 b, decided 2026-10-23e; S7 AC-9)
 
 Compliance rule (S7 AC-6, S5 AC-11): nothing restarts by itself when an account that stopped accepting automation accepts again.
 
@@ -154,7 +154,7 @@ The status is live (SSE). When the stream is not fresh the cell shows `Sem dados
 
 ### 5.4 Reverse on an account barred for entries (Q74 b, contract 5.0.0+)
 
-No new screen. When a `reverse` arrives for an account that is barred for entries (`out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`) or has no room (`max_position_reached`) and the position is opposite, the Core runs **only the close leg** and skips the open. What the user sees:
+No new screen. When a `reverse` arrives for an account that is barred for entries (the four Q74 b bars: `out_of_sync`, `risk_blocked`, `limits_pending`, `no_bracket_profile`) and the position is opposite, the Core runs **only the close leg** and skips the open. **Two more cases have the same close-only outcome by other rules** (Architect): no room, `max_position_reached` (ADR-0003 §4.2: with M = 0 the flatten runs and the open is skipped), and an open leg that expired at routing, `routing.expired` (T1: exits never expire). What the user sees:
 
 - **Notification** `routing.reverse_close_only` (S18 catalog, severity `danger`, one per occurrence, always sent, including when the gate is `limits_pending`; it replaces the gate's grouped notification for that occurrence). Params: `reason_code` (the gate that skipped the open), `closed_qty`, `closed_side`. Text: "Inversão em {account}: só a posição foi fechada ({closed_qty} {long|short}). A nova entrada não foi aberta: {reason}." / "Reverse on {account}: only the position was closed ({closed_qty} {long|short}). The new entry was not opened: {reason}."
 - **Activity (S10):** the routing entry carries the gate code with outcome *Parcial* and `reverse_closed_qty` in the details.
@@ -238,14 +238,14 @@ Read-only reverse view: one row per source that has a route for this account: so
 | ID | Decision | Where |
 |---|---|---|
 | Q-S7-1 | No signal type preselected, at least one required (design decision, S7 AC-2, Q-A4) | §4 |
-| Q-S7-2 | Route of an account that declined automation stays **inactive with its reason**, never removed. What the switch does is Q67 (provisional). An instruction that arrives is skipped and audited as "conta não aceita fontes automatizadas" (S7 AC-6, S5 AC-11) | §5.2 |
+| Q-S7-2 | Route of an account that declined automation stays **inactive with its reason**, never removed. What the switch does is Q67 (b), decided. An instruction that arrives is skipped and audited as "conta não aceita fontes automatizadas" (S7 AC-6, S5 AC-11) | §5.2 |
 | Q-S7-3 | Routes of a revoked source are read-only; the source shows as revoked; nothing is deleted (S10 AC-3) | §3 states |
 | Q-S7-5 | Creating or editing a route while the connection is disconnected is allowed (configuration only; nothing executes late, S12 T1/T2); the status shows the reason | §5.3 |
 | Q-S7-6 | Reason-code names belong to the Architect; those in this spec are proposals | §5, §10 |
 
-**User question drawn as recommendation (b), provisional:** **Q67** (compliance, S7 AC-6) — turning a route **off** is always allowed; turning it **on** is unavailable while the account is ineligible, with the reason; when the account accepts again nothing restarts by itself (the route stays off until the user turns it on). *Contract changes this implies, for the Architect:* the Core sets `is_enabled = false` and audits it when the account becomes ineligible for the source; `updateRoute` with `is_enabled = true` for an ineligible account is refused (`routing.route_not_eligible`); the effective status of an off route whose account is eligible again is `route_disabled`.
+**Decided by the user (Q67 b, 2026-10-23e; S7 AC-9):** **Q67** (compliance, S7 AC-6) — turning a route **off** is always allowed; turning it **on** is unavailable while the account is ineligible, with the reason; when the account accepts again nothing restarts by itself (the route stays off until the user turns it on). *Contract changes this implies, for the Architect:* the Core sets `is_enabled = false` and audits it when the account becomes ineligible for the source; `updateRoute` with `is_enabled = true` for an ineligible account is refused (`routing.route_not_eligible`); the effective status of an off route whose account is eligible again is `route_disabled`.
 
-**Provisional until the user decides Q37:** Q-S7-4 an account with no bound platform account is not offered for routing (`platform_unbound`).
+**Decided by the user (2026-10-23e, Q37):** Q-S7-4 an account with no bound platform account is not offered for routing (`platform_unbound`).
 
 ## 12. Accessibility
 
