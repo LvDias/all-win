@@ -1,0 +1,543 @@
+# Module `risk` — V1-S13 (risk rules per account and live risk state). Enforcement controls are S15.
+# Owner: Compasso (Software Architect). Notes: docs/architecture/contracts/s13-risk.md.
+# Bundled into ../openapi.bundled.yaml by contracts/scripts/check_openapi.py (see ../README.md).
+paths:
+  /api/v1/accounts/{account_id}/risk:
+    get:
+      tags: [risk]
+      operationId: getAccountRisk
+      summary: The account's current risk state for today's trading day (used vs limit per rule)
+      description: |
+        Every figure, percent and state is computed by the Core from execution results and plugin-reported
+        P&L (S13 AC-2); manual trades (S21, origin `manual`) do not enter daily loss, drawdown, profit
+        target, consistency or blocks, and never unblock an account (PO rule: S13 AC-2 + S21 AC-3, PO clarification, slice-plan rev. 7); the UI renders it and does no arithmetic (X-3). `stale` is true when the data is
+        not fresh (connection down or no recent report): the UI then never shows the values as current.
+        Refetch after `risk.state_changed`.
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      responses:
+        '200':
+          description: The risk state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountRisk' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/risk/day-restart:
+    post:
+      tags: [risk]
+      operationId: restartTradingDayCount
+      summary: Restart today's count of an account whose trading day is unknown (Q92 c; S13/S15)
+      description: |
+        The user's explicit "recomeçar a contagem de hoje" (Q92 c, 2026-10-24). It is never automatic.
+        Allowed only while `AccountRisk.day_state` is `unknown`; otherwise 409 `risk.day_not_unknown`.
+        The dialog warns that losses All Win did not see may be left out of today's count, and the body
+        must carry `acknowledge_unseen_losses: true`. The Core then sends the account a `day_reanchor`
+        in `limits` (protocol 1.4: today's net realized P&L from the fills it received, with the
+        last-fill watermark). The plugin applies it, and entries resume; exits were never blocked. The
+        response is 202: the day is known only when the plugin confirms (`day_state` back to `known`,
+        through `account.changed`). A repeat with the same `Idempotency-Key` returns the recorded 202. A
+        NEW request (a new key or none, with a valid step-up) while one is pending returns 202 with the
+        pending request and sends nothing new (Crivo L2). Audited as `risk.day_restarted` (actor user).
+        Step-up (user decision Q96, 2026-10-24; in the Q35 set, setting on): the body carries `step_up`
+        for action `trading_day_restart`, target = this account. Missing → 403 `auth.step_up_required`;
+        wrong → 403 `auth.code_invalid` (`StepUpFailed`).
+        Check order after authentication and Origin (Esquadro):
+        1. 404;
+        2. the REPLAY by `Idempotency-Key`: the same key and the same body as a completed request return
+           the recorded 202 without checking or consuming a code. The body is compared WITHOUT `step_up`,
+           so a retry carrying a new code still gets the recorded 202 (Esmeril L1). The same key with a
+           different body (other than `step_up`) gets 409 `common.idempotency_key_reused`. The replay store is
+           keyed by (user_id, operation, account_id, key), never by the key alone, so another user's or
+           another account's request never matches (Vigia L1);
+        3. step-up;
+        4. 409.
+        Without a known key the step-up applies as normal. On a session below 1.4: 409
+        `risk.adapter_protocol_outdated`.
+      x-step-up: conditional
+      x-step-up-when: always (Q96), with the Q35 setting on
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: UUID the client generates once per confirmation and reuses on retries (not a secret). It makes a double submit return the first answer.
+          schema: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [acknowledge_unseen_losses]
+              properties:
+                acknowledge_unseen_losses: { const: true }
+                step_up:
+                  description: Action `trading_day_restart`, target = this account (Q96).
+                  $ref: '../openapi.yaml#/components/schemas/StepUpProof'
+      responses:
+        '202':
+          description: Requested (or already pending); the account's risk state shows it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountRisk' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/StepUpFailed' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`risk.day_not_unknown` (the day is known; nothing to restart), `risk.adapter_protocol_outdated` (the plugin is below 1.4: update it) or `common.idempotency_key_reused` (same key, different body); nothing sent.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/risk-summaries:
+    get:
+      tags: [risk]
+      operationId: listRiskSummaries
+      summary: The worst risk state of each of the caller's accounts (account list column)
+      responses:
+        '200':
+          description: One summary per live account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiskSummaryList' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/risk-rules:
+    get:
+      tags: [risk]
+      operationId: getAccountRiskRules
+      summary: The account's risk rules for the edit form, with provenance for prop accounts with a preset
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      responses:
+        '200':
+          description: The rules.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountRiskRules' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+    put:
+      tags: [risk]
+      operationId: putAccountRiskRules
+      summary: Set the account's risk rules (full replacement; optimistic concurrency by the limits `version`)
+      description: |
+        An absent optional rule means "not set" (no warning, no refusal for it). Q48:
+        a stricter value applies at once, a looser one from the next trading day (`AccountRisk.pending_changes`).
+        A change of the reset time, and a change of drawdown type, always apply from the next trading
+        day (`pending_reset_change`, `pending_changes[].change: drawdown_type_changed`).
+        Looser means a higher limit or target, and also: removing a rule (absent = no limit), changing
+        `profit_target_on_reach` from `flatten_and_block` to `notify`, and changing `daily_loss_limit.kind`
+        from `hard` to `soft_pause` or `none` (QA Security L1); each is audited and listed in
+        `pending_changes` until it applies. The latest save of a rule wins over an earlier pending value
+        (ADR-0006 §3.7). Any write of the account's limits (this operation, `applyPresetVersion`,
+        `restorePresetValue`, a preset re-selection in `updateAccount`) bumps the version, so a form
+        opened before it gets 409 `common.version_conflict`. This operation bumps ONLY the limits
+        `version`, never `Account.row_version` (5.4.0, Grosa): the account form's concurrency is separate.
+        A screen that saves the rules and the commission floor together calls this operation first, then
+        `setAccountCommission` with the `row_version` it holds. The commission write bumps both versions,
+        so the reverse order gets 409 here.
+        When the new rules would already be reached today, the body must carry `acknowledge_reached: true`
+        (the dialog of the edit form; `previewAccountRiskRules` tells beforehand), else 409
+        `risk.reached_not_acknowledged` and nothing is saved. The rule values belong to the account
+        (`accounts` module): each save bumps the account's limits version and emits
+        `account.limits_changed`; the risk module derives the limits from it (ADR-0006) and only then
+        sends `limits` to the plugin. Until the derivation is done, `getAccountRisk.limits_pending` is
+        true and new entries are skipped with `routing.limits_pending` (exits continue). Audited as
+        `risk.rules_changed`. No step-up in V1 (Q35).
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskRulesRequest' }
+            examples:
+              prop:
+                value:
+                  version: 4
+                  rules:
+                    drawdown: { type: trailing_eod, amount: '2500.00' }
+                    daily_loss_limit: { kind: hard, amount: '1000.00' }
+                    daily_profit_target: { amount: '600.00' }
+                    profit_target_on_reach: notify
+                    consistency_threshold_pct: '30'
+      responses:
+        '200':
+          description: Saved and audited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountRiskRules' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`common.version_conflict` or `risk.reached_not_acknowledged`; nothing saved.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/RiskRulesRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+  /api/v1/accounts/{account_id}/risk-rules/preview:
+    post:
+      tags: [risk]
+      operationId: previewAccountRiskRules
+      summary: When each changed rule would take effect and whether it would already be reached (validate only)
+      description: Stores nothing and audits nothing. Same validation as `putAccountRiskRules` (same 422 codes).
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskRulesRequest' }
+      responses:
+        '200':
+          description: The effect of each changed rule.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiskRulesPreview' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/ForbiddenOrigin' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`common.version_conflict`.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/RiskRulesRejected' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
+components:
+  responses:
+    RiskRulesRejected:
+      description: |
+        Valid shape, refused by a rule; nothing saved. Codes and pointers (under `/rules/...`):
+        - `risk.required_value_unresolved` — the field (a required preset value is not confirmed and not resolved);
+        - `risk.daily_loss_required` — `/rules/daily_loss_limit` (prop account whose preset does not say
+          "none"; Q47);
+        - `risk.flatten_requires_enforcement` — `/rules/profit_target_on_reach` (`flatten_and_block` while
+          enforcement is off; Q49);
+        - `risk.reset_not_editable` — `/rules/trading_day_reset` (real accounts use the CME session close);
+        - `risk.consistency_not_applicable` — `/rules/consistency_threshold_pct` (real account, or the
+          preset has no consistency rule);
+        - `risk.amount_invalid` — the field (zero where a positive amount is required).
+      content:
+        application/json:
+          schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+          examples:
+            flatten:
+              value: { error: { code: risk.flatten_requires_enforcement, pointer: /rules/profit_target_on_reach } }
+
+  schemas:
+    RiskRuleKind:
+      type: string
+      enum: [daily_loss, drawdown, daily_profit_target, consistency]
+    RiskState:
+      type: string
+      enum: [normal, warning, reached, target_reached]
+      description: |
+        Exactly three levels plus the target (F§7.1, D18): `normal` < 80 %, `warning` ≥ 80 %, `reached` at
+        the limit, `target_reached` for the daily profit target. Consistency never goes beyond `warning`.
+    RiskRules:
+      type: object
+      additionalProperties: false
+      required: [profit_target_on_reach]
+      description: The account's rules; an absent rule is not set (provenance per field for prop accounts is in `AccountRiskRules.preset_fields`).
+      properties:
+        drawdown: { $ref: 'presets.yaml#/components/schemas/DrawdownValue' }
+        daily_loss_limit: { $ref: 'presets.yaml#/components/schemas/DailyLossValue' }
+        daily_profit_target: { $ref: 'presets.yaml#/components/schemas/DailyProfitTargetValue' }
+        profit_target_on_reach:
+          type: string
+          enum: [notify, flatten_and_block]
+          description: Default `notify` (Q3). `flatten_and_block` only with enforcement on (Q49); it falls back to `notify` if enforcement is turned off later (Q63).
+        consistency_threshold_pct:
+          type: string
+          pattern: '^(100(\.0)?|[0-9]{1,2}(\.[0-9])?)$'
+          description: 'Prop with a consistency rule only; the tracked threshold, greater than 0 and at most 100, with at most one decimal (Q-S13-7). `0` / `0.0` → 422 `risk.amount_invalid` (no divisor for the meter; Malha / Agulha, 5.4.0). Never enforced (S13 AC-6).'
+        trading_day_reset:
+          description: Prop only (the account's copy of the preset value; editable, marked `Editado`). Real accounts use the CME session close.
+          $ref: 'presets.yaml#/components/schemas/TradingDayResetValue'
+        evaluation_profit_target:
+          description: Prop accounts in an evaluation phase (S13b; Q46) — prefilled from the preset, editable. Notify only when reached (Q70); it never blocks or flattens.
+          $ref: 'presets.yaml#/components/schemas/EvaluationTargetValue'
+    RiskRulesRequest:
+      type: object
+      additionalProperties: false
+      required: [version, rules]
+      properties:
+        version: { type: integer, minimum: 1, description: The account's limits version read with the rules (ADR-0006); stale → 409. }
+        rules: { $ref: '#/components/schemas/RiskRules' }
+        acknowledge_reached: { type: boolean, description: Required (true) when the new rules would already be reached today. }
+    AccountRiskRules:
+      type: object
+      additionalProperties: false
+      required: [account_id, rules, enforcement_enabled, version]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        rules: { $ref: '#/components/schemas/RiskRules' }
+        enforcement_enabled: { type: boolean, description: Read-only here (S15 control; default off). }
+        preset_fields:
+          type: array
+          description: Prop with a preset only — provenance of each field (same shape as `getAccountPreset`).
+          items: { $ref: 'presets.yaml#/components/schemas/AccountRuleField' }
+        version: { type: integer, minimum: 1 }
+    RiskRulesPreview:
+      type: object
+      additionalProperties: false
+      required: [changes, would_be_reached]
+      properties:
+        changes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, effective, effective_from]
+            properties:
+              kind: { $ref: '#/components/schemas/RiskRuleKind' }
+              effective: { type: string, enum: [now, next_trading_day] }
+              effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        would_be_reached:
+          type: boolean
+          description: True when a change effective now makes a limit already reached; the save then needs `acknowledge_reached`.
+    RiskMeter:
+      type: object
+      additionalProperties: false
+      required: [kind, state, limit, used, percent]
+      properties:
+        kind: { $ref: '#/components/schemas/RiskRuleKind' }
+        state: { $ref: '#/components/schemas/RiskState' }
+        limit:
+          description: The limit or target in force today — money (`Money` pattern), or for `consistency` the threshold as a percent string.
+          type: string
+          pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
+        used:
+          description: Today's value against the limit (loss used, drawdown used, profit made — money; for `consistency` the largest day's share of total profit, as a percent string).
+          type: string
+          pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
+        percent:
+          type: integer
+          minimum: 0
+          description: used / limit × 100, truncated (F§6.2), so 80 is never shown while the state is `normal`.
+        drawdown_type: { type: string, enum: [trailing_intraday, trailing_eod, static] }
+        floor:
+          description: Trailing drawdown only — the account balance at which the drawdown is breached, as it stands now (Q-S13-5).
+          $ref: 'audit.yaml#/components/schemas/Money'
+      allOf:
+        - if: { properties: { kind: { const: drawdown } } }
+          then: { required: [drawdown_type] }
+          else: { not: { anyOf: [{ required: [drawdown_type] }, { required: [floor] }] } }
+    AccountRisk:
+      type: object
+      additionalProperties: false
+      required: [account_id, as_of, stale, state, trading_day, meters, unset_rules, untracked_rules, enforcement_enabled, limits_pending, pending_changes, pnl_basis, commission_source]
+      dependentRequired:
+        net_pnl_today: [gross_pnl_today, commissions_today]
+        gross_pnl_today: [net_pnl_today, commissions_today]
+      properties:
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        stale: { type: boolean }
+        stale_reason: { type: string, enum: [connection_down, no_recent_data] }
+        state:
+          description: The worst state over all meters.
+          $ref: '#/components/schemas/RiskState'
+        trading_day:
+          type: object
+          additionalProperties: false
+          required: [start, end, next_reset, source]
+          properties:
+            start: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            end: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            next_reset: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            source: { type: string, enum: [firm, cme_session_close] }
+            firm_reset: { $ref: 'presets.yaml#/components/schemas/TradingDayResetValue' }
+            playback_clock:
+              description: Playback accounts only — the simulated clock the day and P&L follow (S15 AC-7).
+              $ref: '../openapi.yaml#/components/schemas/Timestamp'
+        meters:
+          type: array
+          description: One meter per rule that is set and tracked, in the order daily loss, drawdown, daily profit target, consistency.
+          items: { $ref: '#/components/schemas/RiskMeter' }
+        unset_rules:
+          type: array
+          description: Rules not set (UI "sem limite definido").
+          items: { $ref: '#/components/schemas/RiskRuleKind' }
+        untracked_rules:
+          type: array
+          description: Rules set but not tracked (a not-confirmed preset value left unresolved, or a drawdown of type `other`).
+          items: { $ref: '#/components/schemas/RiskRuleKind' }
+        blocked:
+          type: object
+          additionalProperties: false
+          required: [until, cause]
+          description: Present while the account is blocked until the reset (S15); no early unlock.
+          properties:
+            until: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            cause: { type: string, enum: [daily_loss, drawdown, daily_profit_target] }
+        enforcement_enabled: { type: boolean }
+        pnl_basis:
+          type: string
+          enum: [gross, net]
+          description: The basis of every meter (`net` from 3.5.0; S13 AC-2 — firms measure on net).
+        commission_source:
+          description: How today's commissions were obtained (`none` → the UI shows "comissão não informada; os limites podem estar folgados demais", a notice, not a block).
+          $ref: 'trades.yaml#/components/schemas/CommissionSource'
+        commissions_today: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+        net_pnl_today:
+          description: '5.4.0 (PO, S13 AC-11, Q54 exception): the trading day''s net P&L (realized, after commissions) for the summary line "P&L do dia: líquido X · bruto Y · comissões Z". Present together with `gross_pnl_today` and `commissions_today`. The browser never derives one from the others.'
+          $ref: 'audit.yaml#/components/schemas/Money'
+        gross_pnl_today:
+          description: 'The same day''s gross P&L, shown beside the net figure ONLY in the summary line. The limit meters (daily loss, drawdown, profit target, floor) and the S13b evaluation card stay net only, labelled "líquido". The plugin shows no gross in V1.'
+          $ref: 'audit.yaml#/components/schemas/Money'
+        pending_commission_change:
+          type: object
+          additionalProperties: false
+          required: [effective_from, new_commission_per_contract_side]
+          description: |
+            A LOWER commission floor saved on the account applies only from the next trading day (it would
+            loosen the net limits; ADR-0006 §3.7, ADR-0004 §7). A higher floor applies at once. Absent
+            when nothing is pending.
+          properties:
+            effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            new_commission_per_contract_side:
+              description: The new floor; absent when the floor is being removed.
+              $ref: 'presets.yaml#/components/schemas/MoneyAmount'
+            change: { type: string, enum: [commission_floor_lowered, commission_floor_removed] }
+        day_state:
+          type: string
+          enum: [known, unknown]
+          description: |
+            5.4.0 (protocol 1.4 `risk_state.day_state`; Q92 c). `unknown`: the plugin cannot vouch for
+            today's start (`day_unknown_reason`), so new entries are blocked: the plugin refuses them with
+            `risk.day_unknown`, and the Core skips them with `routing.risk_blocked`, detail `day_unknown`.
+            Exits continue. The web offers `restartTradingDayCount`. Absent while the account has no 1.4
+            session.
+        day_unknown_reason: { type: string, enum: [late_anchor, journal_lost, playback_rewind, account_reset], description: With `day_state` unknown. }
+        day_restart_pending: { type: boolean, description: True after `restartTradingDayCount` until the plugin confirms. }
+        evaluation_target_status:
+          type: string
+          enum: [set, not_confirmed, absent]
+          description: |
+            5.4.0 (S13 §12.1, AC-3). Present for an account with an evaluation target, or whose preset
+            phase is `evaluation`; absent otherwise. A manual prop account has a free-text phase, so it
+            has the field only when it has a target.
+            - `set`: the account has a target, so `evaluation` is present.
+            - `not_confirmed`: the preset's target is not confirmed and the account has not resolved it
+              (S16 AC-6). There is no `evaluation`; the card asks the user to choose or type the target.
+            - `absent`: an evaluation phase whose preset publishes no target. There is no `evaluation`;
+              the card says the firm publishes none, and the user may type one.
+        evaluation:
+          type: object
+          additionalProperties: false
+          required: [start, profit_target, earned_before, achieved, remaining, percent, state, as_of]
+          description: |
+            S13b (Q46) — present when the account has an `evaluation_profit_target`. `achieved` = net P&L
+            from `start` to now (the Core's sum of the account's fills; manual trades never count);
+            `remaining` = max(0, target − achieved); `percent` truncated. `target_reached` raises one
+            notification (`risk.evaluation_target_reached`, Q70); nothing automatic happens.
+          properties:
+            start: { type: string, format: date, description: The account's `evaluation_start`. }
+            profit_target: { $ref: 'audit.yaml#/components/schemas/Money' }
+            earned_before: { $ref: 'audit.yaml#/components/schemas/Money' }
+            achieved:
+              description: earned_before + net P&L from `start` to now.
+              $ref: 'audit.yaml#/components/schemas/Money'
+            remaining: { $ref: 'profiles.yaml#/components/schemas/MoneyString' }
+            percent: { type: integer, minimum: 0 }
+            state: { type: string, enum: [in_progress, target_reached] }
+            reached_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        limits_pending:
+          type: boolean
+          description: True while the risk module has not yet derived the account's latest limits version (ADR-0006); meters show the previous limits and new entries are skipped (`routing.limits_pending`).
+        pending_changes:
+          type: array
+          description: Looser values saved today that apply from the next trading day (Q48).
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, effective_from]
+            properties:
+              kind: { $ref: '#/components/schemas/RiskRuleKind' }
+              effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+              new_limit:
+                type: string
+                pattern: '^-?[0-9]{1,14}(\.[0-9]{1,4})?$'
+                description: The new limit (money as a decimal string; a percent for consistency). Absent when the change removes the rule or changes only a kind or `profit_target_on_reach`.
+              change:
+                type: string
+                enum: [limit_raised, rule_removed, profit_target_to_notify, daily_loss_softened, drawdown_type_changed, daily_loss_changed, drawdown_lock_changed]
+                description: |
+                  What is pending. `drawdown_lock_changed` (5.4.0, Q90: a lock added or its offset lowered
+                  loosens, so it waits; carries `new_drawdown`). `drawdown_type_changed` (a change of type is not comparable, so it waits
+                  for the next trading day), `daily_loss_softened` and `daily_loss_changed` (a mixed change
+                  that is stricter in one part and looser in another, e.g. `soft_pause` → `hard` with a
+                  higher amount: treated as looser, so it waits) carry the new value in `new_drawdown` /
+                  `new_daily_loss`.
+              new_drawdown: { $ref: 'presets.yaml#/components/schemas/DrawdownValue' }
+              new_daily_loss: { $ref: 'presets.yaml#/components/schemas/DailyLossValue' }
+            allOf:
+              - if: { properties: { change: { enum: [drawdown_type_changed, drawdown_lock_changed] } }, required: [change] }
+                then: { required: [new_drawdown], properties: { kind: { const: drawdown } } }
+              - if: { properties: { change: { enum: [daily_loss_softened, daily_loss_changed] } }, required: [change] }
+                then: { required: [new_daily_loss], properties: { kind: { const: daily_loss } } }
+        pending_reset_change:
+          type: object
+          additionalProperties: false
+          required: [effective_from, new_reset]
+          description: A saved change of the trading-day reset time (prop accounts), which always applies from the next trading day (ADR-0006 §3.7).
+          properties:
+            effective_from: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+            new_reset: { $ref: 'presets.yaml#/components/schemas/TradingDayResetValue' }
+    RiskSummaryList:
+      type: object
+      additionalProperties: false
+      required: [summaries]
+      properties:
+        summaries:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [account_id, has_rules, stale]
+            properties:
+              account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+              has_rules: { type: boolean, description: False → the list shows `—`. }
+              stale: { type: boolean }
+              state: { $ref: '#/components/schemas/RiskState' }
+              worst:
+                type: object
+                additionalProperties: false
+                required: [kind, percent]
+                description: The meter with the worst state (highest percent on ties); absent when all are normal.
+                properties:
+                  kind: { $ref: '#/components/schemas/RiskRuleKind' }
+                  percent: { type: integer, minimum: 0 }
+              blocked_until: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+    RiskStateChangedEvent:
+      type: object
+      additionalProperties: false
+      required: [type, at, account_id, state, stale]
+      description: The risk state, staleness, block or trading day of an account changed (not on every tick); sent only to the account's owner, like every SSE event; the client refetches `getAccountRisk` / `listRiskSummaries`.
+      properties:
+        type: { const: risk.state_changed }
+        at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        account_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        state: { $ref: '#/components/schemas/RiskState' }
+        stale: { type: boolean }
+        reason: { type: string, enum: [state, stale, blocked, unblocked, trading_day_reset, rules_changed, evaluation_progress] }

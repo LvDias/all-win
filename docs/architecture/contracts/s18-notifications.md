@@ -1,0 +1,65 @@
+# S18 — Notification center HTTP contract notes
+
+- **Status:** proposed (2026-10-23), for Code Review. Owner: Software Architect (Compasso). Contract version **3.2.0**, on top of 3.1.0 (S13).
+- **Contract:**
+  - [`contracts/http/modules/notifications.yaml`](../../../contracts/http/modules/notifications.yaml) (Web);
+  - [`contracts/notifications/v1/registry.json`](../../../contracts/notifications/v1/registry.json) (codes, shared with the plugin);
+  - the generated [`params.schema.json`](../../../contracts/notifications/v1/params.schema.json).
+- **Inputs:** slice-plan rev. 7, V1-S18 AC-1…AC-3 · design spec `v1-s18-notifications.md` rev. 1 §3, §6, §9, §10 · agreement with Esquadro (adapter protocol 1.3: field names, severity, registry ownership).
+
+## 1. Operations
+
+| Operation | Method and path | Notes |
+|---|---|---|
+| `listNotifications` | `GET /api/v1/notifications?status=&category=&account_id=&cursor=&limit=` | Unread critical first, then newest first (`updated_at`). MAC cursor. Each page carries `unread` |
+| `getUnreadCount` | `GET /api/v1/notifications/unread-count` | `{unread_count, worst_severity?}`, the same pair as the 1.3 snapshot |
+| `markNotificationRead` | `POST /api/v1/notifications/{notification_id}/read` | Idempotent; bumps `revision` |
+| `markNotificationsRead` | `POST /api/v1/notifications/read` | `notification_ids` (≤ 200) **or** `up_to` (+ optional `category` / `account_id`) |
+
+SSE: `notification.created` and `notification.updated` (full item + `unread`), and `notification.read` (ids + `unread`). Another tab or the plugin stays in sync, because reading on either channel counts on both (Q-S18-4).
+
+## 2. Decisions
+
+1. **One state, two channels.** The field names are the adapter protocol 1.3 ones (Esquadro): `notification_id`, `revision` (monotonic, upsert by higher revision), `code`, `category`, `severity`, `account_id`, `params`, `count`, `source_event_ids`, `created_at` / `updated_at` / `read_at`, `target`. The Web adds only `account_name` (snapshot) and `audit_entry_id`.
+2. **Severity:** `info`, `success`, `warning`, `danger`, `critical`, on both channels, agreed with Esquadro. `critical` is the ADRs' top severity and drives the `CriticalBanner` (Q51: it stays until read). The banner gets exactly these producers (U19 and Q27; PO and Code Review, 2026-10-23):
+   - Q27: `sync.bracket_double_fill` (S11). Both legs filled, and the position created by the orphan leg was flattened.
+   - U19: `sync.flatten_failed_unprotected` (5.3.0; Esmeril M1). A flatten that failed after cancelling protection, so that an open position lost all or part of it. Any origin counts: close or reverse (including Q75), the Q27 orphan-leg flatten, or local enforcement (S15, which reuses the code).
+
+   A failed flatten whose protection stays intact is `danger`. `sync.disconnected_in_trade` is `danger`. The unprotected-bracket and reactive-block producers are `critical` only in the U19 case. In every case the account is out of sync. The plugin may map `success` → `info` and `danger` → `warning` in its own UI; the protocol carries the five values.
+3. **The registry is the single code list** (owner: Compasso; 1.3 references it).
+   - Each code has `category`, `severity` (or `severity_by_params` for `connection.status_changed`: `disconnected` → danger, `outdated` → warning, other statuses not notified), `grouping`, `target` and `params`.
+   - `params` are the audit `details` schemas where the code is an audit code (`DetailsRoutingDecision`, `DetailsRiskState`, `DetailsConnectionStatus`), so the Web and the plugin render the same fields as S10. They are their own schemas for the two per-firm aggregates (`accounts.opt_in_suspended`, `presets.new_version`).
+   - `params.schema.json` is generated from the HTTP bundle (`NotificationParamsByCode` → `$defs`), so the C# plugin validates `params` without YAML. `check_openapi.py` fails if the registry and `NotificationParamsByCode` differ, if a name or value is unknown, or if the generated file is stale.
+4. **Grouping (Q-S18-1)** is the Core's:
+   - `account_trading_day` for the routing skips and refusals: same code + account + trading day → one item with `count` and last time; only the first occurrence is unread;
+   - `firm_release` for the per-firm items;
+   - `none` for risk (one per state change; the profit target once per day, S13 AC-5) and connections.
+
+   The audit keeps one entry per occurrence. **Q68 (b, decided):** a new occurrence marks a grouped item unread again only for codes with `reopen_on_occurrence: true` in the registry (`routing.risk_blocked`, `routing.out_of_sync`, `routing.expired`). The others stay read, and only `count` and the last time change. Options (a) "always reopen" and (c) "never reopen" are the same flag set on every code, so the contract does not change.
+5. **Not notified (Q-S18-2, PO):** skips for an opt-in not accepted, signal type not selected, and duplicates. **Q50 :** `routing.no_bracket_profile` is notified, grouped, `warning`.
+6. **Links:** `target` = `{kind, id}` with kind ∈ `account`, `connection`, `instruction`, `route`, `activity_entry`. Never a URL in the payload. The Web builds its route; the plugin uses `welcome.app_url` + route. Which tab (e.g. Risk) is a client catalog decision per code.
+7. **Mark all is race-free:** `up_to` marks only items whose `updated_at` ≤ `up_to`, so an item arriving during the click stays unread. Reading never changes the state the item reports (banners and badges stay).
+8. **Retention (Q-S18-6):** the same as the audit (24 months; erased 30 days after the account is closed).
+9. **S11 (5.3.0, registry 1.4.0):** `sync.flagged` (danger, covering every other reason, including `disconnected_in_trade`), `sync.bracket_orphan_leg` (warning), `sync.bracket_incomplete` (danger), `sync.bracket_double_fill` (critical, Q27), `sync.flatten_failed_unprotected` (critical, U19) and `sync.restored` (info); `execution.unbound_activity` (warning, grouped per connection and trading day). **Not yet in the registry:** `risk.blocked` / `risk.flatten` / `risk.unblocked` / `risk.reactive_block_action` (S15; U19 already has `sync.flatten_failed_unprotected`). They are added with that contract, each with its own `details` schema in `modules/audit.yaml`.
+
+## 3. For the Database Architect and Backend (through the Maestro)
+
+- Table `notifications.notification`:
+  - columns: id, user_id, code, category, severity, account_id, params jsonb, count, revision, source_event_ids, audit_entry_id, created_at, updated_at, read_at, group_key;
+  - unique (user_id, group_key) for open groups;
+  - index (user_id, read_at NULLS FIRST, severity, updated_at DESC) for the list and the counter.
+- Index hints (Crivo N3):
+  - the unread counter is a partial index `(user_id, severity) WHERE read_at IS NULL`;
+  - `group_key` is defined by the Core from the registry grouping: `code|account_id|trading_day` for `account_trading_day`, `code|firm_id|release` for `firm_release`, and none for `none`.
+- **Producer pattern (5.2.0, Esquadro, confirmed by Compasso):** every module that emits a notifiable fact writes one outbox event, in the SAME transaction as the audit event it puts in the outbox.
+  - The event type is the registry code (e.g. `routing.reverse_close_only`).
+  - The payload carries `user_id`, `account_id` when the code has one, `target {kind, id}`, `occurred_at`, `audit_event_id`, and `params`, valid against the code's `params` schema (`params.schema.json`).
+  - `audit_event_id` is the event id of the audit event emitted in that same transaction. The producer does not know the `audit_entry_id`: the audit consumer writes that row later. S18 links the notification to its audit row through `audit.audit_entry.source_event_id` when needed.
+  - The gateway, routing, risk, accounts and presets all follow it. Where the notification's params differ from the audit details (`reverse_close_only`, `out_of_sync_flatten`), only the event carries them.
+- The consumer is S18 (`notifications`). It applies the registry's grouping (`group_key`) and `reopen_on_occurrence`, and it is idempotent by event id. Until S18 lands, the event types stay in the outbox allowlist with `StartPolicy::FromNow` and consumer slice S18. S18 starts from now and sends only new notices; notifications from before S18 are never sent afterwards. The history is the audit: its event leaves in the same transaction, so nothing is lost for the user. A producer never writes only the audit.
+- The 1.3 snapshot and the HTTP list come from the same table.
+
+## 4. 5.0.0: `routing.reverse_close_only` (Q74; registry 1.1.0)
+
+- A notification-only code, `danger`, grouping `none`, target `instruction`. Params: `ParamsReverseCloseOnly` (`reason_code` = the gate or `routing.max_position_reached`, `closed_qty`, `closed_side`).
+- It is always sent, including for `routing.limits_pending`, which is otherwise not notified (Vigia I1). For that occurrence it replaces the gate's own grouped notification, so the user gets one item, not two.
