@@ -13,6 +13,7 @@
 - **Official only:** the firm's own website, rules/help center, FAQ, and terms. Third-party summaries, reviews, affiliate sites, and social posts may point to where to look but are never the source of a value.
 - Every value cites the **exact URL** and the **access date**. If a page is dynamic, also save a short verbatim quote of the sentence that states the value.
 - If two official pages disagree, record both values with both sources and mark the field `conflict`. Do not pick one. A conflicting field ships in the preset as **"not confirmed"** and does not block the rest of the preset; the PO collects conflicts for the user (decision 2026-10-23).
+- **Page titles ([Decision 2026-10-24]):** a source or quote from a page whose title cannot be retrieved (the site blocks automated access, for example Apex and Take Profit Trader) keeps the URL and access date, leaves the **page title blank** and carries a note with the reason and the date. Nothing is derived from the URL.
 - No sign-up, login, payment, or form submission to reach rules. If a rule is only visible after login, mark it `unverified (behind login)`.
 
 ## 3. File structure
