@@ -1,8 +1,11 @@
 //! Implementations of consumer-owned ports that cross module boundaries.
 
 use std::sync::Arc;
+use std::time::Instant;
 
-use adapter_tradingview::{InstrumentSupport, PortError, ResolvedSourceKey, SourceKeyResolver};
+use adapter_tradingview::{
+    IngressMetrics, InstrumentSupport, PortError, ResolvedSourceKey, SourceKeyResolver,
+};
 use async_trait::async_trait;
 use catalog_application::IsInstrumentEnabled;
 use routing_application::enterprise::{IngressEvent, SourceId};
@@ -12,20 +15,26 @@ use sqlx::PgPool;
 use tokio::sync::Notify;
 
 /// Source-key lookup through `identity.resolve_source_key` (SECURITY DEFINER, wave1-data-model §3).
-/// Moves behind an `identity-application` query once S3 exposes it.
+/// Moves behind an `identity-application` query once S3 exposes it. Its connection acquire,
+/// the first of every ingress request, feeds the pool-wait histogram.
 pub struct PgSourceKeyResolver {
     pool: PgPool,
+    metrics: Arc<IngressMetrics>,
 }
 
 impl PgSourceKeyResolver {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, metrics: Arc<IngressMetrics>) -> Self {
+        Self { pool, metrics }
     }
 }
 
 #[async_trait]
 impl SourceKeyResolver for PgSourceKeyResolver {
     async fn resolve(&self, key_id: &str) -> Result<Option<ResolvedSourceKey>, PortError> {
+        let started = Instant::now();
+        let conn = self.pool.acquire().await;
+        self.metrics.observe_db_acquire(started.elapsed());
+        let mut conn = conn.map_err(|e| PortError(e.to_string()))?;
         let row = sqlx::query!(
             r#"SELECT user_id AS "user_id!", source_id AS "source_id!", source_type AS "source_type!",
                       secret_hash AS "secret_hash!", revoked AS "revoked!",
@@ -33,7 +42,7 @@ impl SourceKeyResolver for PgSourceKeyResolver {
                  FROM identity.resolve_source_key($1)"#,
             key_id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| PortError(e.to_string()))?;
         Ok(row.map(|r| ResolvedSourceKey {

@@ -81,8 +81,12 @@ impl App {
             inner: Arc::new(PgIngestStore::new(db.clone())),
             wake: wake.clone(),
         });
+        let metrics = Arc::new(IngressMetrics::default());
         let ingress = Arc::new(IngressState {
-            resolver: Arc::new(wiring::PgSourceKeyResolver::new(db.clone())),
+            resolver: Arc::new(wiring::PgSourceKeyResolver::new(
+                db.clone(),
+                metrics.clone(),
+            )),
             instruments: Arc::new(wiring::CatalogInstrumentSupport(IsInstrumentEnabled::new(
                 Arc::new(PgInstrumentRepository::new(db.clone())),
             ))),
@@ -107,7 +111,7 @@ impl App {
                 std::time::Duration::from_secs(config.unknown_key_cache_ttl_s),
                 UNKNOWN_KEY_CACHE_CAPACITY,
             ),
-            metrics: Arc::new(IngressMetrics::default()),
+            metrics,
             clock,
             trust_forwarded_for: config.trust_forwarded_for,
         });

@@ -739,6 +739,68 @@ async fn metrics_count_by_result_only() {
     assert!(text.contains("allwin_outbox_dead_lettered "), "{text}");
 }
 
+/// The latency histogram (Pulso; Architect C1/C2): N ingress requests add N observations under
+/// their result, on the internal `/metrics`, with only the `adapter` and `result` labels; the
+/// pool-wait histogram counts each key lookup. No latency value is asserted (host load is not
+/// a gate).
+#[tokio::test]
+async fn the_latency_histogram_counts_every_ingress_request_by_result() {
+    let db = db_or_skip!();
+    let app = wire(db, &config());
+    let s = seed(db).await;
+    for _ in 0..3 {
+        let (status, _, _) = send(
+            &app.state,
+            post_json(&ingress_path(&s.token), instruction(&unique_message_id())),
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
+    send(&app.state, post_json("/ingress/v1/tradingview/nope", "{}")).await;
+    let (_, _, body) = send(
+        &app.state,
+        Request::get("/metrics").body(Body::empty()).unwrap(),
+    )
+    .await;
+    let text = String::from_utf8(body).unwrap();
+    let series = |suffix: &str, result: &str| {
+        format!(
+            "allwin_ingress_request_duration_seconds_{suffix}{{adapter=\"tradingview\",result=\"{result}\""
+        )
+    };
+    assert!(
+        text.contains(&format!(
+            "{} 3",
+            series("count", "accepted").to_owned() + "}"
+        )),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("{},le=\"+Inf\"}} 3", series("bucket", "accepted"))),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!(
+            "{} 1",
+            series("count", "not_found").to_owned() + "}"
+        )),
+        "{text}"
+    );
+    assert!(text.contains("# TYPE allwin_ingress_request_duration_seconds histogram"));
+    // The pool wait: one acquire per request that reached the key lookup (the malformed
+    // token never does).
+    assert!(
+        text.contains(r#"allwin_ingress_db_acquire_seconds_count{adapter="tradingview"} 3"#),
+        "{text}"
+    );
+    for line in text.lines().filter(|l| l.contains("_seconds")) {
+        assert!(
+            !line.contains(&s.key_id) && !line.contains("user"),
+            "{line}"
+        );
+    }
+}
+
 /// Wall-clock latency depends on host load, so it is not a gate here; the composed-stack
 /// p95 (Sentinela) is. Run with `cargo test -- --ignored` on an idle host.
 #[tokio::test]

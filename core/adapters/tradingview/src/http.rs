@@ -92,7 +92,32 @@ struct IngressPathParams {
 pub fn router(state: Arc<IngressState>) -> Router {
     Router::new()
         .route(INGRESS_ROUTE, any(ingress))
+        // The latency histogram wraps this route only (Architect C1). See `timed` for the
+        // window.
+        .route_layer(axum::middleware::from_fn_with_state(state.clone(), timed))
         .with_state(state)
+}
+
+/// Observes the ingress latency with the result the handler put on the response.
+///
+/// Window (Pulso): it starts when this layer receives the request, i.e. after hyper read the
+/// request line and headers, on the monotonic `Instant` (never the injected `Clock`); it
+/// includes reading the request body, which the handler does; it ends when the response is
+/// built. Streaming the response body to the client is outside it.
+async fn timed(
+    State(s): State<Arc<IngressState>>,
+    request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let started = Instant::now();
+    let response = next.run(request).await;
+    let outcome = response
+        .extensions()
+        .get::<Outcome>()
+        .copied()
+        .unwrap_or(Outcome::Internal);
+    s.metrics.observe(outcome, started.elapsed());
+    response
 }
 
 /// Any other ingress-like request (other case, double slash, extra segments): the same
@@ -171,9 +196,11 @@ struct Caller {
 )]
 async fn ingress(State(s): State<Arc<IngressState>>, request: Request) -> Response {
     let received_at = s.clock.now();
-    let outcome = handle(&s, request, received_at).await;
-    s.metrics.record(outcome.0);
-    outcome.1
+    let (outcome, mut response) = handle(&s, request, received_at).await;
+    s.metrics.record(outcome);
+    // For the latency layer (`timed`): the result label, never sent to the client.
+    response.extensions_mut().insert(outcome);
+    response
 }
 
 async fn handle(
