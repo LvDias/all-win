@@ -199,3 +199,9 @@
 - **Q97 (a):** Apex V1 presets cover the evaluations only; Performance Accounts (PA, tiered max position and DLL) are registered by hand.
 - **Page titles of firm pages that block automated access (Apex, Take Profit Trader):** left blank, with a note and the link. Nothing is derived from the URL.
 - **Canonical docs:** slice-plan S2/M1 (PO); NT8 spike plan / ADR-0005 test approach (Architect); infra/windows-test-host README (DevOps, Phase 2 parked); presets release format, page_title/note (Compasso, presets 1.1); presets (PO).
+
+## 2026-10-24 — Q98, exchange channel account, tailnet rule removed
+- **Q98 (b):** when clearing out of sync with an open position, any working stop that covers the position counts as protection, including a manual one placed in NinjaTrader (shown as "external"). Only a position with no stop keeps the account blocked for automated entries. Rejected: (a) only an All Win stop; (c) no block, alert only.
+- **Exchange channel:** the user reaches this host over SSH as dev2 with the Mac's key (dev1 and dev3 also have it). Packages and logs travel by scp over that existing SSH (Forja's .nt8-exchange proposal); no new port.
+- **Tailnet policy:** the rule tag:allwin-dev → tag:allwin-nt8:22 is removed (no agent access to the VPS; least privilege). The user applies the new policy in the console; infra/tailscale/policy.hujson follows (DevOps).
+- **Canonical docs:** HTTP 5.3.1 (Q98, Compasso); infra/tailscale/policy.hujson and infra/nt8-exchange (Forja).
