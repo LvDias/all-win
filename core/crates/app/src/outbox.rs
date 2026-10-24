@@ -19,6 +19,15 @@
 //!   consumer only after [`MAX_ATTEMPTS`], never blocking the other consumers of the row.
 //! - The loops wake on `NOTIFY allwin_outbox` (sent at commit by a trigger on `app.outbox`), on the
 //!   in-process wake-up, and on a short poll as the fallback.
+//!
+//! Consumer contract (Crivo, 061400 review):
+//! - delivery is at least once: a crash or a failed commit re-delivers the batch, so every
+//!   consumer is idempotent on the event id; a `backfill` consumer also receives the whole
+//!   retained history when it is first registered (cutover included);
+//! - a consumer with an external side effect (an e-mail) declares [`EventConsumer::batch`] = 1, so
+//!   a failed commit re-sends at most one message and no transaction stays open across many I/Os;
+//! - order is by `seq` but not strict: a row in backoff is passed by newer ones. A future consumer
+//!   that needs strict order per key (e.g. the gateway's commands) needs its own loop.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -86,6 +95,10 @@ pub trait EventConsumer: Send + Sync {
     /// Never lose an event by default.
     fn start(&self) -> StartPolicy {
         StartPolicy::Backfill
+    }
+    /// Events per transaction; 1 for consumers with external side effects (see the module docs).
+    fn batch(&self) -> i64 {
+        BATCH
     }
     async fn handle(&self, event: &OutboxEvent) -> Result<(), String>;
 }
@@ -339,7 +352,10 @@ impl OutboxDispatcher {
             loop {
                 match self.dispatch_batch(consumer.as_ref()).await {
                     // A full, fully delivered batch: more may be waiting.
-                    Ok((seen, delivered)) if seen == BATCH as usize && delivered == seen => {
+                    Ok((seen, delivered))
+                        if seen == usize::try_from(consumer.batch()).unwrap_or(0)
+                            && delivered == seen =>
+                    {
                         continue;
                     }
                     Ok(_) => break,
@@ -383,7 +399,7 @@ impl OutboxDispatcher {
                           AND d.next_attempt_at <= now()))
                ORDER BY o.seq LIMIT $2"#,
             name,
-            BATCH
+            consumer.batch()
         )
         .fetch_all(&mut *tx)
         .await?;
@@ -437,7 +453,7 @@ impl OutboxDispatcher {
                         event.id,
                         attempts,
                         i32::try_from(backoff_secs(attempts)).unwrap_or(i32::MAX),
-                        truncate(e, MAX_ERROR_LEN),
+                        truncate(redact_tokens(&e), MAX_ERROR_LEN),
                         dead,
                     )
                     .execute(&mut *tx)
@@ -491,6 +507,36 @@ async fn listen(worker: PgPool, wake: Arc<Notify>) {
     }
 }
 
+/// Replaces every token-shaped part (`aw[kd]_<12 alnum>_<43 base64url>`) before an error is
+/// stored, so the `outbox_delivery_last_error_no_token` CHECK never refuses the failure record
+/// (which would roll back the batch and retry it without backoff).
+fn redact_tokens(s: &str) -> String {
+    const LEN: usize = 4 + 12 + 1 + 43;
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < b.len() {
+        let token = b.get(i..i + LEN).is_some_and(|w| {
+            (w.starts_with(b"awk_") || w.starts_with(b"awd_"))
+                && w[4..16].iter().all(u8::is_ascii_alphanumeric)
+                && w[16] == b'_'
+                && w[17..]
+                    .iter()
+                    .all(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-')
+        });
+        if token {
+            out.push_str("[redacted]");
+            i += LEN;
+        } else {
+            // Copy one whole UTF-8 character.
+            let ch_len = s[i..].chars().next().map_or(1, char::len_utf8);
+            out.push_str(&s[i..i + ch_len]);
+            i += ch_len;
+        }
+    }
+    out
+}
+
 /// 2, 4, 8 … seconds, capped at [`MAX_BACKOFF_SECS`].
 fn backoff_secs(attempts: i32) -> i64 {
     let exp = u32::try_from(attempts.clamp(0, 30)).unwrap_or(30);
@@ -531,6 +577,16 @@ mod tests {
         async fn handle(&self, _: &OutboxEvent) -> Result<(), String> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn stored_errors_never_carry_a_token() {
+        let token = format!("awk_AbCdEf123456_{}", "x".repeat(43));
+        assert_eq!(
+            redact_tokens(&format!("bad url /ingress/{token} é")),
+            "bad url /ingress/[redacted] é"
+        );
+        assert_eq!(redact_tokens("plain"), "plain");
     }
 
     #[test]

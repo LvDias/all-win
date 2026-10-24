@@ -172,6 +172,11 @@ impl EventConsumer for NoticeConsumer {
         StartPolicy::FromNow
     }
 
+    /// One e-mail per transaction: a failed commit re-sends at most one (at least once delivery).
+    fn batch(&self) -> i64 {
+        1
+    }
+
     async fn handle(&self, e: &OutboxEvent) -> Result<(), String> {
         let (locale, notice) = identity_infra::outbox::notice_from_payload(&e.payload)
             .ok_or_else(|| "malformed notice payload".to_owned())?;

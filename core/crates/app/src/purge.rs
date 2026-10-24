@@ -15,6 +15,11 @@ const BATCH: i64 = 1000;
 pub const PURGE_EVERY: Duration = Duration::from_secs(3600);
 
 /// Deletes every purgeable row, batch by batch. Returns the number deleted.
+///
+/// `FOR UPDATE SKIP LOCKED` needs an UPDATE privilege on `app.outbox`: allwin_maint has it only
+/// through the column grant `UPDATE (dead_lettered_at)` (#1b, legacy replay). Revoking it makes the
+/// purge fail with "permission denied" (Lastro, verified on PG16): a migration that drops the #1b
+/// columns or that grant must keep or replace a maint column UPDATE on `app.outbox`.
 pub async fn purge_outbox(maint: &PgPool, listed: &[String]) -> Result<u64, sqlx::Error> {
     let mut total = 0;
     loop {

@@ -376,3 +376,49 @@ async fn the_purge_keeps_only_what_is_young_unfinished_or_dead() {
         "delivery rows went with their events"
     );
 }
+
+/// A consumer with an external side effect takes one event per transaction (Crivo L1/L2).
+struct OneAtATime(Arc<Probe>);
+
+#[async_trait::async_trait]
+impl EventConsumer for OneAtATime {
+    fn name(&self) -> &'static str {
+        self.0.name
+    }
+
+    fn batch(&self) -> i64 {
+        1
+    }
+
+    async fn handle(&self, e: &OutboxEvent) -> Result<(), String> {
+        self.0.handle(e).await
+    }
+}
+
+#[tokio::test]
+async fn a_batch_of_one_consumer_commits_each_event_on_its_own() {
+    let Some(db) = fresh_db().await else { return };
+    let probe = Probe::new("t.mail", StartPolicy::Backfill, false);
+    let consumer = OneAtATime(probe.clone());
+    let mut consumers = Consumers::default();
+    consumers.register(TYPE, Arc::new(OneAtATime(probe.clone())));
+    let d = OutboxDispatcher::new(
+        db.worker.clone(),
+        consumers,
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    d.register().await.unwrap();
+    for _ in 0..3 {
+        append(&db).await;
+    }
+    assert_eq!(d.dispatch_batch(&consumer).await.unwrap(), (1, 1));
+    assert_eq!(probe.seen().len(), 1);
+    assert_eq!(
+        count(
+            &db,
+            "SELECT count(*) FROM app.outbox_delivery WHERE delivered_at IS NOT NULL"
+        )
+        .await,
+        1
+    );
+}
