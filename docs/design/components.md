@@ -164,6 +164,7 @@ Rules: an `EmptyState` is never shown while loading (use `Skeleton`) or on error
 
 **Sorting and paging**
 - Sorting only where it helps; sortable headers are `button`s with `aria-sort`. Default sort is stated in the caption. Date columns sort by instant, never by the formatted string.
+- **Sorting below `md` (cards):** a sortable table keeps its sorting on cards ("same data, same actions"). Above the card list: a shadcn `Select` with the visible label "Ordenar por" / "Sort by" and one option per sortable column and direction, with the same keys as the desktop headers, e.g. "P&L líquido total: maior primeiro" / "Net P&L total: highest first" and "…: menor primeiro" / "…: lowest first". The default is the desktop default. Desktop and mobile share one sort state and send the same request; the browser does not reorder money. Pinned rows (for example a `Total` card) stay first. On change, focus stays on the `Select` and a polite live region says "Ordenado por {campo}, {direção}" / "Sorted by {field}, {direction}". Target ≥ 44 px; reflows at 320 px. The header buttons are not rendered below `md`. *(Decided 2026-10-24 for S21/S22; applies to every sortable `DataTable`.)*
 - Lists beyond ~50 rows use cursor paging with a `Carregar mais` / `Load more` button and a count ("50 de 132"), not infinite scroll (keyboard and footer reachability). Page size is not user-configurable in V1.
 - No row selection or bulk actions until a slice requires them.
 
