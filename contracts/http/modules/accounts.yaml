@@ -290,6 +290,91 @@ paths:
               schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
         '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
 
+  /api/v1/accounts/{account_id}/sync/clear:
+    post:
+      tags: [accounts]
+      operationId: clearAccountSync
+      summary: Clear the out-of-sync flag after the user resolved it (S11 AC-3)
+      description: |
+        The user confirms they checked the position and orders on the platform. The account returns to
+        `in_sync` and receives new entries again (Q14, S11 AC-4). Nothing is sent to the platform: no
+        resync, no reopen, no cancel (ADR-0004 §6).
+        `expected_version` is the `sync.version` the user saw. If a reason was added or removed since,
+        409 `accounts.sync_state_changed` and nothing changes, so a reason the user has not seen is never
+        cleared. A repeat of the request whose clear already succeeded (same `expected_version`, the
+        account still in sync since that clear) returns 200 with the current account and changes nothing
+        (double submit). An account already in sync otherwise gets 409 `accounts.not_out_of_sync`.
+        The clear empties `reasons` and `resolved_reasons` and bumps `version`. The expected state's new
+        base is the account's last evaluated snapshot: position and All Win orders as reported (ADR-0004
+        r5). After a clear only the normal triggers flag again: a new difference against that base
+        (`sync.snapshot_mismatch`), or a new event with its own code. A condition the user accepted and
+        that stays the same does not flag again.
+        Allowed with an open position (Q84 a, user 2026-10-24): the user may keep it, and the UI asks
+        for confirmation. Refused while the account is not observable (Q83 a): the session is down, a
+        snapshot reports the broker connection lost, or the reconnect check has not finished
+        (`observable: false`, the live condition). An active `sync.bracket_integrity_unknown` alone does
+        not block the clear once observation resumed; otherwise that account could never be cleared
+        (Crivo R1 on r5). The
+        answer is 409 `accounts.sync_not_observable`, and the user waits until the plugin has reported.
+        An UNBOUND account is never observable (`sync.connection_unpaired`,
+        `sync.account_not_found_after_repair`), so it cannot be cleared until it is bound again and its
+        reconnect snapshot is evaluated. It receives nothing anyway (gate `platform_unbound`). The web
+        says "vincule a conta (ou re-pareie) para verificar e liberar", not just "unavailable". A rebind
+        or re-pair keeps the account out of sync with the same reasons. Its first session goes through
+        `connection_checking`. When the reconnect snapshot is evaluated, `observable` becomes true and the
+        user may clear, with that snapshot as the base. A difference found by that evaluation adds
+        `sync.snapshot_mismatch`. Archiving the account (ADR-0008) is the other way out. This is
+        intended (Esquadro, Crivo Q1).
+        Step-up (user decision Q95, 2026-10-24; in the Q35 set, setting `step_up.q35_persistence_actions`
+        on): the body must carry `step_up` for action `account_sync_clear`, target = this account. Missing →
+        403 `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`). Check order after
+        authentication, Origin and schema (Crivo R1):
+        1. 404;
+        2. the REPLAY check: the same `expected_version` and the account in sync since that clear give 200
+           with the current account, WITHOUT checking or consuming a step-up code, so a double submit
+           whose proof was already used by the first clear still gets 200;
+        3. step-up;
+        4. 409.
+        **Live protection (Vigia L2):** the confirmation lists each open position from the last evaluated
+        snapshot with its live All Win protection (`AccountSync.positions`). The clear never hides an
+        unprotected position: if one is open without full protection at the time of the clear, the Core
+        keeps its `sync.bracket_incomplete`, or raises it if absent. The account then stays `out_of_sync`
+        with that reason only, and the 200 response shows it. The plugin has no clear (Q-P3).
+        Audited as `sync.cleared` (actor user; the reasons that were active and resolved).
+      x-step-up: conditional
+      x-step-up-when: always (Q95), with the Q35 setting on
+      parameters:
+        - { $ref: '../openapi.yaml#/components/parameters/AccountId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version]
+              properties:
+                expected_version: { type: integer, minimum: 1 }
+                step_up:
+                  description: Action `account_sync_clear`, target = this account (Q95).
+                  $ref: '../openapi.yaml#/components/schemas/StepUpProof'
+      responses:
+        '200':
+          description: Cleared and audited (or the replay of a clear that already succeeded).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '400': { $ref: '../openapi.yaml#/components/responses/InvalidRequest' }
+        '401': { $ref: '../openapi.yaml#/components/responses/Unauthenticated' }
+        '403': { $ref: '../openapi.yaml#/components/responses/StepUpFailed' }
+        '404': { $ref: '../openapi.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`accounts.sync_state_changed` (the sync state changed since `expected_version`; refetch), `accounts.not_out_of_sync`, or `accounts.sync_not_observable` (Q83 a: not observable yet, so wait for the plugin''s report); nothing changed.'
+          content:
+            application/json:
+              schema: { $ref: '../openapi.yaml#/components/schemas/Error' }
+        '500': { $ref: '../openapi.yaml#/components/responses/InternalError' }
+
   /api/v1/accounts/{account_id}/opt-ins/{kind}:
     put:
       tags: [accounts]
@@ -489,7 +574,7 @@ components:
     Account:
       type: object
       additionalProperties: false
-      required: [id, kind, display_name, size_amount, currency, multiplier, max_position_qty, lifecycle_state, opt_ins, has_open_position, row_version, created_at, updated_at]
+      required: [id, kind, display_name, size_amount, currency, multiplier, max_position_qty, lifecycle_state, opt_ins, has_open_position, sync, row_version, created_at, updated_at]
       properties:
         id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
         kind: { $ref: '#/components/schemas/AccountKind' }
@@ -527,6 +612,7 @@ components:
         has_open_position:
           type: boolean
           description: Last known from the platform (gateway); false when unbound. Used for the lifecycle and delete messages.
+        sync: { $ref: '#/components/schemas/AccountSync' }
         row_version: { type: integer, minimum: 1 }
         created_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
         updated_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
@@ -537,6 +623,171 @@ components:
         - if: { properties: { kind: { const: prop } } }
           then: { required: [firm_name, plan_name, phase] }
           else: { not: { anyOf: [{ required: [firm_name] }, { required: [plan_name] }, { required: [phase] }, { required: [firm_id] }, { required: [preset_version_id] }, { required: [firm_platform] }] } }
+    AccountSync:
+      type: object
+      additionalProperties: false
+      required: [state, version, observable, reasons, reasons_total]
+      description: |
+        S11 (ADR-0004 §6, Q14). The Core's view of the account's synchronization. `out_of_sync` is sticky
+        until the user clears it (`clearAccountSync`); while out of sync, entries are refused
+        (`routing.out_of_sync`) and exits still pass (P1, Q75). `in_sync` ⇔ `reasons` and
+        `resolved_reasons` empty. `out_of_sync` always has at least one reason, active or resolved. An
+        account can be `out_of_sync` with every reason resolved: the Core removed the cause, and the user
+        still has to clear (ADR-0004 §6.1).
+        **Overflow (Crivo R2):** the Core keeps every reason. The response lists at most 32 of each kind,
+        the most severe first and, within a code, the newest first, and `reasons_total` /
+        `resolved_total` give the full counts. The clear's `expected_version` covers all of them, the
+        hidden ones included. A reason added after the user's view bumps `version`, so it is never cleared
+        unseen. An unprotected-exposure reason (`flatten_failed_unprotected`, `bracket_double_fill`,
+        `bracket_incomplete`) is never left out of the 32. Changes reach the client as
+        `account.changed`. Not part of `row_version`: the Core changes it, the user never edits it.
+      properties:
+        state: { type: string, enum: [in_sync, out_of_sync] }
+        version: { type: integer, minimum: 1, description: 'Bumps on every change of `state`, `reasons` or `resolved_reasons`; `clearAccountSync.expected_version`.' }
+        flagged_at: { description: 'When the account last became `out_of_sync`. Present only when out of sync.', $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        observable:
+          type: boolean
+          description: 'The LIVE condition only (Crivo R1 on r5): false while the Core cannot observe the account right now: the adapter session is down, a snapshot reports the broker connection lost (`connected: false`), or the reconnect check has not finished. The mere presence of a reason such as `sync.bracket_integrity_unknown` never makes it false: once observation resumes, that reason stays active but no longer blocks a clear (from `welcome` until the Core has evaluated the reconnect snapshot and the replayed reports, ADR-0004 §4 step 3 / §6.1 r5; S11 AC-5 iv, "Integridade do bracket desconhecida"). False for an unbound account. A clear is refused while it is false (Q83 a).'
+        reasons:
+          type: array
+          maxItems: 32
+          description: 'Active reasons, most severe first (`SyncReasonCode` order). At most one active reason per code and instrument (symbol + contract month) or command (the Core''s dedupe key), so two rejected commands are two reasons.'
+          items: { $ref: '#/components/schemas/SyncReason' }
+        reasons_total: { type: integer, minimum: 0, description: 'All active reasons; greater than the length of `reasons` only on overflow.' }
+        positions:
+          type: array
+          maxItems: 64
+          description: 'Open positions from the last evaluated snapshot, with their live All Win protection, for the clear confirmation (Vigia L2). Empty when flat; absent when the account was never observed.'
+          items:
+            type: object
+            additionalProperties: false
+            required: [instrument_symbol, contract_month, position, protection]
+            properties:
+              instrument_symbol: { type: string, pattern: '^[A-Z0-9]{1,10}$' }
+              contract_month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }
+              position: { type: integer, minimum: -10000, maximum: 10000, not: { const: 0 }, description: Signed contracts. }
+              protection: { type: string, enum: [full, partial, none, unknown], description: 'Live All Win stop/target protection: `full` = every contract covered by a working stop; `partial` = some; `none`; `unknown` = orders in an unknown state.' }
+              as_of: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        resolved_total: { type: integer, minimum: 0, description: 'All resolved reasons; greater than the length of `resolved_reasons` only on overflow.' }
+        resolved_reasons:
+          type: array
+          maxItems: 32
+          description: 'Reasons the Core removed while the account stays out of sync (shown as history in the alert). Only the Core resolves a reason. They survive a new flag and are emptied only by the user''s clear.'
+          items: { $ref: '#/components/schemas/SyncReason' }
+      allOf:
+        - if: { properties: { state: { const: in_sync } } }
+          then: { properties: { reasons: { maxItems: 0 }, resolved_reasons: { maxItems: 0 }, reasons_total: { const: 0 }, resolved_total: { const: 0 } }, not: { required: [flagged_at] } }
+          else:
+            required: [flagged_at]
+            anyOf:
+              - { properties: { reasons: { minItems: 1 } } }
+              - { properties: { resolved_reasons: { minItems: 1 } }, required: [resolved_reasons] }
+    SyncReasonCode:
+      type: string
+      enum:
+        - sync.flatten_failed_unprotected
+        - sync.bracket_double_fill
+        - sync.bracket_incomplete
+        - sync.bracket_integrity_unknown
+        - sync.command_unknown
+        - sync.position_changed
+        - sync.snapshot_mismatch
+        - sync.command_partially_filled
+        - sync.command_rejected
+        - sync.command_expired
+        - sync.command_undelivered
+        - sync.cancel_failed
+        - sync.ambiguous_reference
+        - sync.external_activity
+        - sync.fill_corrected
+        - sync.simulation_reset
+        - sync.disconnected_in_trade
+        - sync.disconnected_by_user
+        - sync.connection_unpaired
+        - sync.account_not_found_after_repair
+        - sync.bracket_orphan_leg
+      description: |
+        Stable reason codes (ADR-0004 §6/§6.1; the same codes as the adapter protocol `sync_reasons`).
+        The enum order is the display order, most severe first. Unprotected or unexpected exposure comes
+        first, then unknown state, then a lost or failed command, then a discontinuity or disconnect, and
+        last the informational orphan-leg cancel. Clients render an unknown code with a generic text
+        (same rule as the notification registry).
+        Canon: ADR-0004 §6 "sync reason" column (r5) and the protocol's `reason-codes.md`; 21 codes. A new
+        code is a minor version here and in the protocol. `flatten_failed_unprotected` (5.3.0, U19,
+        Esmeril M1; the 21st code, confirmed by Esquadro; producer: the gateway, from the flatten's rejected/unknown report and the protection legs it cancelled) is a flatten of ANY origin that failed after
+        cancelling protection while the position stays open with all or part of its protection lost.
+        The origins are close or reverse (including Q75), the Q27 orphan-leg flatten, and local
+        enforcement (S15). It is the only sync reason besides `bracket_double_fill` that is critical. A
+        failed flatten with the protection intact is `command_rejected` (danger). The codes added in r5:
+        - `command_unknown`: a command whose status ended `unknown`;
+        - `command_rejected`: a command rejected, including a flatten or cancel whose cancel failed
+          (`order.cancel_failed`); the adapter's code is in `adapter_reason_code`. A
+          `command.position_changed` gives the more specific `position_changed`, and so does a
+          `command.nothing_to_reduce` against an expected position that is not flat (the position changed
+          under the reduce: the same fact as the U13 guard);
+        - `command_expired`: expired at the adapter or in the Core (`expired_by`);
+        - `command_partially_filled`: partially filled without completion before the order's end of life;
+        - `snapshot_mismatch`: a reconnect or periodic snapshot differs (`snapshot_trigger`);
+        - `external_activity`: master-replication destinations only; TradingView-only destinations are
+          audited only (T3);
+        - `fill_corrected`: an amend or remove after which the expected state differs, including an amend
+          or remove of an add the Core does not know;
+        - `connection_unpaired` (Q18);
+        - `ambiguous_reference` (`order.ambiguous_reference`);
+        - `cancel_failed`: a cancel the adapter started by itself (orphan-order protection), with no
+          command; a failed cancel inside a command is `command_rejected`;
+        - `disconnected_in_trade`: a disconnect with a position or a command in flight.
+    SyncReason:
+      type: object
+      additionalProperties: false
+      required: [code, detected_at]
+      description: 'One reason, with the facts the Core holds. The platform''s native text is never included (it may contain account data).'
+      properties:
+        code: { $ref: '#/components/schemas/SyncReasonCode' }
+        detected_at: { $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        resolved_at: { description: Only in `resolved_reasons`., $ref: '../openapi.yaml#/components/schemas/Timestamp' }
+        instrument_symbol:
+          type: string
+          pattern: '^[A-Z0-9]{1,10}$'
+          description: 'The instrument as the gateway knows it from the wire (protocol `symbol`), e.g. `MNQ` (5.3.0, Bigorna). Present whenever the reason concerns one instrument. The gateway has no catalog id, so `instrument_id` is present only when the Core resolved it.'
+        contract_month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$', description: 'With `instrument_symbol`: the protocol `contract_month` (YYYY-MM).' }
+        instrument_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        instruction_id: { description: 'The instruction behind the missed, rejected, expired or partial command.', $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        command_id: { $ref: '../openapi.yaml#/components/schemas/Uuid' }
+        expected_position: { type: integer, minimum: -10000, maximum: 10000, description: 'Signed contracts the Core expected (snapshot mismatch, disconnect: the last known).' }
+        reported_position: { type: integer, minimum: -10000, maximum: 10000, description: Signed contracts the platform reported. }
+        quantity: { type: integer, minimum: 1, maximum: 10000, description: 'With `command_partially_filled`: the ordered quantity.' }
+        filled_qty: { type: integer, minimum: 0, maximum: 10000, description: 'With `command_partially_filled`: the filled quantity.' }
+        adapter_reason_code: { type: string, maxLength: 64, pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$', description: 'With `command_rejected` / `command_expired` / `cancel_failed`: the adapter''s stable reason code (protocol `reason-codes.md`, e.g. `order.cancel_failed`). Rendered as a code, never as platform text.' }
+        snapshot_trigger: { type: string, enum: [reconnect, periodic], description: With `snapshot_mismatch`. }
+        expired_by: { type: string, enum: [core, adapter], description: With `command_expired`. }
+        core_action: { $ref: '#/components/schemas/SyncCoreAction' }
+    SyncCoreAction:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      description: 'What All Win did automatically for this reason, exactly as done (S11 AC-5 i, iii; vision §8). Absent when it did nothing.'
+      properties:
+        kind: { type: string, enum: [orphan_orders_cancelled, orphan_position_flattened] }
+        cancelled_orders:
+          type: array
+          maxItems: 20
+          description: With `orphan_orders_cancelled`.
+          items:
+            type: object
+            additionalProperties: false
+            required: [child_role]
+            properties:
+              child_role: { type: string, enum: [stop, target] }
+              price: { $ref: 'audit.yaml#/components/schemas/Price' }
+              quantity: { type: integer, minimum: 1, maximum: 10000 }
+        flattened_qty: { type: integer, minimum: 1, maximum: 10000, description: With `orphan_position_flattened`. }
+        flattened_side: { type: string, enum: [long, short], description: With `orphan_position_flattened`. }
+        fill_price: { $ref: 'audit.yaml#/components/schemas/Price' }
+      allOf:
+        - if: { properties: { kind: { const: orphan_orders_cancelled } } }
+          then: { required: [cancelled_orders], not: { anyOf: [{ required: [flattened_qty] }, { required: [flattened_side] }, { required: [fill_price] }] } }
+          else: { required: [flattened_qty, flattened_side], not: { required: [cancelled_orders] } }
     AccountList:
       type: object
       additionalProperties: false

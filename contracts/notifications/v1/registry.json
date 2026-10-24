@@ -1,6 +1,6 @@
 {
-  "$comment": "Notification registry v1 (V1-S18). Single source of codes for the Web (HTTP modules/notifications.yaml) and the plugin (adapter protocol 1.3). Owner: Software Architect (Compasso). params names a $defs entry of params.schema.json, which check_openapi.py generates from the HTTP bundle (NotificationParamsByCode). Texts live in each client's pt-BR/en catalog; drift test: every code has a key in both languages in both clients. Receivers never refuse an unknown code or params that fail their copy: they render a generic text with code and severity, keep the item, its count and read state, and ack the frame (ADR-0004 §9, note 1.3.2). A new severity, target.kind or category is still a protocol change.",
-  "version": "1.3.0",
+  "$comment": "Notification registry v1 (V1-S18). Single source of codes for the Web (HTTP modules/notifications.yaml) and the plugin (adapter protocol 1.3). Owner: Software Architect (Compasso). params names a $defs entry of params.schema.json, which check_openapi.py generates from the HTTP bundle (NotificationParamsByCode). Texts live in each client's pt-BR/en catalog; drift test: every code has a key in both languages in both clients. Receivers never refuse an unknown code or params that fail their copy: they render a generic text with code and severity, keep the item, its count and read state, and ack the frame (ADR-0004 §9, note 1.3.2). A new severity, target.kind or category is still a protocol change. Grouping is Core-side: no protocol frame carries a grouping (the frames carry the item already grouped), so a new grouping is a registry minor, not a protocol change (Esquadro).",
+  "version": "1.4.0",
   "params_schema": "params.schema.json",
   "severities": [
     "info",
@@ -12,7 +12,8 @@
   "groupings": {
     "none": "every occurrence is its own notification",
     "account_trading_day": "same code + account + trading day collapse into one item (count, last time); the first occurrence is unread; a later one marks the group unread again only when the code has reopen_on_occurrence: true (Q68)",
-    "firm_release": "one item per firm and release, with account_count"
+    "firm_release": "one item per firm and release, with account_count",
+    "connection_trading_day": "same code + connection + trading day collapse into one item (count, last time); the first occurrence is unread, later ones never reopen it"
   },
   "codes": {
     "routing.quantity_capped": {
@@ -79,6 +80,24 @@
       "params": "DetailsRoutingDecision",
       "reopen_on_occurrence": false,
       "rule": "5.2.0 (Esquadro): the instrument is in the catalog but has no active contract at the decision; params carry instrument_symbol"
+    },
+    "routing.adapter_protocol_outdated": {
+      "category": "routing",
+      "severity": "warning",
+      "grouping": "account_trading_day",
+      "target": "account",
+      "params": "DetailsRoutingDecision",
+      "reopen_on_occurrence": false,
+      "rule": "5.3.0 (ADR-0004 r5 §7.1, U13): the session is too old for the action (a reduce below 1.2; entries of an account with a drawdown rule below 1.4). Entries are skipped and exits continue; the text asks the user to update the plugin"
+    },
+    "routing.position_unknown": {
+      "category": "routing",
+      "severity": "warning",
+      "grouping": "account_trading_day",
+      "target": "instruction",
+      "params": "DetailsRoutingDecision",
+      "reopen_on_occurrence": false,
+      "rule": "5.3.0 (U13 A): a reduce skipped because the Core holds no All Win identity for the position (e.g. opened externally on a TradingView-only destination)"
     },
     "routing.nothing_to_reduce": {
       "category": "routing",
@@ -170,6 +189,63 @@
       "severity": "info",
       "grouping": "firm_release",
       "params": "ParamsPresetNewVersion"
+    },
+    "sync.flagged": {
+      "category": "connection",
+      "target": "account",
+      "params": "DetailsSync",
+      "severity": "danger",
+      "grouping": "account_trading_day",
+      "reopen_on_occurrence": true,
+      "rule": "S11: one occurrence per sync reason added (params.reason = that reason); the three bracket reasons use their own code instead for that occurrence. Grouped per account and trading day; a new reason marks the group unread again"
+    },
+    "sync.bracket_orphan_leg": {
+      "category": "connection",
+      "target": "account",
+      "params": "DetailsSync",
+      "severity": "warning",
+      "grouping": "none",
+      "rule": "S11 AC-5 i: flat with an orphan protective leg, cancelled automatically; params.reason.core_action lists what was cancelled. Replaces sync.flagged for that occurrence"
+    },
+    "sync.bracket_incomplete": {
+      "category": "connection",
+      "target": "account",
+      "params": "DetailsSync",
+      "severity": "danger",
+      "grouping": "none",
+      "rule": "S11 AC-5 ii: open position without stop or target, or orders in an unknown state; nothing was recreated. Replaces sync.flagged for that occurrence"
+    },
+    "sync.bracket_double_fill": {
+      "category": "connection",
+      "target": "account",
+      "params": "DetailsSync",
+      "severity": "critical",
+      "grouping": "none",
+      "rule": "S11 AC-5 iii (Q27 b): both legs filled; only the position created by the orphan leg was flattened (params.reason.core_action). Maximum priority. Replaces sync.flagged for that occurrence"
+    },
+    "sync.flatten_failed_unprotected": {
+      "category": "connection",
+      "severity": "critical",
+      "grouping": "none",
+      "target": "account",
+      "params": "DetailsSync",
+      "rule": "U19 (user), Esmeril M1: a flatten of ANY origin (close, reverse incl. Q75, Q27 orphan-leg flatten, S15 local enforcement) failed after cancelling protection, and the position stays open with protection lost. Replaces sync.flagged for that occurrence. A failed flatten with protection intact is sync.flagged (danger)"
+    },
+    "sync.restored": {
+      "category": "connection",
+      "target": "account",
+      "params": "DetailsSync",
+      "severity": "info",
+      "grouping": "none",
+      "rule": "ADR-0004 §6: a disconnect while flat with nothing in flight; the reconnect snapshot matched, so the account was never flagged and is back to normal"
+    },
+    "execution.unbound_activity": {
+      "category": "execution",
+      "severity": "warning",
+      "grouping": "connection_trading_day",
+      "target": "connection",
+      "params": "DetailsUnboundActivity",
+      "rule": "S11 (Esquadro; Crivo R1): a snapshot shows a new or changed position on a platform account visible on the connection but bound to no All Win account; one audit entry per (connection, platform account, instrument) change, fills not one by one; grouped per connection and trading day; not a sync reason"
     }
   }
 }

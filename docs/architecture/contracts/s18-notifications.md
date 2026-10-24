@@ -21,9 +21,9 @@ SSE: `notification.created` and `notification.updated` (full item + `unread`), a
 ## 2. Decisions
 
 1. **One state, two channels.** The field names are the adapter protocol 1.3 ones (Esquadro): `notification_id`, `revision` (monotonic, upsert by higher revision), `code`, `category`, `severity`, `account_id`, `params`, `count`, `source_event_ids`, `created_at` / `updated_at` / `read_at`, `target`. The Web adds only `account_name` (snapshot) and `audit_entry_id`.
-2. **Severity:** `info`, `success`, `warning`, `danger`, `critical`, on both channels, agreed with Esquadro. `critical` is the ADRs' top severity and drives the `CriticalBanner` (Q51: it stays until read). **In V1 so far no registry code is `critical`.** The banner gets exactly these producers (U19 and Q27; PO and Code Review, 2026-10-23):
+2. **Severity:** `info`, `success`, `warning`, `danger`, `critical`, on both channels, agreed with Esquadro. `critical` is the ADRs' top severity and drives the `CriticalBanner` (Q51: it stays until read). The banner gets exactly these producers (U19 and Q27; PO and Code Review, 2026-10-23):
    - Q27: `sync.bracket_double_fill` (S11). Both legs filled, and the position created by the orphan leg was flattened.
-   - U19: a flatten that failed after cancelling protection, so that an open position lost all or part of it. Any origin counts: close or reverse (including Q75), the Q27 orphan-leg flatten, or local enforcement (S15). Its code comes with S15.
+   - U19: `sync.flatten_failed_unprotected` (5.3.0; Esmeril M1). A flatten that failed after cancelling protection, so that an open position lost all or part of it. Any origin counts: close or reverse (including Q75), the Q27 orphan-leg flatten, or local enforcement (S15, which reuses the code).
 
    A failed flatten whose protection stays intact is `danger`. `sync.disconnected_in_trade` is `danger`. The unprotected-bracket and reactive-block producers are `critical` only in the U19 case. In every case the account is out of sync. The plugin may map `success` → `info` and `danger` → `warning` in its own UI; the protocol carries the five values.
 3. **The registry is the single code list** (owner: Compasso; 1.3 references it).
@@ -40,7 +40,7 @@ SSE: `notification.created` and `notification.updated` (full item + `unread`), a
 6. **Links:** `target` = `{kind, id}` with kind ∈ `account`, `connection`, `instruction`, `route`, `activity_entry`. Never a URL in the payload. The Web builds its route; the plugin uses `welcome.app_url` + route. Which tab (e.g. Risk) is a client catalog decision per code.
 7. **Mark all is race-free:** `up_to` marks only items whose `updated_at` ≤ `up_to`, so an item arriving during the click stays unread. Reading never changes the state the item reports (banners and badges stay).
 8. **Retention (Q-S18-6):** the same as the audit (24 months; erased 30 days after the account is closed).
-9. **Not yet in the registry:** `sync.*` (S11) and `risk.blocked` / `risk.flatten` / `risk.unblocked` / `risk.reactive_block_action` (S15). They are added with those contracts, each with its own `details` schema in `modules/audit.yaml`.
+9. **S11 (5.3.0, registry 1.4.0):** `sync.flagged` (danger, covering every other reason, including `disconnected_in_trade`), `sync.bracket_orphan_leg` (warning), `sync.bracket_incomplete` (danger), `sync.bracket_double_fill` (critical, Q27), `sync.flatten_failed_unprotected` (critical, U19) and `sync.restored` (info); `execution.unbound_activity` (warning, grouped per connection and trading day). **Not yet in the registry:** `risk.blocked` / `risk.flatten` / `risk.unblocked` / `risk.reactive_block_action` (S15; U19 already has `sync.flatten_failed_unprotected`). They are added with that contract, each with its own `details` schema in `modules/audit.yaml`.
 
 ## 3. For the Database Architect and Backend (through the Maestro)
 

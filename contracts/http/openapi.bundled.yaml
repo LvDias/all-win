@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: All Win HTTP API
-  version: 5.2.0
+  version: 5.3.0
   description: "Canonical, spec-first HTTP contract (ADR-0002 §4). Owner: Software Architect.\nCovers V1-S1 (TradingView webhook\
     \ ingress), V1-S3 (passwordless sign-in by one-time code, invitations,\nsessions, devices, channel changes, sources, NinjaTrader\
     \ connections and pairing) in this root, and in\n`modules/*.yaml` (Compasso): V1-S5 accounts and opt-ins (`accounts`),\
@@ -461,13 +461,13 @@ paths:
       description: "Sends a `step_up` code bound to this session, the `action` and the `target_id`. The action request then\n\
         carries `step_up: { challenge_id, code }` in its body (schema `StepUpProof`); the code authorizes that\none action\
         \ only (Q30 a: every action asks a new code).\n- `target_id` is **required** for `source_rotate`, `pairing_code_new`,\
-        \ `connection_unpair`,\n  `account_opt_in_accept`, `route_enable` and `account_binding_change`, and **forbidden**\
-        \ for the other\n  actions; a violation → 400\n  `common.invalid_request` with pointer `/target_id`.\n- A target that\
-        \ does not exist or belongs to another user → 404 `common.not_found`; no code is sent and\n  nothing is counted against\
-        \ the user's send limit.\n- `admin_invitation_create` from a non-admin → 403 `auth.forbidden`, no code sent (same\
-        \ precedence as\n  admin operations).\n- 422 `auth.channel_unavailable`: the user has no confirmed value for `channel`.\n\
-        - 422 `auth.step_up_channel_not_allowed`: the policy requires another channel for this action on this\n  device (auth\
-        \ policy §6.2 M3, if adopted; the client then offers e-mail).\n"
+        \ `connection_unpair`,\n  `account_opt_in_accept`, `route_enable`, `account_binding_change`, `account_sync_clear`\
+        \ and\n  `trading_day_restart`, and **forbidden** for the other\n  actions; a violation → 400\n  `common.invalid_request`\
+        \ with pointer `/target_id`.\n- A target that does not exist or belongs to another user → 404 `common.not_found`;\
+        \ no code is sent and\n  nothing is counted against the user's send limit.\n- `admin_invitation_create` from a non-admin\
+        \ → 403 `auth.forbidden`, no code sent (same precedence as\n  admin operations).\n- 422 `auth.channel_unavailable`:\
+        \ the user has no confirmed value for `channel`.\n- 422 `auth.step_up_channel_not_allowed`: the policy requires another\
+        \ channel for this action on this\n  device (auth policy §6.2 M3, if adopted; the client then offers e-mail).\n"
       requestBody:
         required: true
         content:
@@ -483,7 +483,7 @@ paths:
                   $ref: '#/components/schemas/StepUpAction'
                 target_id:
                   description: Required for source_rotate, pairing_code_new, connection_unpair, account_opt_in_accept, route_enable,
-                    account_binding_change; forbidden otherwise.
+                    account_binding_change, account_sync_clear, trading_day_restart; forbidden otherwise.
                   $ref: '#/components/schemas/Uuid'
                 channel:
                   $ref: '#/components/schemas/CodeChannel'
@@ -2007,6 +2007,88 @@ paths:
         '422':
           description: '`accounts.evaluation_not_applicable` (no evaluation target) or `accounts.evaluation_start_invalid`
             (`/evaluation_start` in the future); nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/accounts/{account_id}/sync/clear:
+    post:
+      tags:
+      - accounts
+      operationId: clearAccountSync
+      summary: Clear the out-of-sync flag after the user resolved it (S11 AC-3)
+      description: "The user confirms they checked the position and orders on the platform. The account returns to\n`in_sync`\
+        \ and receives new entries again (Q14, S11 AC-4). Nothing is sent to the platform: no\nresync, no reopen, no cancel\
+        \ (ADR-0004 §6).\n`expected_version` is the `sync.version` the user saw. If a reason was added or removed since,\n\
+        409 `accounts.sync_state_changed` and nothing changes, so a reason the user has not seen is never\ncleared. A repeat\
+        \ of the request whose clear already succeeded (same `expected_version`, the\naccount still in sync since that clear)\
+        \ returns 200 with the current account and changes nothing\n(double submit). An account already in sync otherwise\
+        \ gets 409 `accounts.not_out_of_sync`.\nThe clear empties `reasons` and `resolved_reasons` and bumps `version`. The\
+        \ expected state's new\nbase is the account's last evaluated snapshot: position and All Win orders as reported (ADR-0004\n\
+        r5). After a clear only the normal triggers flag again: a new difference against that base\n(`sync.snapshot_mismatch`),\
+        \ or a new event with its own code. A condition the user accepted and\nthat stays the same does not flag again.\n\
+        Allowed with an open position (Q84 a, user 2026-10-24): the user may keep it, and the UI asks\nfor confirmation. Refused\
+        \ while the account is not observable (Q83 a): the session is down, a\nsnapshot reports the broker connection lost,\
+        \ or the reconnect check has not finished\n(`observable: false`, the live condition). An active `sync.bracket_integrity_unknown`\
+        \ alone does\nnot block the clear once observation resumed; otherwise that account could never be cleared\n(Crivo\
+        \ R1 on r5). The\nanswer is 409 `accounts.sync_not_observable`, and the user waits until the plugin has reported.\n\
+        An UNBOUND account is never observable (`sync.connection_unpaired`,\n`sync.account_not_found_after_repair`), so it\
+        \ cannot be cleared until it is bound again and its\nreconnect snapshot is evaluated. It receives nothing anyway (gate\
+        \ `platform_unbound`). The web\nsays \"vincule a conta (ou re-pareie) para verificar e liberar\", not just \"unavailable\"\
+        . A rebind\nor re-pair keeps the account out of sync with the same reasons. Its first session goes through\n`connection_checking`.\
+        \ When the reconnect snapshot is evaluated, `observable` becomes true and the\nuser may clear, with that snapshot\
+        \ as the base. A difference found by that evaluation adds\n`sync.snapshot_mismatch`. Archiving the account (ADR-0008)\
+        \ is the other way out. This is\nintended (Esquadro, Crivo Q1).\nStep-up (user decision Q95, 2026-10-24; in the Q35\
+        \ set, setting `step_up.q35_persistence_actions`\non): the body must carry `step_up` for action `account_sync_clear`,\
+        \ target = this account. Missing →\n403 `auth.step_up_required`; wrong → 403 `auth.code_invalid` (`StepUpFailed`).\
+        \ Check order after\nauthentication, Origin and schema (Crivo R1):\n1. 404;\n2. the REPLAY check: the same `expected_version`\
+        \ and the account in sync since that clear give 200\n   with the current account, WITHOUT checking or consuming a\
+        \ step-up code, so a double submit\n   whose proof was already used by the first clear still gets 200;\n3. step-up;\n\
+        4. 409.\n**Live protection (Vigia L2):** the confirmation lists each open position from the last evaluated\nsnapshot\
+        \ with its live All Win protection (`AccountSync.positions`). The clear never hides an\nunprotected position: if one\
+        \ is open without full protection at the time of the clear, the Core\nkeeps its `sync.bracket_incomplete`, or raises\
+        \ it if absent. The account then stays `out_of_sync`\nwith that reason only, and the 200 response shows it. The plugin\
+        \ has no clear (Q-P3).\nAudited as `sync.cleared` (actor user; the reasons that were active and resolved).\n"
+      x-step-up: conditional
+      x-step-up-when: always (Q95), with the Q35 setting on
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - expected_version
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 1
+                step_up:
+                  description: Action `account_sync_clear`, target = this account (Q95).
+                  $ref: '#/components/schemas/StepUpProof'
+      responses:
+        '200':
+          description: Cleared and audited (or the replay of a clear that already succeeded).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/StepUpFailed'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`accounts.sync_state_changed` (the sync state changed since `expected_version`; refetch), `accounts.not_out_of_sync`,
+            or `accounts.sync_not_observable` (Q83 a: not observable yet, so wait for the plugin''s report); nothing changed.'
           content:
             application/json:
               schema:
@@ -4793,7 +4875,9 @@ components:
         \ (no\n  target; S5 create with an accepted opt-in), `admin_invitation_create`.\n- `route_enable` (target = account;\
         \ createRoute/updateRoute switching any route on, Q35 / S3 AC-10).\n- `account_binding_change` (target = account;\
         \ updateAccount changing the platform binding of an account that\n  receives automation: opt-in accepted or an active\
-        \ automated route).\n"
+        \ automated route).\n- `account_sync_clear` (target = account; `clearAccountSync`; user decision Q95, 2026-10-24;\
+        \ in the Q35 set).\n- `trading_day_restart` (target = account; `restartTradingDayCount`, HTTP 5.4.0; user decision\
+        \ Q96; in the Q35\n  set).\n"
       enum:
       - source_create
       - source_rotate
@@ -4805,6 +4889,8 @@ components:
       - admin_invitation_create
       - route_enable
       - account_binding_change
+      - account_sync_clear
+      - trading_day_restart
     StepUpProof:
       type: object
       additionalProperties: false
@@ -5402,6 +5488,7 @@ components:
       - lifecycle_state
       - opt_ins
       - has_open_position
+      - sync
       - row_version
       - created_at
       - updated_at
@@ -5466,6 +5553,8 @@ components:
         has_open_position:
           type: boolean
           description: Last known from the platform (gateway); false when unbound. Used for the lifecycle and delete messages.
+        sync:
+          $ref: '#/components/schemas/AccountSync'
         row_version:
           type: integer
           minimum: 1
@@ -5502,6 +5591,343 @@ components:
               - preset_version_id
             - required:
               - firm_platform
+    AccountSync:
+      type: object
+      additionalProperties: false
+      required:
+      - state
+      - version
+      - observable
+      - reasons
+      - reasons_total
+      description: 'S11 (ADR-0004 §6, Q14). The Core''s view of the account''s synchronization. `out_of_sync` is sticky
+
+        until the user clears it (`clearAccountSync`); while out of sync, entries are refused
+
+        (`routing.out_of_sync`) and exits still pass (P1, Q75). `in_sync` ⇔ `reasons` and
+
+        `resolved_reasons` empty. `out_of_sync` always has at least one reason, active or resolved. An
+
+        account can be `out_of_sync` with every reason resolved: the Core removed the cause, and the user
+
+        still has to clear (ADR-0004 §6.1).
+
+        **Overflow (Crivo R2):** the Core keeps every reason. The response lists at most 32 of each kind,
+
+        the most severe first and, within a code, the newest first, and `reasons_total` /
+
+        `resolved_total` give the full counts. The clear''s `expected_version` covers all of them, the
+
+        hidden ones included. A reason added after the user''s view bumps `version`, so it is never cleared
+
+        unseen. An unprotected-exposure reason (`flatten_failed_unprotected`, `bracket_double_fill`,
+
+        `bracket_incomplete`) is never left out of the 32. Changes reach the client as
+
+        `account.changed`. Not part of `row_version`: the Core changes it, the user never edits it.
+
+        '
+      properties:
+        state:
+          type: string
+          enum:
+          - in_sync
+          - out_of_sync
+        version:
+          type: integer
+          minimum: 1
+          description: Bumps on every change of `state`, `reasons` or `resolved_reasons`; `clearAccountSync.expected_version`.
+        flagged_at:
+          description: When the account last became `out_of_sync`. Present only when out of sync.
+          $ref: '#/components/schemas/Timestamp'
+        observable:
+          type: boolean
+          description: 'The LIVE condition only (Crivo R1 on r5): false while the Core cannot observe the account right now:
+            the adapter session is down, a snapshot reports the broker connection lost (`connected: false`), or the reconnect
+            check has not finished. The mere presence of a reason such as `sync.bracket_integrity_unknown` never makes it
+            false: once observation resumes, that reason stays active but no longer blocks a clear (from `welcome` until the
+            Core has evaluated the reconnect snapshot and the replayed reports, ADR-0004 §4 step 3 / §6.1 r5; S11 AC-5 iv,
+            "Integridade do bracket desconhecida"). False for an unbound account. A clear is refused while it is false (Q83
+            a).'
+        reasons:
+          type: array
+          maxItems: 32
+          description: Active reasons, most severe first (`SyncReasonCode` order). At most one active reason per code and
+            instrument (symbol + contract month) or command (the Core's dedupe key), so two rejected commands are two reasons.
+          items:
+            $ref: '#/components/schemas/SyncReason'
+        reasons_total:
+          type: integer
+          minimum: 0
+          description: All active reasons; greater than the length of `reasons` only on overflow.
+        positions:
+          type: array
+          maxItems: 64
+          description: Open positions from the last evaluated snapshot, with their live All Win protection, for the clear
+            confirmation (Vigia L2). Empty when flat; absent when the account was never observed.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - instrument_symbol
+            - contract_month
+            - position
+            - protection
+            properties:
+              instrument_symbol:
+                type: string
+                pattern: ^[A-Z0-9]{1,10}$
+              contract_month:
+                type: string
+                pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+              position:
+                type: integer
+                minimum: -10000
+                maximum: 10000
+                not:
+                  const: 0
+                description: Signed contracts.
+              protection:
+                type: string
+                enum:
+                - full
+                - partial
+                - none
+                - unknown
+                description: 'Live All Win stop/target protection: `full` = every contract covered by a working stop; `partial`
+                  = some; `none`; `unknown` = orders in an unknown state.'
+              as_of:
+                $ref: '#/components/schemas/Timestamp'
+        resolved_total:
+          type: integer
+          minimum: 0
+          description: All resolved reasons; greater than the length of `resolved_reasons` only on overflow.
+        resolved_reasons:
+          type: array
+          maxItems: 32
+          description: Reasons the Core removed while the account stays out of sync (shown as history in the alert). Only
+            the Core resolves a reason. They survive a new flag and are emptied only by the user's clear.
+          items:
+            $ref: '#/components/schemas/SyncReason'
+      allOf:
+      - if:
+          properties:
+            state:
+              const: in_sync
+        then:
+          properties:
+            reasons:
+              maxItems: 0
+            resolved_reasons:
+              maxItems: 0
+            reasons_total:
+              const: 0
+            resolved_total:
+              const: 0
+          not:
+            required:
+            - flagged_at
+        else:
+          required:
+          - flagged_at
+          anyOf:
+          - properties:
+              reasons:
+                minItems: 1
+          - properties:
+              resolved_reasons:
+                minItems: 1
+            required:
+            - resolved_reasons
+    SyncReasonCode:
+      type: string
+      enum:
+      - sync.flatten_failed_unprotected
+      - sync.bracket_double_fill
+      - sync.bracket_incomplete
+      - sync.bracket_integrity_unknown
+      - sync.command_unknown
+      - sync.position_changed
+      - sync.snapshot_mismatch
+      - sync.command_partially_filled
+      - sync.command_rejected
+      - sync.command_expired
+      - sync.command_undelivered
+      - sync.cancel_failed
+      - sync.ambiguous_reference
+      - sync.external_activity
+      - sync.fill_corrected
+      - sync.simulation_reset
+      - sync.disconnected_in_trade
+      - sync.disconnected_by_user
+      - sync.connection_unpaired
+      - sync.account_not_found_after_repair
+      - sync.bracket_orphan_leg
+      description: "Stable reason codes (ADR-0004 §6/§6.1; the same codes as the adapter protocol `sync_reasons`).\nThe enum\
+        \ order is the display order, most severe first. Unprotected or unexpected exposure comes\nfirst, then unknown state,\
+        \ then a lost or failed command, then a discontinuity or disconnect, and\nlast the informational orphan-leg cancel.\
+        \ Clients render an unknown code with a generic text\n(same rule as the notification registry).\nCanon: ADR-0004 §6\
+        \ \"sync reason\" column (r5) and the protocol's `reason-codes.md`; 21 codes. A new\ncode is a minor version here\
+        \ and in the protocol. `flatten_failed_unprotected` (5.3.0, U19,\nEsmeril M1; the 21st code, confirmed by Esquadro;\
+        \ producer: the gateway, from the flatten's rejected/unknown report and the protection legs it cancelled) is a flatten\
+        \ of ANY origin that failed after\ncancelling protection while the position stays open with all or part of its protection\
+        \ lost.\nThe origins are close or reverse (including Q75), the Q27 orphan-leg flatten, and local\nenforcement (S15).\
+        \ It is the only sync reason besides `bracket_double_fill` that is critical. A\nfailed flatten with the protection\
+        \ intact is `command_rejected` (danger). The codes added in r5:\n- `command_unknown`: a command whose status ended\
+        \ `unknown`;\n- `command_rejected`: a command rejected, including a flatten or cancel whose cancel failed\n  (`order.cancel_failed`);\
+        \ the adapter's code is in `adapter_reason_code`. A\n  `command.position_changed` gives the more specific `position_changed`,\
+        \ and so does a\n  `command.nothing_to_reduce` against an expected position that is not flat (the position changed\n\
+        \  under the reduce: the same fact as the U13 guard);\n- `command_expired`: expired at the adapter or in the Core\
+        \ (`expired_by`);\n- `command_partially_filled`: partially filled without completion before the order's end of life;\n\
+        - `snapshot_mismatch`: a reconnect or periodic snapshot differs (`snapshot_trigger`);\n- `external_activity`: master-replication\
+        \ destinations only; TradingView-only destinations are\n  audited only (T3);\n- `fill_corrected`: an amend or remove\
+        \ after which the expected state differs, including an amend\n  or remove of an add the Core does not know;\n- `connection_unpaired`\
+        \ (Q18);\n- `ambiguous_reference` (`order.ambiguous_reference`);\n- `cancel_failed`: a cancel the adapter started\
+        \ by itself (orphan-order protection), with no\n  command; a failed cancel inside a command is `command_rejected`;\n\
+        - `disconnected_in_trade`: a disconnect with a position or a command in flight.\n"
+    SyncReason:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - detected_at
+      description: One reason, with the facts the Core holds. The platform's native text is never included (it may contain
+        account data).
+      properties:
+        code:
+          $ref: '#/components/schemas/SyncReasonCode'
+        detected_at:
+          $ref: '#/components/schemas/Timestamp'
+        resolved_at:
+          description: Only in `resolved_reasons`.
+          $ref: '#/components/schemas/Timestamp'
+        instrument_symbol:
+          type: string
+          pattern: ^[A-Z0-9]{1,10}$
+          description: The instrument as the gateway knows it from the wire (protocol `symbol`), e.g. `MNQ` (5.3.0, Bigorna).
+            Present whenever the reason concerns one instrument. The gateway has no catalog id, so `instrument_id` is present
+            only when the Core resolved it.
+        contract_month:
+          type: string
+          pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+          description: 'With `instrument_symbol`: the protocol `contract_month` (YYYY-MM).'
+        instrument_id:
+          $ref: '#/components/schemas/Uuid'
+        instruction_id:
+          description: The instruction behind the missed, rejected, expired or partial command.
+          $ref: '#/components/schemas/Uuid'
+        command_id:
+          $ref: '#/components/schemas/Uuid'
+        expected_position:
+          type: integer
+          minimum: -10000
+          maximum: 10000
+          description: 'Signed contracts the Core expected (snapshot mismatch, disconnect: the last known).'
+        reported_position:
+          type: integer
+          minimum: -10000
+          maximum: 10000
+          description: Signed contracts the platform reported.
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 'With `command_partially_filled`: the ordered quantity.'
+        filled_qty:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          description: 'With `command_partially_filled`: the filled quantity.'
+        adapter_reason_code:
+          type: string
+          maxLength: 64
+          pattern: ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$
+          description: 'With `command_rejected` / `command_expired` / `cancel_failed`: the adapter''s stable reason code (protocol
+            `reason-codes.md`, e.g. `order.cancel_failed`). Rendered as a code, never as platform text.'
+        snapshot_trigger:
+          type: string
+          enum:
+          - reconnect
+          - periodic
+          description: With `snapshot_mismatch`.
+        expired_by:
+          type: string
+          enum:
+          - core
+          - adapter
+          description: With `command_expired`.
+        core_action:
+          $ref: '#/components/schemas/SyncCoreAction'
+    SyncCoreAction:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      description: What All Win did automatically for this reason, exactly as done (S11 AC-5 i, iii; vision §8). Absent when
+        it did nothing.
+      properties:
+        kind:
+          type: string
+          enum:
+          - orphan_orders_cancelled
+          - orphan_position_flattened
+        cancelled_orders:
+          type: array
+          maxItems: 20
+          description: With `orphan_orders_cancelled`.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - child_role
+            properties:
+              child_role:
+                type: string
+                enum:
+                - stop
+                - target
+              price:
+                $ref: '#/components/schemas/Price'
+              quantity:
+                type: integer
+                minimum: 1
+                maximum: 10000
+        flattened_qty:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: With `orphan_position_flattened`.
+        flattened_side:
+          type: string
+          enum:
+          - long
+          - short
+          description: With `orphan_position_flattened`.
+        fill_price:
+          $ref: '#/components/schemas/Price'
+      allOf:
+      - if:
+          properties:
+            kind:
+              const: orphan_orders_cancelled
+        then:
+          required:
+          - cancelled_orders
+          not:
+            anyOf:
+            - required:
+              - flattened_qty
+            - required:
+              - flattened_side
+            - required:
+              - fill_price
+        else:
+          required:
+          - flattened_qty
+          - flattened_side
+          not:
+            required:
+            - cancelled_orders
     AccountList:
       type: object
       additionalProperties: false
@@ -6097,6 +6523,8 @@ components:
       - routing.nothing_to_reduce
       - routing.no_correlated_order
       - routing.instrument_unavailable
+      - routing.adapter_protocol_outdated
+      - routing.position_unknown
       - routing.expired
       - execution.command_requested
       - execution.command_sent
@@ -6161,25 +6589,41 @@ components:
       - trades.manual_changed
       - trades.manual_deleted
       - trades.reconcile_mismatch
-      description: 'Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and
-
-        auth policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:
-
-        `sync.*` (S11), `risk.flatten` / `risk.blocked` (S15), `notifications.*` (S18).
-
-        Category by code family (the `category` of each entry): `ingress.*` → ingress; `routing.*` →
-
-        routing, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →
-
-        execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →
-
-        connection (a plugin restart is a `connection.status_changed` with `previous_status`);
-
-        `security.*` → security; `sources.*`, `connections.*`, `accounts.*`, `profiles.*`, `presets.*`
-
-        and `trades.manual_*` → config; `trades.reconcile_mismatch` → execution.
-
-        '
+      - execution.unbound_activity
+      - execution.undelivered
+      - connection.account_kind_changed
+      - sync.flagged
+      - sync.reason_resolved
+      - sync.cleared
+      - sync.restored
+      description: "Codes with a `details` schema in `AuditDetailsByCode`. `security.*` codes come from S3 AC-16 and\nauth\
+        \ policy rev. 2 (Esquadro). Families defined by other slices are added with their contracts:\n`risk.flatten` / `risk.blocked`\
+        \ (S15), `notifications.*` (S18).\nCategory by code family (the `category` of each entry): `ingress.*` → ingress;\
+        \ `routing.*` →\nrouting, except `routing.subscription_changed` → config; `execution.*` and `trades.captured` →\n\
+        execution; `risk.*` → risk, except `risk.rules_changed` → config; `connection.status_changed` →\nconnection (a plugin\
+        \ restart is a `connection.status_changed` with `previous_status`);\n`security.*` → security; `sources.*`, `connections.*`,\
+        \ `accounts.*`, `profiles.*`, `presets.*`\nand `trades.manual_*` → config; `trades.reconcile_mismatch` → execution;\
+        \ `sync.*` (S11, 5.3.0) →\nconnection, for every `sync.*` code, including reasons that are not about the connection\
+        \ (a\nrejection, external activity, a fill correction). This is accepted for V1 (Esquadro): a new\ncategory is also\
+        \ a protocol 1.3 notification field, so it is a protocol minor. It is revisited\nin the next protocol minor that is\
+        \ opened for another reason.\n`sync.*` (ADR-0004 §6, `DetailsSync`), each with its actor and outcome:\n- `sync.flagged`:\
+        \ one per added reason (system, `info`);\n- `sync.reason_resolved`: the Core removed a reason, and the account stays\
+        \ out of sync (system, `info`);\n- `sync.cleared`: the user cleared the flag (user, `info`), with `cleared_reasons`;\n\
+        - `execution.unbound_activity` (category execution; system, `info`; Esquadro): activity on a platform\n  account that\
+        \ is visible on a connection but bound to no All Win account. It is not a sync reason,\n  since there is no account\
+        \ to flag (`DetailsUnboundActivity`). Occurrence (Crivo R1): one entry per\n  (connection, platform account, instrument)\
+        \ when a snapshot first shows a position there, or the\n  position changes. Fills are not audited one by one; they\
+        \ show through the next snapshot's\n  position. The notification is grouped per connection and trading day;\n- `execution.undelivered`\
+        \ (category execution; system, outcome `unknown`; Bigorna, ADR-0004 §4,\n  Esquadro C-a): a command not acked within\
+        \ the retransmission horizon. Its result is unknown: it\n  may have run on the platform, so the outcome is never `expired`.\
+        \ It is never retransmitted. The account also gets\n  `sync.command_undelivered`, which is notified through `sync.flagged`,\
+        \ so this entry is audit only\n  (`DetailsUndelivered`);\n- `connection.account_kind_changed` (category connection;\
+        \ system, `info`; Bigorna, ADR-0005 N11): the\n  plugin reported another platform account kind for a bound account,\
+        \ e.g. `simulation` → `live`\n  (`DetailsAccountKindChanged`). It is audit only; the binding's `kind` shows the current\
+        \ value;\n- `sync.restored`: a disconnect while flat with nothing in flight, whose reconnect snapshot matched,\n \
+        \ so the account was not flagged and is back to normal (system, `info`; ADR-0004 §6 row 3).\nThe automatic orphan\
+        \ cancels and the orphan flatten stay execution entries (`execution.cancelled`\n+ `order.orphan_cancelled`, `execution.command_sent`\
+        \ kind `flatten`); `sync.flagged` carries the\nsummary in `reason.core_action`.\n"
     AuditEntry:
       type: object
       additionalProperties: false
@@ -6599,11 +7043,17 @@ components:
     DetailsRoutingDecision:
       type: object
       additionalProperties: false
-      description: "`routing.instrument_unavailable` (5.2.0, Esquadro): the instrument is in the catalog but has no active\n\
-        contract at the decision instant. Outcome `skipped` (a configuration rule), with `instrument_symbol`.\nIt applies\
-        \ only at the decision; an instrument outside the catalog stays `ingress.unsupported_instrument`.\nEvery `routing.*`\
-        \ decision code. A routing decision is `routed` (sent in full), `capped` (sent with\nless than requested: a capped\
-        \ quantity, or a reverse's close leg only; audited with outcome\n`partial`), `skipped`, `refused` or `expired` (AuditOutcome).\
+      description: "`routing.adapter_protocol_outdated` (5.3.0, ADR-0004 r5 §7.1 / U13; outcome `skipped`, with\n`protocol_version`):\
+        \ the account's session is too old for the action. It covers a `reduce` on a\nsession below 1.2 (no position guard),\
+        \ and every ENTRY of an account with a drawdown rule on a\nsession below 1.4. In the second case the Core sends that\
+        \ session no drawdown, so without the local\nbarrier it fails closed. Exits continue, and the user is told to update\
+        \ the plugin.\n`routing.position_unknown` (5.3.0, U13 A; outcome `skipped`): a `reduce` while the Core holds no\n\
+        All Win identity for the position, e.g. one opened externally on a TradingView-only destination.\nIt is never sent.\n\
+        `routing.instrument_unavailable` (5.2.0, Esquadro): the instrument is in the catalog but has no active\ncontract at\
+        \ the decision instant. Outcome `skipped` (a configuration rule), with `instrument_symbol`.\nIt applies only at the\
+        \ decision; an instrument outside the catalog stays `ingress.unsupported_instrument`.\nEvery `routing.*` decision\
+        \ code. A routing decision is `routed` (sent in full), `capped` (sent with\nless than requested: a capped quantity,\
+        \ or a reverse's close leg only; audited with outcome\n`partial`), `skipped`, `refused` or `expired` (AuditOutcome).\
         \ One routing decision entry per\n(instruction, account). **Close and gate 6** (ADR-0003 §4.1 r4 final, Crivo C1;\
         \ Esmeril M1):\n- a `close` against a NON-flat expected position is always a flatten, with no gates 6–9;\n- a `close`\
         \ against a FLAT expected position waits for gate 6. Out of sync gives the Q75 flatten;\n  in sync gives `routing.nothing_to_close`.\
@@ -6701,15 +7151,21 @@ components:
           type: string
           pattern: ^[A-Z0-9]{1,10}$
           description: The instruction's instrument (required with `routing.instrument_unavailable`).
+        protocol_version:
+          type: string
+          pattern: ^1\.(0|[1-9][0-9]*)$
+          description: 'With `routing.adapter_protocol_outdated`: the version the session negotiated.'
         gates_unknown:
           type: boolean
           description: '5.2.0 (Esquadro, S7 N1). True when the TTL ran out before the account gates 6–9 (out of sync,
 
             risk, limits, bracket profile) answered. It applies only to entries, since only entries have a
 
-            TTL. The decision then uses only what is known: the action rules that do not depend on those
+            TTL. The decision then uses only what is known: the action rule that does not depend on those
 
-            gates (`routing.position_conflict`, `routing.nothing_to_reduce`), or else `routing.expired`. It
+            gates (`routing.position_conflict`), or else `routing.expired`. (`routing.nothing_to_reduce`
+
+            belongs to an exit, which is decided without gates 6–9 and never expires.) It
 
             never names a gate that did not answer; the S10 text says "os gates de conta não responderam a
 
@@ -6754,6 +7210,20 @@ components:
           - flatten
         expires_at:
           $ref: '#/components/schemas/Timestamp'
+        late_ms:
+          type: integer
+          minimum: 1
+          description: '5.3.0, ADR-0004 §5 r5 ("audited as late"; T1). Present only on an exit command sent after
+
+            `expiry_base` + the account''s command TTL. Exits are `flatten` (close, reverse close leg), a
+
+            `place` reduce, `cancel`, and a protective `modify`. The value is `sent_at` − (`expiry_base` +
+
+            TTL) in milliseconds. Absent when the command was sent in time. Never on an entry: a late
+
+            entry expires and is not sent.
+
+            '
     DetailsBracketCalculated:
       type: object
       additionalProperties: false
@@ -6817,6 +7287,9 @@ components:
           - entry
           - stop
           - target
+          - exit
+          - flatten
+          description: 'The protocol''s child roles (1.3): `exit` for a `place` reduce, `flatten` for a flatten (5.3.0, Bigorna).'
         platform_order_id:
           type: string
           maxLength: 128
@@ -6849,6 +7322,129 @@ components:
           type: integer
           minimum: 0
           description: Instruction receipt → this report (S19 AC-4 for followers).
+    DetailsSync:
+      type: object
+      additionalProperties: false
+      required:
+      - sync_version
+      description: '`sync.*` audit entries and notifications (S11). `reason` with `sync.flagged` / `sync.reason_resolved`
+        and the `sync.*` reason notifications; `cleared_reasons` with `sync.cleared`; `connection_id` with `sync.restored`.'
+      properties:
+        sync_version:
+          type: integer
+          minimum: 1
+          description: '`AccountSync.version` after the change.'
+        reason:
+          $ref: '#/components/schemas/SyncReason'
+        cleared_reasons:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          description: 'With `sync.cleared`: the distinct codes that were cleared (active and resolved). Instruments and commands
+            are not repeated here, because the earlier `sync.flagged` entries carry them.'
+          items:
+            $ref: '#/components/schemas/SyncReasonCode'
+        cleared_count:
+          type: integer
+          minimum: 1
+          description: 'With `sync.cleared`: how many reasons were cleared in total.'
+        connection_id:
+          $ref: '#/components/schemas/Uuid'
+    DetailsUnboundActivity:
+      type: object
+      additionalProperties: false
+      required:
+      - connection_id
+      - platform_account
+      - kind
+      description: '`execution.unbound_activity` (5.3.0): activity on a platform account that no All Win account binds.'
+      properties:
+        connection_id:
+          $ref: '#/components/schemas/Uuid'
+        connection_name:
+          $ref: '#/components/schemas/DisplayName'
+        platform_account:
+          type: string
+          maxLength: 128
+        kind:
+          type: string
+          enum:
+          - fill
+          - snapshot
+        instrument_id:
+          $ref: '#/components/schemas/Uuid'
+        instrument_symbol:
+          type: string
+          pattern: ^[A-Z0-9]{1,10}$
+          description: As reported on the wire.
+        contract_month:
+          type: string
+          pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+          description: As reported on the wire.
+        position:
+          type: integer
+          minimum: -10000
+          maximum: 10000
+          description: 'With `snapshot`: the signed position reported.'
+        fill_qty:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: With `fill`.
+        side:
+          type: string
+          enum:
+          - buy
+          - sell
+          description: With `fill`.
+    DetailsUndelivered:
+      type: object
+      additionalProperties: false
+      required:
+      - command_id
+      - created_at
+      - horizon_h
+      properties:
+        command_id:
+          $ref: '#/components/schemas/Uuid'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        horizon_h:
+          type: integer
+          minimum: 1
+          maximum: 720
+          description: The retransmission horizon in hours (72 in V1).
+    DetailsAccountKindChanged:
+      type: object
+      additionalProperties: false
+      required:
+      - account_id
+      - platform_account
+      - previous_kind
+      - kind
+      properties:
+        account_id:
+          $ref: '#/components/schemas/Uuid'
+        connection_id:
+          $ref: '#/components/schemas/Uuid'
+        platform_account:
+          type: string
+          maxLength: 128
+          description: The venue account as the plugin names it (`AccountBinding.platform_account`).
+        previous_kind:
+          type: string
+          enum:
+          - simulation
+          - playback
+          - live
+          - unknown
+        kind:
+          type: string
+          enum:
+          - simulation
+          - playback
+          - live
+          - unknown
     DetailsConnectionStatus:
       type: object
       additionalProperties: false
@@ -7546,6 +8142,10 @@ components:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.instrument_unavailable:
           $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.adapter_protocol_outdated:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.position_unknown:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.expired:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         execution.command_requested:
@@ -7574,6 +8174,20 @@ components:
           $ref: '#/components/schemas/DetailsExecution'
         connection.status_changed:
           $ref: '#/components/schemas/DetailsConnectionStatus'
+        execution.unbound_activity:
+          $ref: '#/components/schemas/DetailsUnboundActivity'
+        execution.undelivered:
+          $ref: '#/components/schemas/DetailsUndelivered'
+        connection.account_kind_changed:
+          $ref: '#/components/schemas/DetailsAccountKindChanged'
+        sync.flagged:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.reason_resolved:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.cleared:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.restored:
+          $ref: '#/components/schemas/DetailsSync'
         sources.created:
           $ref: '#/components/schemas/DetailsSourceLifecycle'
         sources.renamed:
@@ -8037,9 +8651,8 @@ components:
       additionalProperties: false
       description: 'Type map, not a payload: `params` of a notification with code `<code>` matches property `<code>`.
 
-        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S11
-
-        (`sync.*`) and S15 (`risk.blocked`, `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
+        Mirrors `contracts/notifications/v1/registry.json` (the check fails if they differ). Codes of S15 (`risk.blocked`,
+        `risk.flatten`, `risk.unblocked`, `risk.reactive_block_action`)
 
         are added with those contracts.
 
@@ -8060,6 +8673,10 @@ components:
         routing.no_bracket_profile:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.instrument_unavailable:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.adapter_protocol_outdated:
+          $ref: '#/components/schemas/DetailsRoutingDecision'
+        routing.position_unknown:
           $ref: '#/components/schemas/DetailsRoutingDecision'
         routing.nothing_to_reduce:
           $ref: '#/components/schemas/DetailsRoutingDecision'
@@ -8083,6 +8700,20 @@ components:
           $ref: '#/components/schemas/ParamsOptInSuspendedByFirm'
         presets.new_version:
           $ref: '#/components/schemas/ParamsPresetNewVersion'
+        execution.unbound_activity:
+          $ref: '#/components/schemas/DetailsUnboundActivity'
+        sync.flagged:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.bracket_orphan_leg:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.bracket_incomplete:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.bracket_double_fill:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.flatten_failed_unprotected:
+          $ref: '#/components/schemas/DetailsSync'
+        sync.restored:
+          $ref: '#/components/schemas/DetailsSync'
     NotificationCreatedEvent:
       type: object
       additionalProperties: false
@@ -10697,50 +11328,47 @@ components:
       - routing.automation_not_accepted
       - routing.copy_not_accepted
       - routing.connection_disconnected
+      - routing.connection_checking
+      - routing.binding_pending
+      - routing.broker_disconnected
       - routing.out_of_sync
       - routing.risk_blocked
       - routing.no_bracket_profile
       - routing.limits_pending
       - routing.route_disabled
-      description: 'Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,
-
-        in this order (F§7.2 extended with the route-level states): `source_revoked`, `route_disabled`,
-
-        `platform_unbound`, `out_of_sync`, `connection_disconnected`, `risk_blocked`, `limits_pending`,
-
-        `no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.
-
-        This is a display order only. The instruction gates and their order are ADR-0003 §4.1 (Esquadro''s
-
-        S7 delta, with ADR-0008): `account_inactive` → `platform_unbound` → `automation_not_accepted` →
-
-        `copy_not_accepted` → `signal_type_not_selected` → `out_of_sync` → `risk_blocked` →
-
-        `limits_pending` → `no_bracket_profile` → action rules → `expired` (entries only). The audit code of a skipped
-
-        instruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending` and
-
-        `no_bracket_profile` block entries only. For a `reverse` the §4.2 position check runs before the
-
-        entry gates (Q74): position opposite → the close leg runs and the open is skipped with the gate
-
-        code; flat → skipped with the gate code; already on the reverse side → `routing.position_conflict`
-
-        (rejected, notified, never a flatten). `source_revoked` and `route_disabled` are route status only (no instruction
-
-        reaches the gates); `connection_disconnected` (every connection status other than `connected`:
-
-        disconnected, outdated, awaiting pairing, unpaired) does not skip an instruction either: an
-
-        entry''s command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel, a
-
-        protective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as
-
-        late (ADR-0003 §4.1, ADR-0004 T1).
-
-        New codes may be added in a minor version; clients show a generic text for an unknown code.
-
-        '
+      description: "Why a route does not (fully) receive now. `effective.reasons[]` lists them **most severe first**,\nin\
+        \ this order (F§7.2 extended with the route-level states): `source_revoked`, `route_disabled`,\n`platform_unbound`,\
+        \ `out_of_sync`, `connection_disconnected`, `connection_checking`, `broker_disconnected`, `binding_pending`, `risk_blocked`,\
+        \ `limits_pending`,\n`no_bracket_profile`, `automation_not_accepted`, `copy_not_accepted`, `account_inactive`.\nThis\
+        \ is a display order only. The instruction gates and their order are ADR-0003 §4.1 (Esquadro's\nS7 delta, with ADR-0008):\
+        \ `account_inactive` → `platform_unbound` → `automation_not_accepted` →\n`copy_not_accepted` → `signal_type_not_selected`\
+        \ → `out_of_sync` → `risk_blocked` →\n`limits_pending` → `no_bracket_profile` → action rules → `expired` (entries\
+        \ only). The audit code of a skipped\ninstruction is the first gate that fails. `out_of_sync`, `risk_blocked`, `limits_pending`\
+        \ and\n`no_bracket_profile` block entries only. For a `reverse` the §4.2 position check runs before the\nentry gates\
+        \ (Q74): position opposite → the close leg runs and the open is skipped with the gate\ncode; flat → skipped with the\
+        \ gate code; already on the reverse side → `routing.position_conflict`\n(rejected, notified, never a flatten). `source_revoked`\
+        \ and `route_disabled` are route status only (no instruction\nreaches the gates); `connection_disconnected` (every\
+        \ connection status other than `connected`:\ndisconnected, outdated, awaiting pairing, unpaired) does not skip an\
+        \ instruction either: an\nentry's command expires (`routing.expired`) if its TTL runs out; exits (close, reduce, cancel,\
+        \ a\nprotective modify, the close leg of a reverse) carry no expiry, wait, and execute late, audited as\nlate (ADR-0003\
+        \ §4.1, ADR-0004 T1). `connection_checking` (S11-03, 5.3.0) is route status only, like\n`connection_disconnected`.\
+        \ It covers the connection being `connected` while the mandatory reconnect\ncheck of the account has not finished.\
+        \ The window runs per mapped account, from `welcome` until the\nCore has evaluated the reconnect snapshot and the\
+        \ replayed outbox reports (ADR-0004 §4 step 3,\n§6.1 r5), or until the session ends. Meanwhile the Core sends no command\
+        \ to the account: entries\nkeep their TTL and expire if the window outlasts it, and exits wait. Nothing is skipped,\
+        \ and\n`AccountSync.observable` is false. Bounds (Esquadro, Crivo Q2; ADR-0004 r5; provisional values,\ntuned by Ferro\
+        \ and Pulso):\n- after 60 s without the evaluation there is an operational and user alert (\"verificação da\n  conexão\
+        \ não concluída; ordens aguardando\"), and the route shows `connection_checking` with the\n  elapsed time;\n- after\
+        \ 5 min the Core closes the session (4000, `snapshot_timeout`). The adapter reconnects and\n  sends the snapshot again.\
+        \ It counts as a normal disconnect (ADR-0004 §6), so an account with a\n  position becomes out of sync.\n`broker_disconnected`\
+        \ (5.3.0, ADR-0004 r5 §6.3, Crivo m2) is route status only and never skips. A\nsnapshot reports `connected: false`\
+        \ (the platform lost its broker), so delivery to the account is\nHELD: entries keep their TTL and expire, and exits\
+        \ wait. Sending would only produce\n`command.account_not_simulation` and lose an exit. It ends with the next snapshot\
+        \ that reports\n`connected: true`, of any trigger, at reconnect or mid-session.\n`binding_pending` (5.3.0, Esquadro,\
+        \ Crivo R3 on r5) is route status only and never skips. It is\nshown when the account was bound or rebound while its\
+        \ connection's session is open: the binding\ntakes effect at the next handshake. Until then, entries expire by their\
+        \ TTL and exits wait. The web\nsays \"reconecte o plugin para ativar o vínculo\".\nNew codes may be added in a minor\
+        \ version; clients show a generic text for an unknown code.\n"
     RouteReason:
       type: object
       additionalProperties: false
