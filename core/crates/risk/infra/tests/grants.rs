@@ -32,8 +32,12 @@ async fn seed(db: &support::TestDb) -> (Uuid, Uuid) {
          VALUES ($1, $2, current_date, now() - interval '1 hour', now() + interval '1 hour',
                  'cme_session_close')",
         "INSERT INTO risk.applied_fill (user_id, account_id, fill_id, trading_date, qty, gross,
-           commission_effective, commission_gap, last_event_id)
-         VALUES ($1, $2, 'F-1', current_date, 2, -45.50, 1.24, 0.00, gen_random_uuid())",
+           commission_effective, commission_gap, last_event_id, instrument_symbol, contract_month,
+           side, price, position_before, avg_price_before, point_value)
+         VALUES ($1, $2, 'F-1', current_date, 2, -45.50, 1.24, 0.00, gen_random_uuid(), 'MNQ',
+                 '2026-12-01', 'sell', 21000.25, 2, 21011.625, 2)",
+        "INSERT INTO risk.position (user_id, account_id, instrument_symbol, contract_month, qty,
+           avg_price) VALUES ($1, $2, 'MNQ', '2026-12-01', 0, NULL)",
     ] {
         sqlx::query(sql)
             .bind(user)
@@ -74,6 +78,7 @@ async fn worker_reads_only_its_due_work_columns() {
         "SELECT account_id FROM risk.evaluation_progress WHERE account_id = $1",
         "SELECT account_id FROM risk.drawdown_tracker WHERE account_id = $1",
         "SELECT account_id FROM risk.applied_fill WHERE account_id = $1",
+        "SELECT account_id FROM risk.position WHERE account_id = $1",
         "UPDATE risk.account_block SET ended_at = now() WHERE account_id = $1",
         "UPDATE risk.account_limits SET effective_as_of = now() WHERE account_id = $1",
         "DELETE FROM risk.scheduled_limit WHERE account_id = $1",
@@ -106,6 +111,7 @@ async fn app_deletes_only_due_schedules() {
         .unwrap();
     assert_eq!(removed.rows_affected(), 1);
     for table in [
+        "position",
         "applied_fill",
         "account_block",
         "trading_day",
@@ -151,8 +157,10 @@ async fn applied_fills_are_per_user_and_purged_only_by_maint() {
     assert_eq!(seen, 0, "another user's fills are invisible");
     let e = sqlx::query(
         "INSERT INTO risk.applied_fill (user_id, account_id, fill_id, trading_date, qty, gross,
-           commission_effective, commission_gap, last_event_id)
-         VALUES ($1, $2, 'F-2', current_date, 1, 0, 0, 0, gen_random_uuid())",
+           commission_effective, commission_gap, last_event_id, instrument_symbol, contract_month,
+           side, price, position_before, avg_price_before, point_value)
+         VALUES ($1, $2, 'F-2', current_date, 1, 0, 0, 0, gen_random_uuid(), 'MNQ', '2026-12-01',
+                 'buy', 21000, 0, NULL, 2)",
     )
     .bind(owner)
     .bind(account)
@@ -165,8 +173,10 @@ async fn applied_fills_are_per_user_and_purged_only_by_maint() {
     let mut tx = as_user(&db, owner).await;
     let dup = sqlx::query(
         "INSERT INTO risk.applied_fill (user_id, account_id, fill_id, trading_date, qty, gross,
-           commission_effective, commission_gap, last_event_id)
-         VALUES ($1, $2, 'F-1', current_date, 2, -45.50, 1.24, 0, gen_random_uuid())
+           commission_effective, commission_gap, last_event_id, instrument_symbol, contract_month,
+           side, price, position_before, avg_price_before, point_value)
+         VALUES ($1, $2, 'F-1', current_date, 2, -45.50, 1.24, 0, gen_random_uuid(), 'MNQ',
+                 '2026-12-01', 'sell', 21000.25, 2, 21011.625, 2)
          ON CONFLICT (account_id, fill_id) DO NOTHING",
     )
     .bind(owner)
@@ -191,4 +201,75 @@ async fn applied_fills_are_per_user_and_purged_only_by_maint() {
     .await
     .unwrap();
     assert_eq!(purged.rows_affected(), 1);
+}
+
+#[tokio::test]
+async fn positions_are_per_user_and_their_checks_hold() {
+    let Some(db) = support::db().await else {
+        return;
+    };
+    let (owner, account) = seed(&db).await;
+    let other = support::user(&db).await;
+
+    let mut tx = as_user(&db, other).await;
+    let seen: i64 = sqlx::query_scalar("SELECT count(*) FROM risk.position")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(seen, 0, "another user's positions are invisible");
+    tx.rollback().await.unwrap();
+
+    let mut tx = as_user(&db, owner).await;
+    for (set, check) in [
+        // Flat with a price, or flat with an unknown basis.
+        (
+            "qty = 0, avg_price = 1, basis_known = true",
+            "position_flat_check",
+        ),
+        (
+            "qty = 0, avg_price = NULL, basis_known = false",
+            "position_flat_check",
+        ),
+        // Open: a price exactly when the basis is known.
+        (
+            "qty = 2, avg_price = NULL, basis_known = true",
+            "position_basis_check",
+        ),
+        (
+            "qty = 2, avg_price = 21000, basis_known = false",
+            "position_basis_check",
+        ),
+    ] {
+        let mut sp = tx.begin().await.unwrap();
+        let sql = format!("UPDATE risk.position SET {set} WHERE account_id = $1");
+        let e = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account)
+            .execute(&mut *sp)
+            .await
+            .expect_err(set);
+        assert!(e.to_string().contains(check), "{set}: {e}");
+        sp.rollback().await.unwrap();
+    }
+    for set in [
+        "qty = 2, avg_price = 21000.25, basis_known = true",
+        "qty = -1, avg_price = NULL, basis_known = false",
+    ] {
+        let sql = format!("UPDATE risk.position SET {set} WHERE account_id = $1");
+        sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account)
+            .execute(&mut *tx)
+            .await
+            .unwrap_or_else(|e| panic!("{set}: {e}"));
+    }
+    // A realized gross needs a known open position and its basis.
+    let e = sqlx::query(
+        "UPDATE risk.applied_fill SET position_before = NULL, avg_price_before = NULL
+         WHERE account_id = $1 AND fill_id = 'F-1'",
+    )
+    .bind(account)
+    .execute(&mut *tx)
+    .await
+    .expect_err("gross without a known basis");
+    assert!(e.to_string().contains("applied_fill_before_check"), "{e}");
+    tx.rollback().await.unwrap();
 }

@@ -13,10 +13,10 @@
 
 use rust_decimal::{Decimal, RoundingStrategy};
 
-/// Money per fill: exact product, then 4 decimals, half to even (Lastro's recommendation;
-/// PROVISÓRIO — Esquadro decides the rounding rule). The only place the rule lives.
+/// Money per fill: exact product, then 4 decimals, half AWAY from zero, like PostgreSQL's
+/// `round(numeric, 4)` (Esquadro; data model rev. 16.23 §5.6). The only place the rule lives.
 pub fn round_money(v: Decimal) -> Decimal {
-    v.round_dp_with_strategy(4, RoundingStrategy::MidpointNearestEven)
+    v.round_dp_with_strategy(4, RoundingStrategy::MidpointAwayFromZero)
 }
 
 /// `NUMERIC(22,10)`: average prices keep 10 decimals, half to even.
@@ -128,6 +128,49 @@ pub fn apply_fill(
     }
 }
 
+/// The position before a fill (data model rev. 16.23, M1). With the report's `position_after`
+/// the platform wins: `before = position_after − signed qty`. The stored row is used only if its
+/// quantity matches; otherwise the average before is known only when the fill reduces without
+/// zeroing or flipping (on average cost a reduction keeps the average, so before = after). Without
+/// `position_after` and without a stored row the position before is unknown (`None`), never flat.
+pub fn position_before(
+    stored: Option<Position>,
+    side: Side,
+    qty: i64,
+    position_after: Option<i64>,
+    avg_price_after: Option<Decimal>,
+) -> Option<Position> {
+    let Some(after) = position_after else {
+        return stored;
+    };
+    let signed = match side {
+        Side::Buy => qty,
+        Side::Sell => -qty,
+    };
+    let before = after - signed;
+    if let Some(p) = stored
+        && p.qty == before
+    {
+        return Some(p);
+    }
+    if before == 0 {
+        return Some(Position::FLAT);
+    }
+    let reduces_only = after != 0 && (after > 0) == (before > 0) && after.abs() < before.abs();
+    Some(match avg_price_after {
+        Some(avg) if reduces_only => Position {
+            qty: before,
+            avg_price: avg,
+            basis_known: true,
+        },
+        _ => Position {
+            qty: before,
+            avg_price: Decimal::ZERO,
+            basis_known: false,
+        },
+    })
+}
+
 /// The position after a report: the platform's `position_after` / `avg_price_after` when present,
 /// else the computed one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -228,11 +271,12 @@ mod tests {
     }
 
     #[test]
-    fn money_rounds_half_to_even_at_four_decimals() {
+    fn money_rounds_half_away_from_zero_at_four_decimals() {
         // 1/128 point × 31.25 USD = 0.244140625 → 0.2441.
         let e = apply_fill(long(1, "100"), Side::Sell, 1, d("100.0078125"), d("31.25"));
         assert_eq!(e.realized_gross, Some(d("0.2441")));
-        assert_eq!(round_money(d("0.00005")), d("0.0000"));
+        assert_eq!(round_money(d("0.00005")), d("0.0001"));
+        assert_eq!(round_money(d("-0.00005")), d("-0.0001"));
         assert_eq!(round_money(d("0.00015")), d("0.0002"));
     }
 
@@ -271,5 +315,69 @@ mod tests {
             reconcile(computed, Some(0), Some(d("0")), tick).position,
             Position::FLAT
         );
+    }
+
+    #[test]
+    fn position_before_follows_the_platform_and_never_guesses() {
+        let stored = long(3, "21000");
+        // Stored quantity matches the platform's before: the stored basis is used.
+        assert_eq!(
+            position_before(Some(stored), Side::Sell, 1, Some(2), Some(d("21000"))),
+            Some(stored)
+        );
+        // Stored row diverged (or missing); a pure reduction: before's average = after's.
+        assert_eq!(
+            position_before(
+                Some(long(5, "1")),
+                Side::Sell,
+                1,
+                Some(2),
+                Some(d("21000.5"))
+            ),
+            Some(long(3, "21000.5"))
+        );
+        assert_eq!(
+            position_before(None, Side::Sell, 1, Some(2), Some(d("21000.5"))),
+            Some(long(3, "21000.5"))
+        );
+        // A flip or a close to flat cannot tell the old average: unknown.
+        let unknown = |qty| {
+            Some(Position {
+                qty,
+                avg_price: d("0"),
+                basis_known: false,
+            })
+        };
+        assert_eq!(
+            position_before(None, Side::Sell, 3, Some(-2), Some(d("21000"))),
+            unknown(1)
+        );
+        assert_eq!(
+            position_before(None, Side::Sell, 2, Some(0), None),
+            unknown(2)
+        );
+        // Opening from flat is known.
+        assert_eq!(
+            position_before(None, Side::Buy, 2, Some(2), Some(d("21000"))),
+            Some(Position::FLAT)
+        );
+        // No position_after and no stored row: unknown, never flat.
+        assert_eq!(position_before(None, Side::Buy, 1, None, None), None);
+        assert_eq!(
+            position_before(Some(stored), Side::Buy, 1, None, None),
+            Some(stored)
+        );
+    }
+
+    #[test]
+    fn a_fill_to_flat_with_a_matching_row_uses_the_row_basis() {
+        // 16.23: the platform's avg_price_after is null or 0 when flat; the stored row wins.
+        let stored = long(2, "21000");
+        let before = position_before(Some(stored), Side::Sell, 2, Some(0), None).unwrap();
+        assert_eq!(before, stored);
+        let e = apply_fill(before, Side::Sell, 2, d("21010"), d(PV));
+        assert_eq!(e.realized_gross, Some(d("40")));
+        let r = reconcile(e.after, Some(0), Some(d("0")), d("0.25"));
+        assert_eq!((r.position, r.diverged), (Position::FLAT, false));
     }
 }
