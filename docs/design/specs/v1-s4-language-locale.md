@@ -100,7 +100,7 @@ The user never sees a key name (AC-4: "no silent fallback to the key name").
 
 ## 9. Accessibility
 
-- Switcher trigger accessible name: "Idioma: Português (Brasil)" / "Language: English". Options have `lang` attributes so screen readers pronounce them correctly (WCAG 3.1.2).
+- Switcher trigger accessible name: "Idioma: {language}, {short}" / "Language: {language}, {short}", e.g. "Idioma: Português (Brasil), PT" / "Language: English, EN". It contains both visible labels (full name from `sm` up, short label below), so one name meets WCAG 2.5.3 at every width (2026-10-24; avoid parentheses around the short label). Options have `lang` attributes so screen readers pronounce them correctly (WCAG 3.1.2).
 - `<html lang>` always matches the rendered locale (3.1.1).
 - Keyboard: menus follow the WAI-ARIA menu pattern from Radix (arrow keys, Enter, Esc returns focus to the trigger).
 

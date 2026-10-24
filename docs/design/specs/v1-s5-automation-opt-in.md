@@ -361,7 +361,7 @@ When S16 lands (or the user attaches a preset to a prop account), existing prop 
 4. **Automação** and **Replicação** cards (§5.5).
 5. **Posição aberta:** read-only indicator "Posição aberta: sim/não" from the gateway (needed for lifecycle and delete messages).
 
-**States:** loading skeleton of the five cards; error/not found per §2; unbound account shows card 3 as `Sem vínculo` with `Vincular conta`.
+**States:** loading skeleton of the five cards; error/not found per §2; unbound account shows card 3 as `Sem vínculo` with `Vincular conta` / `Link account`.
 
 ---
 
